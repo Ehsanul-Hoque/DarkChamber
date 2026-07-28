@@ -1,0 +1,9 @@
+* text=auto eol=lf
+
+# Windows scripts that genuinely need CRLF
+*.bat text eol=crlf
+
+# Never touch binaries
+*.png binary
+*.jpg binary
+*.jar binary
