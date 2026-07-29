@@ -1,0 +1,202 @@
+# DarkChamber — Architecture
+
+> How DarkChamber is built: modules, crypto integration, storage, and per-feature design. Companion docs: [`THREAT_MODEL.md`](./THREAT_MODEL.md) (what we defend against — normative for all product claims) and [`FORMAT.md`](./FORMAT.md) (the `.dchm` container specification — normative for all implementations). Roadmap: [`../ROADMAP.md`](../ROADMAP.md). Decisions: [`ADR/`](./ADR/).
+
+Language: Kotlin Multiplatform. Shared UI: Compose Multiplatform.
+
+---
+
+## 1. Overview
+
+```
+┌────────────────────────────────────────────────────────────┐
+│                  Compose Multiplatform UI                  │
+│        (screens, navigation, viewers, camera UI)           │
+├────────────────────────────────────────────────────────────┤
+│                     feature modules                        │
+│  vault · camera · viewers · notes · scrubber · shredder    │
+│                 · backup (Phase 3) ·                       │
+├────────────────────────────────────────────────────────────┤
+│                     shared core (KMP)                      │
+│  core-crypto   core-storage   core-db   core-model         │
+├────────────────────────────────────────────────────────────┤
+│              platform layer (expect/actual)                │
+│  Keystore/StrongBox ↔ Secure Enclave/Keychain              │
+│  CameraX ↔ AVFoundation      Media3 ↔ AVPlayer             │
+│  BiometricPrompt ↔ LocalAuthentication                     │
+│  FLAG_SECURE ↔ snapshot obscuring                          │
+└────────────────────────────────────────────────────────────┘
+```
+
+### Module layout
+
+| Module         | Contents                                                                          | Platform code?                                                                           |
+|----------------|-----------------------------------------------------------------------------------|------------------------------------------------------------------------------------------|
+| `core-model`   | Domain types: `VaultItem`, `Album`, `Note`, MIME handling                         | No                                                                                       |
+| `core-crypto`  | `.dchm` codec (per [`FORMAT.md`](./FORMAT.md)), key hierarchy, KDF, DEK lifecycle | KDF + cipher via `cryptography-kotlin`; key *storage* via expect/actual `SecureKeyStore` |
+| `core-storage` | App-private file layout, atomic writes, temp-file hygiene, thumbnail store        | Small expect/actual for paths                                                            |
+| `core-db`      | SQLDelight schema + DAOs for the encrypted catalog                                | Driver per platform                                                                      |
+| `feature-*`    | ViewModels + Compose screens per feature                                          | Viewers/camera have expect/actual internals                                              |
+| `app`          | Compose Multiplatform entry points, DI (Koin), navigation                         | Thin                                                                                     |
+
+### Key dependencies
+
+| Concern           | Library                                                                                                      | Notes                                                                                                                                           |
+|-------------------|--------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------|
+| Crypto primitives | `dev.whyoleg.cryptography-kotlin`                                                                            | Wraps JCA / CryptoKit / OpenSSL behind one KMP API. Pre-1.0 → pin exact version, wrap behind our own `CryptoEngine` interface so it's swappable |
+| Argon2id          | Platform bindings (e.g. libsodium via cinterop / signal-argon2 on Android) behind `expect fun argon2id(...)` | PBKDF2-HMAC-SHA256 (≥ 600k iters) as tested fallback                                                                                            |
+| DB                | SQLDelight                                                                                                   | Sensitive columns encrypted at the application layer (§5); consider SQLCipher later as defense-in-depth                                         |
+| Serialization     | kotlinx.serialization                                                                                        | Header + metadata blobs                                                                                                                         |
+| DI                | Koin                                                                                                         | KMP-friendly                                                                                                                                    |
+| Camera            | CameraX / AVFoundation (direct, or CameraK wrapper — vet & pin)                                              | See §6                                                                                                                                          |
+| Media playback    | Media3/ExoPlayer · AVPlayer                                                                                  | Custom decrypting data sources, §7                                                                                                              |
+| Images            | Coil 3 (KMP) with custom encrypted `Fetcher`                                                                 | Decodes from in-memory decrypted bytes                                                                                                          |
+
+**Rule:** all young/single-maintainer libraries sit behind interfaces we own. If upstream dies, we fork or replace without touching feature code.
+
+## 2. Threat model
+
+Moved to [`THREAT_MODEL.md`](./THREAT_MODEL.md). Its "security invariants" section is enforced in code review; a violation is a P0 bug.
+
+## 3. Cryptography integration
+
+The key hierarchy, container format, KDF parameters, and cipher registry are specified normatively in [`FORMAT.md`](./FORMAT.md). Summary for orientation: a random 256-bit MasterKey (MK) is wrapped three ways — by a hardware-keystore key, by an Argon2id-derived key from the user's passphrase, and by the recovery key. MK wraps per-object DEKs; DEKs encrypt content as chunked AES-256-GCM `.dchm` containers. Password change re-wraps MK only; destroying a DEK crypto-shreds one item; destroying MK wraps crypto-shreds the vault.
+
+What lives *here* rather than in the format spec is the platform integration:
+
+### 3.1 Platform key storage (`expect/actual SecureKeyStore`)
+
+|                                        | Android                                                                                                 | iOS                                                                                                                      |
+|----------------------------------------|---------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------|
+| HW wrap key                            | Keystore AES key, `setUnlockedDeviceRequired`, StrongBox if present, auth-required with validity window | Secure Enclave P-256 → ECIES-wrapped MK, or Keychain key with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` + LAContext |
+| Biometric gate                         | `BiometricPrompt` (BIOMETRIC_STRONG or device credential)                                               | `LocalAuthentication` (Face ID/Touch ID, passcode fallback)                                                              |
+| Invalidated by biometric re-enrollment | Optional (off by default; PIN path remains)                                                             | Optional via `accessControl` flags                                                                                       |
+
+Failed-attempt policy enforced in app logic: exponential backoff after 5 failures; after N (user-configurable) failures optionally trigger intruder selfie (§10) and/or panic crypto-shred.
+
+### 3.2 Key material hygiene
+
+Raw MK/DEKs exist only in memory, held in a single `VaultSession`, zeroized best-effort on lock (`ByteArray.fill(0)`; GC-copy limits acknowledged in the threat model).
+
+## 4. Storage layout (app-private only)
+
+```
+filesDir/                         (Android: /data/data/<pkg>/files · iOS: app container/Documents, excluded from iCloud backup via URLResourceValues)
+ ├─ vault/
+ │   ├─ objects/ab/cd/<file_id>.dchm        # content-addressed-ish sharding
+ │   ├─ thumbs/<file_id>.tdchm              # encrypted thumbnails (~256px)
+ │   └─ keys/mk.wrapped                     # MK wraps (hw / pw / recovery)
+ ├─ db/catalog.db                           # SQLDelight (fields encrypted, §5)
+ └─ tmp/                                    # decrypt scratch (PDF path), wiped on lock & on launch
+```
+
+Rules: writes are atomic (temp + rename); `tmp/` is purged on vault lock, app start, and after each viewer session; **nothing is ever written to shared storage** except explicit user exports; Android `android:allowBackup="false"` + `fullBackupContent` deny-all so ADB/cloud device backups can't exfiltrate wrapped keys with ciphertext; iOS vault dir flagged `isExcludedFromBackup = true` (Phase 3 backup replaces OS backup deliberately).
+
+## 5. Catalog database
+
+The exact DDL lives in the version-controlled SQLDelight `.sq` files in `core-db` — this section documents the design, not a copy of the schema.
+
+Tables and purpose:
+
+| Table       | Purpose                                                        | Encrypted columns                                                   | Plaintext columns (why)                                                                       |
+|-------------|----------------------------------------------------------------|---------------------------------------------------------------------|-----------------------------------------------------------------------------------------------|
+| `items`     | One row per vault object (files & notes; `kind` discriminates) | `enc_meta` (name, MIME, dims, duration, origin hint), `dek_wrapped` | `id`, `album_id`, `kind`, `size`, `created_at` — needed for sorting/paging without decryption |
+| `albums`    | Albums/folders                                                 | `enc_name`                                                          | `id`, `kek_variant` (per-album password flag)                                                 |
+| `audit_log` | Break-in events (failed unlocks, intruder captures)            | event payload                                                       | `id`, `timestamp`                                                                             |
+
+- `enc_*` fields are AES-GCM under an MK-derived key; the DB file itself is not separately encrypted in v1 (application-layer field encryption is the guarantee; SQLCipher is a later defense-in-depth option).
+- Search over encrypted names: an in-memory index built per unlock session (vault scale is thousands of items; linear decrypt-and-scan is fine — revisit if profiling disagrees).
+- **Migration policy:** SQLDelight migrations are committed alongside schema changes; CI runs an upgrade test from every previously released schema version, and release checklist (§14) includes "old vault opens" verification. A failed migration must fail closed (refuse to run) rather than risk catalog corruption.
+
+## 6. Private camera
+
+Pipeline goal: sensor → JPEG/HEIC or MP4 bytes → encrypting sink → `objects/….dchm`. Plaintext never persisted.
+
+- **Android (CameraX):** photos via `ImageCapture` in-memory callback → encrypt buffer → write. Video via `Recorder` writing to a `FileDescriptor` we own; practical v1 approach: record to a `tmp/` app-private file, then stream-encrypt + delete immediately (private-dir exposure only, disclosed); v1.x upgrade: `memfd_create`-backed descriptor or `MediaCodec`+`MediaMuxer` custom sink for zero-disk plaintext.
+- **iOS (AVFoundation):** `AVCapturePhotoOutput` delivers in-memory `Data` → encrypt. Video via `AVAssetWriter` to app-private tmp → stream-encrypt + delete (same disclosed tradeoff; `AVAssetWriter` requires a file URL).
+- EXIF policy: camera writes **no GPS** by default; optional "keep capture metadata (stored encrypted)" toggle.
+- Thumbnails generated in-memory at capture, encrypted to `thumbs/`.
+
+## 7. Viewers (per-type presenters over one blob store)
+
+| Type               | Android                                                                                                                                        | iOS                                                                                                          |
+|--------------------|------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------|
+| Image              | Decrypt → `BitmapFactory.decodeByteArray` (subsampled) → Compose `Image`; Coil custom `Fetcher` keyed by file_id, memory-cache only            | Decrypt → `UIImage(data:)` / Compose                                                                         |
+| Video/Audio        | Media3 **custom `DataSource`**: `open(dataSpec)` maps byte offset → chunk index, decrypts on demand → full seek support                        | `AVAssetResourceLoaderDelegate` serving decrypted byte ranges to `AVPlayer` (cleaner than a loopback server) |
+| PDF                | v1: decrypt → `tmp/` file → `PdfRenderer` → delete on close. v1.x: `memfd_create` (NDK) for RAM-backed fd, or Pdfium wrapper accepting streams | `PDFDocument(data:)` — fully in-memory                                                                       |
+| Other (docx/zip/…) | "Decrypt & open in…": decrypt → `tmp/` → `FileProvider` share intent → warning dialog → post-use cleanup + optional re-import of edits         | Same via `UIActivityViewController` + temporary file coordinator                                             |
+
+All viewer screens run under `FLAG_SECURE` (Android); iOS obscures the app-switcher snapshot and blanks on `willResignActive` (screenshot *blocking* isn't possible on iOS — documented honestly in the threat model; optional screenshot-detected warning via `userDidTakeScreenshotNotification`).
+
+## 8. Unlock, session & lock lifecycle
+
+1. Cold start → PIN or biometric → unwrap MK → session object holds MK in memory.
+2. Auto-lock: on background beyond grace period (default 30 s, configurable), on device lock, on demand. Lock = zeroize MK/DEK caches, purge `tmp/`, invalidate decrypted bitmap caches, pop viewers.
+3. Compose side: single `VaultSession` state; every feature screen requires it — no screen can render decrypted content without a live session (compile-time enforced by API shape).
+
+## 9. File metadata scrubber
+
+Two entry points sharing one engine:
+
+1. **On vault export/share** (default ON): strip before bytes leave the vault.
+2. **Standalone tool** (works without importing): pick file(s) → inspect → output a clean copy to user-chosen location. Never modifies originals in place (avoids scoped-storage write friction entirely — output is a new file via SAF/`UIDocumentPicker`).
+
+Engine: JPEG/PNG/WebP/HEIC — parse & drop EXIF/XMP/IPTC segments (GPS, serials, owner, thumbnails inside EXIF); re-encode only when a format demands it. MP4/MOV — drop `udta`/`©xyz` GPS and identifying atoms. PDF — strip Info dictionary + XMP (flagged "best effort": embedded objects may retain data). UI shows a **before/after diff** of removed fields — the diff *is* the product. Implementation: metadata-segment manipulation is pure byte-level Kotlin (`kotlinx-io`) in `commonMain`; use platform codecs only when re-encoding pixels.
+
+## 10. Secure file shredder & additional security features
+
+**Shredder — two honest modes, clearly separated in UI:**
+
+- **Vault items → Crypto-shred (recommended, default):** destroy the item's wrapped DEK (and overwrite that tiny key record), delete ciphertext. Without the DEK the ciphertext is noise — genuinely irreversible, instant, works regardless of flash behavior. Panic wipe = crypto-shred of MK wraps.
+- **External files → Best-effort overwrite:** single random-pass overwrite via SAF-granted write access, then delete. Shown with a **non-dismissable explanation**: flash wear-leveling/GC can retain old blocks; this reduces but cannot guarantee elimination of recoverability; full-disk encryption + factory reset is the only true erase. No multi-pass "DoD/Gutmann" options — they're theater on SSDs and we say so.
+
+The same disclosure appears when a user imports a file and chooses "delete original."
+
+**Phase 2 security features:**
+
+- **Decoy vault:** duress PIN unwraps an alternate MK′ over a disjoint catalog; real and decoy stores are structurally identical on disk (no trivial "is there a hidden vault" flag).
+- **Intruder log:** after N failed unlocks, capture front-camera frame (where OS permits) + timestamp, encrypted under MK, shown after next real unlock.
+- **Per-album passwords:** album KEK = HKDF(MK, album_salt, album_password); items in the album wrap DEKs under album KEK.
+- **Panic wipe:** confirmed gesture/duress-variant → zeroize + delete all MK wraps → full-vault crypto-shred.
+
+## 11. Encrypted notes
+
+Notes are vault items (`kind='note'`, `text/markdown`) in the same `.dchm` container — no separate crypto path. Compose editor with debounced autosave (encrypt full note on each save; notes are small). Title lives in `enc_meta`; body is the object payload. Attachments = links to other vault items. Search: in-memory per-session index (§5).
+
+## 12. Cloud backup (Phase 3, paid unlock) — design sketch
+
+- Providers: user's own Google Drive (`drive.appDataFolder` or visible encrypted folder — TBD, to be decided in an ADR; appData hides clutter, visible folder aids user trust/portability) and iCloud Drive.
+- Upload unit = `.dchm` chunks → resumable by construction; the encrypted backup manifest is specified in [`FORMAT.md`](./FORMAT.md) §4 before Phase 3 ships.
+- Restore path requires **recovery key only** (new device has no hardware wrap) — hence the recovery-key wrap of MK ships in the backup manifest.
+- We never operate storage; OAuth tokens stay on-device. Store builds gate the feature behind one-time IAP; F-Droid build ungated.
+
+## 13. Platform & policy compliance
+
+- **Permissions:** camera, microphone (video), biometrics, photo-picker access. **No** `MANAGE_EXTERNAL_STORAGE`, no background location, no accessibility service, no usage access, no overlay (see ADR-001, ADR-002). Media access via Photo Picker (Android) / `PHPicker` (iOS) — no broad library permission needed for import.
+- **Apple export compliance:** we use standard algorithms partly via non-OS libs (OpenSSL under cryptography-kotlin on some targets) → review annually; set `ITSAppUsesNonExemptEncryption` appropriately and file the French ANSSI declaration if distributing in France.
+- **Google Play:** no Misrepresentation-risk features (no disguise icons); data-safety form = "no data collected/shared" (crash reporting opt-in only, self-hosted).
+
+## 14. Build, test, release
+
+- CI: assemble + unit tests (JVM fast path for `core-*`), iOS framework build, **format test vectors as a mandatory gate** (see [`FORMAT.md`](./FORMAT.md) §7), schema-migration upgrade tests from every released version, screenshot tests for critical flows, dependency review + `--verify-metadata` (supply-chain hygiene matters for a security app).
+- **Reproducible builds** target from v1.x (pinned toolchains, deterministic flags) → prerequisite for F-Droid and for "verify the store APK matches GitHub."
+- Release checklist per version: policy review, threat-model diff, format-version compatibility test (old vaults must always open), migration tests.
+- `SECURITY.md`: disclosure process, PGP key, 90-day coordinated timeline. Audit scope (Phase 4): `core-crypto`, `FORMAT.md` conformance, and key lifecycle.
+
+## 15. Repository layout
+
+```
+/                     GPLv3 LICENSE · TRADEMARK.md · SECURITY.md · README · ROADMAP.md
+├─ core-model/  core-crypto/  core-storage/  core-db/
+├─ feature-vault/  feature-camera/  feature-viewers/
+├─ feature-notes/  feature-scrubber/  feature-shredder/
+├─ feature-backup/            (Phase 3)
+├─ app/                        composeApp entries (androidApp / iosApp)
+├─ docs/
+│   ├─ ARCHITECTURE.md  THREAT_MODEL.md  FORMAT.md
+│   ├─ format-test-vectors/
+│   └─ ADR/                    ADR-001 · ADR-002 · ADR-003 · …
+└─ .github/workflows/
+```
+
+ADRs live in `docs/ADR/` — currently: ADR-001 (no auto-encryption of other apps' photos), ADR-002 (no app lock), ADR-003 (no sandboxing of other apps). Future candidates: Argon2 binding choice, Drive appDataFolder vs visible folder.
