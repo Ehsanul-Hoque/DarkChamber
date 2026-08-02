@@ -37,7 +37,7 @@ KEYSTORE_B64="$KEYSTORE_B64" \
 KEYSTORE_PASS="$KEYSTORE_PASS" \
   "$(dirname "$0")/build-release-apk.sh"
 
-APK_PATH="build/outputs/darkchamber-${VERSION_NAME}.apk"
+APK_PATH="build/outputs/darkchamber-${FLAVOR:-foss}-${VERSION_NAME}.apk"
 [ -f "$APK_PATH" ] || { echo "error: expected APK at ${APK_PATH}" >&2; exit 1; }
 
 git config user.name  "${GIT_AUTHOR_NAME:-github-actions[bot]}"

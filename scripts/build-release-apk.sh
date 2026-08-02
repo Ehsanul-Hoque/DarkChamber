@@ -15,6 +15,7 @@
 #   KEY_ALIAS       default: darkchamber
 #   KEY_PASS        default: $KEYSTORE_PASS
 #   MODULE          default: :androidApp
+#   FLAVOR          default: foss   (foss | store — see androidApp/build.gradle.kts)
 #
 set -euo pipefail
 
@@ -26,6 +27,8 @@ set -euo pipefail
 KEY_ALIAS="${KEY_ALIAS:-darkchamber}"
 KEY_PASS="${KEY_PASS:-$KEYSTORE_PASS}"
 MODULE="${MODULE:-:androidApp}"
+FLAVOR="${FLAVOR:-foss}"
+FLAVOR_CAP="$(printf "%s" "${FLAVOR:0:1}" | tr "[:lower:]" "[:upper:]")${FLAVOR:1}"
 
 OUT_DIR="build/outputs"
 KEYSTORE_PATH="$(mktemp -d)/release.keystore"
@@ -35,9 +38,9 @@ cleanup() { rm -rf "$(dirname "$KEYSTORE_PATH")"; }
 trap cleanup EXIT
 
 echo "$KEYSTORE_B64" | base64 -d > "$KEYSTORE_PATH"
-echo "Building DarkChamber ${VERSION_NAME} (versionCode ${VERSION_CODE})"
+echo "Building DarkChamber ${FLAVOR} ${VERSION_NAME} (versionCode ${VERSION_CODE})"
 
-./gradlew "${MODULE}:assembleRelease" \
+./gradlew "${MODULE}:assemble${FLAVOR_CAP}Release" \
   --no-daemon \
   -PversionName="$VERSION_NAME" \
   -PversionCode="$VERSION_CODE" \
@@ -48,13 +51,13 @@ echo "Building DarkChamber ${VERSION_NAME} (versionCode ${VERSION_CODE})"
 
 # Collect the APK under a predictable, versioned name for the release step.
 mkdir -p "$OUT_DIR"
-SRC_APK="$(find . -path '*/androidApp/build/outputs/apk/release/*.apk' -type f | head -n1)"
+SRC_APK="$(find . -path "*/androidApp/build/outputs/apk/${FLAVOR}/release/*.apk" -type f | head -n1)"
 if [ -z "$SRC_APK" ]; then
   echo "error: no release APK found after build" >&2
   exit 1
 fi
 
-DEST_APK="${OUT_DIR}/darkchamber-${VERSION_NAME}.apk"
+DEST_APK="${OUT_DIR}/darkchamber-${FLAVOR}-${VERSION_NAME}.apk"
 cp "$SRC_APK" "$DEST_APK"
 echo "APK ready: ${DEST_APK}"
 

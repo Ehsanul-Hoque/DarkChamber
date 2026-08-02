@@ -11,7 +11,7 @@
 #   VERSION       e.g. 0.2.0        (from compute-version.sh)
 #   GITHUB_TOKEN  provided by Actions; needs `contents: write`
 # Env (optional):
-#   APK_PATH      default: build/outputs/darkchamber-<VERSION>.apk
+#   APK_PATH      default: build/outputs/darkchamber-foss-<VERSION>.apk
 #   NOTES_FILE    default: build/release-notes.md
 #   WHATSNEW_FILE default: build/whatsnew-en-US.txt
 #
@@ -22,7 +22,7 @@ set -euo pipefail
 TAG="v${VERSION}"
 NOTES_FILE="${NOTES_FILE:-build/release-notes.md}"
 WHATSNEW_FILE="${WHATSNEW_FILE:-build/whatsnew-en-US.txt}"
-APK_PATH="${APK_PATH:-build/outputs/darkchamber-${VERSION}.apk}"
+APK_PATH="${APK_PATH:-build/outputs/darkchamber-foss-${VERSION}.apk}"
 
 if [ ! -f "$NOTES_FILE" ]; then
   echo "error: ${NOTES_FILE} not found — run compute-version.sh first" >&2
