@@ -1,0 +1,126 @@
+# .github/workflows/pr.yml
+#
+# Runs on every PR to main. Fast checks on Linux; the expensive macOS iOS job is
+# gated to run only when shared code changes. Merging is blocked until the required
+# checks pass (configure these as required status checks in branch protection).
+#
+# PREREQUISITES (land these before making the checks "required" in branch protection):
+#   • ktlint / detekt / konsistTest / kover tasks exist — added by the build-logic
+#     convention plugins (docs/engineering/MODULES.md §5, TESTING.md §5). Until then,
+#     comment out the "Static analysis" and "Unit tests + coverage" steps.
+#   • migrationTest exists once the first release ships fixture vaults
+#     (docs/engineering/TESTING.md §3.2) — commented out below until then.
+#   • scripts/check-commits.sh is committed (it is — no Node/commitlint needed).
+name: PR
+
+on:
+  pull_request:
+    branches: [main]
+
+# Cancel superseded runs on the same PR.
+concurrency:
+  group: pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write   # for the Kover coverage comment
+
+jobs:
+  # Detect whether shared/iOS code changed, to gate the macOS job.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      ios: ${{ steps.filter.outputs.ios }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            ios:
+              - 'shared/**'          # pre-modularization layout
+              - 'core/**'            # post-modularization (MODULES.md) — KMP code
+              - 'feature/**'
+              - '**/iosMain/**'
+              - 'iosApp/**'
+              - 'gradle/libs.versions.toml'
+
+  commit-messages:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # the checker walks the full PR commit range
+      - name: Validate commit messages (all commits in the PR)
+        # Node-free Conventional Commits check (docs/engineering/WORKFLOW.md §2).
+        # Re-validates what Lefthook checked locally, so bypassed hooks change nothing.
+        run: bash ./scripts/check-commits.sh "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
+
+  # Supply-chain gate: flags new dependencies & incompatible licenses on the PR
+  # (docs/engineering/RELEASE.md §6). New runtime deps need justification in the
+  # PR description.
+  dependency-review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Static analysis (ktlint, detekt, Konsist)
+        run: ./gradlew ktlintCheck detekt konsistTest
+
+      - name: Unit tests + coverage
+        # Includes the .dchm format test vectors (docs/engineering/TESTING.md §3.1)
+        # once core:crypto lands — they run as part of the unit suite.
+        run: ./gradlew testDebugUnitTest koverXmlReport koverVerify
+
+      # - name: Migration gate (old vaults always open)
+      #   run: ./gradlew migrationTest
+      #   # Enable after v1.0 ships the first fixture vault (TESTING.md §3.2).
+
+      - name: Coverage comment
+        if: always()
+        uses: mi-kas/kover-report@v1     # optional/replaceable — see RELEASE.md §2
+        with:
+          path: ${{ github.workspace }}/build/reports/kover/report.xml
+          token: ${{ secrets.GITHUB_TOKEN }}
+          title: Coverage
+          update-comment: true
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-reports
+          path: |
+            **/build/reports/detekt/
+            **/build/reports/kover/
+          if-no-files-found: ignore
+
+  ios-tests:
+    needs: changes
+    if: needs.changes.outputs.ios == 'true'
+    runs-on: macos-latest        # ~10x the cost of Linux — that's why it's gated
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: iOS unit tests
+        run: ./gradlew :shared:iosSimulatorArm64Test
+        # Post-modularization this becomes the aggregate iOS test task across
+        # core:* / feature:* — update alongside the module split.

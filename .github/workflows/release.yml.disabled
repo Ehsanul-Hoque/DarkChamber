@@ -1,0 +1,141 @@
+# .github/workflows/release.yml
+#
+# Manually triggered (Actions tab → Run workflow). Merging to main does NOT release.
+# When you run it, it analyzes every commit since the last tag, computes ONE version
+# bump, runs the release checklist (docs/engineering/RELEASE.md §5), builds a signed
+# APK (foss flavor — the GitHub Release asset everyone can install), verifies its
+# permissions, tags main's HEAD, and publishes a GitHub Release.
+# Tag-based: no commit is pushed back to protected main.
+#
+# Play Store submission stays manual for now (upload the store-flavor build);
+# F-Droid builds from the tag via its own recipe once listed.
+#
+# Calls: scripts/compute-version.sh → build-release-apk.sh → tag-and-release.sh
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      level:
+        description: "Version bump (auto = infer from commits since last tag)"
+        type: choice
+        options: [auto, patch, minor, major]
+        default: auto
+      threat_model_reviewed:
+        description: "I confirm this release introduces no undocumented threat-model change (RELEASE.md §5.4)"
+        type: boolean
+        default: false
+      dry_run:
+        description: "Preview version & changelog without building, tagging, or publishing"
+        type: boolean
+        default: false
+
+# Never cancel a release mid-flight.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write   # create tags & GitHub Releases (NOT push commits to main)
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main            # always release from main's HEAD
+          fetch-depth: 0       # full history for commit analysis
+          fetch-tags: true     # ensure tags are present for `git describe`
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Determine version bump
+        id: bump
+        env:
+          LEVEL_OVERRIDE: ${{ inputs.level }}
+        run: bash ./scripts/compute-version.sh
+
+      - name: Nothing to release
+        if: steps.bump.outputs.level == 'none'
+        run: echo "No release-worthy commits since ${{ steps.bump.outputs.prev_tag }}. Stopping."
+
+      # ---- Dry run: preview and stop ----
+      - name: Preview (dry run)
+        if: inputs.dry_run == true && steps.bump.outputs.level != 'none'
+        run: |
+          echo "Would release ${{ steps.bump.outputs.version }} (code ${{ steps.bump.outputs.version_code }})"
+          echo "----------------------------------------"
+          cat build/release-notes.md
+
+      # =====================================================================
+      # Release checklist (docs/engineering/RELEASE.md §5) — any failure aborts
+      # BEFORE anything is tagged or published.
+      # =====================================================================
+
+      - name: "Checklist 4: threat-model review confirmed"
+        if: inputs.dry_run == false && steps.bump.outputs.level != 'none'
+        run: |
+          if [ "${{ inputs.threat_model_reviewed }}" != "true" ]; then
+            echo "::error::Release blocked: tick 'threat_model_reviewed' after confirming the release introduces no undocumented threat-model change (docs/THREAT_MODEL.md)."
+            exit 1
+          fi
+
+      - name: "Checklist 1: full test suite (incl. format vectors)"
+        if: inputs.dry_run == false && steps.bump.outputs.level != 'none'
+        run: ./gradlew testDebugUnitTest koverVerify
+        # Add `migrationTest` here once fixture vaults exist (TESTING.md §3.2) —
+        # "old vaults always open" is release-blocking from v1.1 onward.
+
+      # Checklist 3 (dependency verification) is enforced implicitly: once
+      # gradle/verification-metadata.xml is committed (RELEASE.md §6), every
+      # Gradle invocation above fails on an unverified artifact.
+
+      - name: Build signed APK (foss flavor)
+        if: inputs.dry_run == false && steps.bump.outputs.level != 'none'
+        env:
+          VERSION_NAME: ${{ steps.bump.outputs.version }}
+          VERSION_CODE: ${{ steps.bump.outputs.version_code }}
+          FLAVOR: foss
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KEYSTORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASS }}
+          KEY_ALIAS: ${{ vars.ANDROID_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.ANDROID_KEY_PASS }}
+        run: bash ./scripts/build-release-apk.sh
+
+      - name: "Checklist 2: permission audit (no INTERNET — ADR-004; allowlist only)"
+        if: inputs.dry_run == false && steps.bump.outputs.level != 'none'
+        run: |
+          APK="build/outputs/darkchamber-foss-${{ steps.bump.outputs.version }}.apk"
+          ANALYZER="$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer"
+          [ -x "$ANALYZER" ] || ANALYZER="$(find "$ANDROID_HOME/cmdline-tools" -name apkanalyzer | head -n1)"
+
+          "$ANALYZER" manifest permissions "$APK" | sort > /tmp/actual-permissions.txt
+          echo "Declared permissions:"; cat /tmp/actual-permissions.txt
+
+          # ADR-004: v1 ships with no network access — hard fail, no allowlist escape.
+          if grep -q "android.permission.INTERNET" /tmp/actual-permissions.txt; then
+            echo "::error::APK declares INTERNET permission — forbidden in v1 (docs/ADR/ADR-004)."
+            exit 1
+          fi
+
+          # Everything declared must be in the committed allowlist.
+          sort config/permissions-allowlist.txt > /tmp/allowed.txt
+          EXTRA="$(comm -23 /tmp/actual-permissions.txt /tmp/allowed.txt)"
+          if [ -n "$EXTRA" ]; then
+            echo "::error::APK declares permissions outside config/permissions-allowlist.txt:"
+            echo "$EXTRA"
+            exit 1
+          fi
+          echo "Permission audit passed."
+
+      - name: Tag main & publish GitHub Release
+        if: inputs.dry_run == false && steps.bump.outputs.level != 'none'
+        env:
+          VERSION: ${{ steps.bump.outputs.version }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash ./scripts/tag-and-release.sh

@@ -1,0 +1,51 @@
+# .github/workflows/test-build.yml
+#
+# Manually triggered from ANY branch to get a work-in-progress build to testers.
+# Replaces third-party distribution (Firebase): publishes a GitHub PRE-RELEASE that
+# testers install straight from the Releases page — no accounts, no Play Services,
+# works for F-Droid-style users (docs/engineering/RELEASE.md §8).
+#
+# Does NOT analyze commits or bump the version — scripts/publish-test-build.sh
+# stamps a throwaway version (0.0.0-<branch>-<sha>, versionCode 1) and tags it
+# under test/ so it can never be confused with, or upgrade-block, a real release.
+#
+# Calls: scripts/publish-test-build.sh (→ build-release-apk.sh)
+name: Test Build
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: test-build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write   # push the test/ tag and create the pre-release
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build & publish pre-release
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KEYSTORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASS }}
+          KEY_ALIAS: ${{ vars.ANDROID_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.ANDROID_KEY_PASS }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash ./scripts/publish-test-build.sh
+
+      # Housekeeping note: test pre-releases are not supported versions
+      # (SECURITY.md). Prune old test/ tags & pre-releases periodically —
+      # `gh release list | grep "Test build"` makes them easy to find.

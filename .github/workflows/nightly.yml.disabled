@@ -1,0 +1,43 @@
+# .github/workflows/nightly.yml
+#
+# Nightly extended checks — things too slow for every PR (docs/engineering/TESTING.md §3.3).
+# Currently: the .dchm round-trip/property fuzzing suite with a large iteration count.
+# The PR suite runs the same tests with a bounded count; nightly turns the dial up.
+#
+# Failures open no PR noise — check the Actions tab, or add an issue-creating step
+# once the fuzz task exists.
+name: Nightly
+
+on:
+  schedule:
+    - cron: "30 21 * * *"   # 21:30 UTC — pick any quiet hour
+  workflow_dispatch: {}      # allow manual runs while developing the fuzz suite
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Extended format fuzzing
+        # The property tests read FUZZ_ITERATIONS (default small on PRs).
+        env:
+          FUZZ_ITERATIONS: "100000"
+        run: ./gradlew :core:crypto:testDebugUnitTest --tests "*FormatPropertyTest*"
+        # Pre-modularization: point at the shared module's test task instead.
+
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-failure-reports
+          path: "**/build/reports/tests/"
+          if-no-files-found: ignore
