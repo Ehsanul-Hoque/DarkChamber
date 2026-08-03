@@ -19,4 +19,4 @@ Governing principles (the rest is elaboration):
 - **Security invariants are tests** — "plaintext never touches shared storage" and "all crypto goes through `core-crypto`" fail the build, not just review.
 - **TDD** — tests before implementation; coverage gated in CI; `core-crypto` held to ~100%.
 - **Automate the boring, gate the risky** — formatting, linting, architecture rules, versioning, and releases are automated; `main` only advances through reviewed PRs.
-- **v1 ships with no `INTERNET` permission** — see [`../ADR/ADR-004.md`](../ADR/ADR-004.md).
+- **v1 ships with no `INTERNET` permission** — see [`../ADR/ADR-004-no-internet-permission-v1.md`](../ADR/ADR-004-no-internet-permission-v1.md).

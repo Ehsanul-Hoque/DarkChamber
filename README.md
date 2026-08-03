@@ -1,31 +1,106 @@
-This is a Kotlin Multiplatform project targeting Android, iOS.
+# DarkChamber 📷🔒
 
-* [/iosApp](./iosApp/iosApp) contains an iOS application. Even if you’re sharing your UI with Compose Multiplatform,
-  you need this entry point for your iOS app. This is also where you should add SwiftUI code for your project.
+> Long before photography, a *camera* was just a chamber: a dark, sealed room where images formed, seen by no one outside. DarkChamber brings that idea back — **a private camera and an encrypted vault in one. What enters the chamber never leaves it.**
 
-* [/shared](./shared/src) is for code that will be shared across your Compose Multiplatform applications.
-  It contains several subfolders:
-  - [commonMain](./shared/src/commonMain/kotlin) is for code that’s common for all targets.
-  - Other folders are for Kotlin code that will be compiled for only the platform indicated in the folder name.
-    For example, if you want to use Apple’s CoreCrypto for the iOS part of your Kotlin app,
-    the [iosMain](./shared/src/iosMain/kotlin) folder would be the right place for such calls.
-    Similarly, if you want to edit the Desktop (JVM) specific part, the [jvmMain](./shared/src/jvmMain/kotlin)
-    folder is the appropriate location.
+A Kotlin Multiplatform app for **Android** and **iOS** that encrypts, stores, and views your private files — photos, videos, audio, PDFs, notes, and documents — with modern, verifiable cryptography. Photos taken with the built-in camera never touch shared storage, so cloud services (Google Photos included) never see them.
 
-### Running the apps
+**Free and open source (GPLv3). Local-first. No ads, no trackers, no accounts — and v1 ships with no `INTERNET` permission, so you can verify in the manifest that your files cannot leave your device.**
 
-Use the run configurations provided by the run widget in your IDE's toolbar. You can also use these commands and options:
-
-- Android app: `./gradlew :androidApp:assembleDebug`
-- iOS app: open the [/iosApp](./iosApp) directory in Xcode and run it from there.
-
-### Running tests
-
-Use the run button in your IDE's editor gutter, or run tests using Gradle tasks:
-
-- Android tests: `./gradlew :shared:testAndroidHostTest`
-- iOS tests: `./gradlew :shared:iosSimulatorArm64Test`
+> ⚠️ **Status: pre-release.** The repository is early-stage scaffolding; the documents under [`docs/`](./docs) describe the target design. Nothing here is ready to protect real files yet.
 
 ---
 
-Learn more about [Kotlin Multiplatform](https://www.jetbrains.com/help/kotlin-multiplatform-dev/get-started.html)…
+## ✨ What it does (v1)
+
+- **Private camera** — photos & video captured straight into encrypted, app-private storage. Plaintext never touches disk outside the sandbox; Google Photos has nothing to back up.
+- **Encrypted vault** — import any file (images, videos, audio, PDFs, documents); everything is encrypted with AES-256-GCM under hardware-backed keys (Android Keystore/StrongBox, iOS Secure Enclave).
+- **View without exposing** — in-app viewers decrypt to memory: images, streaming video/audio with seeking, PDFs. Anything else opens via an explicit, warned "decrypt & open in…" flow.
+- **Encrypted notes** — Markdown notes stored as first-class vault items.
+- **Metadata scrubber** — inspect and strip EXIF/GPS/XMP from files before sharing, with a before/after diff. Works standalone, without importing.
+- **Honest shredder** — vault items are *crypto-shredded* (key destroyed — genuinely irreversible). For external files we do a best-effort overwrite and tell you plainly what flash storage can and can't guarantee. No "military-grade wipe" theater.
+- **Biometric/PIN unlock, recovery key, screenshot protection, decoy vault** *(phased — see the roadmap)*.
+- **Later (paid, one-time):** zero-knowledge encrypted backup to *your own* Google Drive/iCloud. We run no servers and can never see your files. The F-Droid build ships it free.
+
+What we deliberately **don't** do — and why — is documented too: [no auto-encryption of other apps' photos](./docs/ADR/ADR-001-no-auto-encryption-of-other-apps-photos.md), [no app lock](./docs/ADR/ADR-002-no-app-lock-feature.md), [no sandboxing of other apps](./docs/ADR/ADR-003-no-app-sandboxing.md), [no network access in v1](./docs/ADR/ADR-004-no-internet-permission-v1.md).
+
+---
+
+## 🔍 Verify, don't trust
+
+DarkChamber's premise is that a privacy app should be **checkable**, not just believable:
+
+- **Open source (GPLv3)** — every line is here.
+- **No `INTERNET` permission in v1** — enforced by the release pipeline; check the manifest yourself.
+- **Public [threat model](./docs/THREAT_MODEL.md)** — what we defend against *and what we honestly don't*. Marketing never promises more than that document.
+- **Specified [container format](./docs/FORMAT.md)** with committed test vectors — auditable, and implementable by third parties.
+- **Reproducible builds & F-Droid** are on the [roadmap](./ROADMAP.md), so the binary provably matches this source.
+
+## 🏗️ Architecture at a glance
+
+**Local-first, app-private only.** Vault content lives in encrypted `.dchm` containers inside app-private storage — never in shared MediaStore. Plaintext exists only in memory (or briefly in private `tmp/`, wiped on lock).
+
+**Envelope encryption.** A random 256-bit master key is wrapped by (a) a hardware-keystore key gated on biometric/PIN, (b) an Argon2id-derived key from your passphrase, and (c) your recovery key. The master key wraps per-file keys; files are chunked AES-256-GCM — enabling streaming, video seeking, resumable backup, and instant crypto-shredding. Full spec: [`docs/FORMAT.md`](./docs/FORMAT.md).
+
+### Tech stack
+
+| Concern           | Choice                                                                    |
+|-------------------|---------------------------------------------------------------------------|
+| Shared logic & UI | Kotlin Multiplatform + Compose Multiplatform                              |
+| Cryptography      | `cryptography-kotlin` (AES-256-GCM) + Argon2id, behind our `CryptoEngine` |
+| Key storage       | Android Keystore/StrongBox · iOS Secure Enclave/Keychain                  |
+| Local database    | SQLDelight (sensitive fields app-layer encrypted)                         |
+| Camera            | CameraX · AVFoundation                                                    |
+| Media playback    | Media3/ExoPlayer · AVPlayer (custom decrypting sources)                   |
+| DI / Navigation   | Koin · Decompose                                                          |
+| Networking        | **None in v1** (by design — ADR-004)                                      |
+
+---
+
+## 📁 Project structure
+
+* [`/androidApp`](./androidApp) — Android entry point (versioning, signing, `foss`/`store` flavors).
+* [`/iosApp`](./iosApp) — iOS entry point (Xcode project; any SwiftUI host code lives here).
+* [`/shared`](./shared/src) — shared KMP code (`commonMain` + platform source sets).
+
+> **Target architecture:** shared code moves into a **multi-module clean-architecture layout** — `core:crypto`, `core:storage`, `core:db`, feature modules with an `api`/`impl` split — with isolation enforced at compile time and by Konsist (including security rules: crypto only in `core:crypto`, shared-storage APIs only in `core:storage`). See [`docs/engineering/MODULES.md`](./docs/engineering/MODULES.md).
+
+## ▶️ Running the apps
+
+- **Android:** `./gradlew :androidApp:assembleFossDebug` (or use the IDE run widget)
+- **iOS:** open [`/iosApp`](./iosApp) in Xcode and run.
+- Resolved version: `./gradlew :androidApp:printVersion`
+
+## ✅ Running tests
+
+- **JVM/Android:** `./gradlew :shared:testAndroidHostTest`
+- **iOS:** `./gradlew :shared:iosSimulatorArm64Test`
+
+---
+
+## 📚 Documentation
+
+- [Roadmap](./ROADMAP.md) — phased plan, monetization & licensing model, non-goals.
+- [Architecture](./docs/ARCHITECTURE.md) — modules, storage layout, camera/viewer design.
+- [Threat Model](./docs/THREAT_MODEL.md) — what we protect against, and what we don't. **Normative for every product claim.**
+- [`.dchm` Format Spec](./docs/FORMAT.md) — the encrypted container, key hierarchy, test vectors.
+- [Engineering Guide](./docs/engineering/README.md) — modularization, testing, quality gates, Git workflow, CI/CD, releases. **Read this before contributing.**
+- [ADRs](./docs/ADR) — decisions and the reasoning behind them, including the refusals.
+- [Security Policy](./SECURITY.md) — how to report vulnerabilities (please don't open public issues for those).
+
+## 🤝 Contributing
+
+Essentials — the [Engineering Guide](./docs/engineering/README.md) has the detail:
+
+- **TDD** — tests first; coverage gated in CI (`core:crypto` ≈100%, domain 90%, overall 80%).
+- **Conventional Commits, per commit** (`feat:`, `fix:`, `docs:`, …) — we merge, not squash; commits drive automated versioning.
+- **Quality gates** — ktlint, detekt, Konsist (including security-invariant rules), Kover; locally via Lefthook, again in CI.
+- **Security-sensitive PRs** (crypto, storage, format, session/lock) need the `security-review` label and must state which threat-model invariants they touch.
+- **`main` is protected**; releases are tag-based and cut manually.
+
+## ⚖️ License & trademark
+
+Code is licensed under **[GPLv3](./LICENSE)**. The **DarkChamber name and logo are not part of the code license** — forks are welcome and must choose their own name. See `TRADEMARK.md`.
+
+## 🕯️ A note of intention
+
+Everyone has files that are simply *theirs* — and privacy shouldn't require trusting a stranger's promise. DarkChamber exists so that the promise is checkable: a sealed chamber, with the seal visible to anyone who cares to look.
