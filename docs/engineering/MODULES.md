@@ -19,7 +19,7 @@ DarkChamber is a multi-module Gradle project. Isolation is real (compile-time), 
 - `core:crypto` — the `.dchm` codec (normative spec: [`../FORMAT.md`](../FORMAT.md)), key hierarchy, KDF, DEK lifecycle, `CryptoEngine` interface wrapping `cryptography-kotlin`, `expect/actual SecureKeyStore` (Keystore/Secure Enclave). **The only module allowed to touch cipher primitives.**
 - `core:storage` — app-private file layout, atomic writes, `tmp/` hygiene, thumbnail store. **The only module allowed to touch filesystem APIs.**
 - `core:db` — SQLDelight schema (`.sq` files are the canonical DDL), drivers per platform, migrations.
-- `core:designsystem` — theme, shared Compose components, secure-screen wrappers (`FLAG_SECURE` / snapshot obscuring live here so no feature re-implements them).
+- `core:designsystem` — theme + tokens per [`../DESIGN.md`](../DESIGN.md), shared Compose components, secure-screen wrappers (`FLAG_SECURE` / snapshot obscuring live here so no feature re-implements them).
 - `core:logging` — Kermit setup (see [`PATTERNS.md`](./PATTERNS.md) §4 — no Crashlytics, no remote anything).
 - `core:testing` — shared fakes, fixtures, test dispatchers, Turbine helpers, format test-vector loaders (test-only).
 

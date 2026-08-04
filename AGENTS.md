@@ -14,6 +14,7 @@ Package root: `dev.ehsanfahad.darkchamber`.
 - `docs/ARCHITECTURE.md` — modules, storage layout, crypto integration, camera/viewer/session design.
 - `docs/THREAT_MODEL.md` — in/out-of-scope threats and **security invariants**. Normative: no code or copy may promise more than this file.
 - `docs/FORMAT.md` — normative `.dchm` container spec (chunked AES-256-GCM), key hierarchy, versioning policy, test vectors.
+- `docs/DESIGN.md` — design tokens (color/type/shape/motion), the aperture signature, honesty rules for UI copy. Feature UI consumes `DarkChamberTheme` roles from `core:designsystem` — never raw hex, and the full-circle radius is reserved for aperture elements.
 - `docs/engineering/` — MODULES, PATTERNS, TESTING, WORKFLOW, RELEASE. **Read before contributing code.**
 - `docs/ADR/` — decisions incl. the refusals (ADR-001 no auto-encryption of other apps' photos; ADR-002 no app lock; ADR-003 no sandboxing; ADR-004 **no INTERNET permission in v1**).
 

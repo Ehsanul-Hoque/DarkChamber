@@ -1,6 +1,6 @@
 # DarkChamber — Architecture
 
-> How DarkChamber is built: modules, crypto integration, storage, and per-feature design. Companion docs: [`THREAT_MODEL.md`](./THREAT_MODEL.md) (what we defend against — normative for all product claims) and [`FORMAT.md`](./FORMAT.md) (the `.dchm` container specification — normative for all implementations). Roadmap: [`../ROADMAP.md`](../ROADMAP.md). Decisions: [`ADR/`](./ADR/).
+> How DarkChamber is built: modules, crypto integration, storage, and per-feature design. Companion docs: [`THREAT_MODEL.md`](./THREAT_MODEL.md) (what we defend against — normative for all product claims), [`FORMAT.md`](./FORMAT.md) (the `.dchm` container specification — normative for all implementations), and [`DESIGN.md`](./DESIGN.md) (the visual language — tokens, themes, motion). Roadmap: [`../ROADMAP.md`](../ROADMAP.md). Decisions: [`ADR/`](./ADR/).
 
 Language: Kotlin Multiplatform. Shared UI: Compose Multiplatform.
 
@@ -30,14 +30,15 @@ Language: Kotlin Multiplatform. Shared UI: Compose Multiplatform.
 
 ### Module layout
 
-| Module         | Contents                                                                          | Platform code?                                                                           |
-|----------------|-----------------------------------------------------------------------------------|------------------------------------------------------------------------------------------|
-| `core-model`   | Domain types: `VaultItem`, `Album`, `Note`, MIME handling                         | No                                                                                       |
-| `core-crypto`  | `.dchm` codec (per [`FORMAT.md`](./FORMAT.md)), key hierarchy, KDF, DEK lifecycle | KDF + cipher via `cryptography-kotlin`; key *storage* via expect/actual `SecureKeyStore` |
-| `core-storage` | App-private file layout, atomic writes, temp-file hygiene, thumbnail store        | Small expect/actual for paths                                                            |
-| `core-db`      | SQLDelight schema + DAOs for the encrypted catalog                                | Driver per platform                                                                      |
-| `feature-*`    | ViewModels + Compose screens per feature                                          | Viewers/camera have expect/actual internals                                              |
-| `app`          | Compose Multiplatform entry points, DI (Koin), navigation                         | Thin                                                                                     |
+| Module              | Contents                                                                                                                      | Platform code?                                                                           |
+|---------------------|-------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------|
+| `core-model`        | Domain types: `VaultItem`, `Album`, `Note`, MIME handling                                                                     | No                                                                                       |
+| `core-crypto`       | `.dchm` codec (per [`FORMAT.md`](./FORMAT.md)), key hierarchy, KDF, DEK lifecycle                                             | KDF + cipher via `cryptography-kotlin`; key *storage* via expect/actual `SecureKeyStore` |
+| `core-storage`      | App-private file layout, atomic writes, temp-file hygiene, thumbnail store                                                    | Small expect/actual for paths                                                            |
+| `core-db`           | SQLDelight schema + DAOs for the encrypted catalog                                                                            | Driver per platform                                                                      |
+| `core-designsystem` | Theme + tokens per [`DESIGN.md`](./DESIGN.md), shared components, secure-screen wrappers (`FLAG_SECURE` / snapshot obscuring) | Small expect/actual for the secure-screen wrapper                                        |
+| `feature-*`         | ViewModels + Compose screens per feature                                                                                      | Viewers/camera have expect/actual internals                                              |
+| `app`               | Compose Multiplatform entry points, DI (Koin), navigation                                                                     | Thin                                                                                     |
 
 ### Key dependencies
 
@@ -187,13 +188,13 @@ Notes are vault items (`kind='note'`, `text/markdown`) in the same `.dchm` conta
 
 ```
 /                     GPLv3 LICENSE · TRADEMARK.md · SECURITY.md · README · ROADMAP.md
-├─ core-model/  core-crypto/  core-storage/  core-db/
+├─ core-model/  core-crypto/  core-storage/  core-db/  core-designsystem/
 ├─ feature-vault/  feature-camera/  feature-viewers/
 ├─ feature-notes/  feature-scrubber/  feature-shredder/
 ├─ feature-backup/            (Phase 3)
 ├─ app/                        composeApp entries (androidApp / iosApp)
 ├─ docs/
-│   ├─ ARCHITECTURE.md  THREAT_MODEL.md  FORMAT.md
+│   ├─ ARCHITECTURE.md  THREAT_MODEL.md  FORMAT.md  DESIGN.md
 │   ├─ format-test-vectors/
 │   └─ ADR/                    ADR-001 · ADR-002 · ADR-003 · …
 └─ .github/workflows/
