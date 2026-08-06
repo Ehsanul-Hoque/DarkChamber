@@ -2,7 +2,7 @@
 
 > *Encrypted vault & private camera. A camera obscura for the modern age: what enters the chamber never leaves it.*
 
-> **Status:** Planning · **Platforms:** Android & iOS · **Stack:** Kotlin Multiplatform + Compose Multiplatform
+> **Status:** In development (Phase 0) · **Platforms:** Android & iOS · **Stack:** Kotlin Multiplatform + Compose Multiplatform
 > **License:** GPLv3 (app), trademark reserved · **Model:** Free & open source, one-time purchase for cloud sync
 
 ---
