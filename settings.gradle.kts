@@ -1,6 +1,10 @@
 rootProject.name = "DarkChamber"
 
 pluginManagement {
+    // Convention plugins (docs/engineering/MODULES.md §5) — compiled by the
+    // included build, applied by id from each module's build.gradle.kts.
+    includeBuild("build-logic")
+
     repositories {
         google {
             mavenContent {
