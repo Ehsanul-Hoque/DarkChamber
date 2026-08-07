@@ -18,6 +18,7 @@ dependencies {
 
     implementation(libs.plugins.kotlinMultiplatform.asDependency())
     implementation(libs.plugins.androidMultiplatformLibrary.asDependency())
+    implementation(libs.plugins.androidApplication.asDependency())
 }
 
 /** Turns a version-catalog plugin alias into its plugin-marker artifact coordinate. */
