@@ -14,6 +14,24 @@ junit = "4.13.2"
 kotlin = "2.4.10"
 material3 = "1.11.0-alpha07"
 
+# --- Phase 0+ target dependencies (docs/engineering/MODULES.md §6) ------------
+# Declared now for the whole target architecture; most stay UNUSED until their
+# cycle wires them in. No network/backend/analytics/crash coordinate appears here
+# (ADR-004 / hard rule #3) — the catalog being the only dependency source is what
+# keeps that enforceable.
+cryptographyKotlin = "0.6.0"   # pinned EXACTLY (pre-1.0) — wrapped by CryptoEngine; do not bump casually
+sqldelight = "2.3.2"
+koin = "4.2.2"
+decompose = "3.5.0"
+coil3 = "3.5.0"
+media3 = "1.10.1"
+kermit = "2.1.0"
+turbine = "1.2.1"
+detekt = "1.23.8"
+konsist = "0.17.3"
+kover = "0.9.9"
+buildkonfig = "0.22.0"
+
 [libraries]
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
 kotlin-testJunit = { module = "org.jetbrains.kotlin:kotlin-test-junit", version.ref = "kotlin" }
@@ -33,9 +51,43 @@ compose-ui = { module = "org.jetbrains.compose.ui:ui", version.ref = "composeMul
 compose-components-resources = { module = "org.jetbrains.compose.components:components-resources", version.ref = "composeMultiplatform" }
 compose-uiToolingPreview = { module = "org.jetbrains.compose.ui:ui-tooling-preview", version.ref = "composeMultiplatform" }
 
+# --- Phase 0+ target libraries (declared now, consumed in later cycles) -------
+# Crypto — core:crypto is the ONLY module permitted to depend on these.
+cryptography-core = { module = "dev.whyoleg.cryptography:cryptography-core", version.ref = "cryptographyKotlin" }
+cryptography-provider-optimal = { module = "dev.whyoleg.cryptography:cryptography-provider-optimal", version.ref = "cryptographyKotlin" }
+# Persistence — core:db.
+sqldelight-runtime = { module = "app.cash.sqldelight:runtime", version.ref = "sqldelight" }
+sqldelight-coroutines = { module = "app.cash.sqldelight:coroutines-extensions", version.ref = "sqldelight" }
+sqldelight-driver-android = { module = "app.cash.sqldelight:android-driver", version.ref = "sqldelight" }
+sqldelight-driver-native = { module = "app.cash.sqldelight:native-driver", version.ref = "sqldelight" }
+# DI — feature :impl modules own their Koin module; app is the composition root.
+koin-core = { module = "io.insert-koin:koin-core", version.ref = "koin" }
+koin-android = { module = "io.insert-koin:koin-android", version.ref = "koin" }
+koin-compose = { module = "io.insert-koin:koin-compose", version.ref = "koin" }
+koin-test = { module = "io.insert-koin:koin-test", version.ref = "koin" }
+# Navigation / component tree — the session gate lives here (ARCHITECTURE.md).
+decompose = { module = "com.arkivanov.decompose:decompose", version.ref = "decompose" }
+decompose-compose = { module = "com.arkivanov.decompose:extensions-compose", version.ref = "decompose" }
+# Image loading — encrypted custom Fetcher, memory cache only.
+coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil3" }
+# Media playback — Android decrypting DataSource (chunk range mapping).
+media3-exoplayer = { module = "androidx.media3:media3-exoplayer", version.ref = "media3" }
+media3-common = { module = "androidx.media3:media3-common", version.ref = "media3" }
+# Logging — core:logging (Kermit; no Crashlytics/remote anything, ever).
+kermit = { module = "co.touchlab:kermit", version.ref = "kermit" }
+# Test-only.
+turbine = { module = "app.cash.turbine:turbine", version.ref = "turbine" }
+konsist = { module = "com.lemonappdev:konsist", version.ref = "konsist" }
+
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }
 androidMultiplatformLibrary = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }
 composeMultiplatform = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }
 composeCompiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlinMultiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
+
+# --- Phase 0+ target plugins (declared now, applied in later cycles) ----------
+sqldelight = { id = "app.cash.sqldelight", version.ref = "sqldelight" }
+detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
+kover = { id = "org.jetbrains.kotlinx.kover", version.ref = "kover" }
+buildkonfig = { id = "com.codingfeline.buildkonfig", version.ref = "buildkonfig" }
