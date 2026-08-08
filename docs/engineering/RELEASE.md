@@ -33,7 +33,7 @@ jobs:
     runs-on: macos-latest
     needs: quality
     if: needs.quality.outputs.shared_changed == 'true'
-    steps: [ …, ./gradlew :shared:iosSimulatorArm64Test ]
+    steps: [ …, ./gradlew iosSimulatorArm64Test ]
 ```
 
 ## 3. Versioning — tag-based SemVer

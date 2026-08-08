@@ -2,7 +2,7 @@
 
 ## What this is
 
-DarkChamber is a **Kotlin Multiplatform (KMP) + Compose Multiplatform (CMP)** app targeting Android and iOS: a **private camera + encrypted vault** for files (photos, videos, audio, PDFs, notes). Shared business logic **and** UI live in `:shared`; platform entry points are `:androidApp` (Kotlin) and `iosApp` (Xcode project, SwiftUI host).
+DarkChamber is a **Kotlin Multiplatform (KMP) + Compose Multiplatform (CMP)** app targeting Android and iOS: a **private camera + encrypted vault** for files (photos, videos, audio, PDFs, notes). Shared business logic **and** UI live in the `:core:*` / `:feature:*` modules; platform entry points are `:androidApp` (Kotlin) and `iosApp` (Xcode project, SwiftUI host).
 
 Package root: `dev.ehsanfahad.darkchamber`.
 
@@ -43,8 +43,8 @@ Flavors: `foss` (F-Droid/GitHub; default for releases) and `store` (Play; identi
 
 Test:
 ```bash
-./gradlew :shared:testAndroidHostTest      # JVM/Android unit tests (fast, run on every change)
-./gradlew :shared:iosSimulatorArm64Test    # iOS tests (expensive — CI-gated to shared changes)
+./gradlew testAndroidHostTest              # JVM/Android unit tests across modules (fast, run on every change)
+./gradlew iosSimulatorArm64Test            # iOS tests (expensive — CI-gated to core/feature changes)
 ```
 
 Quality & coverage (target tooling — confirm the task exists before relying on it):

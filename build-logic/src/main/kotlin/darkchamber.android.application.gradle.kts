@@ -9,10 +9,11 @@ import java.util.Properties
 // namespace/applicationId, Kotlin/Compose wiring, and dependency list.
 //
 // Extracted verbatim from androidApp/build.gradle.kts — no behavior change.
-
-plugins {
-    id("com.android.application")
-}
+//
+// This plugin does NOT apply com.android.application — the app module applies it via
+// alias. It only reacts to it (plugins.withId) and configures. Applying AGP from an
+// included-build precompiled plugin drags the Kotlin plugin classpath into the app and
+// crashes AGP 9 (KotlinAndroidTarget references the removed BaseVariant API).
 
 val libs = the<LibrariesForLibs>()
 
@@ -66,99 +67,102 @@ val appVersionCode: Int =
         ?: semVerToVersionCode(appVersionName))
         .coerceAtLeast(1) // Play requires versionCode >= 1; 0.0.0 would otherwise be 0
 
-configure<ApplicationExtension> {
-    compileSdk = libs.versions.android.compileSdk.get().toInt()
+// React to the app module applying com.android.application — never apply it here.
+plugins.withId("com.android.application") {
+    extensions.configure<ApplicationExtension> {
+        compileSdk = libs.versions.android.compileSdk.get().toInt()
 
-    defaultConfig {
-        minSdk = libs.versions.android.minSdk.get().toInt()
-        targetSdk = libs.versions.android.targetSdk.get().toInt()
+        defaultConfig {
+            minSdk = libs.versions.android.minSdk.get().toInt()
+            targetSdk = libs.versions.android.targetSdk.get().toInt()
 
-        versionCode = appVersionCode
-        versionName = appVersionName
-    }
+            versionCode = appVersionCode
+            versionName = appVersionName
+        }
 
-    // -----------------------------------------------------------------------
-    // Distribution flavors (docs/engineering/RELEASE.md §9)
-    //   • foss  — F-Droid / GitHub builds; Phase 3 sync ships UNGATED here.
-    //   • store — Play Store build; Phase 3 adds Play Billing in this flavor only.
-    // Identical today by design — establishing the axis now keeps the paths clean.
-    // -----------------------------------------------------------------------
-    flavorDimensions += "distribution"
-    productFlavors {
-        create("foss") { dimension = "distribution" }
-        create("store") { dimension = "distribution" }
-    }
+        // -----------------------------------------------------------------------
+        // Distribution flavors (docs/engineering/RELEASE.md §9)
+        //   • foss  — F-Droid / GitHub builds; Phase 3 sync ships UNGATED here.
+        //   • store — Play Store build; Phase 3 adds Play Billing in this flavor only.
+        // Identical today by design — establishing the axis now keeps the paths clean.
+        // -----------------------------------------------------------------------
+        flavorDimensions += "distribution"
+        productFlavors {
+            create("foss") { dimension = "distribution" }
+            create("store") { dimension = "distribution" }
+        }
 
-    // Don't embed Google's encrypted dependency-info block: F-Droid flags it as an
-    // anti-feature and it contradicts the verify-it-yourself + reproducible-builds goal.
-    dependenciesInfo {
-        includeInApk = false
-        includeInBundle = false
-    }
+        // Don't embed Google's encrypted dependency-info block: F-Droid flags it as an
+        // anti-feature, and it contradicts the verify-it-yourself + reproducible-builds goal.
+        dependenciesInfo {
+            includeInApk = false
+            includeInBundle = false
+        }
 
-    // -----------------------------------------------------------------------
-    // Signing (all conditional on local.properties — see RELEASE.md §9)
-    //   • Debug: optional shared dev keystore when configured; else AGP's default.
-    //   • Release (local): prod keystore if present, else dev (prod keys aren't on
-    //     dev machines, so this resolves to the dev key locally).
-    //   • Release (CI): local.properties absent → no release signingConfig here;
-    //     signing comes from -Pandroid.injected.signing.* (build-release-apk.sh).
-    // -----------------------------------------------------------------------
-    signingConfigs {
-        local("keystore.dev.path")?.let { devPath ->
-            getByName("debug") {
-                storeFile = rootProject.file(devPath)
-                storePassword = local("keystore.dev.password")
-                keyAlias = local("key.dev.alias")
-                keyPassword = local("key.dev.password")
+        // -----------------------------------------------------------------------
+        // Signing (all conditional on local.properties — see RELEASE.md §9)
+        //   • Debug: optional shared dev keystore when configured; else AGP's default.
+        //   • Release (local): prod keystore if present, else dev (prod keys aren't on
+        //     dev machines, so this resolves to the dev key locally).
+        //   • Release (CI): local.properties absent → no release signingConfig here;
+        //     signing comes from -Pandroid.injected.signing.* (build-release-apk.sh).
+        // -----------------------------------------------------------------------
+        signingConfigs {
+            local("keystore.dev.path")?.let { devPath ->
+                getByName("debug") {
+                    storeFile = rootProject.file(devPath)
+                    storePassword = local("keystore.dev.password")
+                    keyAlias = local("key.dev.alias")
+                    keyPassword = local("key.dev.password")
+                }
+            }
+
+            (local("keystore.prod.path") ?: local("keystore.dev.path"))?.let { relPath ->
+                create("release") {
+                    storeFile = rootProject.file(relPath)
+                    storePassword = local("keystore.prod.password") ?: local("keystore.dev.password")
+                    keyAlias = local("key.prod.alias") ?: local("key.dev.alias")
+                    keyPassword = local("key.prod.password") ?: local("key.dev.password")
+                }
             }
         }
 
-        (local("keystore.prod.path") ?: local("keystore.dev.path"))?.let { relPath ->
-            create("release") {
-                storeFile = rootProject.file(relPath)
-                storePassword = local("keystore.prod.password") ?: local("keystore.dev.password")
-                keyAlias = local("key.prod.alias") ?: local("key.dev.alias")
-                keyPassword = local("key.prod.password") ?: local("key.dev.password")
+        packaging {
+            resources {
+                excludes += "/META-INF/{AL2.0,LGPL2.1}"
             }
         }
-    }
 
-    packaging {
-        resources {
-            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        buildTypes {
+            release {
+                // Null on CI (no local release config) → AGP uses -Pandroid.injected.signing.*
+                // Non-null locally → signs with the resolved prod/dev keystore.
+                signingConfig = signingConfigs.findByName("release")
+
+                // TODO: enable R8 before the first public release (its own PR; keep rules
+                //  for Compose/Koin/SQLDelight/serialization/cryptography-kotlin; must stay
+                //  deterministic for reproducible builds — RELEASE.md §7).
+                isMinifyEnabled = false
+                proguardFiles(
+                    getDefaultProguardFile("proguard-android-optimize.txt"),
+                    "proguard-rules.pro"
+                )
+            }
+            // `debug` picks up the (possibly overridden) debug signingConfig automatically.
+        }
+
+        compileOptions {
+            sourceCompatibility = JavaVersion.VERSION_11
+            targetCompatibility = JavaVersion.VERSION_11
         }
     }
 
-    buildTypes {
-        release {
-            // Null on CI (no local release config) → AGP uses -Pandroid.injected.signing.*
-            // Non-null locally → signs with the resolved prod/dev keystore.
-            signingConfig = signingConfigs.findByName("release")
-
-            // TODO: enable R8 before the first public release (its own PR; keep rules
-            //  for Compose/Koin/SQLDelight/serialization/cryptography-kotlin; must stay
-            //  deterministic for reproducible builds — RELEASE.md §7).
-            isMinifyEnabled = false
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
-        }
-        // `debug` picks up the (possibly overridden) debug signingConfig automatically.
+    // Prints the resolved version — handy locally and for CI logs:
+    //   ./gradlew :androidApp:printVersion
+    tasks.register("printVersion") {
+        description = "Prints the resolved versionName and versionCode"
+        val name = appVersionName
+        val code = appVersionCode
+        doLast { println("versionName=$name versionCode=$code") }
     }
-
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
-    }
-}
-
-// Prints the resolved version — handy locally and for CI logs:
-//   ./gradlew :androidApp:printVersion
-tasks.register("printVersion") {
-    description = "Prints the resolved versionName and versionCode"
-    val name = appVersionName
-    val code = appVersionCode
-    doLast { println("versionName=$name versionCode=$code") }
 }

@@ -18,7 +18,11 @@ dependencies {
 
     implementation(libs.plugins.kotlinMultiplatform.asDependency())
     implementation(libs.plugins.androidMultiplatformLibrary.asDependency())
-    implementation(libs.plugins.androidApplication.asDependency())
+    // AGP is compileOnly: the android.application plugin only *configures* an app
+    // module reactively (plugins.withId), it never applies com.android.application
+    // itself. Applying it here would leak the Android/Kotlin plugin classpath into the
+    // app and collide with AGP 9 (KotlinAndroidTarget → removed BaseVariant API).
+    compileOnly(libs.plugins.androidApplication.asDependency())
 }
 
 /** Turns a version-catalog plugin alias into its plugin-marker artifact coordinate. */

@@ -72,8 +72,8 @@ DarkChamber's premise is that a privacy app should be **checkable**, not just be
 
 ## ✅ Running tests
 
-- **JVM/Android:** `./gradlew :shared:testAndroidHostTest`
-- **iOS:** `./gradlew :shared:iosSimulatorArm64Test`
+- **JVM/Android:** `./gradlew testAndroidHostTest`
+- **iOS:** `./gradlew iosSimulatorArm64Test`
 
 ---
 

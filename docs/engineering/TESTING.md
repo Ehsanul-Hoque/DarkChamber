@@ -69,7 +69,7 @@ detekt version note: pick the line built against the project's Kotlin version at
 ```bash
 ./gradlew ktlintCheck detekt konsistTest    # style + architecture
 ./gradlew testDebugUnitTest                  # fast JVM suite (incl. format vectors)
-./gradlew :shared:iosSimulatorArm64Test      # iOS (CI-gated, see RELEASE.md)
+./gradlew iosSimulatorArm64Test              # iOS (CI-gated, see RELEASE.md)
 ./gradlew koverVerify                        # coverage gate
 ./gradlew migrationTest                      # fixture-vault upgrade gate
 ```
