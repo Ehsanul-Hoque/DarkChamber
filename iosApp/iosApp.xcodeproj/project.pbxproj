@@ -152,7 +152,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "if [ \"YES\" = \"$OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED\" ]; then\n  echo \"Skipping Gradle build task invocation due to OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED environment variable set to \\\"YES\\\"\"\n  exit 0\nfi\ncd \"$SRCROOT/..\"\n./gradlew :shared:embedAndSignAppleFrameworkForXcode\n";
+			shellScript = "# Phase 0: :shared was retired; no Kotlin framework is produced yet.\n# The real framework build is restored in the core:crypto cycle, when there is\n# shared iOS code to export (see .claude/phases/phase-0/cycle-1/spec.md §6).\necho \"No Kotlin framework to compile yet (Phase 0 SwiftUI stub).\"\nexit 0\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
