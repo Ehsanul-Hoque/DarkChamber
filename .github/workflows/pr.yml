@@ -1,0 +1,112 @@
+# .github/workflows/pr.yml
+#
+# Runs on every PR to main. Fast checks on Linux; the expensive macOS iOS job is gated
+# to run only when shared/iOS code changes.
+#
+# SCOPE (Phase 0, cycle 1): builds the module skeleton and validates commits + deps.
+# The `quality` job (ktlint / detekt / Konsist / kover) stays COMMENTED OUT until those
+# convention plugins exist (docs/engineering/MODULES.md §5). `migrationTest` arrives after
+# v1.0 ships fixture vaults. Do NOT mark any check required in branch protection until the
+# quality job is green — see nightly/release/test-build which remain *.yml.disabled.
+name: PR
+
+on:
+  pull_request:
+    branches: [main]
+
+# Cancel superseded runs on the same PR.
+concurrency:
+  group: pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  # Detect whether shared/iOS code changed, to gate the macOS job.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      ios: ${{ steps.filter.outputs.ios }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            ios:
+              - 'core/**'                    # KMP code (docs/engineering/MODULES.md)
+              - 'feature/**'
+              - '**/iosMain/**'
+              - 'iosApp/**'
+              - 'build-logic/**'
+              - 'gradle/libs.versions.toml'
+
+  commit-messages:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # the checker walks the full PR commit range
+      - name: Validate commit messages (all commits in the PR)
+        # Node-free Conventional Commits check (docs/engineering/WORKFLOW.md §2).
+        run: bash ./scripts/check-commits.sh "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
+
+  # Supply-chain gate: flags new dependencies & incompatible licenses on the PR
+  # (docs/engineering/RELEASE.md §6). New runtime deps need justification in the PR body.
+  dependency-review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+
+  # Compiles the module skeleton and runs the JVM/Android host unit tests across modules.
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Assemble Android (foss debug) + host unit tests
+        # assembleFossDebug builds :androidApp (+ its :core:model dep); testAndroidHostTest
+        # runs the common/Android-host unit tests in every core module.
+        run: ./gradlew :androidApp:assembleFossDebug testAndroidHostTest
+
+  # --- Deferred: the quality gate. Uncomment once the darkchamber.quality /
+  #     darkchamber.konsist convention plugins add these tasks (MODULES.md §5, TESTING.md §5).
+  # quality:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: actions/setup-java@v4
+  #       with:
+  #         distribution: temurin
+  #         java-version: "21"
+  #     - uses: gradle/actions/setup-gradle@v4
+  #     - name: Static analysis (ktlint, detekt, Konsist)
+  #       run: ./gradlew ktlintCheck detekt konsistTest
+  #     - name: Coverage gates
+  #       run: ./gradlew koverVerify
+
+  ios-compile:
+    needs: changes
+    if: needs.changes.outputs.ios == 'true'
+    runs-on: macos-latest        # ~10x the cost of Linux — that's why it's gated
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Compile all modules for iOS (device + simulator)
+        # Compile-only: proves KMP cross-compiles for iOS without booting a simulator.
+        # Becomes the aggregate iOS *test* task once there's real iOS logic to exercise.
+        run: ./gradlew compileKotlinIosArm64 compileKotlinIosSimulatorArm64 compileTestKotlinIosSimulatorArm64
