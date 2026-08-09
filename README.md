@@ -6,7 +6,7 @@ A Kotlin Multiplatform app for **Android** and **iOS** that encrypts, stores, an
 
 **Free and open source (GPLv3). Local-first. No ads, no trackers, no accounts — and v1 ships with no `INTERNET` permission, so you can verify in the manifest that your files cannot leave your device.**
 
-> ⚠️ **Status: pre-release.** The repository is early-stage scaffolding; the documents under [`docs/`](./docs) describe the target design. Nothing here is ready to protect real files yet.
+> ⚠️ **Status: pre-release.** The multi-module KMP skeleton is in place — `:build-logic` convention plugins, empty `:core:*` modules, and both the Android and iOS hosts build — but the documents under [`docs/`](./docs) describe the target design, and no vault/crypto features exist yet. Nothing here is ready to protect real files.
 
 ---
 
