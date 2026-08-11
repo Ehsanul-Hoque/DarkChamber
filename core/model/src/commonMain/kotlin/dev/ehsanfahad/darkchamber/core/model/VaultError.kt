@@ -14,6 +14,9 @@ sealed interface VaultError {
 
         /** Container is a newer format/cipher than this app supports — surfaces the "update the app" path. */
         data object UnsupportedFormatVersion : Crypto
+
+        /** Bytes are not a well-formed `.dchm` container (bad magic, truncated prelude) — not "update the app". */
+        data object MalformedContainer : Crypto
     }
 
     /** Underlying I/O failure while reading or writing a container. */
