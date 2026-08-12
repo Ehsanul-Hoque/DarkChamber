@@ -29,6 +29,20 @@ interface CryptoEngine {
     /** SHA-256 of [bytes] (used for the header's plaintext digest). */
     fun sha256(bytes: ByteArray): ByteArray
 
+    /**
+     * A fresh incremental SHA-256. Lets the container codec hash a multi-GB plaintext in constant
+     * memory (streaming both encode passes) instead of buffering the whole object.
+     */
+    fun newSha256(): IncrementalHash
+
     /** [n] cryptographically-secure random bytes (DEKs, nonce prefixes). */
     fun randomBytes(n: Int): ByteArray
+}
+
+/** A one-shot, updatable hash: feed bytes with [update], read the result once with [digest]. */
+interface IncrementalHash {
+    fun update(data: ByteArray, startIndex: Int = 0, endIndex: Int = data.size)
+
+    /** Finalize and return the digest. The instance must not be reused afterwards. */
+    fun digest(): ByteArray
 }

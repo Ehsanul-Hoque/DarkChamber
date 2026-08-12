@@ -51,6 +51,15 @@ class CryptographyKotlinEngineTest {
     }
 
     @Test
+    fun incremental_sha256_matches_the_one_shot_hash() {
+        val data = ByteArray(1000) { (it * 7).toByte() }
+        val incremental = engine.newSha256()
+        incremental.update(data, 0, 400)
+        incremental.update(data, 400, data.size)
+        assertContentEquals(engine.sha256(data), incremental.digest())
+    }
+
+    @Test
     fun random_bytes_returns_the_requested_length_and_varies() {
         val a = engine.randomBytes(32)
         val b = engine.randomBytes(32)

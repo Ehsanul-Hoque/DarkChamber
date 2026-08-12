@@ -44,5 +44,14 @@ class CryptographyKotlinEngine(
 
     override fun sha256(bytes: ByteArray): ByteArray = sha256.hasher().hashBlocking(bytes)
 
+    override fun newSha256(): IncrementalHash = object : IncrementalHash {
+        private val function = sha256.hasher().createHashFunction()
+
+        override fun update(data: ByteArray, startIndex: Int, endIndex: Int) =
+            function.update(data, startIndex, endIndex)
+
+        override fun digest(): ByteArray = function.use { it.hashToByteArray() }
+    }
+
     override fun randomBytes(n: Int): ByteArray = CryptographyRandom.Default.nextBytes(n)
 }
