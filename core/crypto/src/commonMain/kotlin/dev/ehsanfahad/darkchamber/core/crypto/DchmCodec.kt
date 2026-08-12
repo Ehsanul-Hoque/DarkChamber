@@ -160,6 +160,22 @@ class DchmCodec(private val engine: CryptoEngine) {
         }
     }
 
+    /**
+     * Decrypt a single, already-sliced chunk — the random-access / seek primitive (FORMAT.md §1).
+     * The caller (e.g. a Media3 `DataSource`) reads the prelude+header once, then seeks to byte
+     * `PRELUDE_SIZE + header_len + chunkIndex·(chunkSize + GCM_TAG_SIZE)`, reads that chunk's bytes,
+     * and passes them here with the `noncePrefix` from the prelude and the `isLast` it computed from
+     * `plaintext_size`. Verifies the tag before returning; a mismatch → `IntegrityFailure`.
+     */
+    fun decryptChunk(
+        dek: ByteArray,
+        noncePrefix: ByteArray,
+        fileId: ByteArray,
+        chunkIndex: Long,
+        isLast: Boolean,
+        ciphertext: ByteArray,
+    ): Outcome<ByteArray> = openChunk(dek, noncePrefix, fileId, chunkIndex, isLast, ciphertext)
+
     private fun sealChunk(
         dek: ByteArray,
         noncePrefix: ByteArray,
