@@ -85,6 +85,7 @@ DarkChamber's premise is that a privacy app should be **checkable**, not just be
 - [`.dchm` Format Spec](./docs/FORMAT.md) — the encrypted container, key hierarchy, test vectors.
 - [Design System](./docs/DESIGN.md) — colors, typography, shape, motion; the aperture signature and honesty rules for UI copy.
 - [Engineering Guide](./docs/engineering/README.md) — modularization, testing, quality gates, Git workflow, CI/CD, releases. **Read this before contributing.**
+- [Knowledgebase](./docs/knowledgebase) — a from-zero primer on the security concepts behind the app (encryption, AES/GCM, nonces, hashing, key derivation). New to crypto? Start here.
 - [ADRs](./docs/ADR) — decisions and the reasoning behind them, including the refusals.
 - [Security Policy](./SECURITY.md) — how to report vulnerabilities (please don't open public issues for those).
 
