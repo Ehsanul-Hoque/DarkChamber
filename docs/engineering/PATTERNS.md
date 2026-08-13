@@ -72,14 +72,17 @@ sealed interface VaultError {
     data object AuthFailed : VaultError                    // wrong PIN/biometric
     sealed interface Crypto : VaultError {
         data object IntegrityFailure : Crypto              // GCM tag mismatch — tampering or corruption
-        data object UnsupportedFormatVersion : Crypto      // newer .dchm than this app
+        data object UnsupportedFormatVersion : Crypto      // newer .dchm version/cipher than this app
+        data object MalformedContainer : Crypto            // bytes aren't a valid .dchm (bad magic / truncated prelude)
         data class KeystoreUnavailable(val cause: Throwable) : Crypto
     }
     data object StorageFull : VaultError
     data class Io(val cause: Throwable) : VaultError
 }
 
-typealias Outcome<T> = Either<VaultError, T>   // or Result-style; pick once, in core:model
+// Resolved (cycle 2a): a hand-rolled sealed Outcome<T> in core:model — Ok(value) | Err(VaultError),
+// no Arrow. The full VaultError above is the target; core:model grows cases per cycle as needed.
+sealed interface Outcome<out T> { /* Ok(value) | Err(error) — see core:model */ }
 ```
 
 `data` maps platform/library exceptions to `VaultError`; `presentation` pattern-matches into user-facing states. Two rules with security weight:

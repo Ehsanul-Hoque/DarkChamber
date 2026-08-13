@@ -53,6 +53,8 @@ F-Droid builds include everything including sync (honor system, like Conversatio
 
 Goal: a walking skeleton with the security core proven before any product UI.
 
+> **Progress (2026-08):** module scaffold ✅ · the `.dchm` container codec (chunked AES-256-GCM behind `CryptoEngine`) with committed format vectors ✅. Next: the envelope key hierarchy + Argon2id KDF, then the platform `SecureKeyStore`, storage, and DB.
+
 - KMP project scaffold: `core-crypto`, `core-storage`, `core-db`, `app` (Compose Multiplatform), CI on GitHub Actions (Android + iOS builds, unit tests).
 - **Crypto core v1:** AES-256-GCM chunked streaming encryption/decryption (the `.dchm` container format — see docs/FORMAT.md), envelope key hierarchy, Argon2id KDF.
 - Platform keystores wired via expect/actual: Android Keystore (StrongBox where available), iOS Keychain + Secure Enclave.
