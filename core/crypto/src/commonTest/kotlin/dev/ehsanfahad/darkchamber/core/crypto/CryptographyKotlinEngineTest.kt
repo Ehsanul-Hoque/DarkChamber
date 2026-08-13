@@ -44,6 +44,15 @@ class CryptographyKotlinEngineTest {
     }
 
     @Test
+    fun aes_256_gcm_matches_a_published_known_answer() {
+        // NIST/McGrew AES-256-GCM KAT: all-zero 32-byte key, all-zero 96-bit IV, empty plaintext and
+        // empty AAD produce this authentication tag. Anchors our engine to a published constant,
+        // independent of our own codec.
+        val ct = engine.aeadSeal(ByteArray(32), ByteArray(12), ByteArray(0), ByteArray(0))
+        assertEquals("530f8afbc74536b9a963b4f1c4cb738b", ct.toHexString())
+    }
+
+    @Test
     fun sha256_matches_the_known_answer_for_abc() {
         // NIST FIPS-180 KAT: SHA-256("abc").
         val expected = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"

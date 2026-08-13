@@ -61,6 +61,8 @@ cryptography-provider-optimal = { module = "dev.whyoleg.cryptography:cryptograph
 # .dchm container (core:crypto): forward-only streaming source/sink + CBOR header framing. Local only.
 kotlinx-io-core = { module = "org.jetbrains.kotlinx:kotlinx-io-core", version.ref = "kotlinxIo" }
 kotlinx-serialization-cbor = { module = "org.jetbrains.kotlinx:kotlinx-serialization-cbor", version.ref = "kotlinxSerialization" }
+# Test-only: parsing the committed .dchm format vectors (docs/format-test-vectors/).
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
 # Persistence — core:db.
 sqldelight-runtime = { module = "app.cash.sqldelight:runtime", version.ref = "sqldelight" }
 sqldelight-coroutines = { module = "app.cash.sqldelight:coroutines-extensions", version.ref = "sqldelight" }

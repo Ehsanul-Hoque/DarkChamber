@@ -1,0 +1,10 @@
+[
+  { "name": "bad-magic",        "from": "multi-chunk", "mutation": "set_byte@0=88", "expected_error": "MalformedContainer" },
+  { "name": "higher-version",   "from": "multi-chunk", "mutation": "set_byte@4=2",  "expected_error": "UnsupportedFormatVersion" },
+  { "name": "unknown-cipher",   "from": "multi-chunk", "mutation": "set_byte@5=2",  "expected_error": "UnsupportedFormatVersion" },
+  { "name": "flipped-final-tag","from": "multi-chunk", "mutation": "flip_last_byte", "expected_error": "IntegrityFailure" },
+  { "name": "truncated",        "from": "multi-chunk", "mutation": "truncate_one",   "expected_error": "IntegrityFailure" },
+  { "name": "appended",         "from": "multi-chunk", "mutation": "append_zero",    "expected_error": "IntegrityFailure" },
+  { "name": "reordered-chunks", "from": "multi-chunk", "mutation": "swap_first_two_chunks", "expected_error": "IntegrityFailure" },
+  { "name": "flipped-header",   "from": "multi-chunk", "mutation": "flip_first_header_byte", "expected_error": "IntegrityFailure" }
+]
