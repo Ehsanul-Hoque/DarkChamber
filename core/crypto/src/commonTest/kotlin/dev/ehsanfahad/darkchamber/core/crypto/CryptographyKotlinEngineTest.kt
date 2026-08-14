@@ -6,6 +6,7 @@ import dev.ehsanfahad.darkchamber.core.model.getOrNull
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 
 @OptIn(ExperimentalStdlibApi::class)
@@ -66,6 +67,13 @@ class CryptographyKotlinEngineTest {
         incremental.update(data, 0, 400)
         incremental.update(data, 400, data.size)
         assertContentEquals(engine.sha256(data), incremental.digest())
+    }
+
+    @Test
+    fun aead_rejects_a_wrong_length_key_or_nonce_as_misuse_not_tampering() {
+        val n = nonce(9)
+        assertFailsWith<IllegalArgumentException> { engine.aeadSeal(ByteArray(31), n, aad, "x".encodeToByteArray()) }
+        assertFailsWith<IllegalArgumentException> { engine.aeadOpen(key, ByteArray(11), aad, ByteArray(32)) }
     }
 
     @Test

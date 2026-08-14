@@ -29,18 +29,29 @@ class CryptographyKotlinEngine(
     // per-chunk counter, header counter reserved), which is the whole reason we must control the IV.
     // cryptography-kotlin's explicit-IV API is (iv, data, associatedData) — data before AAD.
     @OptIn(DelicateCryptographyApi::class)
-    override fun aeadSeal(key: ByteArray, nonce: ByteArray, aad: ByteArray, plaintext: ByteArray): ByteArray =
-        keyFrom(key).cipher().encryptWithIvBlocking(nonce, plaintext, aad)
+    override fun aeadSeal(key: ByteArray, nonce: ByteArray, aad: ByteArray, plaintext: ByteArray): ByteArray {
+        requireGcmParams(key, nonce)
+        return keyFrom(key).cipher().encryptWithIvBlocking(nonce, plaintext, aad)
+    }
 
     @OptIn(DelicateCryptographyApi::class)
-    override fun aeadOpen(key: ByteArray, nonce: ByteArray, aad: ByteArray, ciphertext: ByteArray): Outcome<ByteArray> =
-        try {
+    override fun aeadOpen(key: ByteArray, nonce: ByteArray, aad: ByteArray, ciphertext: ByteArray): Outcome<ByteArray> {
+        // Reject caller misuse (wrong key/nonce size) as a loud precondition failure *before* the
+        // cipher, so it can't be swallowed and mislabeled as tampering by the catch below.
+        requireGcmParams(key, nonce)
+        return try {
             Outcome.Ok(keyFrom(key).cipher().decryptWithIvBlocking(nonce, ciphertext, aad))
         } catch (_: Throwable) {
-            // Any failure to authenticate/open an AEAD ciphertext is possible tampering or
+            // A genuine failure to authenticate/open an AEAD ciphertext is possible tampering or
             // corruption — surfaced as IntegrityFailure, never retried or partially rendered.
             Outcome.Err(VaultError.Crypto.IntegrityFailure)
         }
+    }
+
+    private fun requireGcmParams(key: ByteArray, nonce: ByteArray) {
+        require(key.size == AES_256_KEY_SIZE) { "AES-256 key must be $AES_256_KEY_SIZE bytes, was ${key.size}" }
+        require(nonce.size == GCM_NONCE_SIZE) { "GCM nonce must be $GCM_NONCE_SIZE bytes, was ${nonce.size}" }
+    }
 
     override fun sha256(bytes: ByteArray): ByteArray = sha256.hasher().hashBlocking(bytes)
 
@@ -54,4 +65,9 @@ class CryptographyKotlinEngine(
     }
 
     override fun randomBytes(n: Int): ByteArray = CryptographyRandom.Default.nextBytes(n)
+
+    private companion object {
+        const val AES_256_KEY_SIZE = 32
+        const val GCM_NONCE_SIZE = 12
+    }
 }

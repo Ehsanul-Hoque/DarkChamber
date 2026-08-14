@@ -25,6 +25,12 @@ object DchmFormat {
     /** GCM authentication tag length appended to every sealed block. */
     const val GCM_TAG_SIZE: Int = 16
 
+    /** AES-256 data-encryption key length. */
+    const val DEK_SIZE: Int = 32
+
+    /** Maximum encoded header length — `header_len` is a u16 in the prelude. */
+    const val MAX_HEADER_LEN: Int = 0xFFFF
+
     /** Default chunk size — 1 MiB. */
     const val DEFAULT_CHUNK_SIZE: Int = 1 shl 20
 

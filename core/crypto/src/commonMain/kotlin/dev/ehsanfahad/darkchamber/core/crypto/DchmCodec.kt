@@ -32,59 +32,72 @@ class DchmCodec(private val engine: CryptoEngine) {
         chunkSize: Int,
         openSource: () -> RawSource,
         sink: RawSink,
-    ): Outcome<Unit> = try {
-        // Pass 1 — plaintext size + SHA-256, in constant memory.
-        val hasher = engine.newSha256()
-        var size = 0L
-        openSource().buffered().use { source ->
-            val buffer = ByteArray(chunkSize)
-            while (true) {
-                val n = source.readAtMostTo(buffer, 0, buffer.size)
-                if (n == -1) break
-                hasher.update(buffer, 0, n)
-                size += n
-            }
+    ): Outcome<Unit> {
+        // Caller-contract preconditions: wrong-sized key material or a non-positive chunk size is a
+        // programming error (fail loudly), not a runtime condition to swallow.
+        require(dek.size == DchmFormat.DEK_SIZE) { "DEK must be ${DchmFormat.DEK_SIZE} bytes, was ${dek.size}" }
+        require(noncePrefix.size == DchmFormat.NONCE_PREFIX_SIZE) {
+            "nonce_prefix must be ${DchmFormat.NONCE_PREFIX_SIZE} bytes, was ${noncePrefix.size}"
         }
-        val header = DchmHeader(originalName, mime, size, createdAt, hasher.digest(), chunkSize)
-        val headerCbor = DchmHeaderCodec.encode(header)
-
-        // header_len is deterministic (CBOR + GCM tag), so the prelude — which is the header's AAD —
-        // can be built before sealing the header.
-        val prelude = Prelude(
-            version = DchmFormat.VERSION,
-            cipherId = DchmFormat.CIPHER_AES_256_GCM,
-            headerLen = headerCbor.size + DchmFormat.GCM_TAG_SIZE,
-            noncePrefix = noncePrefix,
-        )
-        val preludeBytes = prelude.toByteArray()
-        val sealedHeader = engine.aeadSeal(dek, headerNonce(noncePrefix), preludeBytes, headerCbor)
-
-        val out = sink.buffered()
-        out.write(preludeBytes)
-        out.write(sealedHeader)
-
-        // Pass 2 — stream chunks. Empty plaintext = exactly one empty final chunk (FORMAT.md §2.3).
-        openSource().buffered().use { source ->
-            if (size == 0L) {
-                out.write(sealChunk(dek, noncePrefix, fileId, index = 0, isLast = true, plaintext = ByteArray(0)))
-            } else {
-                var index = 0L
-                var remaining = size
-                while (remaining > 0) {
-                    val toRead = minOf(chunkSize.toLong(), remaining).toInt()
-                    val plaintext = source.readByteArray(toRead)
-                    remaining -= toRead
-                    out.write(sealChunk(dek, noncePrefix, fileId, index, isLast = remaining == 0L, plaintext))
-                    index++
+        require(chunkSize > 0) { "chunkSize must be positive, was $chunkSize" }
+        return try {
+            // Pass 1 — plaintext size + SHA-256, in constant memory.
+            val hasher = engine.newSha256()
+            var size = 0L
+            openSource().buffered().use { source ->
+                val buffer = ByteArray(chunkSize)
+                while (true) {
+                    val n = source.readAtMostTo(buffer, 0, buffer.size)
+                    if (n == -1) break
+                    hasher.update(buffer, 0, n)
+                    size += n
                 }
             }
+
+            // Enforce D8 / FORMAT.md §2.3 nonce disjointness: chunk counters must stay below the
+            // reserved header counter 0xFFFFFFFF, or a chunk nonce would collide with the header's.
+            if (chunkCountFor(size, chunkSize) > DchmFormat.HEADER_NONCE_COUNTER.toLong()) {
+                return Outcome.Err(VaultError.Io(IllegalStateException("object too large: chunk count exceeds the nonce space")))
+            }
+
+            val header = DchmHeader(originalName, mime, size, createdAt, hasher.digest(), chunkSize)
+            val headerCbor = DchmHeaderCodec.encode(header)
+            val headerLen = headerCbor.size + DchmFormat.GCM_TAG_SIZE
+            if (headerLen > DchmFormat.MAX_HEADER_LEN) {
+                return Outcome.Err(VaultError.Io(IllegalStateException("header too large ($headerLen bytes); shorten original_name")))
+            }
+
+            // header_len is deterministic (CBOR + GCM tag), so the prelude — which is the header's AAD —
+            // can be built before sealing the header.
+            val prelude = Prelude(DchmFormat.VERSION, DchmFormat.CIPHER_AES_256_GCM, headerLen, noncePrefix)
+            val preludeBytes = prelude.toByteArray()
+            val sealedHeader = engine.aeadSeal(dek, headerNonce(noncePrefix), preludeBytes, headerCbor)
+
+            val out = sink.buffered()
+            out.write(preludeBytes)
+            out.write(sealedHeader)
+
+            // Pass 2 — stream chunks. Empty plaintext = exactly one empty final chunk (FORMAT.md §2.3).
+            openSource().buffered().use { source ->
+                if (size == 0L) {
+                    out.write(sealChunk(dek, noncePrefix, fileId, index = 0, isLast = true, plaintext = ByteArray(0)))
+                } else {
+                    var index = 0L
+                    var remaining = size
+                    while (remaining > 0) {
+                        val toRead = minOf(chunkSize.toLong(), remaining).toInt()
+                        val plaintext = source.readByteArray(toRead)
+                        remaining -= toRead
+                        out.write(sealChunk(dek, noncePrefix, fileId, index, isLast = remaining == 0L, plaintext))
+                        index++
+                    }
+                }
+            }
+            out.flush()
+            Outcome.Ok(Unit)
+        } catch (e: Exception) {
+            Outcome.Err(VaultError.Io(e))
         }
-        out.flush()
-        Outcome.Ok(Unit)
-    } catch (e: EOFException) {
-        Outcome.Err(VaultError.Io(e))
-    } catch (e: Exception) {
-        Outcome.Err(VaultError.Io(e))
     }
 
     /**
@@ -114,6 +127,14 @@ class DchmCodec(private val engine: CryptoEngine) {
                 is Outcome.Ok -> opened.value
             }
             val header = DchmHeaderCodec.decode(headerCbor)
+
+            // Guard against invalid (though authenticated) header fields before driving the chunk loop.
+            if (header.chunkSize <= 0 || header.plaintextSize < 0) {
+                return Outcome.Err(VaultError.Crypto.MalformedContainer)
+            }
+            if (chunkCountFor(header.plaintextSize, header.chunkSize) > DchmFormat.HEADER_NONCE_COUNTER.toLong()) {
+                return Outcome.Err(VaultError.Crypto.MalformedContainer)
+            }
 
             val out = sink.buffered()
             val hasher = engine.newSha256()
@@ -195,6 +216,13 @@ class DchmCodec(private val engine: CryptoEngine) {
     ): Outcome<ByteArray> =
         engine.aeadOpen(dek, chunkNonce(noncePrefix, index), chunkAad(fileId, index, isLast), ciphertext)
 }
+
+/**
+ * Number of chunks for a plaintext of [size] bytes at [chunkSize]: `ceil(size / chunkSize)`, but an
+ * empty object is exactly one (empty final) chunk (FORMAT.md §2.3). [chunkSize] must be positive.
+ */
+internal fun chunkCountFor(size: Long, chunkSize: Int): Long =
+    if (size == 0L) 1L else (size + chunkSize - 1) / chunkSize
 
 /** GCM nonce for chunk [counter]: `nonce_prefix ‖ u32-LE counter` (FORMAT.md §2.3). */
 internal fun chunkNonce(noncePrefix: ByteArray, counter: Long): ByteArray = noncePrefix + u32Le(counter)

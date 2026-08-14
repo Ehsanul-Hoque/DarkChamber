@@ -17,6 +17,14 @@ class Prelude(
     val headerLen: Int,
     val noncePrefix: ByteArray,
 ) {
+    init {
+        // header_len is a u16 field; guard against silent truncation in toByteArray().
+        require(headerLen in 0..DchmFormat.MAX_HEADER_LEN) { "headerLen out of u16 range: $headerLen" }
+        require(noncePrefix.size == DchmFormat.NONCE_PREFIX_SIZE) {
+            "nonce_prefix must be ${DchmFormat.NONCE_PREFIX_SIZE} bytes, was ${noncePrefix.size}"
+        }
+    }
+
     /** Serialize to the fixed 16-byte layout, little-endian (FORMAT.md §2). */
     fun toByteArray(): ByteArray {
         val buffer = Buffer()
