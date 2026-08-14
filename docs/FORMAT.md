@@ -130,7 +130,12 @@ expected container bytes (which include the **16-byte prelude** and the header s
 nonce `nonce_prefix ‖ 0xFFFFFFFF`, per §2). Positive cases: single-chunk, multi-chunk, and the
 **empty-file** case (one empty final chunk, §2.3). Negative vectors that MUST fail: bad tag, reordered
 chunks, truncated stream, wrong `is_last_flag`, altered prelude — reported as `IntegrityFailure`; and
-unknown `cipher_id` / `version` above supported — reported as `UnsupportedFormatVersion` (§6). Expected
-ciphertext for at least one case is derived **independently** of the app's codec (a known AES-256-GCM
-KAT or a reference computation) so the vectors validate the implementation rather than mirror it. The
-CI format gate runs all vectors on every commit.
+unknown `cipher_id` / `version` above supported — reported as `UnsupportedFormatVersion` (§6).
+
+The committed container bytes are produced by the reference codec, so their independence rests on two
+things: (1) the **cryptographic primitive** is anchored to published known-answer tests — an all-zero
+AES-256-GCM tag and SHA-256("abc") — verified separately from the container codec; and (2) the
+**framing** is fully byte-specified in §2 (prelude layout, header/chunk nonces, AAD, little-endian
+integers), so an independent implementation can reproduce the same container bytes from the same
+inputs. A future independent-tool-computed container vector may be added to strengthen (1) at the
+container level. The CI format gate runs all vectors on every commit.
