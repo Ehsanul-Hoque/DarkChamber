@@ -87,18 +87,66 @@ This section specifies enough of the key model to decrypt a vault or backup give
 ```
 MasterKey (MK): 256-bit random, generated at vault creation.
 
-Wraps of MK stored on disk / in backup manifest:
-  wrap_pw       = AES-256-GCM(key = Argon2id(passphrase, salt, params), data = MK)
-  wrap_recovery = AES-256-GCM(key = KDF(recovery_key), data = MK)
-  wrap_hw       = platform-keystore wrap (device-local only; never in backups)
+Wraps of MK (each a WrapEntry in the KeyStore blob, §3.1):
+  wrap_pw       = AES-256-GCM(key = KDF_pw(passphrase, params),  data = MK)   # slot PASSPHRASE
+  wrap_recovery = AES-256-GCM(key = HKDF-SHA256(recovery_key),   data = MK)   # slot RECOVERY
+  wrap_hw       = platform-keystore wrap (device-local only; never in backups) # slot HARDWARE
 
 Per-object: dek_wrapped = AES-256-GCM(key = MK, data = DEK), stored in the catalog
             (and in the backup manifest for cloud restore).
 ```
 
-- **Argon2id parameters** (`m`, `t`, `p`, salt) are stored alongside `wrap_pw` so they can be raised over time; initial targets: m = 64 MiB, t = 3, p = 2 (tuned to ~100–250 ms on mid-range devices).
-- **Recovery key:** 256-bit random, presented to the user as BIP39-style words or grouped base32. `wrap_recovery` MUST be included in backup manifests — it is the only unlock path on a fresh device.
+- **Passphrase KDF (`KDF_pw`).** A memory-hard KDF whose id + parameters are stored beside the
+  wrap (§3.1) so they can be raised over time without a format break. Target: **Argon2id**
+  (`m` = 64 MiB, `t` = 3, `p` = 2, salt — tuned to ~100–250 ms on mid-range devices). **v1 ships
+  PBKDF2-HMAC-SHA256 at ≥ 600 000 iterations** as the portable, dependency-free KDF; Argon2id lands
+  with the platform bindings (`kdf_id = ARGON2ID`, §3.1) and old wraps keep opening under their
+  stored `kdf_id`.
+- **Recovery key:** 256-bit random — already full entropy, so its slot uses **HKDF-SHA256** (a fast
+  extract-and-expand, *not* a stretching KDF; label `darkchamber:recovery-wrap:v1`), never Argon2id.
+  Presented to the user as grouped **Crockford base32 with a checksum** (BIP39-style words may be
+  added later as a presentation option; the raw 256 bits are the source of truth). `wrap_recovery`
+  MUST be included in backup manifests — it is the only unlock path on a fresh device.
 - Cross-device restore requires: backup ciphertext + manifest + (passphrase or recovery key). Nothing else.
+
+### 3.1 KeyStore blob (`keys/mk.wrapped`)
+
+The MK wraps are the **bootstrap root**: you need them *to obtain* MK, so — unlike the backup
+manifest (§4) — the KeyStore blob is **never** a `.dchm`-under-MK. It is a standalone
+CBOR-serialized structure, held in memory as an opaque `ByteArray` and persisted verbatim to
+`keys/mk.wrapped` (the file write is the storage layer's concern, not the codec's).
+
+```
+KeyStore {
+  format_version : u,                 # 1; readers reject a higher version (§6)
+  wraps          : [ WrapEntry ]      # ≥ 1; one per available unlock path
+}
+WrapEntry {
+  slot        : enum { PASSPHRASE, RECOVERY, HARDWARE },
+  kdf_id      : enum { PBKDF2_SHA256, HKDF_SHA256, ARGON2ID },   # see registry below
+  kdf_params  : { salt, … },          # PBKDF2: salt, iterations · HKDF: salt, info · Argon2id: salt, m, t, p
+  nonce       : bytes(12),            # fresh random per wrap; the AES-256-GCM nonce
+  wrapped_mk  : bytes                 # GCM ciphertext ‖ 16-byte tag over MK (32 bytes plaintext)
+}
+```
+
+- **`kdf_id` registry.** `PBKDF2_SHA256` — v1 passphrase default. `HKDF_SHA256` — recovery slot.
+  `ARGON2ID` — **reserved**; the passphrase-slot upgrade, implemented with the platform bindings in
+  a later cycle. A reader that encounters an unsupported `kdf_id` reports `UnsupportedFormatVersion`.
+- **Wrap AAD binds the parameters.** Each wrap is sealed with
+  `aad = canonical(slot ‖ kdf_id ‖ kdf_params)` (a deterministic byte encoding). An attacker who
+  edits `kdf_id` or `kdf_params` (e.g. to force a weaker KDF or fewer iterations) breaks the GCM tag
+  → `IntegrityFailure`. Nonces are per-wrap random; every wrap uses a distinct wrap-key, so there is
+  no cross-wrap nonce-reuse concern.
+- **Reject taxonomy** (reuses §6, no new error classes): a wrong secret, or any tamper of
+  `wrapped_mk` / `nonce` / `kdf_params`, fails GCM → **`IntegrityFailure`** (possible tampering, never
+  "update the app"); an unknown `kdf_id` or a `format_version` above supported → **`UnsupportedFormatVersion`**;
+  structurally malformed CBOR → **`MalformedContainer`**.
+- **Re-wrapping.** Changing the passphrase, or adding/rotating the recovery slot, re-seals MK into a
+  new `WrapEntry` and rewrites the blob — MK itself is unchanged, so **no object data is
+  re-encrypted**. Destroying all wraps (panic wipe) crypto-shreds the vault.
+- The layout is designed so a future **alternate MK** (decoy vault, Phase 2) is expressible without a
+  format bump; that feature is out of scope for v1 and not built here.
 
 ## 4. Backup manifest (Phase 3 — reserved)
 
