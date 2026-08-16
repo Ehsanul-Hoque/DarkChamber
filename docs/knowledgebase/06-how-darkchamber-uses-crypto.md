@@ -74,10 +74,14 @@ This knowledgebase describes the whole design, but the code is being built in st
 
 - **Built now** — the `.dchm` container **codec** (chunked AES-256-GCM encrypt/decrypt, header, unique
   nonces, AAD binding, SHA-256 digest) behind the swappable `CryptoEngine`, with committed
-  [format test vectors](../format-test-vectors). This is the bottom layer of the diagram.
-- **Coming next** — the **key hierarchy** (MasterKey, per-object DEK wrapping, Argon2id, recovery key)
-  and the **platform keystore** integration (biometric/PIN-gated hardware wrap). Until those land,
-  there is no unlock and nothing protects real files yet.
+  [format test vectors](../format-test-vectors); **and** the portable **key hierarchy** — MasterKey,
+  per-object DEK wrapping, the KeyStore wrap format, PBKDF2 passphrase wraps, HKDF recovery wraps, the
+  recovery-key encoding, and an in-memory session holding MK — with committed
+  [KeyStore vectors](../format-test-vectors/keystore). That's the whole diagram *except* the hardware
+  slot. (See the next page for how the hierarchy works.)
+- **Coming next** — the **platform keystore** integration (biometric/PIN-gated hardware wrap) and the
+  **Argon2id** upgrade for the passphrase slot. Until the keystore lands there's no biometric unlock,
+  and the app isn't yet wired end-to-end to protect real files.
 
 For the exact, normative details — byte layouts, the cipher registry, KDF parameters, versioning —
 read [`FORMAT.md`](../FORMAT.md), and for what DarkChamber does and does **not** defend against, read
@@ -91,7 +95,10 @@ read [`FORMAT.md`](../FORMAT.md), and for what DarkChamber does and does **not**
 >   a matter of destroying the MK wraps.
 > - Each object is a **chunked AES-256-GCM `.dchm`** container using the exact nonce/AAD/hash ideas
 >   from pages 2–4.
-> - Today the **container codec exists**; the **key hierarchy and keystore are the next cycles**.
+> - Today the **container codec and the portable key hierarchy exist**; the **hardware keystore and
+>   Argon2id are the next cycle**.
+
+Next → [The key hierarchy & envelope encryption, in detail](./07-key-hierarchy-and-envelope-encryption.md)
 
 ← Back to the [Knowledgebase index](./README.md) · Normative specs: [`FORMAT.md`](../FORMAT.md) ·
 [`THREAT_MODEL.md`](../THREAT_MODEL.md)

@@ -32,6 +32,9 @@ Read in order; each builds on the last.
    into a strong key, and why ordinary hashing is the wrong tool for it.
 6. [How DarkChamber uses all this](./06-how-darkchamber-uses-crypto.md) — the concepts assembled into
    the real `.dchm` container and key hierarchy.
+7. [The key hierarchy & envelope encryption](./07-key-hierarchy-and-envelope-encryption.md) — a closer
+   look at wrapping keys with keys: MasterKey, per-object DEKs, the KeyStore slots, and the recovery
+   key.
 
 ## How to use it
 

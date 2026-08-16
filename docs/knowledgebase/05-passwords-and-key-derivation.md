@@ -60,11 +60,16 @@ limited fast memory, so a function that demands memory levels the field.
 
 ## How DarkChamber uses this
 
-DarkChamber derives a key from your passphrase with **Argon2id**, tuned to memory-hard work factors,
-with a per-vault **salt** stored alongside. That derived key doesn't encrypt your files directly —
-it *wraps* (encrypts) the vault's real master key. Changing your passphrase re-derives and re-wraps;
-it never has to re-encrypt your data. The exact parameters and where they live are specified in
-[`FORMAT.md`](../FORMAT.md) §3, and the full key hierarchy is on the next page.
+DarkChamber derives a key from your passphrase and uses it to *wrap* (encrypt) the vault's real master
+key — never to encrypt your files directly. A per-vault **salt** is stored alongside, and changing
+your passphrase re-derives and re-wraps; it never has to re-encrypt your data.
+
+The **target** KDF is **Argon2id**, tuned to memory-hard work factors. Because Argon2id needs
+platform-specific native code, the first portable version ships **PBKDF2-HMAC-SHA256 at 600 000
+iterations** (the acceptable fallback above) and upgrades to Argon2id when the platform bindings land
+— the KDF choice and its parameters are stored *with each wrap*, so old vaults keep opening under
+whatever KDF wrapped them. The exact parameters and where they live are specified in
+[`FORMAT.md`](../FORMAT.md) §3, and the full key hierarchy is on the next pages.
 
 > [!NOTE]
 > **Key takeaways**
@@ -74,6 +79,7 @@ it never has to re-encrypt your data. The exact parameters and where they live a
 > - A **salt** (unique, per-password, stored in the clear) defeats precomputation and hides shared
 >   passwords; a **pepper** adds a separately-kept secret.
 > - Prefer a **memory-hard** function — **Argon2id** (or scrypt). PBKDF2 is an acceptable fallback.
->   DarkChamber uses Argon2id.
+>   DarkChamber ships PBKDF2-600k first and upgrades to Argon2id; the KDF + params travel with each
+>   wrap, so old vaults still open.
 
 Next → [How DarkChamber uses all this](./06-how-darkchamber-uses-crypto.md)
