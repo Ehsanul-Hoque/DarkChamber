@@ -82,6 +82,7 @@ class VaultSession private constructor(
      * Re-wraps MK under a new passphrase, returning an updated KeyStore. **No object data is
      * re-encrypted** — only the PASSPHRASE slot changes. [oldPassphrase] must currently unlock the
      * slot (wrong → `IntegrityFailure`); a KeyStore without a PASSPHRASE slot → `MalformedContainer`.
+     * Both passphrase arrays are **consumed** — zeroized before returning (as [createVault] does).
      */
     fun changePassphrase(
         keyStore: KeyStoreBlob,
@@ -90,18 +91,23 @@ class VaultSession private constructor(
         pbkdf2Iterations: Int = PBKDF2_DEFAULT_ITERS,
     ): Outcome<KeyStoreBlob> {
         check(!closed) { "vault session is closed" }
-        val slot = keyStore.wraps.firstOrNull { it.slot == Slot.PASSPHRASE }
-            ?: return Outcome.Err(VaultError.Crypto.MalformedContainer)
-        val mkFromOld = when (val opened = MasterKeyWrap.unwrap(engine, kdf, slot, oldPassphrase)) {
-            is Outcome.Err -> return opened
-            is Outcome.Ok -> opened.value
-        }
-        return try {
-            val params = KdfParams.Pbkdf2(engine.randomBytes(KDF_SALT_SIZE), pbkdf2Iterations)
-            val newWrap = MasterKeyWrap.wrap(engine, kdf, mkFromOld, newPassphrase, Slot.PASSPHRASE, params, engine.randomBytes(WRAP_NONCE_SIZE))
-            Outcome.Ok(KeyStoreBlob(keyStore.formatVersion, keyStore.wraps.map { if (it.slot == Slot.PASSPHRASE) newWrap else it }))
+        try {
+            val slot = keyStore.wraps.firstOrNull { it.slot == Slot.PASSPHRASE }
+                ?: return Outcome.Err(VaultError.Crypto.MalformedContainer)
+            val mkFromOld = when (val opened = MasterKeyWrap.unwrap(engine, kdf, slot, oldPassphrase)) {
+                is Outcome.Err -> return opened
+                is Outcome.Ok -> opened.value
+            }
+            return try {
+                val params = KdfParams.Pbkdf2(engine.randomBytes(KDF_SALT_SIZE), pbkdf2Iterations)
+                val newWrap = MasterKeyWrap.wrap(engine, kdf, mkFromOld, newPassphrase, Slot.PASSPHRASE, params, engine.randomBytes(WRAP_NONCE_SIZE))
+                Outcome.Ok(KeyStoreBlob(keyStore.formatVersion, keyStore.wraps.map { if (it.slot == Slot.PASSPHRASE) newWrap else it }))
+            } finally {
+                mkFromOld.fill(0)
+            }
         } finally {
-            mkFromOld.fill(0)
+            oldPassphrase.fill(0)
+            newPassphrase.fill(0)
         }
     }
 
@@ -161,7 +167,8 @@ class VaultSession private constructor(
 
         /**
          * Unlocks an existing vault by unwrapping MK from the [slot] wrap with [secret]. A wrong secret
-         * or tamper → `IntegrityFailure`; no such slot → `MalformedContainer`.
+         * or tamper → `IntegrityFailure`; no such slot → `MalformedContainer`. The [secret] array is
+         * **consumed** — zeroized before returning (as [createVault] does); pass a fresh copy per call.
          */
         fun unlock(
             engine: CryptoEngine,
@@ -170,11 +177,15 @@ class VaultSession private constructor(
             secret: ByteArray,
             slot: Slot,
         ): Outcome<VaultSession> {
-            val entry = keyStore.wraps.firstOrNull { it.slot == slot }
-                ?: return Outcome.Err(VaultError.Crypto.MalformedContainer)
-            return when (val opened = MasterKeyWrap.unwrap(engine, kdf, entry, secret)) {
-                is Outcome.Err -> opened
-                is Outcome.Ok -> Outcome.Ok(VaultSession(engine, kdf, opened.value))
+            try {
+                val entry = keyStore.wraps.firstOrNull { it.slot == slot }
+                    ?: return Outcome.Err(VaultError.Crypto.MalformedContainer)
+                return when (val opened = MasterKeyWrap.unwrap(engine, kdf, entry, secret)) {
+                    is Outcome.Err -> opened
+                    is Outcome.Ok -> Outcome.Ok(VaultSession(engine, kdf, opened.value))
+                }
+            } finally {
+                secret.fill(0)
             }
         }
     }

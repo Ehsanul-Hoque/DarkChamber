@@ -2,7 +2,6 @@ package dev.ehsanfahad.darkchamber.core.crypto
 
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
-import kotlinx.serialization.cbor.Cbor
 
 /** Current KeyStore blob format version. Readers reject anything higher (FORMAT.md §3.1 / §6). */
 const val KEYSTORE_VERSION = 1
@@ -25,17 +24,17 @@ val SUPPORTED_KDFS = setOf(KdfId.PBKDF2_SHA256, KdfId.HKDF_SHA256)
  *   [VaultError.Crypto.UnsupportedFormatVersion] (the "update the app" path, distinct from tampering)
  */
 object KeyStoreCodec {
-    private val cbor = Cbor { }
-
-    fun encode(blob: KeyStoreBlob): ByteArray = cbor.encodeToByteArray(KeyStoreBlob.serializer(), blob)
+    fun encode(blob: KeyStoreBlob): ByteArray = darkChamberCbor.encodeToByteArray(KeyStoreBlob.serializer(), blob)
 
     fun decode(bytes: ByteArray): Outcome<KeyStoreBlob> {
         val blob = try {
-            cbor.decodeFromByteArray(KeyStoreBlob.serializer(), bytes)
+            darkChamberCbor.decodeFromByteArray(KeyStoreBlob.serializer(), bytes)
         } catch (_: Throwable) {
             return Outcome.Err(VaultError.Crypto.MalformedContainer)
         }
 
+        // A version below the first real one isn't a version — it's a corrupt/garbage blob.
+        if (blob.formatVersion < 1) return Outcome.Err(VaultError.Crypto.MalformedContainer)
         if (blob.formatVersion > KEYSTORE_VERSION) return Outcome.Err(VaultError.Crypto.UnsupportedFormatVersion)
         if (blob.wraps.isEmpty()) return Outcome.Err(VaultError.Crypto.MalformedContainer)
 

@@ -2,7 +2,6 @@ package dev.ehsanfahad.darkchamber.core.crypto
 
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.cbor.Cbor
 
 /**
  * Wraps and unwraps the MasterKey under a user secret (FORMAT.md §3.1). One [WrapEntry] is
@@ -14,13 +13,11 @@ import kotlinx.serialization.cbor.Cbor
  * escapes and is zeroized on every path.
  */
 object MasterKeyWrap {
-    private val cbor = Cbor { }
-
     @Serializable
     private class WrapAad(val slot: Slot, val kdfId: KdfId, val kdfParams: KdfParams)
 
     private fun aad(slot: Slot, kdfId: KdfId, params: KdfParams): ByteArray =
-        cbor.encodeToByteArray(WrapAad.serializer(), WrapAad(slot, kdfId, params))
+        darkChamberCbor.encodeToByteArray(WrapAad.serializer(), WrapAad(slot, kdfId, params))
 
     /** Seal [mk] for [slot] with the key derived from [secret]; [nonce] must be freshly random. */
     fun wrap(

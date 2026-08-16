@@ -82,6 +82,12 @@ class KeyStoreCodecTest {
     }
 
     @Test
+    fun a_format_version_below_one_is_malformed() {
+        val blob = KeyStoreBlob(0, listOf(pbkdf2Wrap()))
+        assertEquals(Outcome.Err(VaultError.Crypto.MalformedContainer), KeyStoreCodec.decode(KeyStoreCodec.encode(blob)))
+    }
+
+    @Test
     fun an_empty_wrap_list_is_malformed() {
         val blob = KeyStoreBlob(KEYSTORE_VERSION, emptyList())
         assertEquals(Outcome.Err(VaultError.Crypto.MalformedContainer), KeyStoreCodec.decode(KeyStoreCodec.encode(blob)))

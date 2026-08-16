@@ -114,6 +114,24 @@ class VaultSessionTest {
     }
 
     @Test
+    fun unlock_consumes_and_zeroizes_the_secret() {
+        val created = newVault()
+        val secret = pw()
+        VaultSession.unlock(engine, kdf, created.keyStore, secret, Slot.PASSPHRASE)
+        assertTrue(secret.all { it == 0.toByte() }, "unlock must zeroize the secret it consumes")
+    }
+
+    @Test
+    fun change_passphrase_consumes_and_zeroizes_both_secrets() {
+        val created = newVault()
+        val old = pw()
+        val fresh = "new secret".encodeToByteArray()
+        created.session.changePassphrase(created.keyStore, old, fresh, pbkdf2Iterations = 1000)
+        assertTrue(old.all { it == 0.toByte() }, "old passphrase must be zeroized")
+        assertTrue(fresh.all { it == 0.toByte() }, "new passphrase must be zeroized")
+    }
+
+    @Test
     fun close_is_idempotent_and_every_operation_is_rejected_afterwards() {
         val created = newVault()
         created.session.close()

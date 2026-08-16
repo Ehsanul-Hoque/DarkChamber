@@ -1,7 +1,6 @@
 package dev.ehsanfahad.darkchamber.core.crypto
 
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.cbor.Cbor
 
 /**
  * The `.dchm` object header (FORMAT.md §2.2). Serialized as CBOR and then sealed with the object's
@@ -40,9 +39,7 @@ class DchmHeader(
 
 /** CBOR (de)serialization of [DchmHeader] — the on-disk form before/after DEK sealing. */
 object DchmHeaderCodec {
-    private val cbor = Cbor { }
+    fun encode(header: DchmHeader): ByteArray = darkChamberCbor.encodeToByteArray(DchmHeader.serializer(), header)
 
-    fun encode(header: DchmHeader): ByteArray = cbor.encodeToByteArray(DchmHeader.serializer(), header)
-
-    fun decode(bytes: ByteArray): DchmHeader = cbor.decodeFromByteArray(DchmHeader.serializer(), bytes)
+    fun decode(bytes: ByteArray): DchmHeader = darkChamberCbor.decodeFromByteArray(DchmHeader.serializer(), bytes)
 }
