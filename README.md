@@ -6,7 +6,7 @@ A Kotlin Multiplatform app for **Android** and **iOS** that encrypts, stores, an
 
 **Free and open source (GPLv3). Local-first. No ads, no trackers, no accounts — and v1 ships with no `INTERNET` permission, so you can verify in the manifest that your files cannot leave your device.**
 
-> ⚠️ **Status: pre-release.** The multi-module KMP skeleton is in place — `:build-logic` convention plugins and both the Android and iOS hosts build. The encrypted **`.dchm` container format** is now implemented in `:core:crypto` (chunked AES-256-GCM behind a swappable `CryptoEngine`) and checked against committed [format test vectors](./docs/format-test-vectors); the remaining `:core:*` modules are still stubs. But there is no key storage, unlock, or vault UI yet — the documents under [`docs/`](./docs) describe the target design, and **nothing here is ready to protect real files.**
+> ⚠️ **Status: pre-release.** The multi-module KMP skeleton is in place — `:build-logic` convention plugins and both the Android and iOS hosts build. The encrypted **`.dchm` container format** is implemented in `:core:crypto` (chunked AES-256-GCM behind a swappable `CryptoEngine`), and so is the portable **key hierarchy** — MasterKey/per-object DEK wrapping, a CBOR `KeyStore` (PBKDF2 passphrase + HKDF recovery slots), a Crockford-base32 recovery key, and an in-memory `VaultSession` — both checked against committed [format & KeyStore test vectors](./docs/format-test-vectors); the remaining `:core:*` modules are still stubs. But there is no **hardware-backed** key storage, biometric unlock, or vault UI yet — the documents under [`docs/`](./docs) describe the target design, and **nothing here is ready to protect real files.**
 
 ---
 
