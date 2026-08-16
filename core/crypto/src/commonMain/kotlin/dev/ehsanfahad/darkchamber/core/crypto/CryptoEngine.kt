@@ -37,6 +37,22 @@ interface CryptoEngine {
 
     /** [n] cryptographically-secure random bytes (DEKs, nonce prefixes). */
     fun randomBytes(n: Int): ByteArray
+
+    /**
+     * PBKDF2-HMAC-SHA256 password stretching → [dkLenBytes] of derived key. [iterations] is the
+     * FORMAT.md §3 cost parameter (≥ 600 000 in production). Used only by the key-hierarchy layer to
+     * turn a low-entropy passphrase into an MK-wrap key — never for content. The KDF's id and
+     * parameters are stored beside each wrap so the cost can be raised over time.
+     */
+    fun pbkdf2Sha256(password: ByteArray, salt: ByteArray, iterations: Int, dkLenBytes: Int): ByteArray
+
+    /**
+     * HKDF-SHA256 extract-and-expand → [lenBytes] of derived key. For deriving an MK-wrap key from an
+     * already-full-entropy secret (the recovery key), with [info] as the domain-separation label.
+     * This is *not* a password stretcher — it does no work-factor hardening and must not be used on
+     * low-entropy input.
+     */
+    fun hkdfSha256(ikm: ByteArray, salt: ByteArray, info: ByteArray, lenBytes: Int): ByteArray
 }
 
 /** A one-shot, updatable hash: feed bytes with [update], read the result once with [digest]. */

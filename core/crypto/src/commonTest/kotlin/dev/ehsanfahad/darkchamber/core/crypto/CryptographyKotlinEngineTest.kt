@@ -77,6 +77,37 @@ class CryptographyKotlinEngineTest {
     }
 
     @Test
+    fun hkdf_sha256_matches_rfc5869_test_case_1() {
+        // RFC 5869 Appendix A.1 (SHA-256): IKM = 22×0x0b, salt = 000102…0c, info = f0f1…f9, L = 42.
+        val ikm = ByteArray(22) { 0x0b }
+        val salt = "000102030405060708090a0b0c".hexToByteArray()
+        val info = "f0f1f2f3f4f5f6f7f8f9".hexToByteArray()
+        val okm = engine.hkdfSha256(ikm, salt, info, 42)
+        assertEquals(
+            "3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf34007208d5b887185865",
+            okm.toHexString(),
+        )
+    }
+
+    @Test
+    fun pbkdf2_sha256_matches_rfc7914_known_answer() {
+        // RFC 7914 §11: PBKDF2-HMAC-SHA256(P="passwd", S="salt", c=1, dkLen=64).
+        val dk = engine.pbkdf2Sha256("passwd".encodeToByteArray(), "salt".encodeToByteArray(), iterations = 1, dkLenBytes = 64)
+        assertEquals(
+            "55ac046e56e3089fec1691c22544b605f94185216dde0465e68b9d57c20dacbc" +
+                "49ca9cccf179b645991664b39d77ef317c71b845b1e30bd509112041d3a19783",
+            dk.toHexString(),
+        )
+    }
+
+    @Test
+    fun kdf_output_length_must_be_positive() {
+        assertFailsWith<IllegalArgumentException> { engine.pbkdf2Sha256("p".encodeToByteArray(), "s".encodeToByteArray(), 1, 0) }
+        assertFailsWith<IllegalArgumentException> { engine.hkdfSha256("i".encodeToByteArray(), "s".encodeToByteArray(), ByteArray(0), 0) }
+        assertFailsWith<IllegalArgumentException> { engine.pbkdf2Sha256("p".encodeToByteArray(), "s".encodeToByteArray(), 0, 32) }
+    }
+
+    @Test
     fun random_bytes_returns_the_requested_length_and_varies() {
         val a = engine.randomBytes(32)
         val b = engine.randomBytes(32)

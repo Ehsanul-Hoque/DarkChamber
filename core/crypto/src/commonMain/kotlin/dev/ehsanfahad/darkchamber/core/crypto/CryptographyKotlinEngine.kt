@@ -2,9 +2,12 @@ package dev.ehsanfahad.darkchamber.core.crypto
 
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
+import dev.whyoleg.cryptography.BinarySize.Companion.bytes
 import dev.whyoleg.cryptography.CryptographyProvider
 import dev.whyoleg.cryptography.DelicateCryptographyApi
 import dev.whyoleg.cryptography.algorithms.AES
+import dev.whyoleg.cryptography.algorithms.HKDF
+import dev.whyoleg.cryptography.algorithms.PBKDF2
 import dev.whyoleg.cryptography.algorithms.SHA256
 import dev.whyoleg.cryptography.random.CryptographyRandom
 
@@ -20,6 +23,8 @@ class CryptographyKotlinEngine(
 ) : CryptoEngine {
     private val gcm = provider.get(AES.GCM)
     private val sha256 = provider.get(SHA256)
+    private val pbkdf2 = provider.get(PBKDF2)
+    private val hkdf = provider.get(HKDF)
 
     private fun keyFrom(raw: ByteArray): AES.GCM.Key =
         gcm.keyDecoder().decodeFromByteArrayBlocking(AES.Key.Format.RAW, raw)
@@ -65,6 +70,19 @@ class CryptographyKotlinEngine(
     }
 
     override fun randomBytes(n: Int): ByteArray = CryptographyRandom.Default.nextBytes(n)
+
+    override fun pbkdf2Sha256(password: ByteArray, salt: ByteArray, iterations: Int, dkLenBytes: Int): ByteArray {
+        require(iterations > 0) { "PBKDF2 iterations must be positive, was $iterations" }
+        require(dkLenBytes > 0) { "PBKDF2 output length must be positive, was $dkLenBytes" }
+        return pbkdf2.secretDerivation(SHA256, iterations, dkLenBytes.bytes, salt)
+            .deriveSecretToByteArrayBlocking(password)
+    }
+
+    override fun hkdfSha256(ikm: ByteArray, salt: ByteArray, info: ByteArray, lenBytes: Int): ByteArray {
+        require(lenBytes > 0) { "HKDF output length must be positive, was $lenBytes" }
+        return hkdf.secretDerivation(SHA256, lenBytes.bytes, salt, info)
+            .deriveSecretToByteArrayBlocking(ikm)
+    }
 
     private companion object {
         const val AES_256_KEY_SIZE = 32
