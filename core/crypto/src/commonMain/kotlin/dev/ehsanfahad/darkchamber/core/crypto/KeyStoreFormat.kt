@@ -46,6 +46,13 @@ object KeyStoreCodec {
             if (wrap.kdfId != wrap.kdfParams.kdfId) return Outcome.Err(VaultError.Crypto.MalformedContainer)
             if (wrap.nonce.size != WRAP_NONCE_SIZE) return Outcome.Err(VaultError.Crypto.MalformedContainer)
             if (wrap.wrappedMk.isEmpty()) return Outcome.Err(VaultError.Crypto.MalformedContainer)
+            // Reject KDF parameters the derivation would otherwise trip an uncaught precondition on
+            // at unlock time (the engine requires PBKDF2 iterations > 0). A crafted/corrupt blob must
+            // surface as MalformedContainer here — never crash the unlock path (D10 / §6).
+            val params = wrap.kdfParams
+            if (params is KdfParams.Pbkdf2 && params.iterations <= 0) {
+                return Outcome.Err(VaultError.Crypto.MalformedContainer)
+            }
         }
         return Outcome.Ok(blob)
     }

@@ -66,6 +66,22 @@ class KeyStoreCodecTest {
     }
 
     @Test
+    fun non_positive_pbkdf2_iterations_are_malformed_not_a_crash() {
+        // A crafted/corrupt blob with iterations <= 0 would otherwise reach the engine's
+        // require(iterations > 0) at unlock time and throw an uncaught IllegalArgumentException.
+        // The codec must reject it up front as a malformed container (D10 / FORMAT §6).
+        for (iters in intArrayOf(0, -1)) {
+            val wrap = WrapEntry(Slot.PASSPHRASE, KdfId.PBKDF2_SHA256, KdfParams.Pbkdf2(ByteArray(16), iters), ByteArray(12), ByteArray(48))
+            val blob = KeyStoreBlob(KEYSTORE_VERSION, listOf(wrap))
+            assertEquals(
+                Outcome.Err(VaultError.Crypto.MalformedContainer),
+                KeyStoreCodec.decode(KeyStoreCodec.encode(blob)),
+                "iterations=$iters must be rejected as malformed",
+            )
+        }
+    }
+
+    @Test
     fun an_empty_wrap_list_is_malformed() {
         val blob = KeyStoreBlob(KEYSTORE_VERSION, emptyList())
         assertEquals(Outcome.Err(VaultError.Crypto.MalformedContainer), KeyStoreCodec.decode(KeyStoreCodec.encode(blob)))
