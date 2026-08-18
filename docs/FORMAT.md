@@ -97,11 +97,11 @@ Per-object: dek_wrapped = AES-256-GCM(key = MK, data = DEK), stored in the catal
 ```
 
 - **Passphrase KDF (`KDF_pw`).** A memory-hard KDF whose id + parameters are stored beside the
-  wrap (§3.1) so they can be raised over time without a format break. Target: **Argon2id**
-  (`m` = 64 MiB, `t` = 3, `p` = 2, salt — tuned to ~100–250 ms on mid-range devices). **v1 ships
-  PBKDF2-HMAC-SHA256 at ≥ 600 000 iterations** as the portable, dependency-free KDF; Argon2id lands
-  with the platform bindings (`kdf_id = ARGON2ID`, §3.1) and old wraps keep opening under their
-  stored `kdf_id`.
+  wrap (§3.1) so they can be raised over time without a format break. **The default is Argon2id**
+  (`kdf_id = ARGON2ID`, version **0x13** / RFC 9106, params `m` = 64 MiB, `t` = 3, `p` = 2, salt —
+  tuned to ~100–250 ms on mid-range devices). **PBKDF2-HMAC-SHA256** (`kdf_id = PBKDF2_SHA256`,
+  ≥ 600 000 iterations) remains a fully supported fallback; a reader must open a wrap under whichever
+  `kdf_id` it stores. The Argon2 version (0x13) is fixed by this spec — not a stored field.
 - **Recovery key:** 256-bit random — already full entropy, so its slot uses **HKDF-SHA256** (a fast
   extract-and-expand, *not* a stretching KDF; label `darkchamber:recovery-wrap:v1`), never Argon2id.
   Presented to the user as grouped **Crockford base32 with a checksum** (BIP39-style words may be
@@ -124,15 +124,17 @@ KeyStore {
 WrapEntry {
   slot        : enum { PASSPHRASE, RECOVERY, HARDWARE },
   kdf_id      : enum { PBKDF2_SHA256, HKDF_SHA256, ARGON2ID },   # see registry below
-  kdf_params  : { salt, … },          # PBKDF2: salt, iterations · HKDF: salt, info · Argon2id: salt, m, t, p
+  kdf_params  : { salt, … },          # PBKDF2: salt, iterations · HKDF: salt, info · Argon2id: salt, memoryKib, iterations, parallelism
   nonce       : bytes(12),            # fresh random per wrap; the AES-256-GCM nonce
   wrapped_mk  : bytes                 # GCM ciphertext ‖ 16-byte tag over MK (32 bytes plaintext)
 }
 ```
 
-- **`kdf_id` registry.** `PBKDF2_SHA256` — v1 passphrase default. `HKDF_SHA256` — recovery slot.
-  `ARGON2ID` — **reserved**; the passphrase-slot upgrade, implemented with the platform bindings in
-  a later cycle. A reader that encounters an unsupported `kdf_id` reports `UnsupportedFormatVersion`.
+- **`kdf_id` registry.** `ARGON2ID` — the passphrase-slot default (version 0x13; params `salt`,
+  `memoryKib`, `iterations`, `parallelism`). `PBKDF2_SHA256` — the supported passphrase fallback
+  (`salt`, `iterations`). `HKDF_SHA256` — the recovery slot (`salt`, `info`). A reader that encounters
+  a `kdf_id` it does not support reports `UnsupportedFormatVersion`. Argon2id params, like PBKDF2's,
+  must be sane (`memoryKib`, `iterations`, `parallelism` all > 0) or the blob is a `MalformedContainer`.
 - **Wrap AAD binds the parameters.** Each wrap is sealed with
   `aad = canonical(slot ‖ kdf_id ‖ kdf_params)` (a deterministic byte encoding). An attacker who
   edits `kdf_id` or `kdf_params` (e.g. to force a weaker KDF or fewer iterations) breaks the GCM tag
