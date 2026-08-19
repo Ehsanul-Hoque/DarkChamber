@@ -1,9 +1,41 @@
+import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
+
 plugins {
     id("darkchamber.kmp.library")
     alias(libs.plugins.kotlinSerialization)
 }
 
 kotlin {
+    // iOS Argon2id (cycle 2c): compile the vendored phc-winner-argon2 reference sources
+    // into a per-arch libargon2.a from committed C (no prebuilt blob — spec D11), then
+    // bundle it into the `argon2` cinterop klib. The iosMain actual calls argon2id_hash_raw.
+    val argon2Dir = layout.projectDirectory.dir("src/nativeInterop/argon2")
+    targets.withType<KotlinNativeTarget>().configureEach {
+        val isSim = konanTarget.name.contains("simulator", ignoreCase = true)
+        val sdk = if (isSim) "iphonesimulator" else "iphoneos"
+        val triple = if (isSim) "arm64-apple-ios13.0-simulator" else "arm64-apple-ios13.0"
+        val libDir = layout.buildDirectory.dir("argon2/$targetName")
+
+        val buildArgon2 = tasks.register<Exec>("buildArgon2$targetName") {
+            group = "build"
+            description = "Compile vendored phc-winner-argon2 into libargon2.a for $targetName"
+            inputs.dir(argon2Dir).withPathSensitivity(PathSensitivity.RELATIVE)
+            outputs.dir(libDir)
+            executable = argon2Dir.file("build-argon2.sh").asFile.absolutePath
+            args(sdk, triple, libDir.get().asFile.absolutePath)
+        }
+
+        compilations.getByName("main").cinterops.create("argon2") {
+            defFile(project.file("src/nativeInterop/cinterop/argon2.def"))
+            includeDirs(argon2Dir.dir("include"))
+            // -staticLibrary (from the .def) is resolved against this per-arch path and
+            // embedded into the klib, so downstream test/framework links pick it up.
+            extraOpts("-libraryPath", libDir.get().asFile.absolutePath)
+        }
+        val targetCap = targetName.replaceFirstChar { it.uppercase() }
+        tasks.named("cinteropArgon2$targetCap") { dependsOn(buildArgon2) }
+    }
+
     sourceSets {
         commonMain.dependencies {
             implementation(project(":core:model"))
