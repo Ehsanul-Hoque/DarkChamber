@@ -53,6 +53,23 @@ interface CryptoEngine {
      * low-entropy input.
      */
     fun hkdfSha256(ikm: ByteArray, salt: ByteArray, info: ByteArray, lenBytes: Int): ByteArray
+
+    /**
+     * Argon2id password stretching → [outLenBytes] of derived key. The memory-hard default for the
+     * passphrase MK-wrap slot (FORMAT.md §3): [memoryKib] KiB of memory, [iterations] passes,
+     * [parallelism] lanes. The Argon2 version is pinned to 0x13 (RFC 9106 / Argon2 1.3) on every
+     * platform; it is not a caller parameter. Backed by a per-platform actual (BouncyCastle on the
+     * JVM/Android host, the vendored phc-winner-argon2 cinterop on iOS) — the Argon2 primitive is the
+     * only crypto not provided by cryptography-kotlin, so it lives behind this same seam (hard rule #2).
+     */
+    fun argon2id(
+        password: ByteArray,
+        salt: ByteArray,
+        memoryKib: Int,
+        iterations: Int,
+        parallelism: Int,
+        outLenBytes: Int,
+    ): ByteArray
 }
 
 /** A one-shot, updatable hash: feed bytes with [update], read the result once with [digest]. */

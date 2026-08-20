@@ -46,6 +46,11 @@ kotlin {
             implementation(libs.kotlinx.io.core)
             implementation(libs.kotlinx.serialization.cbor)
         }
+        // Argon2id (cycle 2c): pure-JVM BouncyCastle actual — host-testable. iOS uses the vendored
+        // phc-winner-argon2 cinterop instead (no Argon2 runtime dependency on that side).
+        androidMain.dependencies {
+            implementation(libs.bouncycastle.bcprov)
+        }
         // Host-only: the .dchm format-vector gate reads the committed JSON under docs/.
         getByName("androidHostTest").dependencies {
             implementation(libs.kotlinx.serialization.json)

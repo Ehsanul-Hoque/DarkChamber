@@ -34,6 +34,9 @@ buildkonfig = "0.22.0"
 # core:crypto (cycle 2a): .dchm streaming IO + CBOR header. JetBrains-official, KMP, GPLv3-OK.
 kotlinxIo = "0.9.1"
 kotlinxSerialization = "1.11.0"   # serialization runtime (cbor); the compiler plugin tracks `kotlin`
+# core:crypto (cycle 2c): pure-JVM Argon2id for the Android/host passphrase-wrap actual. GPLv3-OK
+# (BouncyCastle is MIT-style). iOS uses the vendored phc-winner-argon2 cinterop instead.
+bouncycastle = "1.85.2"
 
 [libraries]
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
@@ -63,6 +66,8 @@ kotlinx-io-core = { module = "org.jetbrains.kotlinx:kotlinx-io-core", version.re
 kotlinx-serialization-cbor = { module = "org.jetbrains.kotlinx:kotlinx-serialization-cbor", version.ref = "kotlinxSerialization" }
 # Test-only: parsing the committed .dchm format vectors (docs/format-test-vectors/).
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
+# Argon2id (core:crypto androidMain only) — the JVM-pure actual so its KATs run on the host.
+bouncycastle-bcprov = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
 # Persistence — core:db.
 sqldelight-runtime = { module = "app.cash.sqldelight:runtime", version.ref = "sqldelight" }
 sqldelight-coroutines = { module = "app.cash.sqldelight:coroutines-extensions", version.ref = "sqldelight" }

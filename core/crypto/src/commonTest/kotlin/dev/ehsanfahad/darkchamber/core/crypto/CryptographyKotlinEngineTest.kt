@@ -108,6 +108,33 @@ class CryptographyKotlinEngineTest {
     }
 
     @Test
+    fun argon2id_matches_the_reference_cli_known_answer() {
+        // Canonical phc-winner-argon2 CLI vector (Argon2 1.3 / version 0x13, the pinned version):
+        //   printf "password" | argon2 somesalt -id -t 2 -m 16 -p 1 -l 32
+        // (-m 16 = 2^16 = 65536 KiB). Anchors BOTH actuals — BouncyCastle on the JVM host and the
+        // phc cinterop on iOS — to the same published constant.
+        val hash = engine.argon2id(
+            password = "password".encodeToByteArray(),
+            salt = "somesalt".encodeToByteArray(),
+            memoryKib = 65536,
+            iterations = 2,
+            parallelism = 1,
+            outLenBytes = 32,
+        )
+        assertEquals("09316115d5cf24ed5a15a31a3ba326e5cf32edc24702987c02b6566f61913cf7", hash.toHexString())
+    }
+
+    @Test
+    fun argon2id_rejects_non_positive_parameters_as_misuse() {
+        val pw = "p".encodeToByteArray()
+        val salt = "somesalt".encodeToByteArray()
+        assertFailsWith<IllegalArgumentException> { engine.argon2id(pw, salt, memoryKib = 0, iterations = 1, parallelism = 1, outLenBytes = 32) }
+        assertFailsWith<IllegalArgumentException> { engine.argon2id(pw, salt, memoryKib = 8, iterations = 0, parallelism = 1, outLenBytes = 32) }
+        assertFailsWith<IllegalArgumentException> { engine.argon2id(pw, salt, memoryKib = 8, iterations = 1, parallelism = 0, outLenBytes = 32) }
+        assertFailsWith<IllegalArgumentException> { engine.argon2id(pw, salt, memoryKib = 8, iterations = 1, parallelism = 1, outLenBytes = 0) }
+    }
+
+    @Test
     fun random_bytes_returns_the_requested_length_and_varies() {
         val a = engine.randomBytes(32)
         val b = engine.randomBytes(32)

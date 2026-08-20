@@ -84,6 +84,25 @@ class CryptographyKotlinEngine(
             .deriveSecretToByteArrayBlocking(ikm)
     }
 
+    // Argon2 is not part of cryptography-kotlin; it is bound per platform (BouncyCastle / phc cinterop)
+    // behind platformArgon2id, keeping the primitive imports out of this cryptography-kotlin-only file.
+    // Validate all cost/length params here so a crafted KeyStore blob can never reach a native
+    // precondition — the derive path stays a loud IllegalArgumentException, mirroring the PBKDF2 guard.
+    override fun argon2id(
+        password: ByteArray,
+        salt: ByteArray,
+        memoryKib: Int,
+        iterations: Int,
+        parallelism: Int,
+        outLenBytes: Int,
+    ): ByteArray {
+        require(memoryKib > 0) { "Argon2id memory must be positive, was $memoryKib" }
+        require(iterations > 0) { "Argon2id iterations must be positive, was $iterations" }
+        require(parallelism > 0) { "Argon2id parallelism must be positive, was $parallelism" }
+        require(outLenBytes > 0) { "Argon2id output length must be positive, was $outLenBytes" }
+        return platformArgon2id(password, salt, memoryKib, iterations, parallelism, outLenBytes)
+    }
+
     private companion object {
         const val AES_256_KEY_SIZE = 32
         const val GCM_NONCE_SIZE = 12
