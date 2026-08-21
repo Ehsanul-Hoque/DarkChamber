@@ -35,22 +35,37 @@ class KeyDerivationTest {
     }
 
     @Test
+    fun argon2id_wrap_key_matches_the_engine_primitive_and_is_32_bytes() {
+        val salt = ByteArray(16) { (it + 5).toByte() }
+        // Cheap params — this test derives a real Argon2id key, so keep memory/passes small.
+        val params = KdfParams.Argon2id(salt = salt, memoryKib = 256, iterations = 1, parallelism = 1)
+        val secret = "correct horse".encodeToByteArray()
+
+        val derived = kdf.deriveWrapKey(secret, params)
+
+        assertEquals(WRAP_KEY_SIZE, derived.size)
+        assertContentEquals(engine.argon2id(secret, salt, 256, 1, 1, WRAP_KEY_SIZE), derived)
+    }
+
+    @Test
     fun each_params_variant_reports_its_own_kdf_id() {
         assertEquals(KdfId.PBKDF2_SHA256, KdfParams.Pbkdf2(ByteArray(16), 1000).kdfId)
         assertEquals(KdfId.HKDF_SHA256, KdfParams.Hkdf(ByteArray(16), ByteArray(4)).kdfId)
+        assertEquals(KdfId.ARGON2ID, KdfParams.Argon2id(ByteArray(16), 256, 1, 1).kdfId)
     }
 
     @Test
-    fun argon2id_is_reserved_in_the_registry_but_has_no_derivable_params_yet() {
-        // ARGON2ID is registered (the passphrase-slot upgrade for cycle 2c) but no KdfParams variant
-        // maps to it — so a wrap key for Argon2id cannot be silently produced before the KDF exists.
-        assertTrue(KdfId.ARGON2ID in KdfId.entries)
-        val supportedIds = listOf(KdfParams.Pbkdf2(ByteArray(16), 1000).kdfId, KdfParams.Hkdf(ByteArray(16), ByteArray(4)).kdfId)
-        assertTrue(KdfId.ARGON2ID !in supportedIds, "no params variant may claim ARGON2ID until 2c wires the KDF")
+    fun argon2id_params_have_value_equality() {
+        assertEquals(KdfParams.Argon2id(ByteArray(16) { 7 }, 65536, 3, 2), KdfParams.Argon2id(ByteArray(16) { 7 }, 65536, 3, 2))
+        assertTrue(KdfParams.Argon2id(ByteArray(16) { 7 }, 65536, 3, 2) != KdfParams.Argon2id(ByteArray(16) { 7 }, 65536, 3, 1))
     }
 
     @Test
-    fun default_pbkdf2_iteration_count_is_the_production_target() {
+    fun kdf_defaults_are_the_production_targets() {
         assertEquals(600_000, PBKDF2_DEFAULT_ITERS)
+        assertEquals(65536, ARGON2ID_DEFAULT_MEMORY_KIB)
+        assertEquals(3, ARGON2ID_DEFAULT_ITERATIONS)
+        assertEquals(2, ARGON2ID_DEFAULT_PARALLELISM)
+        assertEquals(0x13, ARGON2ID_VERSION)
     }
 }

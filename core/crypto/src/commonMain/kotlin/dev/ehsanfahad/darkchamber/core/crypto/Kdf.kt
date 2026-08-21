@@ -18,6 +18,18 @@ const val KDF_SALT_SIZE = 16
 const val RECOVERY_HKDF_INFO = "darkchamber:recovery-wrap:v1"
 
 /**
+ * Production Argon2id cost for the passphrase slot (FORMAT.md §3): 64 MiB, 3 passes, 2 lanes. Like
+ * PBKDF2's count, raised over time by writing larger values into a wrap's [KdfParams.Argon2id] —
+ * old wraps keep their stored cost. All three are AAD-bound, so a downgrade fails authentication.
+ */
+const val ARGON2ID_DEFAULT_MEMORY_KIB = 65536
+const val ARGON2ID_DEFAULT_ITERATIONS = 3
+const val ARGON2ID_DEFAULT_PARALLELISM = 2
+
+/** Argon2 version pinned on every platform (RFC 9106 / Argon2 1.3). Not a stored parameter. */
+const val ARGON2ID_VERSION = 0x13
+
+/**
  * Registry of key-derivation functions a [WrapEntry] may name (FORMAT.md §3.1). The id is stored
  * beside each wrap and bound into its AAD, so it cannot be swapped for a weaker one without
  * breaking authentication.
@@ -29,14 +41,14 @@ enum class KdfId {
     /** HKDF-SHA256 — the recovery-key slot (input is already full entropy, no stretching). */
     HKDF_SHA256,
 
-    /** Argon2id — reserved; the passphrase-slot upgrade, wired with platform bindings in cycle 2c. */
+    /** Argon2id — the memory-hard default passphrase KDF (platform bindings wired in cycle 2c). */
     ARGON2ID,
 }
 
 /**
  * Parameters for deriving a wrap key, serialized beside the wrap. The concrete subtype *is* the KDF
- * choice ([kdfId]); there is deliberately no `ARGON2ID` variant yet — its parameters land in 2c with
- * the KDF itself, so an Argon2id wrap cannot be constructed before it can be honoured.
+ * choice ([kdfId]). Each variant's fields are AAD-bound with its wrap (see [MasterKeyWrap]), so a
+ * cost/param downgrade cannot be substituted without breaking authentication.
  */
 @Serializable
 sealed interface KdfParams {
@@ -61,12 +73,44 @@ sealed interface KdfParams {
 
         override fun hashCode() = 31 * salt.contentHashCode() + info.contentHashCode()
     }
+
+    /**
+     * Argon2id cost parameters. The version is not stored — it is pinned to [ARGON2ID_VERSION] on
+     * every platform (a stored version would only add a footgun for its one legal value).
+     */
+    @Serializable
+    class Argon2id(
+        val salt: ByteArray,
+        val memoryKib: Int,
+        val iterations: Int,
+        val parallelism: Int,
+    ) : KdfParams {
+        override val kdfId get() = KdfId.ARGON2ID
+
+        override fun equals(other: Any?) =
+            this === other || (
+                other is Argon2id &&
+                    memoryKib == other.memoryKib &&
+                    iterations == other.iterations &&
+                    parallelism == other.parallelism &&
+                    salt.contentEquals(other.salt)
+            )
+
+        override fun hashCode(): Int {
+            var result = salt.contentHashCode()
+            result = 31 * result + memoryKib
+            result = 31 * result + iterations
+            result = 31 * result + parallelism
+            return result
+        }
+    }
 }
 
 /**
  * Derives a 32-byte wrap key from a user secret and its stored [KdfParams]. The seam the key
- * hierarchy owns: PBKDF2 today, Argon2id (2c) dropping in behind the same call without any format
- * change. All primitive work goes through [CryptoEngine] (hard rule #2).
+ * hierarchy owns: Argon2id (the default) and PBKDF2 (fallback) for passphrases, HKDF for the
+ * recovery key — each selected by the params subtype, no format change to add one. All primitive
+ * work goes through [CryptoEngine] (hard rule #2).
  */
 interface KeyDerivation {
     fun deriveWrapKey(secret: ByteArray, params: KdfParams): ByteArray
@@ -77,5 +121,7 @@ class DefaultKeyDerivation(private val engine: CryptoEngine) : KeyDerivation {
         when (params) {
             is KdfParams.Pbkdf2 -> engine.pbkdf2Sha256(secret, params.salt, params.iterations, WRAP_KEY_SIZE)
             is KdfParams.Hkdf -> engine.hkdfSha256(secret, params.salt, params.info, WRAP_KEY_SIZE)
+            is KdfParams.Argon2id ->
+                engine.argon2id(secret, params.salt, params.memoryKib, params.iterations, params.parallelism, WRAP_KEY_SIZE)
         }
 }
