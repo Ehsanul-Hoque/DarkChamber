@@ -67,10 +67,10 @@ Page 5 explained that a passphrase must be stretched by a slow, memory-hard KDF 
 entropy. The **recovery key is different**: it's 256 random bits — already full entropy. Stretching it
 slowly would buy nothing (there's no weak password to protect). So:
 
-| Slot       | Secret                    | KDF                          | Why                                             |
-|------------|---------------------------|------------------------------|-------------------------------------------------|
-| PASSPHRASE | your typed passphrase     | PBKDF2 now / Argon2id (2c)   | low entropy → must be **slow & memory-hard**    |
-| RECOVERY   | a random 256-bit key      | **HKDF-SHA256** (fast)       | full entropy → just needs clean *derivation*    |
+| Slot       | Secret                    | KDF                              | Why                                             |
+|------------|---------------------------|----------------------------------|-------------------------------------------------|
+| PASSPHRASE | your typed passphrase     | **Argon2id** (PBKDF2 fallback)   | low entropy → must be **slow & memory-hard**    |
+| RECOVERY   | a random 256-bit key      | **HKDF-SHA256** (fast)           | full entropy → just needs clean *derivation*    |
 
 HKDF isn't a password stretcher; it's a **key-derivation** step that turns one good key into another
 (here, a wrap key), with a domain-separation label so the recovery wrap key can't collide with any
@@ -88,12 +88,12 @@ bytes are what matters**; the text is just a human-transcribable skin over them.
 
 ## What exists today
 
-As of this cycle the **portable key layer is built**: MasterKey/DEK generation, the KeyStore wrap
-format, PBKDF2 passphrase wraps, HKDF recovery wraps, the recovery-key encoding, and an in-memory
-session that holds MK and hands out DEKs (zeroizing them after use) — all with committed
-[KeyStore test vectors](../format-test-vectors/keystore). Still to come (next cycle): the **hardware
-slot** (biometric/PIN-gated keystore) and the **Argon2id** upgrade for the passphrase slot, which
-drops into the same `kdf_id` seam without changing the format.
+As of this cycle the **key layer is built, and Argon2id is the default passphrase KDF**:
+MasterKey/DEK generation, the KeyStore wrap format, **Argon2id** passphrase wraps (64 MiB / 3 / 2,
+with PBKDF2 still supported for older wraps), HKDF recovery wraps, the recovery-key encoding, and an
+in-memory session that holds MK and hands out DEKs (zeroizing them after use) — all with committed
+[KeyStore test vectors](../format-test-vectors/keystore) for both KDFs. Still to come (next cycle):
+the **hardware slot** (biometric/PIN-gated keystore).
 
 > [!NOTE]
 > **Key takeaways**

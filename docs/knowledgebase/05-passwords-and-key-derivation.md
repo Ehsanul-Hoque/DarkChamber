@@ -64,12 +64,13 @@ DarkChamber derives a key from your passphrase and uses it to *wrap* (encrypt) t
 key — never to encrypt your files directly. A per-vault **salt** is stored alongside, and changing
 your passphrase re-derives and re-wraps; it never has to re-encrypt your data.
 
-The **target** KDF is **Argon2id**, tuned to memory-hard work factors. Because Argon2id needs
-platform-specific native code, the first portable version ships **PBKDF2-HMAC-SHA256 at 600 000
-iterations** (the acceptable fallback above) and upgrades to Argon2id when the platform bindings land
-— the KDF choice and its parameters are stored *with each wrap*, so old vaults keep opening under
-whatever KDF wrapped them. The exact parameters and where they live are specified in
-[`FORMAT.md`](../FORMAT.md) §3, and the full key hierarchy is on the next pages.
+The default KDF is **Argon2id**, tuned to memory-hard work factors (**64 MiB of memory, 3 passes, 2
+lanes**). Argon2id needs platform-specific native code — BouncyCastle on Android, a small vendored
+native library on iOS — both behind the one crypto seam. **PBKDF2-HMAC-SHA256 at 600 000 iterations**
+remains a supported fallback (the acceptable option above): the KDF choice and its parameters are
+stored *with each wrap*, so a PBKDF2 vault keeps opening even though new vaults use Argon2id. The
+exact parameters and where they live are specified in [`FORMAT.md`](../FORMAT.md) §3, and the full key
+hierarchy is on the next pages.
 
 > [!NOTE]
 > **Key takeaways**
@@ -79,7 +80,7 @@ whatever KDF wrapped them. The exact parameters and where they live are specifie
 > - A **salt** (unique, per-password, stored in the clear) defeats precomputation and hides shared
 >   passwords; a **pepper** adds a separately-kept secret.
 > - Prefer a **memory-hard** function — **Argon2id** (or scrypt). PBKDF2 is an acceptable fallback.
->   DarkChamber ships PBKDF2-600k first and upgrades to Argon2id; the KDF + params travel with each
->   wrap, so old vaults still open.
+>   DarkChamber defaults new vaults to **Argon2id** (64 MiB / 3 / 2), with PBKDF2-600k a supported
+>   fallback; the KDF + params travel with each wrap, so old vaults still open.
 
 Next → [How DarkChamber uses all this](./06-how-darkchamber-uses-crypto.md)
