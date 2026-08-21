@@ -27,9 +27,19 @@ class KeyStoreVectorTest {
         val format_version: Int,
         val mk: String,
         val passphrase_utf8: String,
-        val pbkdf2_salt: String,
-        val pbkdf2_iterations: Int,
-        val pbkdf2_nonce: String,
+        // Which KDF the PASSPHRASE slot uses. The matching *_ fields below must be present.
+        val passphrase_kdf: String = "pbkdf2",
+        // PBKDF2 passphrase slot.
+        val pbkdf2_salt: String? = null,
+        val pbkdf2_iterations: Int? = null,
+        val pbkdf2_nonce: String? = null,
+        // Argon2id passphrase slot.
+        val argon2_salt: String? = null,
+        val argon2_memory_kib: Int? = null,
+        val argon2_iterations: Int? = null,
+        val argon2_parallelism: Int? = null,
+        val argon2_nonce: String? = null,
+        // HKDF recovery slot.
         val recovery_key: String,
         val hkdf_salt: String,
         val hkdf_info: String,
@@ -47,10 +57,18 @@ class KeyStoreVectorTest {
     private fun vectors(): List<KeyStoreVector> =
         json.decodeFromString(File(vectorsDir, "keystore.json").readText())
 
-    private fun KeyStoreVector.passphraseEntry() = MasterKeyWrap.wrap(
-        engine, kdf, mk.hexToByteArray(), passphrase_utf8.encodeToByteArray(), Slot.PASSPHRASE,
-        KdfParams.Pbkdf2(pbkdf2_salt.hexToByteArray(), pbkdf2_iterations), pbkdf2_nonce.hexToByteArray(),
-    )
+    private fun KeyStoreVector.passphraseEntry(): WrapEntry = when (passphrase_kdf) {
+        "pbkdf2" -> MasterKeyWrap.wrap(
+            engine, kdf, mk.hexToByteArray(), passphrase_utf8.encodeToByteArray(), Slot.PASSPHRASE,
+            KdfParams.Pbkdf2(pbkdf2_salt!!.hexToByteArray(), pbkdf2_iterations!!), pbkdf2_nonce!!.hexToByteArray(),
+        )
+        "argon2id" -> MasterKeyWrap.wrap(
+            engine, kdf, mk.hexToByteArray(), passphrase_utf8.encodeToByteArray(), Slot.PASSPHRASE,
+            KdfParams.Argon2id(argon2_salt!!.hexToByteArray(), argon2_memory_kib!!, argon2_iterations!!, argon2_parallelism!!),
+            argon2_nonce!!.hexToByteArray(),
+        )
+        else -> error("$name: unknown passphrase_kdf '$passphrase_kdf'")
+    }
 
     private fun KeyStoreVector.recoveryEntry() = MasterKeyWrap.wrap(
         engine, kdf, mk.hexToByteArray(), recovery_key.hexToByteArray(), Slot.RECOVERY,
@@ -99,9 +117,10 @@ class KeyStoreVectorTest {
                 "${v.name}: wrong passphrase",
             )
 
-            // A kdfId that disagrees with its params → malformed (relabel the PBKDF2 wrap as
-            // ARGON2ID without changing its Pbkdf2 params; reuse the committed wrap bytes).
-            val mismatched = WrapEntry(pw.slot, KdfId.ARGON2ID, pw.kdfParams, pw.nonce, pw.wrappedMk)
+            // A kdfId that disagrees with its params → malformed (relabel the passphrase wrap with a
+            // different id than its params claim, without touching the committed wrap bytes).
+            val wrongId = if (pw.kdfParams is KdfParams.Argon2id) KdfId.PBKDF2_SHA256 else KdfId.ARGON2ID
+            val mismatched = WrapEntry(pw.slot, wrongId, pw.kdfParams, pw.nonce, pw.wrappedMk)
             assertEquals(
                 Outcome.Err(VaultError.Crypto.MalformedContainer),
                 KeyStoreCodec.decode(KeyStoreCodec.encode(KeyStoreBlob(v.format_version, listOf(mismatched, rec)))),
