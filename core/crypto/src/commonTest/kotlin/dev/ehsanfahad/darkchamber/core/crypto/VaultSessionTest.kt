@@ -16,8 +16,11 @@ class VaultSessionTest {
     // A fresh passphrase array each call — createVault/unlock consume (zeroize) the ones they take.
     private fun pw() = "correct horse battery staple".encodeToByteArray()
 
-    // Fast KDF for tests; the 600k production default is asserted separately (TASK-009).
-    private fun newVault() = VaultSession.createVault(engine, kdf, pw(), pbkdf2Iterations = 1000)
+    // Cheap Argon2id for tests (m=256 KiB, t=1, p=1); the production m=64 MiB/t=3/p=2 default is
+    // asserted separately (DefaultKdfConfigTest). Argon2id is the default, so this mirrors production.
+    private val cheapKdf = PassphraseKdfProfile.Argon2id(memoryKib = 256, iterations = 1, parallelism = 1)
+
+    private fun newVault() = VaultSession.createVault(engine, kdf, pw(), cheapKdf)
 
     @Test
     fun create_then_unlock_via_passphrase_recovers_a_working_session() {
@@ -82,7 +85,7 @@ class VaultSessionTest {
         val created = newVault()
         val wrapped = created.session.generateDek() // wrapped under MK, before the passphrase change
 
-        val newBlob = created.session.changePassphrase(created.keyStore, pw(), "new secret".encodeToByteArray(), pbkdf2Iterations = 1000).getOrNull()!!
+        val newBlob = created.session.changePassphrase(created.keyStore, pw(), "new secret".encodeToByteArray(), cheapKdf).getOrNull()!!
 
         // New passphrase unlocks and the pre-change DEK still opens → MK unchanged.
         val session2 = VaultSession.unlock(engine, kdf, newBlob, "new secret".encodeToByteArray(), Slot.PASSPHRASE).getOrNull()!!
@@ -109,8 +112,30 @@ class VaultSessionTest {
     @Test
     fun create_vault_zeroizes_the_passphrase_argument() {
         val passphrase = pw()
-        VaultSession.createVault(engine, kdf, passphrase, pbkdf2Iterations = 1000)
+        VaultSession.createVault(engine, kdf, passphrase, cheapKdf)
         assertTrue(passphrase.all { it == 0.toByte() }, "createVault must zeroize the passphrase it consumes")
+    }
+
+    @Test
+    fun a_default_created_vault_wraps_the_passphrase_with_argon2id() {
+        // The default profile is Argon2id — a new vault's passphrase slot must name it (the cheap
+        // profile here is still Argon2id, so this holds without paying the production cost).
+        val created = newVault()
+        val params = created.keyStore.wraps.first { it.slot == Slot.PASSPHRASE }.kdfParams
+        assertTrue(params is KdfParams.Argon2id, "default passphrase wrap must be Argon2id, was ${params.kdfId}")
+        created.session.close()
+    }
+
+    @Test
+    fun a_pbkdf2_vault_still_creates_and_unlocks() {
+        // PBKDF2 remains a supported fallback profile — old/opt-in vaults must round-trip.
+        val created = VaultSession.createVault(engine, kdf, pw(), PassphraseKdfProfile.Pbkdf2(1000))
+        val pwParams = created.keyStore.wraps.first { it.slot == Slot.PASSPHRASE }.kdfParams
+        assertTrue(pwParams is KdfParams.Pbkdf2)
+        val session = VaultSession.unlock(engine, kdf, created.keyStore, pw(), Slot.PASSPHRASE).getOrNull()
+        assertTrue(session != null)
+        val wrapped = session.generateDek()
+        assertEquals(DchmFormat.DEK_SIZE, session.useDek(wrapped) { it.size }.getOrNull())
     }
 
     @Test
@@ -126,7 +151,7 @@ class VaultSessionTest {
         val created = newVault()
         val old = pw()
         val fresh = "new secret".encodeToByteArray()
-        created.session.changePassphrase(created.keyStore, old, fresh, pbkdf2Iterations = 1000)
+        created.session.changePassphrase(created.keyStore, old, fresh, cheapKdf)
         assertTrue(old.all { it == 0.toByte() }, "old passphrase must be zeroized")
         assertTrue(fresh.all { it == 0.toByte() }, "new passphrase must be zeroized")
     }

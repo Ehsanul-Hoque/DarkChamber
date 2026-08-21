@@ -88,7 +88,7 @@ class VaultSession private constructor(
         keyStore: KeyStoreBlob,
         oldPassphrase: ByteArray,
         newPassphrase: ByteArray,
-        pbkdf2Iterations: Int = PBKDF2_DEFAULT_ITERS,
+        passphraseKdf: PassphraseKdfProfile = PassphraseKdfProfile.Argon2idDefault,
     ): Outcome<KeyStoreBlob> {
         check(!closed) { "vault session is closed" }
         try {
@@ -99,7 +99,7 @@ class VaultSession private constructor(
                 is Outcome.Ok -> opened.value
             }
             return try {
-                val params = KdfParams.Pbkdf2(engine.randomBytes(KDF_SALT_SIZE), pbkdf2Iterations)
+                val params = passphraseKdf.paramsWithSalt(engine.randomBytes(KDF_SALT_SIZE))
                 val newWrap = MasterKeyWrap.wrap(engine, kdf, mkFromOld, newPassphrase, Slot.PASSPHRASE, params, engine.randomBytes(WRAP_NONCE_SIZE))
                 Outcome.Ok(KeyStoreBlob(keyStore.formatVersion, keyStore.wraps.map { if (it.slot == Slot.PASSPHRASE) newWrap else it }))
             } finally {
@@ -148,12 +148,12 @@ class VaultSession private constructor(
             engine: CryptoEngine,
             kdf: KeyDerivation,
             passphrase: ByteArray,
-            pbkdf2Iterations: Int = PBKDF2_DEFAULT_ITERS,
+            passphraseKdf: PassphraseKdfProfile = PassphraseKdfProfile.Argon2idDefault,
         ): CreatedVault {
             val mk = engine.randomBytes(MK_SIZE)
             val (recoveryRaw, recoveryDisplay) = RecoveryKey.generate(engine)
             try {
-                val pwParams = KdfParams.Pbkdf2(engine.randomBytes(KDF_SALT_SIZE), pbkdf2Iterations)
+                val pwParams = passphraseKdf.paramsWithSalt(engine.randomBytes(KDF_SALT_SIZE))
                 val pwWrap = MasterKeyWrap.wrap(engine, kdf, mk, passphrase, Slot.PASSPHRASE, pwParams, engine.randomBytes(WRAP_NONCE_SIZE))
                 val recParams = KdfParams.Hkdf(engine.randomBytes(KDF_SALT_SIZE), RECOVERY_HKDF_INFO.encodeToByteArray())
                 val recWrap = MasterKeyWrap.wrap(engine, kdf, mk, recoveryRaw, Slot.RECOVERY, recParams, engine.randomBytes(WRAP_NONCE_SIZE))
