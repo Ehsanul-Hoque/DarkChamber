@@ -99,12 +99,13 @@ class KeyStoreVectorTest {
                 "${v.name}: wrong passphrase",
             )
 
-            // A reserved KDF id → update the app (no re-encryption: reuse the committed wrap bytes).
-            val argon = WrapEntry(pw.slot, KdfId.ARGON2ID, pw.kdfParams, pw.nonce, pw.wrappedMk)
+            // A kdfId that disagrees with its params → malformed (relabel the PBKDF2 wrap as
+            // ARGON2ID without changing its Pbkdf2 params; reuse the committed wrap bytes).
+            val mismatched = WrapEntry(pw.slot, KdfId.ARGON2ID, pw.kdfParams, pw.nonce, pw.wrappedMk)
             assertEquals(
-                Outcome.Err(VaultError.Crypto.UnsupportedFormatVersion),
-                KeyStoreCodec.decode(KeyStoreCodec.encode(KeyStoreBlob(v.format_version, listOf(argon, rec)))),
-                "${v.name}: reserved kdf id",
+                Outcome.Err(VaultError.Crypto.MalformedContainer),
+                KeyStoreCodec.decode(KeyStoreCodec.encode(KeyStoreBlob(v.format_version, listOf(mismatched, rec)))),
+                "${v.name}: kdfId/params mismatch",
             )
 
             // A format version above supported → update the app.

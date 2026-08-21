@@ -23,6 +23,14 @@ class KeyStoreCodecTest {
         wrappedMk = ByteArray(48) { (it + 7).toByte() },
     )
 
+    private fun argon2idWrap() = WrapEntry(
+        slot = Slot.PASSPHRASE,
+        kdfId = KdfId.ARGON2ID,
+        kdfParams = KdfParams.Argon2id(ByteArray(16) { (it + 3).toByte() }, memoryKib = 65536, iterations = 3, parallelism = 2),
+        nonce = ByteArray(12) { (it + 4).toByte() },
+        wrappedMk = ByteArray(48) { (it + 6).toByte() },
+    )
+
     @Test
     fun encode_then_decode_round_trips_a_multi_slot_blob() {
         val blob = KeyStoreBlob(KEYSTORE_VERSION, listOf(pbkdf2Wrap(), recoveryWrap()))
@@ -43,12 +51,32 @@ class KeyStoreCodecTest {
     }
 
     @Test
-    fun a_reserved_kdf_id_is_update_the_app() {
-        // ARGON2ID is a known-but-not-yet-supported id (cycle 2c). A blob naming it must say
-        // "update the app", not "tampering" — and this is detectable without an Argon2id params type.
-        val wrap = WrapEntry(Slot.PASSPHRASE, KdfId.ARGON2ID, KdfParams.Pbkdf2(ByteArray(16), 1000), ByteArray(12), ByteArray(48))
-        val blob = KeyStoreBlob(KEYSTORE_VERSION, listOf(wrap))
-        assertEquals(Outcome.Err(VaultError.Crypto.UnsupportedFormatVersion), KeyStoreCodec.decode(KeyStoreCodec.encode(blob)))
+    fun an_argon2id_wrap_round_trips() {
+        // Argon2id is a supported KDF as of cycle 2c: a wrap naming it must decode, not report
+        // "update the app" (its previous reserved-id behaviour).
+        val blob = KeyStoreBlob(KEYSTORE_VERSION, listOf(argon2idWrap(), recoveryWrap()))
+        val decoded = KeyStoreCodec.decode(KeyStoreCodec.encode(blob)).getOrNull()
+        assertEquals(blob, decoded)
+    }
+
+    @Test
+    fun non_positive_argon2id_params_are_malformed_not_a_crash() {
+        // Mirror the PBKDF2 iterations<=0 guard: a crafted blob with any non-positive m/t/p would
+        // otherwise reach the engine's require(... > 0) at unlock and throw uncaught. Reject up front.
+        val bad = listOf(
+            KdfParams.Argon2id(ByteArray(16), memoryKib = 0, iterations = 3, parallelism = 2),
+            KdfParams.Argon2id(ByteArray(16), memoryKib = 65536, iterations = 0, parallelism = 2),
+            KdfParams.Argon2id(ByteArray(16), memoryKib = 65536, iterations = 3, parallelism = 0),
+        )
+        for (params in bad) {
+            val wrap = WrapEntry(Slot.PASSPHRASE, KdfId.ARGON2ID, params, ByteArray(12), ByteArray(48))
+            val blob = KeyStoreBlob(KEYSTORE_VERSION, listOf(wrap))
+            assertEquals(
+                Outcome.Err(VaultError.Crypto.MalformedContainer),
+                KeyStoreCodec.decode(KeyStoreCodec.encode(blob)),
+                "m=${params.memoryKib} t=${params.iterations} p=${params.parallelism} must be rejected as malformed",
+            )
+        }
     }
 
     @Test

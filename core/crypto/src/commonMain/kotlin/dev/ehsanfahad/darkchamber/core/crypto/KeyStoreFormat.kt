@@ -12,8 +12,8 @@ const val MK_SIZE = 32
 /** GCM nonce length for every MK wrap. */
 const val WRAP_NONCE_SIZE = 12
 
-/** KDFs this version can actually derive a wrap key with. `ARGON2ID` is reserved → not yet here. */
-val SUPPORTED_KDFS = setOf(KdfId.PBKDF2_SHA256, KdfId.HKDF_SHA256)
+/** KDFs this version can actually derive a wrap key with (Argon2id landed in cycle 2c). */
+val SUPPORTED_KDFS = setOf(KdfId.PBKDF2_SHA256, KdfId.HKDF_SHA256, KdfId.ARGON2ID)
 
 /**
  * CBOR (de)serialization of the [KeyStoreBlob] with the FORMAT.md §3.1 / §6 reject taxonomy. Reuses
@@ -50,6 +50,11 @@ object KeyStoreCodec {
             // surface as MalformedContainer here — never crash the unlock path (D10 / §6).
             val params = wrap.kdfParams
             if (params is KdfParams.Pbkdf2 && params.iterations <= 0) {
+                return Outcome.Err(VaultError.Crypto.MalformedContainer)
+            }
+            if (params is KdfParams.Argon2id &&
+                (params.memoryKib <= 0 || params.iterations <= 0 || params.parallelism <= 0)
+            ) {
                 return Outcome.Err(VaultError.Crypto.MalformedContainer)
             }
         }
