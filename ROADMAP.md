@@ -53,7 +53,7 @@ F-Droid builds include everything including sync (honor system, like Conversatio
 
 Goal: a walking skeleton with the security core proven before any product UI.
 
-> **Progress (2026-08):** module scaffold ✅ · the `.dchm` container codec (chunked AES-256-GCM behind `CryptoEngine`) with committed format vectors ✅ · the portable envelope key hierarchy — MasterKey/DEK wrapping, the CBOR `KeyStore` (PBKDF2 passphrase + HKDF recovery slots, `ARGON2ID` reserved), Crockford-base32 recovery key, in-memory `VaultSession` — with committed KeyStore vectors ✅. Next: the platform `SecureKeyStore` (hardware-backed, biometric-gated) + the Argon2id KDF binding, then storage and DB.
+> **Progress (2026-08):** module scaffold ✅ · the `.dchm` container codec (chunked AES-256-GCM behind `CryptoEngine`) with committed format vectors ✅ · the envelope key hierarchy — MasterKey/DEK wrapping, the CBOR `KeyStore` (**Argon2id** passphrase slot — BouncyCastle on Android, vendored phc-winner-argon2 cinterop on iOS — with PBKDF2 a supported fallback + HKDF recovery slot), Crockford-base32 recovery key, in-memory `VaultSession` — with committed KeyStore vectors for both KDFs ✅. Next: the platform `SecureKeyStore` (hardware-backed, biometric-gated) + the iOS umbrella framework, then storage and DB.
 
 - KMP project scaffold: `core-crypto`, `core-storage`, `core-db`, `app` (Compose Multiplatform), CI on GitHub Actions (Android + iOS builds, unit tests).
 - **Crypto core v1:** AES-256-GCM chunked streaming encryption/decryption (the `.dchm` container format — see docs/FORMAT.md), envelope key hierarchy, Argon2id KDF.
