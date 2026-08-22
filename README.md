@@ -6,14 +6,14 @@ A Kotlin Multiplatform app for **Android** and **iOS** that encrypts, stores, an
 
 **Free and open source (GPLv3). Local-first. No ads, no trackers, no accounts — and v1 ships with no `INTERNET` permission, so you can verify in the manifest that your files cannot leave your device.**
 
-> ⚠️ **Status: pre-release.** The multi-module KMP skeleton is in place — `:build-logic` convention plugins and both the Android and iOS hosts build. The encrypted **`.dchm` container format** is implemented in `:core:crypto` (chunked AES-256-GCM behind a swappable `CryptoEngine`), and so is the portable **key hierarchy** — MasterKey/per-object DEK wrapping, a CBOR `KeyStore` (**Argon2id** passphrase slot with PBKDF2 as a supported fallback + HKDF recovery slot), a Crockford-base32 recovery key, and an in-memory `VaultSession` — both checked against committed [format & KeyStore test vectors](./docs/format-test-vectors); the remaining `:core:*` modules are still stubs. But there is no **hardware-backed** key storage, biometric unlock, or vault UI yet — the documents under [`docs/`](./docs) describe the target design, and **nothing here is ready to protect real files.**
+> ⚠️ **Status: pre-release.** The multi-module KMP skeleton is in place — `:build-logic` convention plugins and both the Android and iOS hosts build. The encrypted **`.dchm` container format** is implemented in `:core:crypto` (chunked AES-256-GCM behind a swappable `CryptoEngine`), and so is the portable **key hierarchy** — MasterKey/per-object DEK wrapping, a CBOR `KeyStore` (**Argon2id** passphrase slot with PBKDF2 as a supported fallback + HKDF recovery slot), a Crockford-base32 recovery key, and an in-memory `VaultSession` — both checked against committed [format & KeyStore test vectors](./docs/format-test-vectors); the **hardware-backed** key slot is built too (Android Keystore/StrongBox, iOS Keychain behind a `SecureKeyStore` seam, gated on the device being unlocked), and the remaining `:core:*` modules are still stubs. But there is no **per-use biometric unlock** or vault UI yet — the documents under [`docs/`](./docs) describe the target design, and **nothing here is ready to protect real files.**
 
 ---
 
 ## ✨ What it does (v1)
 
 - **Private camera** — photos & video captured straight into encrypted, app-private storage. Plaintext never touches disk outside the sandbox; Google Photos has nothing to back up.
-- **Encrypted vault** — import any file (images, videos, audio, PDFs, documents); everything is encrypted with AES-256-GCM under hardware-backed keys (Android Keystore/StrongBox, iOS Secure Enclave).
+- **Encrypted vault** — import any file (images, videos, audio, PDFs, documents); everything is encrypted with AES-256-GCM under hardware-backed keys (Android Keystore/StrongBox, iOS Keychain).
 - **View without exposing** — in-app viewers decrypt to memory: images, streaming video/audio with seeking, PDFs. Anything else opens via an explicit, warned "decrypt & open in…" flow.
 - **Encrypted notes** — Markdown notes stored as first-class vault items.
 - **Metadata scrubber** — inspect and strip EXIF/GPS/XMP from files before sharing, with a before/after diff. Works standalone, without importing.
@@ -39,7 +39,7 @@ DarkChamber's premise is that a privacy app should be **checkable**, not just be
 
 **Local-first, app-private only.** Vault content lives in encrypted `.dchm` containers inside app-private storage — never in shared MediaStore. Plaintext exists only in memory (or briefly in private `tmp/`, wiped on lock).
 
-**Envelope encryption.** A random 256-bit master key is wrapped by (a) a hardware-keystore key gated on biometric/PIN, (b) an Argon2id-derived key from your passphrase, and (c) your recovery key. The master key wraps per-file keys; files are chunked AES-256-GCM — enabling streaming, video seeking, resumable backup, and instant crypto-shredding. Full spec: [`docs/FORMAT.md`](./docs/FORMAT.md).
+**Envelope encryption.** A random 256-bit master key is wrapped by (a) a hardware-keystore key gated on the device being unlocked (a per-use biometric prompt lands with the UI), (b) an Argon2id-derived key from your passphrase, and (c) your recovery key. The master key wraps per-file keys; files are chunked AES-256-GCM — enabling streaming, video seeking, resumable backup, and instant crypto-shredding. Full spec: [`docs/FORMAT.md`](./docs/FORMAT.md).
 
 ### Tech stack
 
@@ -47,7 +47,7 @@ DarkChamber's premise is that a privacy app should be **checkable**, not just be
 |-------------------|---------------------------------------------------------------------------|
 | Shared logic & UI | Kotlin Multiplatform + Compose Multiplatform                              |
 | Cryptography      | `cryptography-kotlin` (AES-256-GCM) + Argon2id, behind our `CryptoEngine` |
-| Key storage       | Android Keystore/StrongBox · iOS Secure Enclave/Keychain                  |
+| Key storage       | Android Keystore/StrongBox · iOS Keychain (device-unlocked)               |
 | Local database    | SQLDelight (sensitive fields app-layer encrypted)                         |
 | Camera            | CameraX · AVFoundation                                                    |
 | Media playback    | Media3/ExoPlayer · AVPlayer (custom decrypting sources)                   |

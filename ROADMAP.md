@@ -53,11 +53,11 @@ F-Droid builds include everything including sync (honor system, like Conversatio
 
 Goal: a walking skeleton with the security core proven before any product UI.
 
-> **Progress (2026-08):** module scaffold ✅ · the `.dchm` container codec (chunked AES-256-GCM behind `CryptoEngine`) with committed format vectors ✅ · the envelope key hierarchy — MasterKey/DEK wrapping, the CBOR `KeyStore` (**Argon2id** passphrase slot — BouncyCastle on Android, vendored phc-winner-argon2 cinterop on iOS — with PBKDF2 a supported fallback + HKDF recovery slot), Crockford-base32 recovery key, in-memory `VaultSession` — with committed KeyStore vectors for both KDFs ✅. Next: the platform `SecureKeyStore` (hardware-backed, biometric-gated) + the iOS umbrella framework, then storage and DB.
+> **Progress (2026-08):** module scaffold ✅ · the `.dchm` container codec (chunked AES-256-GCM behind `CryptoEngine`) with committed format vectors ✅ · the envelope key hierarchy — MasterKey/DEK wrapping, the CBOR `KeyStore` (**Argon2id** passphrase slot — BouncyCastle on Android, vendored phc-winner-argon2 cinterop on iOS — with PBKDF2 a supported fallback + HKDF recovery slot), Crockford-base32 recovery key, in-memory `VaultSession` — with committed KeyStore vectors for both KDFs ✅ · the platform `SecureKeyStore` HARDWARE slot — an opaque MK wrap behind an injected seam (`AndroidSecureKeyStore` Keystore/StrongBox, `IosSecureKeyStore` Keychain), gated on device-unlocked, host-tested with a fake + an on-device checklist ✅. Next: the per-use biometric prompt + the iOS umbrella framework (both with the first UI cycle), then storage and DB.
 
 - KMP project scaffold: `core-crypto`, `core-storage`, `core-db`, `app` (Compose Multiplatform), CI on GitHub Actions (Android + iOS builds, unit tests).
 - **Crypto core v1:** AES-256-GCM chunked streaming encryption/decryption (the `.dchm` container format — see docs/FORMAT.md), envelope key hierarchy, Argon2id KDF.
-- Platform keystores wired via expect/actual: Android Keystore (StrongBox where available), iOS Keychain + Secure Enclave.
+- Platform keystores wired behind the injected `SecureKeyStore` seam: Android Keystore (StrongBox where available), iOS Keychain — device-unlocked now, per-use biometric with the UI cycle.
 - Vault metadata DB (SQLDelight) with encrypted fields; encrypted thumbnail store.
 - Test vectors + property tests for the container format; round-trip fuzzing.
 
