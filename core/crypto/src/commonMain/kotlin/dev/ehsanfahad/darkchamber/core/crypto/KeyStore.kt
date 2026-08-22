@@ -13,7 +13,12 @@ enum class Slot {
     /** The 256-bit recovery key — the only path on a fresh device (backup restore). */
     RECOVERY,
 
-    /** A hardware-keystore-held key (device-local, never in backups). Reserved for cycle 2c. */
+    /**
+     * A hardware-keystore-held key (device-local, never in backups). Built in cycle 2d: it is
+     * carried in [KeyStoreBlob.hardwareWrap] as an opaque [HardwareWrapEntry], **not** as a
+     * [WrapEntry] — a TEE key has no `kdfId`/`kdfParams`. This value labels that slot conceptually;
+     * it does not appear as a `WrapEntry.slot` in practice.
+     */
     HARDWARE,
 }
 
@@ -52,17 +57,50 @@ class WrapEntry(
 }
 
 /**
+ * The HARDWARE-slot MK wrap (FORMAT.md §3.1): an **opaque, platform-produced** [blob] — the
+ * MasterKey wrapped by a hardware-held key that never leaves the device's secure hardware (Android
+ * Keystore/StrongBox `iv ‖ ciphertext`, iOS Keychain payload), produced/consumed by [SecureKeyStore].
+ * Unlike a [WrapEntry] it carries no `kdfId`/`kdfParams` — the platform owns its internal structure.
+ * The slot is implicitly [Slot.HARDWARE]; a blob holds at most one. It is device-local and is never
+ * written to a backup manifest.
+ */
+@Serializable
+class HardwareWrapEntry(val blob: ByteArray) {
+    override fun equals(other: Any?): Boolean =
+        this === other || (other is HardwareWrapEntry && blob.contentEquals(other.blob))
+
+    override fun hashCode(): Int = blob.contentHashCode()
+}
+
+/**
  * The KeyStore blob (FORMAT.md §3.1): the bootstrap root of the vault, holding every wrap of the
  * MasterKey. Serialized as CBOR ([KeyStoreCodec]); persisted verbatim to `keys/mk.wrapped` by the
  * storage layer. Never a `.dchm`-under-MK — you need this to *obtain* MK.
+ *
+ * [hardwareWrap] is the optional HARDWARE slot (cycle 2d). It is **absent by default**: because the
+ * CBOR config does not encode defaults, a null [hardwareWrap] emits zero bytes, so a vault with no
+ * hardware slot serializes byte-for-byte as before (existing passphrase/recovery blobs are unchanged
+ * and still open — "old vaults always open").
  */
 @Serializable
 class KeyStoreBlob(
     val formatVersion: Int,
     val wraps: List<WrapEntry>,
+    val hardwareWrap: HardwareWrapEntry? = null,
 ) {
     override fun equals(other: Any?): Boolean =
-        this === other || (other is KeyStoreBlob && formatVersion == other.formatVersion && wraps == other.wraps)
+        this === other ||
+            (
+                other is KeyStoreBlob &&
+                    formatVersion == other.formatVersion &&
+                    wraps == other.wraps &&
+                    hardwareWrap == other.hardwareWrap
+            )
 
-    override fun hashCode(): Int = 31 * formatVersion + wraps.hashCode()
+    override fun hashCode(): Int {
+        var result = formatVersion
+        result = 31 * result + wraps.hashCode()
+        result = 31 * result + (hardwareWrap?.hashCode() ?: 0)
+        return result
+    }
 }

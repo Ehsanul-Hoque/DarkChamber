@@ -61,6 +61,12 @@ object KeyStoreCodec {
                 return Outcome.Err(VaultError.Crypto.MalformedContainer)
             }
         }
+
+        // The optional HARDWARE slot: an opaque platform blob with no kdf checks — only the
+        // structural rule that, when present, its blob must be non-empty (FORMAT.md §3.1).
+        blob.hardwareWrap?.let {
+            if (it.blob.isEmpty()) return Outcome.Err(VaultError.Crypto.MalformedContainer)
+        }
         return Outcome.Ok(blob)
     }
 }

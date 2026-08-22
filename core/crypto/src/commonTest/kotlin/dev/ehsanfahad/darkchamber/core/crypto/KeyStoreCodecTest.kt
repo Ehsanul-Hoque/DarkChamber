@@ -5,6 +5,7 @@ import dev.ehsanfahad.darkchamber.core.model.VaultError
 import dev.ehsanfahad.darkchamber.core.model.getOrNull
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 class KeyStoreCodecTest {
     private fun pbkdf2Wrap() = WrapEntry(
@@ -36,6 +37,35 @@ class KeyStoreCodecTest {
         val blob = KeyStoreBlob(KEYSTORE_VERSION, listOf(pbkdf2Wrap(), recoveryWrap()))
         val decoded = KeyStoreCodec.decode(KeyStoreCodec.encode(blob)).getOrNull()
         assertEquals(blob, decoded)
+    }
+
+    @Test
+    fun a_blob_with_no_hardware_slot_decodes_with_a_null_hardware_wrap() {
+        val decoded = KeyStoreCodec.decode(KeyStoreCodec.encode(KeyStoreBlob(KEYSTORE_VERSION, listOf(pbkdf2Wrap())))).getOrNull()
+        assertNull(decoded?.hardwareWrap)
+    }
+
+    @Test
+    fun a_hardware_wrap_round_trips_alongside_the_kdf_wraps() {
+        val hw = HardwareWrapEntry(ByteArray(60) { (it + 11).toByte() })
+        val blob = KeyStoreBlob(KEYSTORE_VERSION, listOf(argon2idWrap(), recoveryWrap()), hardwareWrap = hw)
+        val decoded = KeyStoreCodec.decode(KeyStoreCodec.encode(blob)).getOrNull()
+        assertEquals(blob, decoded)
+    }
+
+    @Test
+    fun a_present_but_empty_hardware_blob_is_malformed() {
+        val blob = KeyStoreBlob(KEYSTORE_VERSION, listOf(pbkdf2Wrap()), hardwareWrap = HardwareWrapEntry(ByteArray(0)))
+        assertEquals(Outcome.Err(VaultError.Crypto.MalformedContainer), KeyStoreCodec.decode(KeyStoreCodec.encode(blob)))
+    }
+
+    @Test
+    fun a_hardware_only_blob_with_no_kdf_wraps_is_malformed() {
+        // A vault must always carry a passphrase/recovery path — a hardware-only blob would lock the
+        // user out on a fresh device / after panic-wipe. The existing empty-wraps rule still applies
+        // even when a hardware slot is present.
+        val blob = KeyStoreBlob(KEYSTORE_VERSION, emptyList(), hardwareWrap = HardwareWrapEntry(ByteArray(60) { it.toByte() }))
+        assertEquals(Outcome.Err(VaultError.Crypto.MalformedContainer), KeyStoreCodec.decode(KeyStoreCodec.encode(blob)))
     }
 
     @Test
