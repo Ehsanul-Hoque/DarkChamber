@@ -12,8 +12,8 @@ DarkChamber never encrypts your files directly with your passphrase. It uses a s
 that changing your password — or losing your phone — doesn't mean re-encrypting gigabytes.
 
 ```
-        your passphrase ──Argon2id(salt)──▶ pass-key ─┐
-        hardware keystore (biometric/PIN) ─────────────┤ each independently WRAPS (encrypts)
+        your passphrase ──Argon2id(salt)──▶ pass-key ──┐
+        hardware keystore (device-unlocked) ───────────┤ each independently WRAPS (encrypts)
         recovery key ──────────────────────────────────┘        the one MasterKey (MK)
                                                                         │
                                             MasterKey (MK, 256-bit random)
@@ -25,8 +25,8 @@ that changing your password — or losing your phone — doesn't mean re-encrypt
 
 - **MasterKey (MK)** — one random 256-bit key per vault (page 1: random = unguessable). It's never
   stored in the clear; it's only ever kept **wrapped** (encrypted) three independent ways:
-  - by a key in the **platform keystore**, gated on biometric/PIN (Android Keystore/StrongBox, iOS
-    Secure Enclave/Keychain);
+  - by a key in the **platform keystore**, gated on the device being unlocked (Android
+    Keystore/StrongBox, iOS Keychain; a per-use biometric prompt arrives with the UI cycle);
   - by a key **derived from your passphrase** with **Argon2id** (page 5);
   - by your **recovery key** (a random code you save — the only way back in on a brand-new device).
 - **DEK (Data-Encryption Key)** — a *separate* random key for *each* object. MK encrypts (wraps) every
@@ -77,10 +77,14 @@ This knowledgebase describes the whole design, but the code is being built in st
   [format test vectors](../format-test-vectors); **and** the **key hierarchy** — MasterKey, per-object
   DEK wrapping, the KeyStore wrap format, **Argon2id** passphrase wraps (the default; PBKDF2 still
   supported for older wraps), HKDF recovery wraps, the recovery-key encoding, and an in-memory session
-  holding MK — with committed [KeyStore vectors](../format-test-vectors/keystore). That's the whole
-  diagram *except* the hardware slot. (See the next page for how the hierarchy works.)
-- **Coming next** — the **platform keystore** integration (biometric/PIN-gated hardware wrap). Until it
-  lands there's no biometric unlock, and the app isn't yet wired end-to-end to protect real files.
+  holding MK — with committed [KeyStore vectors](../format-test-vectors/keystore); **and** the
+  **hardware slot** — an Android Keystore/StrongBox key and an iOS Keychain item that wrap MK behind
+  the `SecureKeyStore` seam, gated on the device being unlocked. That's now the **whole diagram**.
+  (See the next page for how the hierarchy works.)
+- **Coming next** — the **per-use biometric prompt** (this cycle creates the device-unlocked hardware
+  key; presenting a biometric prompt needs an app/UI host) and wiring the app end-to-end to protect
+  real files. The platform hardware code is host-tested with a fake and verified by an
+  [on-device checklist](../verification/secure-keystore-manual.md).
 
 For the exact, normative details — byte layouts, the cipher registry, KDF parameters, versioning —
 read [`FORMAT.md`](../FORMAT.md), and for what DarkChamber does and does **not** defend against, read
@@ -94,8 +98,9 @@ read [`FORMAT.md`](../FORMAT.md), and for what DarkChamber does and does **not**
 >   a matter of destroying the MK wraps.
 > - Each object is a **chunked AES-256-GCM `.dchm`** container using the exact nonce/AAD/hash ideas
 >   from pages 2–4.
-> - Today the **container codec and the key hierarchy exist, with Argon2id the default passphrase
->   KDF**; the **hardware keystore is the next cycle**.
+> - Today the **container codec and the full key hierarchy exist**, with Argon2id the default
+>   passphrase KDF and the **hardware keystore slot built** (device-unlocked; a per-use biometric
+>   prompt comes with the UI cycle). It protects our own MK wrap — it is **not** an app-lock (ADR-002).
 
 Next → [The key hierarchy & envelope encryption, in detail](./07-key-hierarchy-and-envelope-encryption.md)
 

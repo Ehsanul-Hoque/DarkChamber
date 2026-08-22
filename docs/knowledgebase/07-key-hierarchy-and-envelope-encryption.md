@@ -42,12 +42,20 @@ more than one route in. Each route is a **slot**; all of them wrap *the same MK*
 KeyStore (the keys/mk.wrapped file)
  ├─ PASSPHRASE slot : wrapKey = KDF(your passphrase, salt)      → wrapped MK
  ├─ RECOVERY   slot : wrapKey = HKDF(your recovery key)         → wrapped MK
- └─ HARDWARE   slot : wrapKey = a platform-keystore key         → wrapped MK   (a later cycle)
+ └─ HARDWARE   slot : opaque wrap by a platform-keystore key    → wrapped MK   (device-local)
 ```
 
-Each slot stores: which KDF it used (`kdf_id`), that KDF's parameters (salt, iteration count…), the
-GCM nonce, and the wrapped MK bytes. Unlocking = pick a slot, derive its wrap key from your secret,
-unwrap MK into memory. Locking = zeroize MK. **MK lives only in RAM, never on disk unwrapped.**
+The two **KDF slots** (passphrase, recovery) each store: which KDF they used (`kdf_id`), that KDF's
+parameters (salt, iteration count…), the GCM nonce, and the wrapped MK bytes. Unlocking = pick a
+slot, derive its wrap key from your secret, unwrap MK into memory. Locking = zeroize MK. **MK lives
+only in RAM, never on disk unwrapped.**
+
+The **HARDWARE slot is different**: there's no secret you type and no KDF. The platform's secure
+hardware (Android Keystore/StrongBox, iOS Keychain) holds a key that never leaves it and wraps MK
+for you — so the slot is stored as one **opaque platform blob**, not a `kdf_id` + parameters entry.
+It's **device-local** (never in a backup) and, this cycle, gated on the **device being unlocked**;
+a per-use biometric prompt is added later with the UI. It protects *our own MK wrap* — it is not an
+app-lock (see page 6 / ADR-002).
 
 Because every slot wraps the same MK independently, you can **change your passphrase** by re-deriving
 and re-wrapping *only the passphrase slot* — the MK, the DEKs, and every encrypted file are untouched.
@@ -88,12 +96,16 @@ bytes are what matters**; the text is just a human-transcribable skin over them.
 
 ## What exists today
 
-As of this cycle the **key layer is built, and Argon2id is the default passphrase KDF**:
-MasterKey/DEK generation, the KeyStore wrap format, **Argon2id** passphrase wraps (64 MiB / 3 / 2,
-with PBKDF2 still supported for older wraps), HKDF recovery wraps, the recovery-key encoding, and an
-in-memory session that holds MK and hands out DEKs (zeroizing them after use) — all with committed
-[KeyStore test vectors](../format-test-vectors/keystore) for both KDFs. Still to come (next cycle):
-the **hardware slot** (biometric/PIN-gated keystore).
+As of this cycle the **key layer is complete** — all three slots exist and Argon2id is the default
+passphrase KDF: MasterKey/DEK generation, the KeyStore wrap format, **Argon2id** passphrase wraps
+(64 MiB / 3 / 2, with PBKDF2 still supported for older wraps), HKDF recovery wraps, the recovery-key
+encoding, and an in-memory session that holds MK and hands out DEKs (zeroizing them after use) — all
+with committed [KeyStore test vectors](../format-test-vectors/keystore) for both KDFs. The
+**hardware slot is now built too**, behind the `SecureKeyStore` seam: an Android Keystore/StrongBox
+key and an iOS Keychain item wrap MK, **gated on the device being unlocked**. The integration is
+host-tested with a fake; the real platform code is verified by an
+[on-device checklist](../verification/secure-keystore-manual.md). Still to come with the first UI
+cycle: the **per-use biometric prompt** (this cycle only creates the device-unlocked key).
 
 > [!NOTE]
 > **Key takeaways**
