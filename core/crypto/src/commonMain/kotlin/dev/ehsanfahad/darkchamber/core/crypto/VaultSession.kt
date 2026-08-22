@@ -128,6 +128,29 @@ class VaultSession private constructor(
         }
     }
 
+    /**
+     * Wraps the current MK under [sks]'s hardware-held key and returns an updated KeyStore with the
+     * HARDWARE slot set (FORMAT.md §3.1). No object data is re-encrypted — this is one more wrap of
+     * the same MK. Requires `sks.isAvailable()`. Re-adding replaces any existing hardware wrap (the
+     * caller destroys the old platform key via [removeHardwareSlot] first when rotating).
+     */
+    fun addHardwareSlot(keyStore: KeyStoreBlob, sks: SecureKeyStore): KeyStoreBlob {
+        check(!closed) { "vault session is closed" }
+        check(sks.isAvailable()) { "no hardware keystore available on this device" }
+        return KeyStoreBlob(keyStore.formatVersion, keyStore.wraps, HardwareWrapEntry(sks.wrap(mk)))
+    }
+
+    /**
+     * Destroys the platform key via [sks] and returns a KeyStore with the HARDWARE slot dropped. The
+     * passphrase/recovery wraps are untouched — the vault still opens by those. Idempotent: safe to
+     * call when there is no hardware slot.
+     */
+    fun removeHardwareSlot(keyStore: KeyStoreBlob, sks: SecureKeyStore): KeyStoreBlob {
+        check(!closed) { "vault session is closed" }
+        sks.deleteHardwareKey()
+        return KeyStoreBlob(keyStore.formatVersion, keyStore.wraps, hardwareWrap = null)
+    }
+
     /** Zeroizes the MK. Idempotent; after this, every operation throws. */
     fun close() {
         if (!closed) {
@@ -186,6 +209,24 @@ class VaultSession private constructor(
                 }
             } finally {
                 secret.fill(0)
+            }
+        }
+
+        /**
+         * Unlocks a vault via its HARDWARE slot: recovers MK from [keyStore]'s `hardwareWrap` through
+         * [sks] (no user secret, no KDF — the platform key gates it). A KeyStore with no hardware slot
+         * → `MalformedContainer`; an invalidated/deleted key or tampered blob → `IntegrityFailure`
+         * (from [SecureKeyStore.unwrap]).
+         */
+        fun unlockWithHardware(
+            engine: CryptoEngine,
+            keyStore: KeyStoreBlob,
+            sks: SecureKeyStore,
+        ): Outcome<VaultSession> {
+            val hw = keyStore.hardwareWrap ?: return Outcome.Err(VaultError.Crypto.MalformedContainer)
+            return when (val opened = sks.unwrap(hw.blob)) {
+                is Outcome.Err -> opened
+                is Outcome.Ok -> Outcome.Ok(VaultSession(engine, DefaultKeyDerivation(engine), opened.value))
             }
         }
     }
