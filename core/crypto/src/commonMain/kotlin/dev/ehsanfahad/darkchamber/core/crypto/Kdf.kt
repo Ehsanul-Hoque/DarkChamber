@@ -30,6 +30,13 @@ const val ARGON2ID_DEFAULT_PARALLELISM = 2
 const val ARGON2ID_VERSION = 0x13
 
 /**
+ * Minimum Argon2id salt length (the Argon2 floor, `ARGON2_MIN_SALT_LENGTH` / RFC 9106). A shorter
+ * salt from a crafted/corrupt blob is rejected as `MalformedContainer` before it can reach a native
+ * precondition. DarkChamber's own wraps use [KDF_SALT_SIZE] (16).
+ */
+const val ARGON2ID_MIN_SALT_SIZE = 8
+
+/**
  * Registry of key-derivation functions a [WrapEntry] may name (FORMAT.md §3.1). The id is stored
  * beside each wrap and bound into its AAD, so it cannot be swapped for a weaker one without
  * breaking authentication.

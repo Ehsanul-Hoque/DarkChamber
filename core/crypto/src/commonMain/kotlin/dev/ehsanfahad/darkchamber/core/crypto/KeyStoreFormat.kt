@@ -53,7 +53,10 @@ object KeyStoreCodec {
                 return Outcome.Err(VaultError.Crypto.MalformedContainer)
             }
             if (params is KdfParams.Argon2id &&
-                (params.memoryKib <= 0 || params.iterations <= 0 || params.parallelism <= 0)
+                (
+                    params.memoryKib <= 0 || params.iterations <= 0 || params.parallelism <= 0 ||
+                        params.salt.size < ARGON2ID_MIN_SALT_SIZE
+                )
             ) {
                 return Outcome.Err(VaultError.Crypto.MalformedContainer)
             }

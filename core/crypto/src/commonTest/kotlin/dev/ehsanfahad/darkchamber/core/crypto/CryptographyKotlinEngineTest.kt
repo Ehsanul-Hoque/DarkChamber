@@ -135,6 +135,16 @@ class CryptographyKotlinEngineTest {
     }
 
     @Test
+    fun argon2id_rejects_a_short_salt_or_empty_password_as_misuse() {
+        // Keep the two actuals consistent: an empty ByteArray would crash the iOS cinterop and phc
+        // rejects a <8-byte salt — fail loudly here instead of forwarding to a native precondition.
+        val pw = "password".encodeToByteArray()
+        assertFailsWith<IllegalArgumentException> { engine.argon2id(pw, ByteArray(7), memoryKib = 8, iterations = 1, parallelism = 1, outLenBytes = 32) }
+        assertFailsWith<IllegalArgumentException> { engine.argon2id(pw, ByteArray(0), memoryKib = 8, iterations = 1, parallelism = 1, outLenBytes = 32) }
+        assertFailsWith<IllegalArgumentException> { engine.argon2id(ByteArray(0), "somesalt".encodeToByteArray(), memoryKib = 8, iterations = 1, parallelism = 1, outLenBytes = 32) }
+    }
+
+    @Test
     fun random_bytes_returns_the_requested_length_and_varies() {
         val a = engine.randomBytes(32)
         val b = engine.randomBytes(32)

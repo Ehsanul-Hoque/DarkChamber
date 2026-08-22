@@ -100,6 +100,11 @@ class CryptographyKotlinEngine(
         require(iterations > 0) { "Argon2id iterations must be positive, was $iterations" }
         require(parallelism > 0) { "Argon2id parallelism must be positive, was $parallelism" }
         require(outLenBytes > 0) { "Argon2id output length must be positive, was $outLenBytes" }
+        // Salt floor + non-empty password keep the two actuals consistent (BouncyCastle accepts a
+        // short salt / empty password; phc rejects them, and an empty ByteArray would crash the iOS
+        // cinterop's addressOf(0)). Fail loudly here rather than forwarding to a native precondition.
+        require(salt.size >= ARGON2ID_MIN_SALT_SIZE) { "Argon2id salt must be >= $ARGON2ID_MIN_SALT_SIZE bytes, was ${salt.size}" }
+        require(password.isNotEmpty()) { "Argon2id password must be non-empty" }
         return platformArgon2id(password, salt, memoryKib, iterations, parallelism, outLenBytes)
     }
 

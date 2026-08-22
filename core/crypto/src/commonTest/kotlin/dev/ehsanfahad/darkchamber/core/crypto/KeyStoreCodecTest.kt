@@ -80,6 +80,22 @@ class KeyStoreCodecTest {
     }
 
     @Test
+    fun a_too_short_argon2id_salt_is_malformed_not_a_crash() {
+        // A crafted blob with valid m/t/p but a 0–7-byte salt would otherwise reach the derive path
+        // and crash the iOS actual (empty array / phc ARGON2_SALT_TOO_SHORT). Reject at decode.
+        for (saltLen in intArrayOf(0, 7)) {
+            val params = KdfParams.Argon2id(ByteArray(saltLen), memoryKib = 65536, iterations = 3, parallelism = 2)
+            val wrap = WrapEntry(Slot.PASSPHRASE, KdfId.ARGON2ID, params, ByteArray(12), ByteArray(48))
+            val blob = KeyStoreBlob(KEYSTORE_VERSION, listOf(wrap))
+            assertEquals(
+                Outcome.Err(VaultError.Crypto.MalformedContainer),
+                KeyStoreCodec.decode(KeyStoreCodec.encode(blob)),
+                "salt length $saltLen must be rejected as malformed",
+            )
+        }
+    }
+
+    @Test
     fun a_kdf_id_that_disagrees_with_its_params_is_malformed() {
         val wrap = WrapEntry(Slot.PASSPHRASE, KdfId.PBKDF2_SHA256, KdfParams.Hkdf(ByteArray(16), ByteArray(4)), ByteArray(12), ByteArray(48))
         val blob = KeyStoreBlob(KEYSTORE_VERSION, listOf(wrap))

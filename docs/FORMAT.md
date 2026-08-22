@@ -134,7 +134,8 @@ WrapEntry {
   `memoryKib`, `iterations`, `parallelism`). `PBKDF2_SHA256` — the supported passphrase fallback
   (`salt`, `iterations`). `HKDF_SHA256` — the recovery slot (`salt`, `info`). A reader that encounters
   a `kdf_id` it does not support reports `UnsupportedFormatVersion`. Argon2id params, like PBKDF2's,
-  must be sane (`memoryKib`, `iterations`, `parallelism` all > 0) or the blob is a `MalformedContainer`.
+  must be sane (`memoryKib`, `iterations`, `parallelism` all > 0, and `salt` at least **8 bytes** —
+  the Argon2 floor / RFC 9106; DarkChamber's own wraps use 16) or the blob is a `MalformedContainer`.
 - **Wrap AAD binds the parameters.** Each wrap is sealed with
   `aad = canonical(slot ‖ kdf_id ‖ kdf_params)` (a deterministic byte encoding). An attacker who
   edits `kdf_id` or `kdf_params` (e.g. to force a weaker KDF or fewer iterations) breaks the GCM tag
