@@ -17,8 +17,8 @@ import dev.ehsanfahad.darkchamber.core.model.Outcome
  *
  * It is key **storage**, not content crypto: because a non-exportable TEE key cannot be handed to
  * [CryptoEngine] (which takes raw key bytes), the platform actuals are the sanctioned hard-rule-#2
- * carve-out that may import the platform crypto APIs (`java.security`/`javax.crypto`,
- * `platform.Security`) — confined to those two files.
+ * carve-out that may import the platform's own key-storage APIs (Android Keystore + JCE Cipher, iOS
+ * Keychain) — confined to those two actual files.
  *
  * In this cycle the platform key is gated on **device-unlocked**; per-use biometric prompting is
  * added with the UI cycle.
