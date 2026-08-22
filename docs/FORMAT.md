@@ -87,10 +87,12 @@ This section specifies enough of the key model to decrypt a vault or backup give
 ```
 MasterKey (MK): 256-bit random, generated at vault creation.
 
-Wraps of MK (each a WrapEntry in the KeyStore blob, §3.1):
+Wraps of MK:
+  # KDF wraps — each a WrapEntry in the KeyStore blob (§3.1):
   wrap_pw       = AES-256-GCM(key = KDF_pw(passphrase, params),  data = MK)   # slot PASSPHRASE
   wrap_recovery = AES-256-GCM(key = HKDF-SHA256(recovery_key),   data = MK)   # slot RECOVERY
-  wrap_hw       = platform-keystore wrap (device-local only; never in backups) # slot HARDWARE
+  # Hardware wrap — an OPAQUE platform blob, NOT a WrapEntry (§3.1):
+  wrap_hw       = SecureKeyStore.wrap(MK)   # slot HARDWARE; device-local only, never in backups
 
 Per-object: dek_wrapped = AES-256-GCM(key = MK, data = DEK), stored in the catalog
             (and in the backup manifest for cloud restore).
@@ -107,6 +109,16 @@ Per-object: dek_wrapped = AES-256-GCM(key = MK, data = DEK), stored in the catal
   Presented to the user as grouped **Crockford base32 with a checksum** (BIP39-style words may be
   added later as a presentation option; the raw 256 bits are the source of truth). `wrap_recovery`
   MUST be included in backup manifests — it is the only unlock path on a fresh device.
+- **Hardware slot (`wrap_hw`).** An **opaque, platform-produced blob** — the MK wrapped by a
+  hardware-held key that never leaves the device's secure hardware (Android Keystore/StrongBox, iOS
+  Keychain). It is **not** a KDF wrap: no `kdf_id`/`kdf_params` apply, and the platform owns the
+  blob's internal structure (Android `iv ‖ ciphertext`; iOS Keychain payload). It is stored in the
+  optional `hardware_wrap` field of the KeyStore blob (§3.1), **never** as a `WrapEntry`, is
+  **device-local** (never written to a backup manifest), and unlocks with **no user secret** — the
+  gate is the platform's. This cycle gates it on **device-unlocked**; per-use biometric prompting is
+  added with the UI cycle. Because `hardware_wrap` is optional and absent by default, a vault with no
+  hardware slot serializes exactly as before — existing passphrase/recovery blobs are byte-for-byte
+  unchanged and still open.
 - Cross-device restore requires: backup ciphertext + manifest + (passphrase or recovery key). Nothing else.
 
 ### 3.1 KeyStore blob (`keys/mk.wrapped`)
@@ -119,14 +131,18 @@ CBOR-serialized structure, held in memory as an opaque `ByteArray` and persisted
 ```
 KeyStore {
   format_version : u,                 # 1; readers reject a higher version (§6)
-  wraps          : [ WrapEntry ]      # ≥ 1; one per available unlock path
+  wraps          : [ WrapEntry ],     # ≥ 1 KDF wrap; one per passphrase/recovery unlock path
+  hardware_wrap  : HardwareWrapEntry? # OPTIONAL; absent by default (omitted, zero bytes)
 }
-WrapEntry {
-  slot        : enum { PASSPHRASE, RECOVERY, HARDWARE },
+WrapEntry {                           # KDF wraps only — HARDWARE is carried separately
+  slot        : enum { PASSPHRASE, RECOVERY },
   kdf_id      : enum { PBKDF2_SHA256, HKDF_SHA256, ARGON2ID },   # see registry below
   kdf_params  : { salt, … },          # PBKDF2: salt, iterations · HKDF: salt, info · Argon2id: salt, memoryKib, iterations, parallelism
   nonce       : bytes(12),            # fresh random per wrap; the AES-256-GCM nonce
   wrapped_mk  : bytes                 # GCM ciphertext ‖ 16-byte tag over MK (32 bytes plaintext)
+}
+HardwareWrapEntry {                   # slot is implicitly HARDWARE; there is at most one
+  blob        : bytes                 # OPAQUE platform output; MUST be non-empty. No kdf_id/kdf_params.
 }
 ```
 
@@ -136,6 +152,13 @@ WrapEntry {
   a `kdf_id` it does not support reports `UnsupportedFormatVersion`. Argon2id params, like PBKDF2's,
   must be sane (`memoryKib`, `iterations`, `parallelism` all > 0, and `salt` at least **8 bytes** —
   the Argon2 floor / RFC 9106; DarkChamber's own wraps use 16) or the blob is a `MalformedContainer`.
+- **Hardware wrap (`hardware_wrap`).** Optional and **absent by default**. When present, its `blob`
+  MUST be non-empty, else the blob is a **`MalformedContainer`**; **no** `kdf_id`/`kdf_params` checks
+  apply to it (it is opaque). It is produced/consumed only by the platform `SecureKeyStore`
+  (`wrap`/`unwrap`), carries no user secret, and is **device-local** — it is never included in a
+  backup manifest (§4). Adding the field does **not** change the bytes of a KeyStore blob that has no
+  hardware slot: the CBOR encoder omits an absent optional, so existing passphrase/recovery vaults
+  re-encode identically and decode with `hardware_wrap` absent (old vaults always open).
 - **Wrap AAD binds the parameters.** Each wrap is sealed with
   `aad = canonical(slot ‖ kdf_id ‖ kdf_params)` (a deterministic byte encoding). An attacker who
   edits `kdf_id` or `kdf_params` (e.g. to force a weaker KDF or fewer iterations) breaks the GCM tag
