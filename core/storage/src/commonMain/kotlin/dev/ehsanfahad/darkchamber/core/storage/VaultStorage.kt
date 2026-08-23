@@ -1,5 +1,8 @@
 package dev.ehsanfahad.darkchamber.core.storage
 
+import dev.ehsanfahad.darkchamber.core.model.Outcome
+import kotlinx.io.RawSink
+import kotlinx.io.RawSource
 import kotlinx.io.files.FileSystem
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
@@ -39,4 +42,26 @@ class VaultStorage(
         fs.createDirectories(Path(root, "keys"))
         fs.createDirectories(Path(root, "tmp"))
     }
+
+    // The encrypted object store: sharded objects/ab/cd/<hexId>.dchm (D7).
+    private val objects = BlobStore(fs, Path(root, "objects"), extension = ".dchm", shard = true)
+
+    /**
+     * Streams an encrypted object into `objects/ab/cd/<hexId>.dchm` atomically. The caller writes
+     * `.dchm` bytes into [block]'s sink (e.g. `codec.encryptContainer(..., sink = it)`); on success
+     * the temp file is `atomicMove`d onto the target, on any throw it is cleaned up and the prior
+     * object (if any) is left intact.
+     */
+    fun writeObject(fileId: ByteArray, block: (RawSink) -> Unit): Outcome<Unit> =
+        objects.write(fileId, block)
+
+    /** Opens the encrypted object for reading; the source is closed when [block] returns. */
+    fun <R> readObject(fileId: ByteArray, block: (RawSource) -> R): Outcome<R> =
+        objects.read(fileId, block)
+
+    /** Deletes the object blob (idempotent). Authoritative shred is destroying the DEK (cycle 4). */
+    fun deleteObject(fileId: ByteArray): Outcome<Unit> = objects.delete(fileId)
+
+    /** Whether an object blob exists for [fileId]. */
+    fun objectExists(fileId: ByteArray): Boolean = objects.exists(fileId)
 }
