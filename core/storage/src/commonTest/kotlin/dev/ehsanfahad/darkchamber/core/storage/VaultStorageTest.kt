@@ -15,6 +15,7 @@ import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -208,6 +209,50 @@ class VaultStorageTest {
         assertFalse(storage.thumbnailExists(id))
         // Idempotent.
         assertIs<Outcome.Ok<Unit>>(storage.deleteThumbnail(id))
+    }
+
+    // --- Key-blob store (TASK-004) ---
+
+    @Test
+    fun readKeyStore_on_a_fresh_root_is_Ok_null() {
+        val storage = VaultStorage(freshRoot())
+
+        val read = storage.readKeyStore()
+        assertIs<Outcome.Ok<ByteArray?>>(read)
+        assertNull(read.value, "no vault yet -> null")
+    }
+
+    @Test
+    fun writeKeyStore_then_readKeyStore_round_trips_and_overwrites_atomically() {
+        val root = freshRoot()
+        val storage = VaultStorage(root)
+        val v1 = Random.nextBytes(96)
+        val v2 = Random.nextBytes(128)
+
+        assertIs<Outcome.Ok<Unit>>(storage.writeKeyStore(v1))
+        val first = storage.readKeyStore()
+        assertIs<Outcome.Ok<ByteArray?>>(first)
+        assertContentEquals(v1, first.value)
+
+        // Overwrite: the second write fully replaces the first, leaving no stray .tmp.
+        assertIs<Outcome.Ok<Unit>>(storage.writeKeyStore(v2))
+        val second = storage.readKeyStore()
+        assertIs<Outcome.Ok<ByteArray?>>(second)
+        assertContentEquals(v2, second.value)
+        val stray = SystemFileSystem.list(Path(root, "keys")).any { it.name.endsWith(".tmp") }
+        assertFalse(stray, "no stray .tmp")
+    }
+
+    @Test
+    fun readKeyStore_surfaces_a_read_error_as_Err_not_a_throw() {
+        val root = freshRoot()
+        val storage = VaultStorage(root)
+        // Force a read error: make keys/mk.wrapped a directory, so opening it as a source fails.
+        SystemFileSystem.createDirectories(Path(Path(root, "keys"), "mk.wrapped"))
+
+        val read = storage.readKeyStore()
+        assertIs<Outcome.Err>(read)
+        assertIs<VaultError.Io>(read.error)
     }
 
     private fun randomId(): ByteArray = Random.nextBytes(16)

@@ -1,11 +1,15 @@
 package dev.ehsanfahad.darkchamber.core.storage
 
 import dev.ehsanfahad.darkchamber.core.model.Outcome
+import dev.ehsanfahad.darkchamber.core.model.VaultError
 import kotlinx.io.RawSink
 import kotlinx.io.RawSource
+import kotlinx.io.buffered
 import kotlinx.io.files.FileSystem
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
+import kotlinx.io.readByteArray
+import kotlinx.io.write
 
 /**
  * The app-private vault storage facade — the one module permitted to touch filesystem APIs
@@ -85,4 +89,43 @@ class VaultStorage(
 
     /** Whether a thumbnail blob exists for [fileId]. */
     fun thumbnailExists(fileId: ByteArray): Boolean = thumbnails.exists(fileId)
+
+    // The wrapped-key blob — a single fixed-name whole file (the KeyStoreBlob CBOR bytes).
+    private val keyBlobPath = Path(Path(root, "keys"), "mk.wrapped")
+
+    /**
+     * Reads the wrapped-key blob (`keys/mk.wrapped`). `Ok(null)` when the file is absent — a fresh
+     * install with no vault yet — `Ok(bytes)` otherwise, `Err(Io)` on a real read error. The blob
+     * is small (wrapped MK slots), so it is read whole.
+     */
+    fun readKeyStore(): Outcome<ByteArray?> =
+        try {
+            // metadataOrNull == null means the path is genuinely absent (no vault yet). A present
+            // path that isn't a readable regular file (e.g. a directory) throws on source() below
+            // and surfaces as Err(Io) — not silently masked as "no vault".
+            if (fs.metadataOrNull(keyBlobPath) == null) {
+                Outcome.Ok(null)
+            } else {
+                fs.source(keyBlobPath).use { Outcome.Ok(it.buffered().readByteArray()) }
+            }
+        } catch (e: Exception) {
+            Outcome.Err(VaultError.Io(e))
+        }
+
+    /** Atomically writes the wrapped-key blob (temp sibling + `atomicMove`, never in place). */
+    fun writeKeyStore(bytes: ByteArray): Outcome<Unit> {
+        val tmp = Path(Path(root, "keys"), "mk.wrapped.tmp")
+        return try {
+            fs.sink(tmp).buffered().use { it.write(bytes) }
+            fs.atomicMove(tmp, keyBlobPath)
+            Outcome.Ok(Unit)
+        } catch (e: Exception) {
+            try {
+                fs.delete(tmp, mustExist = false)
+            } catch (_: Exception) {
+                // best-effort cleanup — report the original failure
+            }
+            Outcome.Err(VaultError.Io(e))
+        }
+    }
 }
