@@ -13,8 +13,11 @@ import kotlin.random.nextULong
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -255,10 +258,81 @@ class VaultStorageTest {
         assertIs<VaultError.Io>(read.error)
     }
 
+    // --- Tmp scratch (TASK-005) ---
+
+    @Test
+    fun useTempFile_deletes_on_normal_return() {
+        val storage = VaultStorage(freshRoot())
+        var captured: Path? = null
+
+        val result = storage.useTempFile { path ->
+            captured = path
+            SystemFileSystem.sink(path).buffered().use { it.write(Random.nextBytes(8)) }
+            assertTrue(exists(path), "scratch present inside the scope")
+            "done"
+        }
+
+        assertEquals("done", result)
+        assertFalse(exists(captured!!), "scratch deleted after normal return")
+    }
+
+    @Test
+    fun useTempFile_deletes_when_the_block_throws() {
+        val storage = VaultStorage(freshRoot())
+        var captured: Path? = null
+
+        assertFailsWith<IllegalStateException> {
+            storage.useTempFile { path ->
+                captured = path
+                SystemFileSystem.sink(path).buffered().use { it.write(Random.nextBytes(8)) }
+                throw IllegalStateException("boom")
+            }
+        }
+
+        assertFalse(exists(captured!!), "scratch deleted even when the block throws")
+    }
+
+    @Test
+    fun purgeTmp_clears_only_tmp_and_is_ok_when_empty() {
+        val root = freshRoot()
+        val storage = VaultStorage(root)
+
+        // Seed the other three areas.
+        val objId = randomId()
+        val thumbId = randomId()
+        storage.writeObject(objId) { sink -> sink.buffered().use { it.write(Random.nextBytes(16)) } }
+        storage.writeThumbnail(thumbId) { sink -> sink.buffered().use { it.write(Random.nextBytes(16)) } }
+        storage.writeKeyStore(Random.nextBytes(32))
+
+        // Empty tmp/ -> Ok.
+        assertIs<Outcome.Ok<Unit>>(storage.purgeTmp())
+
+        // Drop a stray file + a stray subdir under tmp/.
+        val tmpDir = Path(root, "tmp")
+        SystemFileSystem.sink(Path(tmpDir, "stray")).buffered().use { it.write(Random.nextBytes(8)) }
+        SystemFileSystem.createDirectories(Path(tmpDir, "sub"))
+        SystemFileSystem.sink(Path(Path(tmpDir, "sub"), "nested")).buffered().use { it.write(Random.nextBytes(8)) }
+
+        assertIs<Outcome.Ok<Unit>>(storage.purgeTmp())
+
+        // tmp/ emptied, dir itself kept.
+        assertTrue(isDir(tmpDir))
+        assertTrue(SystemFileSystem.list(tmpDir).isEmpty(), "tmp/ emptied")
+
+        // The other three areas are untouched.
+        assertTrue(storage.objectExists(objId))
+        assertTrue(storage.thumbnailExists(thumbId))
+        val ks = storage.readKeyStore()
+        assertIs<Outcome.Ok<ByteArray?>>(ks)
+        assertNotNull(ks.value, "keystore still present")
+    }
+
     private fun randomId(): ByteArray = Random.nextBytes(16)
 
     private fun isRegularFile(path: Path): Boolean =
         SystemFileSystem.metadataOrNull(path)?.isRegularFile == true
+
+    private fun exists(path: Path): Boolean = SystemFileSystem.exists(path)
 
     private fun VaultStorage.putObject(id: ByteArray, bytes: ByteArray): Outcome<Unit> =
         writeObject(id) { sink -> sink.buffered().use { it.write(bytes) } }

@@ -10,6 +10,8 @@ import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 import kotlinx.io.readByteArray
 import kotlinx.io.write
+import kotlin.random.Random
+import kotlin.random.nextULong
 
 /**
  * The app-private vault storage facade — the one module permitted to touch filesystem APIs
@@ -128,4 +130,53 @@ class VaultStorage(
             Outcome.Err(VaultError.Io(e))
         }
     }
+
+    /**
+     * Runs [block] with a fresh unique file under `tmp/`, then deletes that file in a `finally` —
+     * on a normal return **and** when the block throws. This is the Android PDF-viewer
+     * decrypt-to-disk path (docs/ARCHITECTURE.md §7): decrypt into the temp file, render, delete,
+     * all within the scope so no plaintext outlives it (hard rule #1). The block's result (or its
+     * exception) propagates unchanged.
+     */
+    fun <R> useTempFile(block: (Path) -> R): R {
+        val tmpDir = Path(root, "tmp")
+        var candidate = Path(tmpDir, "scratch-${nextTempToken()}")
+        while (fs.exists(candidate)) {
+            candidate = Path(tmpDir, "scratch-${nextTempToken()}")
+        }
+        try {
+            return block(candidate)
+        } finally {
+            try {
+                fs.delete(candidate, mustExist = false)
+            } catch (_: Exception) {
+                // best-effort — the scratch file is inside the wiped-on-lock tmp/ regardless
+            }
+        }
+    }
+
+    /**
+     * Deletes every entry under `tmp/` (and only `tmp/`), leaving the directory itself. Called by
+     * the session/lock lifecycle (cycle 5) on lock, app launch, and after each viewer session, so
+     * no decrypted scratch survives a lock (hard rule #1).
+     */
+    fun purgeTmp(): Outcome<Unit> =
+        try {
+            val tmpDir = Path(root, "tmp")
+            for (entry in fs.list(tmpDir)) deleteRecursively(entry)
+            Outcome.Ok(Unit)
+        } catch (e: Exception) {
+            Outcome.Err(VaultError.Io(e))
+        }
+
+    private fun deleteRecursively(path: Path) {
+        val md = fs.metadataOrNull(path) ?: return
+        if (md.isDirectory) {
+            for (child in fs.list(path)) deleteRecursively(child)
+        }
+        fs.delete(path, mustExist = false)
+    }
+
+    // Unique-enough scratch token; collision-checked against the dir before use.
+    private fun nextTempToken(): String = Random.nextULong().toString()
 }
