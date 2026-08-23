@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Deny-all full-backup rules (pre-API-31 fullBackupContent). Belt-and-suspenders with
+  allowBackup="false": no part of the vault (wrapped keys + ciphertext) is eligible for
+  auto/cloud backup (docs/THREAT_MODEL.md §1). Everything excluded.
+-->
+<full-backup-content>
+    <exclude domain="file" />
+    <exclude domain="database" />
+    <exclude domain="sharedpref" />
+    <exclude domain="external" />
+</full-backup-content>
