@@ -166,6 +166,50 @@ class VaultStorageTest {
         assertFalse(storage.objectExists(empty))
     }
 
+    // --- Thumbnail store (TASK-003) ---
+
+    @Test
+    fun writeThumbnail_then_readThumbnail_round_trips_at_the_flat_path() {
+        val root = freshRoot()
+        val storage = VaultStorage(root)
+        val id = randomId()
+        val payload = Random.nextBytes(2048)
+
+        assertIs<Outcome.Ok<Unit>>(
+            storage.writeThumbnail(id) { sink -> sink.buffered().use { it.write(payload) } },
+        )
+
+        // Flat path: thumbs/<hex>.tdchm (no shard dirs).
+        val hex = id.toHexString()
+        assertTrue(isRegularFile(Path(root, "thumbs", "$hex.tdchm")), "thumbnail at flat path")
+
+        val read = storage.readThumbnail(id) { source -> source.buffered().use { it.readByteArray() } }
+        assertIs<Outcome.Ok<ByteArray>>(read)
+        assertContentEquals(payload, read.value)
+    }
+
+    @Test
+    fun thumbnail_delete_exists_and_atomic_throw_behave() {
+        val root = freshRoot()
+        val storage = VaultStorage(root)
+        val id = randomId()
+
+        assertFalse(storage.thumbnailExists(id))
+        storage.writeThumbnail(id) { sink -> sink.buffered().use { it.write(Random.nextBytes(64)) } }
+        assertTrue(storage.thumbnailExists(id))
+
+        // A throwing write leaves no stray .tmp under thumbs/ and the store unchanged.
+        val result = storage.writeThumbnail(randomId()) { throw IllegalStateException("boom") }
+        assertIs<Outcome.Err>(result)
+        val stray = SystemFileSystem.list(Path(root, "thumbs")).any { it.name.endsWith(".tmp") }
+        assertFalse(stray, "no stray .tmp")
+
+        assertIs<Outcome.Ok<Unit>>(storage.deleteThumbnail(id))
+        assertFalse(storage.thumbnailExists(id))
+        // Idempotent.
+        assertIs<Outcome.Ok<Unit>>(storage.deleteThumbnail(id))
+    }
+
     private fun randomId(): ByteArray = Random.nextBytes(16)
 
     private fun isRegularFile(path: Path): Boolean =

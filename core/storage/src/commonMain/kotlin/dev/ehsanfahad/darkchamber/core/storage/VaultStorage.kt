@@ -64,4 +64,25 @@ class VaultStorage(
 
     /** Whether an object blob exists for [fileId]. */
     fun objectExists(fileId: ByteArray): Boolean = objects.exists(fileId)
+
+    // The encrypted thumbnail store: flat thumbs/<hexId>.tdchm — same atomic primitive, no shard.
+    private val thumbnails = BlobStore(fs, Path(root, "thumbs"), extension = ".tdchm", shard = false)
+
+    /**
+     * Streams an encrypted thumbnail into `thumbs/<hexId>.tdchm` atomically. Same atomicity and
+     * `Err(Io)` guarantees as [writeObject]; thumbnails are always encrypted `.tdchm` blobs (hard
+     * rule #1 — no plaintext thumbnails anywhere).
+     */
+    fun writeThumbnail(fileId: ByteArray, block: (RawSink) -> Unit): Outcome<Unit> =
+        thumbnails.write(fileId, block)
+
+    /** Opens the encrypted thumbnail for reading; the source is closed when [block] returns. */
+    fun <R> readThumbnail(fileId: ByteArray, block: (RawSource) -> R): Outcome<R> =
+        thumbnails.read(fileId, block)
+
+    /** Deletes the thumbnail blob (idempotent). */
+    fun deleteThumbnail(fileId: ByteArray): Outcome<Unit> = thumbnails.delete(fileId)
+
+    /** Whether a thumbnail blob exists for [fileId]. */
+    fun thumbnailExists(fileId: ByteArray): Boolean = thumbnails.exists(fileId)
 }
