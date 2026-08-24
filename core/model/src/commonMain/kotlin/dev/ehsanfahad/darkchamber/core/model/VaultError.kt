@@ -21,4 +21,14 @@ sealed interface VaultError {
 
     /** Underlying I/O failure while reading or writing a container. */
     data class Io(val cause: Throwable) : VaultError
+
+    /**
+     * Catalog (SQLDelight) failure — schema create/migrate, query, or transaction.
+     *
+     * Callers fail closed: a catalog that cannot open or migrate cleanly is treated as
+     * unusable, never a half-open state that proceeds. The [cause] is carried for the logging
+     * boundary (`core:logging`) to redact — this type is never logged directly (hard rule #4:
+     * no SQL text, blob, id, or path in logs).
+     */
+    data class Db(val cause: Throwable) : VaultError
 }
