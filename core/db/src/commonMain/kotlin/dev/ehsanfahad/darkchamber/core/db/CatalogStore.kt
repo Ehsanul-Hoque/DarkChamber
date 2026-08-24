@@ -56,6 +56,47 @@ class CatalogStore private constructor(private val db: DarkChamberDatabase) {
     fun countItems(): Outcome<Long> =
         catchingDb { items.countItems().executeAsOne() }
 
+    private val albums get() = db.albumsQueries
+
+    /** Insert or replace an album row (opaque `enc_name` stored verbatim; `kek_variant` is a flag). */
+    fun upsertAlbum(album: Albums): Outcome<Unit> =
+        catchingDb {
+            albums.upsertAlbum(
+                id = album.id,
+                kek_variant = album.kek_variant,
+                enc_name = album.enc_name,
+                created_at = album.created_at,
+            )
+        }
+
+    /** The album with [id], or `null` if absent. */
+    fun getAlbum(id: ByteArray): Outcome<Albums?> =
+        catchingDb { albums.selectAlbumById(id).executeAsOneOrNull() }
+
+    /** All albums, ordered by `created_at`. */
+    fun listAlbums(): Outcome<List<Albums>> =
+        catchingDb { albums.selectAllAlbums().executeAsList() }
+
+    /** Remove the album with [id]. Idempotent — an absent id is `Ok`, never a throw. */
+    fun deleteAlbum(id: ByteArray): Outcome<Unit> =
+        catchingDb { albums.deleteAlbumById(id) }
+
+    private val audit get() = db.audit_logQueries
+
+    /** Append an audit entry (opaque `enc_payload` stored verbatim). */
+    fun appendAudit(entry: Audit_log): Outcome<Unit> =
+        catchingDb {
+            audit.appendAudit(
+                id = entry.id,
+                timestamp = entry.timestamp,
+                enc_payload = entry.enc_payload,
+            )
+        }
+
+    /** The most-recent [limit] audit entries, ordered by `timestamp` descending. */
+    fun listAudit(limit: Long): Outcome<List<Audit_log>> =
+        catchingDb { audit.selectRecentAudit(limit).executeAsList() }
+
     companion object {
         /**
          * Open the catalog on [driver], creating or migrating schema v1 as needed.

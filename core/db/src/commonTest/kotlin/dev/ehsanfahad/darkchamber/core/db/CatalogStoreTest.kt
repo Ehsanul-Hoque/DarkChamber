@@ -104,6 +104,61 @@ class CatalogStoreTest {
         assertTrue(store.deleteItem(byteArrayOf(1)) is Outcome.Ok)
     }
 
+    private fun album(
+        id: Byte,
+        kekVariant: Int = 0,
+        createdAt: Long = 1_700_000_000_000L,
+        encName: ByteArray = byteArrayOf(0x20, 0x21, 0x22),
+    ) = Albums(
+        id = byteArrayOf(id),
+        kek_variant = kekVariant,
+        enc_name = encName,
+        created_at = createdAt,
+    )
+
+    @Test
+    fun album_upsert_then_get_round_trips_with_blob_and_adapter_fidelity() {
+        val encName = byteArrayOf(0x00, 0x7F, 0xFF.toByte(), 0x40)
+        store.upsertAlbum(album(1, kekVariant = 3, encName = encName)).unwrap()
+
+        val row = store.getAlbum(byteArrayOf(1)).unwrap()!!
+        assertContentEquals(byteArrayOf(1), row.id)
+        assertContentEquals(encName, row.enc_name, "enc_name is byte-identical (opaque blob)")
+        assertEquals(3, row.kek_variant, "kek_variant round-trips through the Int adapter")
+    }
+
+    @Test
+    fun listAlbums_is_ordered_by_created_at_and_getAlbum_absent_is_null() {
+        store.upsertAlbum(album(1, createdAt = 300L)).unwrap()
+        store.upsertAlbum(album(2, createdAt = 100L)).unwrap()
+        assertEquals(listOf(100L, 300L), store.listAlbums().unwrap().map { it.created_at })
+        assertNull(store.getAlbum(byteArrayOf(9)).unwrap())
+    }
+
+    @Test
+    fun deleteAlbum_removes_and_is_idempotent() {
+        store.upsertAlbum(album(1)).unwrap()
+        store.deleteAlbum(byteArrayOf(1)).unwrap()
+        assertEquals(0, store.listAlbums().unwrap().size)
+        assertTrue(store.deleteAlbum(byteArrayOf(1)) is Outcome.Ok)
+    }
+
+    @Test
+    fun listAudit_returns_the_most_recent_N_ordered_by_timestamp_desc() {
+        for (i in 1..5) {
+            store.appendAudit(
+                Audit_log(
+                    id = byteArrayOf(i.toByte()),
+                    timestamp = i.toLong() * 100L,
+                    enc_payload = byteArrayOf(i.toByte(), 0x7F),
+                ),
+            ).unwrap()
+        }
+        val recent = store.listAudit(limit = 3).unwrap()
+        assertEquals(listOf(500L, 400L, 300L), recent.map { it.timestamp })
+        assertContentEquals(byteArrayOf(5, 0x7F), recent.first().enc_payload, "enc_payload is opaque + intact")
+    }
+
     @Test
     fun a_driver_failure_surfaces_Err_Db_not_a_throw() {
         // Pull the table out from under the store; the next op must map to Err(Db), not throw.
