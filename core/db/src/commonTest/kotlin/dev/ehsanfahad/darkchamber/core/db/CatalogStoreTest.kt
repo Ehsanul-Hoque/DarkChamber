@@ -185,6 +185,17 @@ class CatalogStoreTest {
     }
 
     @Test
+    fun create_fails_closed_on_a_newer_catalog_version() {
+        val newer = testSqlDriver()
+        val future = DarkChamberDatabase.Schema.version + 1L
+        newer.execute(identifier = null, sql = "PRAGMA user_version = $future", parameters = 0)
+        val result = CatalogStore.create(newer)
+        assertTrue(result is Outcome.Err, "a newer-than-supported catalog fails closed")
+        assertTrue(result.error is VaultError.Db, "mapped to VaultError.Db")
+        newer.close()
+    }
+
+    @Test
     fun a_driver_failure_surfaces_Err_Db_not_a_throw() {
         // Pull the table out from under the store; the next op must map to Err(Db), not throw.
         driver.execute(identifier = null, sql = "DROP TABLE items", parameters = 0)

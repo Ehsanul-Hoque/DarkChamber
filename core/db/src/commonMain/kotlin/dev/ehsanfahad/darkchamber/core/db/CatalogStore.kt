@@ -121,8 +121,10 @@ class CatalogStore private constructor(
          * Open the catalog on [driver], creating or migrating schema v1 as needed.
          *
          * Fails **closed** (D6): a create/migration failure is [VaultError.Db], and the caller must
-         * not proceed on a half-open catalog. Idempotent — opening an already-current driver is a
-         * no-op. The injected driver owns nothing crypto-related (D1).
+         * not proceed on a half-open catalog. A catalog written by a **newer** app (its `user_version`
+         * exceeds [DarkChamberDatabase.Schema]'s) also fails closed — the catalog analog of
+         * `UnsupportedFormatVersion`, so a downgrade never silently reads a future schema. Idempotent —
+         * opening an already-current driver is a no-op. The injected driver owns nothing crypto (D1).
          */
         fun create(
             driver: SqlDriver,
@@ -135,11 +137,14 @@ class CatalogStore private constructor(
                         schema.create(driver).value
                         driver.setUserVersion(schema.version)
                     }
+                    schema.version -> {
+                        // Already open at this schema — nothing to do.
+                    }
                     in 1 until schema.version -> {
                         schema.migrate(driver, current, schema.version).value
                         driver.setUserVersion(schema.version)
                     }
-                    // current >= schema.version: already open at this schema — nothing to do.
+                    else -> error("catalog user_version=$current newer than supported ${schema.version}")
                 }
                 Outcome.Ok(CatalogStore(darkChamberDatabase(driver), dispatcher))
             } catch (e: Exception) {
