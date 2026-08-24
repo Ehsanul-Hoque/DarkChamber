@@ -5,6 +5,12 @@ plugins {
 }
 
 kotlin {
+    // The DriverFactory production seam (D2/D3) is an expect/actual class — still Beta in Kotlin;
+    // opt in intentionally to keep the build warning-free.
+    compilerOptions {
+        freeCompilerArgs.add("-Xexpect-actual-classes")
+    }
+
     sourceSets {
         commonMain.dependencies {
             implementation(project(":core:model"))
@@ -14,6 +20,17 @@ kotlin {
             implementation(libs.sqldelight.coroutines)
             implementation(libs.sqldelight.primitive.adapters)
             implementation(libs.kotlinx.coroutines.core)
+        }
+        // Production driver seam (DriverFactory) — creation deferred to app cycle 5, compile-gated
+        // here. AndroidSqliteDriver needs a Context; native driver needs a DB path.
+        androidMain.dependencies {
+            implementation(libs.sqldelight.driver.android)
+        }
+        // Native driver on the leaf iOS main source sets; the shared actual lives in src/iosMain.
+        listOf("iosArm64Main", "iosSimulatorArm64Main").forEach { name ->
+            getByName(name).dependencies {
+                implementation(libs.sqldelight.driver.native)
+            }
         }
         commonTest.dependencies {
             implementation(libs.kotlinx.coroutines.test)
