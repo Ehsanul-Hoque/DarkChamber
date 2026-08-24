@@ -1,0 +1,13 @@
+-- Schema v1 (docs/ARCHITECTURE.md §5 / cycle-4 spec §3.1).
+CREATE TABLE audit_log (
+    id           BLOB    NOT NULL PRIMARY KEY,
+    timestamp    INTEGER NOT NULL,               -- sort key
+    enc_payload  BLOB    NOT NULL                -- opaque event payload
+);
+
+appendAudit:
+INSERT INTO audit_log(id, timestamp, enc_payload)
+VALUES (?, ?, ?);
+
+selectRecentAudit:
+SELECT * FROM audit_log ORDER BY timestamp DESC LIMIT :limit;

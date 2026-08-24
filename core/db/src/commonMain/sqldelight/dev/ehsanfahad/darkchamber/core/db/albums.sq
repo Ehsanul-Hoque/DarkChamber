@@ -1,0 +1,20 @@
+-- Schema v1 (docs/ARCHITECTURE.md §5 / cycle-4 spec §3.1).
+CREATE TABLE albums (
+    id           BLOB    NOT NULL PRIMARY KEY,
+    kek_variant  INTEGER AS kotlin.Int NOT NULL, -- per-album password flag
+    enc_name     BLOB    NOT NULL,               -- opaque
+    created_at   INTEGER NOT NULL
+);
+
+upsertAlbum:
+INSERT OR REPLACE INTO albums(id, kek_variant, enc_name, created_at)
+VALUES (?, ?, ?, ?);
+
+selectAlbumById:
+SELECT * FROM albums WHERE id = ?;
+
+selectAllAlbums:
+SELECT * FROM albums ORDER BY created_at;
+
+deleteAlbumById:
+DELETE FROM albums WHERE id = ?;

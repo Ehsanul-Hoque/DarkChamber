@@ -1,0 +1,34 @@
+-- Schema v1 (docs/ARCHITECTURE.md §5 / cycle-4 spec §3.1).
+-- Only opaque encrypted BLOBs + the sanctioned plaintext index columns. The DB never
+-- interprets enc_meta / dek_wrapped; names + metadata are secrets (threat model §1–4).
+CREATE TABLE items (
+    id           BLOB    NOT NULL PRIMARY KEY,   -- file_id (opaque)
+    album_id     BLOB,                           -- nullable; NULL = unfiled
+    kind         INTEGER AS kotlin.Int NOT NULL, -- discriminator (file/note/…)
+    size         INTEGER NOT NULL,               -- plaintext byte size (paging/quota)
+    created_at   INTEGER NOT NULL,               -- epoch millis (sort key)
+    enc_meta     BLOB    NOT NULL,               -- AES-GCM(name,mime,dims,duration,origin) — opaque
+    dek_wrapped  BLOB    NOT NULL                -- per-object DEK wrapped by MK — opaque
+);
+
+CREATE INDEX items_album ON items(album_id);
+CREATE INDEX items_created ON items(created_at);
+
+upsertItem:
+INSERT OR REPLACE INTO items(id, album_id, kind, size, created_at, enc_meta, dek_wrapped)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+selectItemById:
+SELECT * FROM items WHERE id = ?;
+
+selectItemsByAlbum:
+SELECT * FROM items WHERE album_id = ? ORDER BY created_at;
+
+selectAllItems:
+SELECT * FROM items ORDER BY created_at;
+
+deleteItemById:
+DELETE FROM items WHERE id = ?;
+
+countItems:
+SELECT count(*) FROM items;

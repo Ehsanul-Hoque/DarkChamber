@@ -34,6 +34,8 @@ buildkonfig = "0.22.0"
 # core:crypto (cycle 2a): .dchm streaming IO + CBOR header. JetBrains-official, KMP, GPLv3-OK.
 kotlinxIo = "0.9.1"
 kotlinxSerialization = "1.11.0"   # serialization runtime (cbor); the compiler plugin tracks `kotlin`
+# core:db (cycle 4): reactive catalog Flow (sqldelight-coroutines) + host/iOS test drivers.
+kotlinxCoroutines = "1.11.0"
 # core:crypto (cycle 2c): pure-JVM Argon2id for the Android/host passphrase-wrap actual. GPLv3-OK
 # (BouncyCastle is MIT-style). iOS uses the vendored phc-winner-argon2 cinterop instead.
 bouncycastle = "1.85.2"
@@ -73,6 +75,13 @@ sqldelight-runtime = { module = "app.cash.sqldelight:runtime", version.ref = "sq
 sqldelight-coroutines = { module = "app.cash.sqldelight:coroutines-extensions", version.ref = "sqldelight" }
 sqldelight-driver-android = { module = "app.cash.sqldelight:android-driver", version.ref = "sqldelight" }
 sqldelight-driver-native = { module = "app.cash.sqldelight:native-driver", version.ref = "sqldelight" }
+# JVM host-test driver (JdbcSqliteDriver, IN_MEMORY) — no Robolectric/Context needed.
+sqldelight-driver-sqlite = { module = "app.cash.sqldelight:sqlite-driver", version.ref = "sqldelight" }
+# Primitive column adapters (INTEGER AS kotlin.Int) — no hand-rolled adapters.
+sqldelight-primitive-adapters = { module = "app.cash.sqldelight:primitive-adapters", version.ref = "sqldelight" }
+# Coroutines — reactive catalog Flow (core:db) + test dispatchers. Local only, no network.
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinxCoroutines" }
 # DI — feature :impl modules own their Koin module; app is the composition root.
 koin-core = { module = "io.insert-koin:koin-core", version.ref = "koin" }
 koin-android = { module = "io.insert-koin:koin-android", version.ref = "koin" }
