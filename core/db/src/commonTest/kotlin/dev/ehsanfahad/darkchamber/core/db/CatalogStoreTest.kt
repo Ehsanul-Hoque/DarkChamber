@@ -1,7 +1,10 @@
 package dev.ehsanfahad.darkchamber.core.db
 
+import app.cash.turbine.test
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.runTest
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
@@ -157,6 +160,28 @@ class CatalogStoreTest {
         val recent = store.listAudit(limit = 3).unwrap()
         assertEquals(listOf(500L, 400L, 300L), recent.map { it.timestamp })
         assertContentEquals(byteArrayOf(5, 0x7F), recent.first().enc_payload, "enc_payload is opaque + intact")
+    }
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    @Test
+    fun observeItems_emits_initial_then_reemits_on_write_and_delete_ordered() = runTest {
+        val obsDriver = testSqlDriver()
+        val obsStore = CatalogStore.create(obsDriver, UnconfinedTestDispatcher(testScheduler)).unwrap()
+        obsStore.observeItems().test {
+            assertEquals(emptyList(), awaitItem(), "initial list is empty")
+
+            obsStore.upsertItem(item(1, createdAt = 100L)).unwrap()
+            assertEquals(listOf(100L), awaitItem().map { it.created_at }, "re-emits after insert")
+
+            obsStore.upsertItem(item(2, createdAt = 50L)).unwrap()
+            assertEquals(listOf(50L, 100L), awaitItem().map { it.created_at }, "ordered by created_at")
+
+            obsStore.deleteItem(byteArrayOf(1)).unwrap()
+            assertEquals(listOf(50L), awaitItem().map { it.created_at }, "re-emits after delete")
+
+            cancelAndIgnoreRemainingEvents()
+        }
+        obsDriver.close()
     }
 
     @Test

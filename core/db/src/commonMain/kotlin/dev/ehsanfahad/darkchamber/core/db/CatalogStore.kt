@@ -1,9 +1,14 @@
 package dev.ehsanfahad.darkchamber.core.db
 
+import app.cash.sqldelight.coroutines.asFlow
+import app.cash.sqldelight.coroutines.mapToList
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 
 /**
  * Thin `Outcome`-returning facade over the generated [DarkChamberDatabase] (cycle-4 spec §3.2).
@@ -17,7 +22,10 @@ import dev.ehsanfahad.darkchamber.core.model.VaultError
  * Field encryption is NOT here — `core:db` stores already-encrypted `enc_*` / `dek_wrapped` bytes as
  * opaque blobs (D1, hard rule #2); the feature/data layer composes `core:crypto` above the store.
  */
-class CatalogStore private constructor(private val db: DarkChamberDatabase) {
+class CatalogStore private constructor(
+    private val db: DarkChamberDatabase,
+    private val dispatcher: CoroutineDispatcher,
+) {
     private val items get() = db.itemsQueries
 
     /** Insert or replace an item row (opaque `enc_meta` / `dek_wrapped` stored verbatim). */
@@ -55,6 +63,17 @@ class CatalogStore private constructor(private val db: DarkChamberDatabase) {
     /** Number of item rows. */
     fun countItems(): Outcome<Long> =
         catchingDb { items.countItems().executeAsOne() }
+
+    /**
+     * A reactive list of items in [albumId] (or all items when null), ordered by `created_at`,
+     * re-emitting on every catalog write. Rows carry ids + opaque blobs only — never decrypted
+     * content (the session-gate rule). Unlike the one-shot ops this returns a raw [Flow]; the
+     * collector maps failures, since a hot stream has no single [Outcome] to return.
+     */
+    fun observeItems(albumId: ByteArray? = null): Flow<List<Items>> =
+        (if (albumId != null) items.selectItemsByAlbum(albumId) else items.selectAllItems())
+            .asFlow()
+            .mapToList(dispatcher)
 
     private val albums get() = db.albumsQueries
 
@@ -105,7 +124,10 @@ class CatalogStore private constructor(private val db: DarkChamberDatabase) {
          * not proceed on a half-open catalog. Idempotent — opening an already-current driver is a
          * no-op. The injected driver owns nothing crypto-related (D1).
          */
-        fun create(driver: SqlDriver): Outcome<CatalogStore> =
+        fun create(
+            driver: SqlDriver,
+            dispatcher: CoroutineDispatcher = Dispatchers.Default,
+        ): Outcome<CatalogStore> =
             try {
                 val schema = DarkChamberDatabase.Schema
                 when (val current = driver.userVersion()) {
@@ -119,7 +141,7 @@ class CatalogStore private constructor(private val db: DarkChamberDatabase) {
                     }
                     // current >= schema.version: already open at this schema — nothing to do.
                 }
-                Outcome.Ok(CatalogStore(darkChamberDatabase(driver)))
+                Outcome.Ok(CatalogStore(darkChamberDatabase(driver), dispatcher))
             } catch (e: Exception) {
                 Outcome.Err(VaultError.Db(e))
             }
