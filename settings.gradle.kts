@@ -32,6 +32,7 @@ dependencyResolutionManagement {
 }
 
 include(":androidApp")
+include(":app")
 include(":core:model")
 include(":core:crypto")
 include(":core:storage")
