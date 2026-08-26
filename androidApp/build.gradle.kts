@@ -30,8 +30,11 @@ android {
 
 dependencies {
     // Composition root. As features land (docs/engineering/MODULES.md), this grows into
-    // the list of :feature:*:impl + :core:* modules. For now, one core wire proves it.
+    // the list of :feature:*:impl + :core:* modules. :app carries the shared graph + bootstrap.
+    implementation(project(":app"))
     implementation(project(":core:model"))
+    implementation(project(":core:logging"))
+    implementation(libs.koin.android)
 
     implementation(libs.androidx.activity.compose)
 
