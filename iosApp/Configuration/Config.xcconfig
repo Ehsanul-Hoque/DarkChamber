@@ -5,3 +5,9 @@ PRODUCT_BUNDLE_IDENTIFIER=dev.ehsanfahad.darkchamber.DarkChamber$(TEAM_ID)
 
 CURRENT_PROJECT_VERSION=1
 MARKETING_VERSION=1.0
+
+// The :app Shared umbrella framework (cycle 5a). The "Compile Kotlin Framework" run-script
+// phase builds + embeds it into app/build/xcode-frameworks/<config>/<sdk> for the active build;
+// point the compiler + linker there. -framework Shared links it without a pbxproj Frameworks entry.
+FRAMEWORK_SEARCH_PATHS=$(inherited) $(SRCROOT)/../app/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)
+OTHER_LDFLAGS=$(inherited) -framework Shared

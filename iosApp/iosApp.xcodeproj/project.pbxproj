@@ -152,7 +152,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# Phase 0: :shared was retired; no Kotlin framework is produced yet.\n# The real framework build is restored in the core:crypto cycle, when there is\n# shared iOS code to export (see .claude/phases/phase-0/cycle-1/spec.md §6).\necho \"No Kotlin framework to compile yet (Phase 0 SwiftUI stub).\"\nexit 0\n";
+			shellScript = "# Build, embed, and sign the :app Shared umbrella framework for the active\n# Xcode configuration / SDK / architecture (cycle 5a).\ncd \"$SRCROOT/..\"\n./gradlew :app:embedAndSignAppleFrameworkForXcode\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

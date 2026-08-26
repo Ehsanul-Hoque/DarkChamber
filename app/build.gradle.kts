@@ -3,11 +3,22 @@ plugins {
 }
 
 kotlin {
-    // SQLDelight's native driver (sqliter) binds system sqlite3 via cinterop; the final native
-    // binary must link it. Applied here because the driver reaches :app transitively through
-    // core:db, and its linker options do not propagate across that module boundary. Covers the
-    // test binaries and the 5a iOS Shared framework (TASK-006).
+    // The iOS umbrella framework (D1/D7): one static "Shared" framework the iosApp links.
+    // export(...) the modules whose public types cross into Swift via :app's API — core:model
+    // (Outcome/VaultError), core:crypto (VaultSession/CryptoEngine/SecureKeyStore), core:db
+    // (CatalogStore via CatalogProvider). Exported deps must be api() (below). core:storage /
+    // core:logging stay internal to :app's public surface, so they are not exported.
+    // linkerOpts: SQLDelight's native driver (sqliter) binds system sqlite3 via cinterop and the
+    // driver reaches :app transitively through core:db, whose linker options do not propagate
+    // across the module boundary — so link it on every native binary (tests + framework).
     listOf(iosArm64(), iosSimulatorArm64()).forEach { target ->
+        target.binaries.framework {
+            baseName = "Shared"
+            isStatic = true
+            export(project(":core:model"))
+            export(project(":core:crypto"))
+            export(project(":core:db"))
+        }
         target.binaries.all { linkerOpts("-lsqlite3") }
     }
 
@@ -15,10 +26,11 @@ kotlin {
         commonMain.dependencies {
             // Composition-root home: depends on every engine module wired in cycles 2–4
             // plus the graduated logging module. No Compose this cycle (5a has no UI).
-            implementation(project(":core:model"))
-            implementation(project(":core:crypto"))
+            // api(...) for the three modules exported into the iOS Shared framework.
+            api(project(":core:model"))
+            api(project(":core:crypto"))
+            api(project(":core:db"))
             implementation(project(":core:storage"))
-            implementation(project(":core:db"))
             implementation(project(":core:logging"))
             implementation(libs.koin.core)
             // Path/root types for VaultRootResolver + VaultStorage(root) — kotlinx-io is core:storage's
