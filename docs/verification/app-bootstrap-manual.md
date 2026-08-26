@@ -64,5 +64,55 @@ Both cases must pass (verified green on the simulator, cycle 5a):
 - `testColdOpenSelfCheckSucceeds` — cold-open + encrypted round-trip via the framework.
 - `testVaultRootIsExcludedFromBackup` — `<Documents>/vault` has `isExcludedFromBackup == true`.
 
-<!-- TASK-010 appends the on-device physical-device manual checklist (first-run create, kill+relaunch
-reopen, app-private vault dir, iOS backup-exclusion inspection, no plaintext in shared storage). -->
+## On-device manual checklist (physical hardware)
+
+The automated tests above run on a host, an emulator, and a simulator. This section is the
+**physical-device backstop** (mirrors the cycle-2d SecureKeyStore checklist): the real filesystem
+sandbox, real Keystore/Keychain, and real backup behaviour only fully manifest on a shipped device.
+Run it at release and whenever the bootstrap, platform resolution, or backup posture changes. There
+is no vault UI this cycle, so drive the bootstrap from the launch self-check (both platforms log it)
+or a debug affordance.
+
+### Android — physical device
+
+1. **First run (create).** Fresh install `:androidApp` (`assembleFossDebug`) on a device. On launch
+   the bootstrap creates the vault. Confirm the self-check reports success (Logcat, tag
+   `DarkChamber` — identifiers/codes only, never content: hard rule #4).
+2. **Kill + relaunch (reopen/unlock).** Force-stop the app, relaunch. The bootstrap must reopen the
+   existing vault via the persisted keystore (unlock path), not recreate it. Self-check succeeds again.
+3. **Vault is app-private.** With the app **debuggable**, confirm the vault lives under app-private
+   internal storage and nothing under a world-readable path:
+   ```
+   adb shell run-as dev.ehsanfahad.darkchamber ls -R files/vault
+   ```
+   Expect `db/catalog.db`, `keys/mk.wrapped`, and `objects/…/<id>.dchm`. There is no vault data under
+   `/sdcard`, external files, or MediaStore.
+4. **No plaintext in shared storage.** Confirm external dirs hold no vault artifacts:
+   ```
+   adb shell ls -R /sdcard/Android/data/dev.ehsanfahad.darkchamber 2>/dev/null
+   ```
+   Nothing vault-related (no `.dchm`, no plaintext). (The instrumented test already asserts this; the
+   manual pass is the belt-and-suspenders on a real device.)
+5. **Backup denied.** The manifest sets `allowBackup="false"` + deny-all extraction/backup rules
+   (cycle 3). Optional spot-check: `adb backup` produces no app data.
+
+### iOS — physical iPhone
+
+1. **First run (create).** Build + run `iosApp` on a device. `iOSApp.init()` runs the self-check;
+   confirm the console logs `DarkChamber vault self-check: OK`.
+2. **Kill + relaunch (reopen/unlock).** Swipe-kill the app, relaunch. Self-check succeeds again via
+   the persisted Keychain/keystore path (reopen, not recreate).
+3. **Vault is app-private + backup-excluded.** The vault is under the app container's `Documents`,
+   which is app-private by sandbox. Confirm the deferred `isExcludedFromBackup == true` on the vault
+   root holds on-device (the XCTest asserts it on the simulator; on a device it is what keeps the
+   encrypted vault out of iCloud/iTunes backups). If inspecting a device backup, confirm no
+   `Documents/vault` payload is present.
+4. **No plaintext leaves the vault.** No vault content is written to a shared container, Files-app
+   location, or Photos — decrypted bytes live only in memory this cycle (hard rule #1).
+
+### Sign-off
+
+A release is not signed off until this checklist passes on **both** a physical Android device and a
+physical iPhone. Record the device models + OS versions in the release notes (as the 2d SecureKeyStore
+checklist requires). This cycle proves cold-open + storage/backup posture only; the per-use biometric
+prompt and session/lock gate arrive in 5b and get their own checklist additions.
