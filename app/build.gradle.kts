@@ -13,6 +13,9 @@ kotlin {
             implementation(project(":core:db"))
             implementation(project(":core:logging"))
             implementation(libs.koin.core)
+            // Path/root types for VaultRootResolver + VaultStorage(root) — kotlinx-io is core:storage's
+            // API type. :app holds Path values only; every filesystem op stays in core:storage.
+            implementation(libs.kotlinx.io.core)
         }
         // Android launcher threads the Context via androidContext() (D2); koin-android
         // carries that seam. Platform Koin modules land in TASK-004.

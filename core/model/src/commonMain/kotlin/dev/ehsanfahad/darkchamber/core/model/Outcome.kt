@@ -24,6 +24,17 @@ inline fun <T, R> Outcome<T>.map(transform: (T) -> R): Outcome<R> =
         is Outcome.Err -> this
     }
 
+/**
+ * Chain a fallible step onto a success, short-circuiting on the first failure. The natural
+ * combinator for a fail-closed pipeline (e.g. the cold-open bootstrap): the first [Err] aborts
+ * the chain and is returned unchanged.
+ */
+inline fun <T, R> Outcome<T>.flatMap(transform: (T) -> Outcome<R>): Outcome<R> =
+    when (this) {
+        is Outcome.Ok -> transform(value)
+        is Outcome.Err -> this
+    }
+
 /** The success value, or `null` if this is a failure. */
 fun <T> Outcome<T>.getOrNull(): T? =
     when (this) {
