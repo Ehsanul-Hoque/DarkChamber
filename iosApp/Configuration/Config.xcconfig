@@ -9,5 +9,7 @@ MARKETING_VERSION=1.0
 // The :app Shared umbrella framework (cycle 5a). The "Compile Kotlin Framework" run-script
 // phase builds + embeds it into app/build/xcode-frameworks/<config>/<sdk> for the active build;
 // point the compiler + linker there. -framework Shared links it without a pbxproj Frameworks entry.
+// -lsqlite3: Shared is a STATIC framework, so SQLDelight's sqliter cinterop is linked into the app
+// at Xcode-link time and needs system sqlite3 (the Gradle-side linkerOpts only cover Gradle binaries).
 FRAMEWORK_SEARCH_PATHS=$(inherited) $(SRCROOT)/../app/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)
-OTHER_LDFLAGS=$(inherited) -framework Shared
+OTHER_LDFLAGS=$(inherited) -framework Shared -lsqlite3

@@ -37,22 +37,22 @@ covers the **Swift ↔ framework boundary** the app itself uses, which the Gradl
 3. Run the app (⌘R). On launch `iOSApp.init()` calls `IosBootstrapKt.runVaultSelfCheck()` and logs
    `DarkChamber vault self-check: OK` to the console. Confirm it prints **OK**.
 
-### One-time: add the XCTest target (Option A — via Xcode UI)
+### The XCTest target (already wired)
 
-The XCTest case source lives at `iosApp/iosAppTests/DarkChamberVaultTests.swift`; it is not yet in a
-target (the project uses Xcode-16 synchronized folder groups, so the target is added through the UI
-rather than by hand-editing `project.pbxproj`).
+The `iosAppTests` unit-test bundle is committed in `iosApp.xcodeproj` (added via the Xcode UI —
+Unit Testing Bundle, **Target to be Tested = iosApp**, so `TEST_HOST` / `BUNDLE_LOADER` load the
+app's linked `Shared.framework`). Its case source is
+`iosApp/iosAppTests/DarkChamberVaultTests.swift`. Two build settings the static framework requires,
+already applied:
 
-1. **File ▸ New ▸ Target… ▸ Unit Testing Bundle.** Name it `iosAppTests`; set **Target to be Tested**
-   = `iosApp` (this sets `TEST_HOST` / `BUNDLE_LOADER`, so the test loads the app's linked
-   `Shared.framework`).
-2. Remove Xcode's generated placeholder test file; **add the existing**
-   `iosApp/iosAppTests/DarkChamberVaultTests.swift` to the new `iosAppTests` target (File Inspector ▸
-   Target Membership).
-3. If `import Shared` does not resolve in the test target, add the app's framework search path to the
-   test target too: **Build Settings ▸ Framework Search Paths** →
-   `$(SRCROOT)/../app/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)`.
-4. Edit the `iosApp` scheme ▸ **Test** ▸ add the `iosAppTests` target.
+- **App (`Config.xcconfig`):** `OTHER_LDFLAGS = … -framework Shared -lsqlite3`. `Shared` is a
+  **static** framework, so SQLDelight's sqliter cinterop is linked into the app at Xcode-link time
+  and needs system `sqlite3` — without `-lsqlite3` the app fails with ~31 undefined `_sqlite3_*`
+  symbols. (Gradle's `linkerOpts("-lsqlite3")` covers only Gradle-produced binaries, not the Xcode
+  app link.)
+- **`iosAppTests` target:** **Framework Search Paths** =
+  `$(SRCROOT)/../app/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)` so `import Shared` resolves
+  in the test (the test target does not inherit the app's `Config.xcconfig`).
 
 ### Run the XCTest
 
@@ -60,7 +60,7 @@ rather than by hand-editing `project.pbxproj`).
 - CLI: `xcodebuild test -project iosApp/iosApp.xcodeproj -scheme iosApp \
     -destination 'platform=iOS Simulator,name=iPhone 17'`
 
-Expected: both cases pass —
+Both cases must pass (verified green on the simulator, cycle 5a):
 - `testColdOpenSelfCheckSucceeds` — cold-open + encrypted round-trip via the framework.
 - `testVaultRootIsExcludedFromBackup` — `<Documents>/vault` has `isExcludedFromBackup == true`.
 
