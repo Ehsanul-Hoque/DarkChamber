@@ -18,9 +18,17 @@ kotlin {
             implementation(libs.kotlinx.io.core)
         }
         // Android launcher threads the Context via androidContext() (D2); koin-android
-        // carries that seam. Platform Koin modules land in TASK-004.
+        // carries that seam. sqldelight-runtime: the platform Koin module builds the real
+        // driver (DriverFactory.create()) and passes it to CatalogStore.create (SqlDriver type).
         androidMain.dependencies {
             implementation(libs.koin.android)
+            implementation(libs.sqldelight.runtime)
+        }
+        // iOS platform module builds the native driver + opens the catalog (SqlDriver type).
+        listOf("iosArm64Main", "iosSimulatorArm64Main").forEach { name ->
+            getByName(name).dependencies {
+                implementation(libs.sqldelight.runtime)
+            }
         }
     }
 }
