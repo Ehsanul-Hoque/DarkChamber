@@ -50,3 +50,12 @@ public fun redactCause(error: VaultError): String =
         is VaultError.Io -> "Io"
         is VaultError.Db -> "Db"
     }
+
+/**
+ * Log a [VaultError] at error severity as `<stage> failed: <code>`. [stage] MUST be a fixed,
+ * caller-supplied token (never content); the error is passed through [redactCause] so no cause
+ * message, path, id, or vault content is emitted (hard rule #4).
+ */
+public fun logVaultError(stage: String, error: VaultError) {
+    Logger.e { "$stage failed: ${redactCause(error)}" }
+}

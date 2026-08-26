@@ -3,6 +3,14 @@ plugins {
 }
 
 kotlin {
+    // SQLDelight's native driver (sqliter) binds system sqlite3 via cinterop; the final native
+    // binary must link it. Applied here because the driver reaches :app transitively through
+    // core:db, and its linker options do not propagate across that module boundary. Covers the
+    // test binaries and the 5a iOS Shared framework (TASK-006).
+    listOf(iosArm64(), iosSimulatorArm64()).forEach { target ->
+        target.binaries.all { linkerOpts("-lsqlite3") }
+    }
+
     sourceSets {
         commonMain.dependencies {
             // Composition-root home: depends on every engine module wired in cycles 2–4
@@ -28,6 +36,18 @@ kotlin {
         listOf("iosArm64Main", "iosSimulatorArm64Main").forEach { name ->
             getByName(name).dependencies {
                 implementation(libs.sqldelight.runtime)
+            }
+        }
+        // Bootstrap tests inject an in-memory driver into CatalogProvider (SqlDriver type).
+        commonTest.dependencies {
+            implementation(libs.sqldelight.runtime)
+        }
+        getByName("androidHostTest").dependencies {
+            implementation(libs.sqldelight.driver.sqlite)
+        }
+        listOf("iosArm64Test", "iosSimulatorArm64Test").forEach { name ->
+            getByName(name).dependencies {
+                implementation(libs.sqldelight.driver.native)
             }
         }
     }
