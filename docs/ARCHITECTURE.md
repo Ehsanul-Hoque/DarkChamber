@@ -139,6 +139,14 @@ All viewer screens run under `FLAG_SECURE` (Android); iOS obscures the app-switc
 2. Auto-lock: on background beyond grace period (default 30 s, configurable), on device lock, on demand. Lock = zeroize MK/DEK caches, purge `tmp/`, invalidate decrypted bitmap caches, pop viewers.
 3. Compose side: single `VaultSession` state; every feature screen requires it — no screen can render decrypted content without a live session (compile-time enforced by API shape).
 
+> **Status — built (cycle 5a).** The composition root + cold-open exist in `:app`: `VaultBootstrap`
+> resolves the app-private vault root, opens the catalog + storage, and creates-or-unlocks a
+> `VaultSession` **by passphrase** (fail-closed, `Outcome`-typed — the first error aborts, never a
+> half-open vault). `selfCheck()` proves the whole stack by round-tripping one encrypted object
+> end-to-end. Step 1's **PIN/biometric** unlock, auto-lock (step 2), and the Compose session gate
+> (step 3) are **5b** — this cycle opens programmatically with a passphrase to prove the session
+> builds on a real device/simulator (see `docs/verification/app-bootstrap-manual.md`).
+
 ## 9. File metadata scrubber
 
 Two entry points sharing one engine:
@@ -196,7 +204,9 @@ Notes are vault items (`kind='note'`, `text/markdown`) in the same `.dchm` conta
 ├─ feature-vault/  feature-camera/  feature-viewers/
 ├─ feature-notes/  feature-scrubber/  feature-shredder/
 ├─ feature-backup/            (Phase 3)
-├─ app/                        composeApp entries (androidApp / iosApp)
+├─ app/                        shared composition root + VaultBootstrap + iOS "Shared" framework (built, 5a)
+├─ androidApp/                 Application launcher (startKoin) + Compose host
+├─ iosApp/                     SwiftUI host importing Shared.framework
 ├─ docs/
 │   ├─ ARCHITECTURE.md  THREAT_MODEL.md  FORMAT.md  DESIGN.md
 │   ├─ format-test-vectors/
