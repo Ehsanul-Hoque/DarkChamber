@@ -40,6 +40,15 @@ class LoggingTest {
     }
 
     @Test
+    fun unexpected_redacts_to_a_content_free_code_never_the_cause_message() {
+        val secret = "/vault/note-title.txt while decrypting"
+        val redacted = redactCause(VaultError.Unexpected(cause = RuntimeException(secret)))
+
+        assertEquals("Unexpected", redacted)
+        assertFalse(redacted.contains("vault"), "redacted Unexpected leaked the cause message")
+    }
+
+    @Test
     fun no_redacted_code_contains_a_digit_or_slash_that_could_be_content() {
         // A code is a fixed type token — never an id, size, path, or blob.
         val codes = listOf(

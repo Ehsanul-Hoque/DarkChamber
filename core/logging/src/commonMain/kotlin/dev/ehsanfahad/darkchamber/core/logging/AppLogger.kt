@@ -49,6 +49,7 @@ public fun redactCause(error: VaultError): String =
         VaultError.Crypto.MalformedContainer -> "Crypto.MalformedContainer"
         is VaultError.Io -> "Io"
         is VaultError.Db -> "Db"
+        is VaultError.Unexpected -> "Unexpected"
     }
 
 /**

@@ -126,6 +126,11 @@ class VaultBootstrap(
                 }
             }
             return Outcome.Ok(OpenVault(session, storage, catalog))
+        } catch (e: Exception) {
+            // D6 catch-all: createVault/unlock/KeyStoreCodec are not contractually throw-free, so a
+            // low-probability crypto/CBOR failure is mapped to a typed error rather than crossing into
+            // the Swift/Android glue. Never expected on a correct path.
+            return Outcome.Err(VaultError.Unexpected(e))
         } finally {
             // #5: createVault/unlock consume the passphrase on the happy path; zeroize on every
             // early-exit path too (a double zero-fill is a harmless no-op).
@@ -133,7 +138,16 @@ class VaultBootstrap(
         }
     }
 
-    private fun roundTrip(vault: OpenVault): Outcome<Unit> {
+    private fun roundTrip(vault: OpenVault): Outcome<Unit> =
+        try {
+            roundTripInner(vault)
+        } catch (e: Exception) {
+            // D6 catch-all — see open(). Any unexpected throw from the codec/session/storage/catalog
+            // round-trip is mapped to a typed error instead of crossing into the glue.
+            Outcome.Err(VaultError.Unexpected(e))
+        }
+
+    private fun roundTripInner(vault: OpenVault): Outcome<Unit> {
         val codec = DchmCodec(engine)
         val plaintext = SELF_CHECK_PLAINTEXT
         val fileId = engine.randomBytes(OBJECT_ID_SIZE)

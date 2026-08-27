@@ -31,4 +31,13 @@ sealed interface VaultError {
      * no SQL text, blob, id, or path in logs).
      */
     data class Db(val cause: Throwable) : VaultError
+
+    /**
+     * A throwable that escaped a lower layer which should have returned an [Outcome] — the
+     * fail-closed catch-all at a boundary (e.g. `VaultBootstrap`). It should never occur on a
+     * correct path, but is mapped to a typed error so no exception crosses into the platform glue
+     * (docs/engineering/PATTERNS.md §5). The [cause] is carried only for the logging boundary to
+     * redact — never logged directly (hard rule #4).
+     */
+    data class Unexpected(val cause: Throwable) : VaultError
 }
