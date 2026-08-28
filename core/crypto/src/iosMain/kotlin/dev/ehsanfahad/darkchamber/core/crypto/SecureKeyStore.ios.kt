@@ -62,8 +62,10 @@ import platform.Security.kSecValueData
  * secret cannot be handed to [CryptoEngine]. Shared across iosArm64 + iosSimulatorArm64 and works on
  * the simulator (no Secure Enclave required).
  *
- * Gating this cycle is **device-unlocked**; per-use biometric auth (an `.biometryCurrentSet`
- * `SecAccessControl` + an `LAContext`) is left to the UI cycle, which has an app host to present it.
+ * Gating this cycle is **device-unlocked**. The methods are `suspend` and take a
+ * [BiometricAuthenticator] as of cycle 5b; the per-use biometric *binding* (a `.biometryCurrentSet`
+ * `SecAccessControl` on the item + an `LAContext` via `kSecUseAuthenticationContext`) is wired in
+ * TASK-005 — this revision only updates the signatures and threads the parameter so the seam compiles.
  *
  * Not unit-tested in CI (no device secure hardware); covered by
  * `docs/verification/secure-keystore-manual.md` and by `FakeSecureKeyStore` for the integration
@@ -76,9 +78,11 @@ class IosSecureKeyStore(
 ) : SecureKeyStore {
     override fun isAvailable(): Boolean = true
 
-    override fun wrap(mk: ByteArray): ByteArray {
+    // TODO(TASK-005): add a .biometryCurrentSet SecAccessControl and pass the authenticator's
+    // LAContext via kSecUseAuthenticationContext so the item is released only after Face/Touch ID.
+    override suspend fun wrap(mk: ByteArray, authenticator: BiometricAuthenticator): Outcome<ByteArray> {
         deleteHardwareKey() // clear any prior item so SecItemAdd cannot fail with errSecDuplicateItem
-        memScoped {
+        val status = memScoped {
             val serviceRef = cfString(service)
             val accountRef = cfString(account)
             val dataRef = cfData(mk)
@@ -89,17 +93,21 @@ class IosSecureKeyStore(
                 kSecAttrAccessible to kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
                 kSecValueData to dataRef,
             )
-            val status = SecItemAdd(query, null)
+            val rc = SecItemAdd(query, null)
             CFRelease(query)
             CFRelease(serviceRef)
             CFRelease(accountRef)
             CFRelease(dataRef)
-            check(status == errSecSuccess) { "Keychain SecItemAdd failed: $status" }
+            rc
         }
-        return byteArrayOf(HARDWARE_BLOB_VERSION) // opaque marker; the secret is in the Keychain
+        return if (status == errSecSuccess) {
+            Outcome.Ok(byteArrayOf(HARDWARE_BLOB_VERSION)) // opaque marker; the secret is in the Keychain
+        } else {
+            Outcome.Err(VaultError.Crypto.IntegrityFailure) // no throw crosses the boundary
+        }
     }
 
-    override fun unwrap(blob: ByteArray): Outcome<ByteArray> {
+    override suspend fun unwrap(blob: ByteArray, authenticator: BiometricAuthenticator): Outcome<ByteArray> {
         if (blob.isEmpty()) return Outcome.Err(VaultError.Crypto.IntegrityFailure)
         return memScoped {
             val serviceRef = cfString(service)

@@ -24,9 +24,11 @@ import javax.crypto.spec.GCMParameterSpec
  *
  * The stored blob is `iv ‖ ciphertext` (the GCM tag is appended to the ciphertext by the provider).
  *
- * Gating this cycle is **device-unlocked** (`setUnlockedDeviceRequired`, API 28+); per-use biometric
- * auth (`setUserAuthenticationRequired` + a `BiometricPrompt` `CryptoObject`) is deliberately left
- * out until the UI cycle, which has an `Activity` to present the prompt in.
+ * Gating this cycle is **device-unlocked** (`setUnlockedDeviceRequired`, API 28+). The methods are
+ * `suspend` and take a [BiometricAuthenticator] as of cycle 5b; the per-use biometric *binding*
+ * (`setUserAuthenticationRequired` on the key + presenting a `BiometricPrompt` `CryptoObject`
+ * through the authenticator) is wired in TASK-005 — this revision only updates the signatures and
+ * threads the parameter so the seam compiles.
  *
  * Not unit-tested in CI (no device); covered by `docs/verification/secure-keystore-manual.md` and by
  * `FakeSecureKeyStore` for the integration logic. Must compile under `assembleFossDebug`.
@@ -36,15 +38,21 @@ class AndroidSecureKeyStore(
 ) : SecureKeyStore {
     override fun isAvailable(): Boolean = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
 
-    override fun wrap(mk: ByteArray): ByteArray {
-        val cipher = Cipher.getInstance(TRANSFORMATION)
-        cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
-        val ciphertext = cipher.doFinal(mk)
-        return cipher.iv + ciphertext // iv is the provider-generated 12-byte GCM nonce
-    }
+    override suspend fun wrap(mk: ByteArray, authenticator: BiometricAuthenticator): Outcome<ByteArray> =
+        // TODO(TASK-005): build the Cipher, wrap it in a BiometricPrompt.CryptoObject, authenticate
+        // it through `authenticator`, and doFinal only on the returned authorized CryptoObject.
+        try {
+            val cipher = Cipher.getInstance(TRANSFORMATION)
+            cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
+            val ciphertext = cipher.doFinal(mk)
+            Outcome.Ok(cipher.iv + ciphertext) // iv is the provider-generated 12-byte GCM nonce
+        } catch (_: GeneralSecurityException) {
+            Outcome.Err(VaultError.Crypto.IntegrityFailure)
+        }
 
-    override fun unwrap(blob: ByteArray): Outcome<ByteArray> {
+    override suspend fun unwrap(blob: ByteArray, authenticator: BiometricAuthenticator): Outcome<ByteArray> {
         if (blob.size <= GCM_IV_SIZE) return Outcome.Err(VaultError.Crypto.IntegrityFailure)
+        // TODO(TASK-005): authenticate the DECRYPT Cipher through `authenticator` before doFinal.
         return try {
             val key = loadKey() ?: return Outcome.Err(VaultError.Crypto.IntegrityFailure)
             val iv = blob.copyOfRange(0, GCM_IV_SIZE)

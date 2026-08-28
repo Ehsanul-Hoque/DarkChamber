@@ -20,23 +20,31 @@ import dev.ehsanfahad.darkchamber.core.model.Outcome
  * carve-out that may import the platform's own key-storage APIs (Android Keystore + JCE Cipher, iOS
  * Keychain) — confined to those two actual files.
  *
- * In this cycle the platform key is gated on **device-unlocked**; per-use biometric prompting is
- * added with the UI cycle.
+ * Per-use biometric auth (cycle 5b): [wrap]/[unwrap] are `suspend` and take a
+ * [BiometricAuthenticator]. The platform actual presents the prompt through it and only completes
+ * the crypto op with the **authenticated handle** it returns — so Face/Touch ID is bound
+ * cryptographically to using the hardware key, not merely a UI gate in front of it. A cancelled
+ * prompt / missing enrollment propagates as [VaultError.Auth]; a permanently invalidated key
+ * (biometrics re-enrolled) as [VaultError.Crypto.IntegrityFailure].
  */
 interface SecureKeyStore {
     /** True if this device can host a hardware-backed key (and one may be created). */
     fun isAvailable(): Boolean
 
-    /** Wrap [mk] under the platform key, returning an opaque blob to store in the HARDWARE slot. */
-    fun wrap(mk: ByteArray): ByteArray
+    /**
+     * Wrap [mk] under the platform key, returning an opaque blob to store in the HARDWARE slot.
+     * Prompts through [authenticator] (a hardware key that gates use requires auth to encrypt too),
+     * so a cancelled prompt → [Outcome.Err] of [VaultError.Auth]; never a throw across the boundary.
+     */
+    suspend fun wrap(mk: ByteArray, authenticator: BiometricAuthenticator): Outcome<ByteArray>
 
     /**
-     * Recover MK from a [blob] produced by [wrap]. Auth failure, a deleted/invalidated key, or any
-     * tamper yields [Outcome.Err] of
-     * [dev.ehsanfahad.darkchamber.core.model.VaultError.Crypto.IntegrityFailure] — never a throw
-     * across the boundary, never a partial result.
+     * Recover MK from a [blob] produced by [wrap], prompting through [authenticator]. A cancelled
+     * prompt / missing enrollment → [Outcome.Err] of [VaultError.Auth]; a deleted/invalidated key or
+     * any tamper → [Outcome.Err] of [VaultError.Crypto.IntegrityFailure] — never a throw across the
+     * boundary, never a partial result.
      */
-    fun unwrap(blob: ByteArray): Outcome<ByteArray>
+    suspend fun unwrap(blob: ByteArray, authenticator: BiometricAuthenticator): Outcome<ByteArray>
 
     /** Destroy the platform key (the panic-wipe primitive); idempotent — safe if none exists. */
     fun deleteHardwareKey()

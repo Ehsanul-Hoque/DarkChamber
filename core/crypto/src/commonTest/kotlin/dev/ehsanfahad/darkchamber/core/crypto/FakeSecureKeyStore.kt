@@ -2,6 +2,7 @@ package dev.ehsanfahad.darkchamber.core.crypto
 
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
+import dev.ehsanfahad.darkchamber.core.model.flatMap
 
 /**
  * Host test double for [SecureKeyStore]. Stands in for a platform Keystore/Keychain precisely
@@ -25,21 +26,29 @@ class FakeSecureKeyStore(
 
     override fun isAvailable(): Boolean = available
 
-    override fun wrap(mk: ByteArray): ByteArray {
-        val k = key ?: engine.randomBytes(MK_SIZE).also { key = it }
-        val nonce = engine.randomBytes(WRAP_NONCE_SIZE)
-        return nonce + engine.aeadSeal(k, nonce, ByteArray(0), mk)
-    }
+    override suspend fun wrap(mk: ByteArray, authenticator: BiometricAuthenticator): Outcome<ByteArray> =
+        // The prompt gates use of the key (as a biometric-required platform key does); on approve
+        // seal under it, on cancel/invalidation propagate the authenticator's error unchanged.
+        authenticator.authenticate(AUTH_REQUEST).flatMap {
+            val k = key ?: engine.randomBytes(MK_SIZE).also { key = it }
+            val nonce = engine.randomBytes(WRAP_NONCE_SIZE)
+            Outcome.Ok(nonce + engine.aeadSeal(k, nonce, ByteArray(0), mk))
+        }
 
-    override fun unwrap(blob: ByteArray): Outcome<ByteArray> {
-        val k = key ?: return Outcome.Err(VaultError.Crypto.IntegrityFailure)
-        if (blob.size < WRAP_NONCE_SIZE) return Outcome.Err(VaultError.Crypto.IntegrityFailure)
-        val nonce = blob.copyOfRange(0, WRAP_NONCE_SIZE)
-        val ciphertext = blob.copyOfRange(WRAP_NONCE_SIZE, blob.size)
-        return engine.aeadOpen(k, nonce, ByteArray(0), ciphertext)
-    }
+    override suspend fun unwrap(blob: ByteArray, authenticator: BiometricAuthenticator): Outcome<ByteArray> =
+        authenticator.authenticate(AUTH_REQUEST).flatMap {
+            val k = key ?: return@flatMap Outcome.Err(VaultError.Crypto.IntegrityFailure)
+            if (blob.size < WRAP_NONCE_SIZE) return@flatMap Outcome.Err(VaultError.Crypto.IntegrityFailure)
+            val nonce = blob.copyOfRange(0, WRAP_NONCE_SIZE)
+            val ciphertext = blob.copyOfRange(WRAP_NONCE_SIZE, blob.size)
+            engine.aeadOpen(k, nonce, ByteArray(0), ciphertext)
+        }
 
     override fun deleteHardwareKey() {
         key = null
+    }
+
+    private companion object {
+        val AUTH_REQUEST = BiometricRequest(title = "Unlock vault", cancelLabel = "Cancel")
     }
 }

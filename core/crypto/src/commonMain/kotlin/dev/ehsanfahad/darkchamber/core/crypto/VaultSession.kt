@@ -2,6 +2,7 @@ package dev.ehsanfahad.darkchamber.core.crypto
 
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
+import dev.ehsanfahad.darkchamber.core.model.map
 
 /** What [VaultSession.createVault] hands back: the live session, its KeyStore, and the recovery key. */
 class CreatedVault(
@@ -131,13 +132,21 @@ class VaultSession private constructor(
     /**
      * Wraps the current MK under [sks]'s hardware-held key and returns an updated KeyStore with the
      * HARDWARE slot set (FORMAT.md §3.1). No object data is re-encrypted — this is one more wrap of
-     * the same MK. Requires `sks.isAvailable()`. Re-adding replaces any existing hardware wrap (the
-     * caller destroys the old platform key via [removeHardwareSlot] first when rotating).
+     * the same MK. Requires `sks.isAvailable()`. Prompts through [authenticator] (enrolling a
+     * biometric-gated key authenticates once); a cancelled prompt → `Auth` `Err`. Re-adding replaces
+     * any existing hardware wrap (the caller destroys the old platform key via [removeHardwareSlot]
+     * first when rotating).
      */
-    fun addHardwareSlot(keyStore: KeyStoreBlob, sks: SecureKeyStore): KeyStoreBlob {
+    suspend fun addHardwareSlot(
+        keyStore: KeyStoreBlob,
+        sks: SecureKeyStore,
+        authenticator: BiometricAuthenticator,
+    ): Outcome<KeyStoreBlob> {
         check(!closed) { "vault session is closed" }
         check(sks.isAvailable()) { "no hardware keystore available on this device" }
-        return KeyStoreBlob(keyStore.formatVersion, keyStore.wraps, HardwareWrapEntry(sks.wrap(mk)))
+        return sks.wrap(mk, authenticator).map { blob ->
+            KeyStoreBlob(keyStore.formatVersion, keyStore.wraps, HardwareWrapEntry(blob))
+        }
     }
 
     /**
@@ -213,20 +222,22 @@ class VaultSession private constructor(
         }
 
         /**
-         * Unlocks a vault via its HARDWARE slot: recovers MK from [keyStore]'s `hardwareWrap` through
-         * [sks] (no user secret, no KDF — the platform key gates it). A KeyStore with no hardware slot
-         * → `MalformedContainer`; an invalidated/deleted key or tampered blob → `IntegrityFailure`
-         * (from [SecureKeyStore.unwrap]).
+         * Unlocks a vault via its HARDWARE slot: presents a biometric prompt through [authenticator],
+         * then recovers MK from [keyStore]'s `hardwareWrap` through [sks] (no user secret, no KDF — the
+         * platform key gates it). A KeyStore with no hardware slot → `MalformedContainer`; a cancelled
+         * prompt / missing enrollment → `Auth`; an invalidated/deleted key or tampered blob →
+         * `IntegrityFailure` (from [SecureKeyStore.unwrap]). Callers fall back to [unlock] with the
+         * PASSPHRASE slot when the hardware path fails (§3.3).
          */
-        fun unlockWithHardware(
+        suspend fun unlockWithHardware(
             engine: CryptoEngine,
             keyStore: KeyStoreBlob,
             sks: SecureKeyStore,
+            authenticator: BiometricAuthenticator,
         ): Outcome<VaultSession> {
             val hw = keyStore.hardwareWrap ?: return Outcome.Err(VaultError.Crypto.MalformedContainer)
-            return when (val opened = sks.unwrap(hw.blob)) {
-                is Outcome.Err -> opened
-                is Outcome.Ok -> Outcome.Ok(VaultSession(engine, DefaultKeyDerivation(engine), opened.value))
+            return sks.unwrap(hw.blob, authenticator).map { mk ->
+                VaultSession(engine, DefaultKeyDerivation(engine), mk)
             }
         }
     }
