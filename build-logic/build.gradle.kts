@@ -18,6 +18,11 @@ dependencies {
 
     implementation(libs.plugins.kotlinMultiplatform.asDependency())
     implementation(libs.plugins.androidMultiplatformLibrary.asDependency())
+    // Compose Multiplatform + the Kotlin Compose compiler plugin — applied by id from the
+    // darkchamber.kmp.compose convention plugin (:core:designsystem, :app). Their impls must be
+    // on this compile classpath for a precompiled script to id("…")-apply them.
+    implementation(libs.plugins.composeMultiplatform.asDependency())
+    implementation(libs.plugins.composeCompiler.asDependency())
     // AGP is compileOnly: the android.application plugin only *configures* an app
     // module reactively (plugins.withId), it never applies com.android.application
     // itself. Applying it here would leak the Android/Kotlin plugin classpath into the
