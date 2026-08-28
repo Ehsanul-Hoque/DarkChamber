@@ -40,6 +40,16 @@ kotlinxCoroutines = "1.11.0"
 # core:crypto (cycle 2c): pure-JVM Argon2id for the Android/host passphrase-wrap actual. GPLv3-OK
 # (BouncyCastle is MIT-style). iOS uses the vendored phc-winner-argon2 cinterop instead.
 bouncycastle = "1.85.2"
+# --- Session gate + biometric (cycle 5b) --------------------------------------
+# androidx.biometric BASE (not -ktx: no stable -ktx exists; our BiometricAuthenticator
+# seam already exposes suspend, so the -ktx coroutine helpers aren't needed). 1.1.0 is
+# the stable line carrying BiometricPrompt + CryptoObject (crypto-bound auth). Apache-2.0.
+androidxBiometric = "1.1.0"
+# fragment-ktx — BiometricPrompt requires a FragmentActivity host (MainActivity). Apache-2.0.
+androidxFragment = "1.9.0"
+# Essenty lifecycle — the Decompose component-tree lifecycle. 2.5.0 matches decompose 3.5.0's
+# transitive pin; declared explicitly because :app drives a LifecycleRegistry directly. Apache-2.0.
+essenty = "2.5.0"
 
 [libraries]
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
@@ -92,6 +102,12 @@ koin-test = { module = "io.insert-koin:koin-test", version.ref = "koin" }
 # Navigation / component tree — the session gate lives here (ARCHITECTURE.md).
 decompose = { module = "com.arkivanov.decompose:decompose", version.ref = "decompose" }
 decompose-compose = { module = "com.arkivanov.decompose:extensions-compose", version.ref = "decompose" }
+# Essenty lifecycle — the RootComponent LifecycleRegistry (:app), driven by the platform hosts.
+essenty-lifecycle = { module = "com.arkivanov.essenty:lifecycle", version.ref = "essenty" }
+# Biometric unlock (cycle 5b) — Android-only; the iOS side uses platform LocalAuthentication.
+# core:crypto/:app androidMain present BiometricPrompt with a crypto-bound CryptoObject.
+androidx-biometric = { module = "androidx.biometric:biometric", version.ref = "androidxBiometric" }
+androidx-fragment-ktx = { module = "androidx.fragment:fragment-ktx", version.ref = "androidxFragment" }
 # Image loading — encrypted custom Fetcher, memory cache only.
 coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil3" }
 # Media playback — Android decrypting DataSource (chunk range mapping).
