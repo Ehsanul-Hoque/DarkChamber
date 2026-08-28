@@ -1,5 +1,5 @@
 plugins {
-    id("darkchamber.kmp.library")
+    id("darkchamber.kmp.compose")
 }
 
 kotlin {
@@ -32,7 +32,14 @@ kotlin {
             api(project(":core:db"))
             implementation(project(":core:storage"))
             implementation(project(":core:logging"))
+            // First shared UI (5b): the session gate lives here. Compose comes via the theme module.
+            implementation(project(":core:designsystem"))
             implementation(libs.koin.core)
+            // The Decompose session gate (RootComponent: Locked | Unlocked) + its Compose integration
+            // and the Essenty lifecycle that drives background-lock (TASK-008).
+            implementation(libs.decompose)
+            implementation(libs.decompose.compose)
+            implementation(libs.essenty.lifecycle)
             // Path/root types for VaultRootResolver + VaultStorage(root) — kotlinx-io is core:storage's
             // API type. :app holds Path values only; every filesystem op stays in core:storage.
             implementation(libs.kotlinx.io.core)
