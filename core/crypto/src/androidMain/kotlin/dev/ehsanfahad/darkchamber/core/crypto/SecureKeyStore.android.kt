@@ -7,6 +7,7 @@ import android.security.keystore.KeyProperties
 import android.security.keystore.StrongBoxUnavailableException
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
+import dev.ehsanfahad.darkchamber.core.model.flatMap
 import java.security.GeneralSecurityException
 import java.security.KeyStore
 import javax.crypto.Cipher
@@ -24,13 +25,20 @@ import javax.crypto.spec.GCMParameterSpec
  *
  * The stored blob is `iv ‖ ciphertext` (the GCM tag is appended to the ciphertext by the provider).
  *
- * Gating this cycle is **device-unlocked** (`setUnlockedDeviceRequired`, API 28+). The methods are
- * `suspend` and take a [BiometricAuthenticator] as of cycle 5b; the per-use biometric *binding*
- * (`setUserAuthenticationRequired` on the key + presenting a `BiometricPrompt` `CryptoObject`
- * through the authenticator) is wired in TASK-005 — this revision only updates the signatures and
- * threads the parameter so the seam compiles.
+ * Per-use biometric binding (cycle 5b): the AndroidKeyStore key is created with
+ * `setUserAuthenticationRequired(true)`, so a `Cipher` initialised under it can only `doFinal` after
+ * the user authenticates *that Cipher instance* via a `BiometricPrompt.CryptoObject`. This actual
+ * builds the `Cipher`, hands it to [BiometricAuthenticator] as the opaque `cryptoHandle`, and only
+ * finalises on the **authorised Cipher** the authenticator returns — so Face/Touch ID is bound to the
+ * key operation, not merely shown in front of it. Keeping the `CryptoObject`/`BiometricPrompt` in the
+ * `:app` authenticator (not here) is what lets `:core:crypto` avoid an `androidx.biometric` dependency;
+ * this file still only imports the sanctioned `java.security`/`javax.crypto` carve-out (hard rule #2).
  *
- * Not unit-tested in CI (no device); covered by `docs/verification/secure-keystore-manual.md` and by
+ * A symmetric auth-required key gates ENCRYPT too, so [wrap] (enrollment) prompts once — documented.
+ * Re-enrolled biometrics invalidate the key → `Cipher.init` throws `KeyPermanentlyInvalidatedException`
+ * → [VaultError.Crypto.IntegrityFailure] (the forced-passphrase-fallback trigger, §3.3).
+ *
+ * Not unit-tested in CI (no device); covered by `docs/verification/session-gate-manual.md` and by
  * `FakeSecureKeyStore` for the integration logic. Must compile under `assembleFossDebug`.
  */
 class AndroidSecureKeyStore(
@@ -38,37 +46,58 @@ class AndroidSecureKeyStore(
 ) : SecureKeyStore {
     override fun isAvailable(): Boolean = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
 
-    override suspend fun wrap(mk: ByteArray, authenticator: BiometricAuthenticator): Outcome<ByteArray> =
-        // TODO(TASK-005): build the Cipher, wrap it in a BiometricPrompt.CryptoObject, authenticate
-        // it through `authenticator`, and doFinal only on the returned authorized CryptoObject.
-        try {
-            val cipher = Cipher.getInstance(TRANSFORMATION)
-            cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
-            val ciphertext = cipher.doFinal(mk)
-            Outcome.Ok(cipher.iv + ciphertext) // iv is the provider-generated 12-byte GCM nonce
+    override suspend fun wrap(mk: ByteArray, authenticator: BiometricAuthenticator): Outcome<ByteArray> {
+        // init can throw KeyPermanentlyInvalidatedException (re-enrolled biometrics) — map to key-gone.
+        val cipher = try {
+            Cipher.getInstance(TRANSFORMATION).apply { init(Cipher.ENCRYPT_MODE, getOrCreateKey()) }
+        } catch (_: KeyPermanentlyInvalidatedException) {
+            return Outcome.Err(VaultError.Crypto.IntegrityFailure)
         } catch (_: GeneralSecurityException) {
-            Outcome.Err(VaultError.Crypto.IntegrityFailure)
+            return Outcome.Err(VaultError.Crypto.IntegrityFailure)
         }
+        // Authenticate THIS Cipher; only the authorised one can doFinal (never a throw across boundary).
+        return authenticator.authenticate(request(cipher)).flatMap { auth ->
+            val authorized = auth.handle as? Cipher ?: return@flatMap Outcome.Err(VaultError.Crypto.IntegrityFailure)
+            try {
+                Outcome.Ok(authorized.iv + authorized.doFinal(mk)) // iv is the 12-byte GCM nonce
+            } catch (_: GeneralSecurityException) {
+                Outcome.Err(VaultError.Crypto.IntegrityFailure)
+            }
+        }
+    }
 
     override suspend fun unwrap(blob: ByteArray, authenticator: BiometricAuthenticator): Outcome<ByteArray> {
         if (blob.size <= GCM_IV_SIZE) return Outcome.Err(VaultError.Crypto.IntegrityFailure)
-        // TODO(TASK-005): authenticate the DECRYPT Cipher through `authenticator` before doFinal.
-        return try {
+        val cipher = try {
             val key = loadKey() ?: return Outcome.Err(VaultError.Crypto.IntegrityFailure)
             val iv = blob.copyOfRange(0, GCM_IV_SIZE)
-            val ciphertext = blob.copyOfRange(GCM_IV_SIZE, blob.size)
-            val cipher = Cipher.getInstance(TRANSFORMATION)
-            cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(GCM_TAG_BITS, iv))
-            Outcome.Ok(cipher.doFinal(ciphertext))
+            Cipher.getInstance(TRANSFORMATION).apply { init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(GCM_TAG_BITS, iv)) }
         } catch (_: KeyPermanentlyInvalidatedException) {
-            // Key wiped by a device credential change / biometric enrolment — treat as key-gone.
-            Outcome.Err(VaultError.Crypto.IntegrityFailure)
+            // Key wiped by a device credential change / biometric enrolment — treat as key-gone (§3.3).
+            return Outcome.Err(VaultError.Crypto.IntegrityFailure)
         } catch (_: GeneralSecurityException) {
-            // GCM tag mismatch (AEADBadTagException), missing/invalid key, locked device — all map to
-            // the single tamper/auth-failure outcome the contract allows (never a throw, never partial).
-            Outcome.Err(VaultError.Crypto.IntegrityFailure)
+            return Outcome.Err(VaultError.Crypto.IntegrityFailure)
+        }
+        return authenticator.authenticate(request(cipher)).flatMap { auth ->
+            val authorized = auth.handle as? Cipher ?: return@flatMap Outcome.Err(VaultError.Crypto.IntegrityFailure)
+            val ciphertext = blob.copyOfRange(GCM_IV_SIZE, blob.size)
+            try {
+                Outcome.Ok(authorized.doFinal(ciphertext))
+            } catch (_: GeneralSecurityException) {
+                // GCM tag mismatch (AEADBadTagException), locked device — the single tamper/auth outcome.
+                Outcome.Err(VaultError.Crypto.IntegrityFailure)
+            }
         }
     }
+
+    // The prompt copy is a neutral default; the :app authenticator localises/overrides it and only
+    // relies on `cryptoHandle` (the Cipher to authorise). Honest copy per docs/DESIGN.md §11.
+    private fun request(cipher: Cipher): BiometricRequest = BiometricRequest(
+        title = PROMPT_TITLE,
+        subtitle = PROMPT_SUBTITLE,
+        cancelLabel = PROMPT_CANCEL,
+        cryptoHandle = cipher,
+    )
 
     override fun deleteHardwareKey() {
         val store = androidKeyStore()
@@ -100,10 +129,12 @@ class AndroidSecureKeyStore(
             .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
             .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
             .setKeySize(256)
+            // Per-use biometric binding (cycle 5b): every wrap/unwrap requires a fresh auth of the
+            // Cipher via a CryptoObject. setInvalidatedByBiometricEnrollment is true by default for
+            // auth-required keys, so re-enrolling biometrics invalidates the key (→ IntegrityFailure).
+            .setUserAuthenticationRequired(true)
             .apply {
-                // Device-unlocked gating + StrongBox are both API 28+. Per-use biometric auth
-                // (setUserAuthenticationRequired) is intentionally NOT set here — added with the UI
-                // cycle, which can present a BiometricPrompt CryptoObject.
+                // Device-unlocked gating + StrongBox are both API 28+.
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                     setUnlockedDeviceRequired(true)
                     if (strongBox) setIsStrongBoxBacked(true)
@@ -123,5 +154,8 @@ class AndroidSecureKeyStore(
         private const val TRANSFORMATION = "AES/GCM/NoPadding"
         private const val GCM_IV_SIZE = 12
         private const val GCM_TAG_BITS = 128
+        private const val PROMPT_TITLE = "Unlock DarkChamber"
+        private const val PROMPT_SUBTITLE = "Confirm it's you to open your vault"
+        private const val PROMPT_CANCEL = "Use passphrase"
     }
 }
