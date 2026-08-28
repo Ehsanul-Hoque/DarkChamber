@@ -51,6 +51,10 @@ kotlin {
         androidMain.dependencies {
             implementation(libs.bouncycastle.bcprov)
         }
+        // Auth-aware seams (cycle 5b) are suspend — runTest drives the coroutine unlock paths.
+        commonTest.dependencies {
+            implementation(libs.kotlinx.coroutines.test)
+        }
         // Host-only: the .dchm format-vector gate reads the committed JSON under docs/.
         getByName("androidHostTest").dependencies {
             implementation(libs.kotlinx.serialization.json)

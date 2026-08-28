@@ -47,6 +47,8 @@ public fun redactCause(error: VaultError): String =
         VaultError.Crypto.IntegrityFailure -> "Crypto.IntegrityFailure"
         VaultError.Crypto.UnsupportedFormatVersion -> "Crypto.UnsupportedFormatVersion"
         VaultError.Crypto.MalformedContainer -> "Crypto.MalformedContainer"
+        VaultError.Auth.Cancelled -> "Auth.Cancelled"
+        VaultError.Auth.Unavailable -> "Auth.Unavailable"
         is VaultError.Io -> "Io"
         is VaultError.Db -> "Db"
         is VaultError.Unexpected -> "Unexpected"

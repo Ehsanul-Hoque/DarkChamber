@@ -19,6 +19,21 @@ sealed interface VaultError {
         data object MalformedContainer : Crypto
     }
 
+    /**
+     * Biometric / device-auth failure at the `SecureKeyStore`/`BiometricAuthenticator` boundary
+     * (cycle 5b). Distinct from [Crypto.IntegrityFailure]: a cancelled prompt or missing enrollment
+     * is a benign auth outcome (retry / fall back to passphrase), NOT possible tampering. A
+     * permanently invalidated key (biometrics re-enrolled) surfaces as [Crypto.IntegrityFailure]
+     * instead, since the wrap can no longer be opened.
+     */
+    sealed interface Auth : VaultError {
+        /** User dismissed/cancelled the prompt, or auth failed without key invalidation. */
+        data object Cancelled : Auth
+
+        /** No usable biometric — none enrolled, hardware absent, or temporary lockout. */
+        data object Unavailable : Auth
+    }
+
     /** Underlying I/O failure while reading or writing a container. */
     data class Io(val cause: Throwable) : VaultError
 
