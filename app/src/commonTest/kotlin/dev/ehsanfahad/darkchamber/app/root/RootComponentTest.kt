@@ -2,6 +2,7 @@ package dev.ehsanfahad.darkchamber.app.root
 
 import com.arkivanov.decompose.DefaultComponentContext
 import com.arkivanov.essenty.lifecycle.LifecycleRegistry
+import org.koin.dsl.koinApplication
 import dev.ehsanfahad.darkchamber.app.VaultBootstrap
 import dev.ehsanfahad.darkchamber.app.testSqlDriver
 import dev.ehsanfahad.darkchamber.core.crypto.CryptographyKotlinEngine
@@ -29,6 +30,7 @@ import kotlin.test.assertTrue
  */
 class RootComponentTest {
     private val testDir = Path(SystemTemporaryDirectory, "rct-${Random.nextULong()}")
+    private val koin = koinApplication { }.koin
 
     @AfterTest
     fun cleanup() = deleteRecursively(testDir)
@@ -37,7 +39,7 @@ class RootComponentTest {
         DefaultRootComponent(
             componentContext = DefaultComponentContext(LifecycleRegistry()),
             lockedFactory = { ctx, onUnlocked -> DefaultLockedComponent(ctx, LockMode.Unlock, onUnlocked) },
-            unlockedFactory = { ctx, vault, onLock -> DefaultUnlockedComponent(ctx, vault, onLock) },
+            unlockedFactory = { ctx, vault, onLock -> DefaultUnlockedComponent(ctx, vault, koin, onLock) },
         )
 
     @Test

@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.Flow
  * opaque blobs (D1, hard rule #2); the feature/data layer composes `core:crypto` above the store.
  */
 class CatalogStore private constructor(
+    private val driver: SqlDriver,
     private val db: DarkChamberDatabase,
     private val dispatcher: CoroutineDispatcher,
 ) {
@@ -116,6 +117,14 @@ class CatalogStore private constructor(
     fun listAudit(limit: Long): Outcome<List<Audit_log>> =
         catchingDb { audit.selectRecentAudit(limit).executeAsList() }
 
+    /**
+     * Close the underlying [SqlDriver], releasing its DB connection/handle. Called by the session
+     * teardown on lock (the session scope owns the catalog's lifetime, cycle-5b). Idempotent-ish: a
+     * driver failure maps to [VaultError.Db]; after close the store must not be used again.
+     */
+    fun close(): Outcome<Unit> =
+        catchingDb { driver.close() }
+
     companion object {
         /**
          * Open the catalog on [driver], creating or migrating schema v1 as needed.
@@ -146,7 +155,7 @@ class CatalogStore private constructor(
                     }
                     else -> error("catalog user_version=$current newer than supported ${schema.version}")
                 }
-                Outcome.Ok(CatalogStore(darkChamberDatabase(driver), dispatcher))
+                Outcome.Ok(CatalogStore(driver, darkChamberDatabase(driver), dispatcher))
             } catch (e: Exception) {
                 Outcome.Err(VaultError.Db(e))
             }
