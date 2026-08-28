@@ -1,41 +1,36 @@
 package dev.ehsanfahad.darkchamber.app
 
 import dev.ehsanfahad.darkchamber.app.di.CatalogProvider
+import dev.ehsanfahad.darkchamber.core.crypto.BiometricAuthenticator
 import dev.ehsanfahad.darkchamber.core.crypto.CryptoEngine
-import dev.ehsanfahad.darkchamber.core.crypto.DchmCodec
-import dev.ehsanfahad.darkchamber.core.crypto.DchmFormat
 import dev.ehsanfahad.darkchamber.core.crypto.DefaultKeyDerivation
+import dev.ehsanfahad.darkchamber.core.crypto.KeyStoreBlob
 import dev.ehsanfahad.darkchamber.core.crypto.KeyStoreCodec
 import dev.ehsanfahad.darkchamber.core.crypto.SecureKeyStore
 import dev.ehsanfahad.darkchamber.core.crypto.Slot
 import dev.ehsanfahad.darkchamber.core.crypto.VaultSession
 import dev.ehsanfahad.darkchamber.core.db.CatalogStore
-import dev.ehsanfahad.darkchamber.core.db.Items
-import dev.ehsanfahad.darkchamber.core.logging.logVaultError
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
-import dev.ehsanfahad.darkchamber.core.model.flatMap
-import dev.ehsanfahad.darkchamber.core.model.map
 import dev.ehsanfahad.darkchamber.core.storage.VaultStorage
-import kotlinx.io.Buffer
-import kotlinx.io.buffered
-import kotlinx.io.readByteArray
-import kotlinx.io.write
 
 /**
  * The fail-closed cold-open of the vault — the composition root's single entry point.
  *
- * Resolves the app-private vault root, opens the catalog + storage, and creates-or-unlocks a
- * [VaultSession] (by passphrase this cycle — the biometric / hardware-slot path is 5b). Every step
- * is `Outcome`-typed and the first failure aborts the open, never a half-initialized vault (D6). No
- * exception crosses out; failures are logged as a redacted code only (hard rule #4).
+ * Resolves the app-private, backup-excluded vault root, opens the catalog + storage, and creates or
+ * unlocks a [VaultSession]. Three ways in: [createVault] (first run — mints the passphrase + recovery
+ * slots), [unlock] (passphrase), and [unlockWithBiometric] (the HARDWARE slot, §3.3). Every step is
+ * `Outcome`-typed and the first failure aborts, never a half-initialized vault (D6). No exception
+ * crosses out (a catch-all maps an unexpected throw to [VaultError.Unexpected]); failures are logged
+ * as a redacted code only by the caller (hard rule #4). The unlocked subtree owns the returned
+ * [OpenVault] and its teardown (session zeroize, tmp purge, driver close — TASK-008).
  *
  * Constructed by Koin ([dev.ehsanfahad.darkchamber.app.di.commonAppModule]).
  *
  * @param rootResolver resolves + prepares the backup-excluded vault root.
  * @param engine the sole cryptographic primitive seam (hard rule #2).
  * @param catalogProvider opens the catalog over a resolved root (platform-bound driver creation).
- * @param secureKeyStore the HARDWARE-slot wrap seam (used by the biometric path in 5b).
+ * @param secureKeyStore the HARDWARE-slot wrap seam (biometric enroll / unlock).
  */
 class VaultBootstrap(
     private val rootResolver: VaultRootResolver,
@@ -43,215 +38,153 @@ class VaultBootstrap(
     private val catalogProvider: CatalogProvider,
     private val secureKeyStore: SecureKeyStore,
 ) {
-    /**
-     * Cold-open the vault: resolve root → open catalog + storage → create-vault (first run, keystore
-     * persisted) or unlock (reopen) with [passphrase]. The [passphrase] is consumed (zeroized) here
-     * whether or not the open succeeds (hard rule #5). Returns the live [VaultSession]; the caller
-     * owns [VaultSession.close].
-     */
-    fun openOrCreateVault(passphrase: ByteArray): Outcome<VaultSession> =
-        open(passphrase).map { it.session }
-
-    /**
-     * A 5a bring-up probe: open-or-create the vault with a fixed diagnostic passphrase, round-trip
-     * one encrypted object end-to-end (encrypt → store → catalog → read → decrypt → assert), then
-     * close the session. Proves the whole engine composes on a real device/simulator. This is the
-     * only vault user this cycle (no UI yet); the real user passphrase / biometric unlock arrives in
-     * 5b. On any failure a redacted code is logged and the failure returned.
-     */
-    fun selfCheck(): Outcome<Unit> =
-        when (val opened = open(diagnosticPassphrase())) {
-            is Outcome.Err -> {
-                logVaultError(STAGE_OPEN, opened.error)
-                opened
-            }
-            is Outcome.Ok -> {
-                val vault = opened.value
-                val result = roundTrip(vault)
-                vault.session.close()
-                if (result is Outcome.Err) logVaultError(STAGE_ROUND_TRIP, result.error)
-                result
-            }
-        }
-
-    private class OpenVault(
+    /** A live, unlocked vault: the session plus the resources the unlocked subtree owns + tears down. */
+    class OpenVault internal constructor(
         val session: VaultSession,
         val storage: VaultStorage,
         val catalog: CatalogStore,
     )
 
-    private fun open(passphrase: ByteArray): Outcome<OpenVault> {
+    /** An [OpenVault] plus the one-time recovery-key display string from [createVault]. */
+    class CreatedVaultSession internal constructor(
+        val vault: OpenVault,
+        /** Shown to the user **once**; never stored by us (docs/DESIGN.md §10). */
+        val recoveryKey: String,
+    )
+
+    /**
+     * First run: create the vault (random MK wrapped by [passphrase] + a fresh recovery key), persist
+     * its keystore, and return the live session plus the recovery-key display string. Refuses if a
+     * keystore already exists (never clobbers an existing vault). [passphrase] is consumed (zeroized)
+     * here whether or not the create succeeds (hard rule #5).
+     */
+    fun createVault(passphrase: ByteArray): Outcome<CreatedVaultSession> {
         try {
-            val root = when (val r = rootResolver.resolve()) {
+            val res = when (val r = openResources()) {
                 is Outcome.Err -> return r
                 is Outcome.Ok -> r.value
             }
-            val storage = try {
-                VaultStorage(root)
-            } catch (e: Exception) {
-                return Outcome.Err(VaultError.Io(e))
+            val existing = when (val e = res.storage.readKeyStore()) {
+                is Outcome.Err -> return e
+                is Outcome.Ok -> e.value
             }
-            val catalog = when (val c = catalogProvider.open(root)) {
-                is Outcome.Err -> return c
-                is Outcome.Ok -> c.value
+            if (existing != null) {
+                // A vault is already here — the caller should have taken the unlock path.
+                return Outcome.Err(VaultError.Unexpected(IllegalStateException("vault already exists")))
             }
-
-            val kdf = DefaultKeyDerivation(engine)
-            val session = when (val existing = storage.readKeyStore()) {
-                is Outcome.Err -> return existing
-                is Outcome.Ok -> {
-                    val bytes = existing.value
-                    if (bytes == null) {
-                        // First run: create the vault and persist its keystore before returning.
-                        val created = VaultSession.createVault(engine, kdf, passphrase)
-                        when (val written = storage.writeKeyStore(KeyStoreCodec.encode(created.keyStore))) {
-                            is Outcome.Err -> {
-                                created.session.close()
-                                return written
-                            }
-                            is Outcome.Ok -> created.session
-                        }
-                    } else {
-                        // Reopen: decode the keystore and unlock the PASSPHRASE slot.
-                        when (val blob = KeyStoreCodec.decode(bytes)) {
-                            is Outcome.Err -> return blob
-                            is Outcome.Ok -> when (
-                                val s = VaultSession.unlock(engine, kdf, blob.value, passphrase, Slot.PASSPHRASE)
-                            ) {
-                                is Outcome.Err -> return s
-                                is Outcome.Ok -> s.value
-                            }
-                        }
-                    }
+            val created = VaultSession.createVault(engine, DefaultKeyDerivation(engine), passphrase)
+            when (val w = res.storage.writeKeyStore(KeyStoreCodec.encode(created.keyStore))) {
+                is Outcome.Err -> {
+                    created.session.close()
+                    return w
                 }
+                is Outcome.Ok -> Unit
             }
-            return Outcome.Ok(OpenVault(session, storage, catalog))
+            val vault = OpenVault(created.session, res.storage, res.catalog)
+            return Outcome.Ok(CreatedVaultSession(vault, created.recoveryKey))
         } catch (e: Exception) {
-            // D6 catch-all: createVault/unlock/KeyStoreCodec are not contractually throw-free, so a
-            // low-probability crypto/CBOR failure is mapped to a typed error rather than crossing into
-            // the Swift/Android glue. Never expected on a correct path.
             return Outcome.Err(VaultError.Unexpected(e))
         } finally {
-            // #5: createVault/unlock consume the passphrase on the happy path; zeroize on every
-            // early-exit path too (a double zero-fill is a harmless no-op).
             passphrase.fill(0)
         }
     }
 
-    private fun roundTrip(vault: OpenVault): Outcome<Unit> =
+    /**
+     * Reopen an existing vault by unlocking the PASSPHRASE slot. A wrong passphrase → `IntegrityFailure`;
+     * no keystore present → `Unexpected` (the caller should have taken the create path). [passphrase]
+     * is consumed (zeroized).
+     */
+    fun unlock(passphrase: ByteArray): Outcome<OpenVault> {
         try {
-            roundTripInner(vault)
+            val res = when (val r = openResources()) {
+                is Outcome.Err -> return r
+                is Outcome.Ok -> r.value
+            }
+            val blob = when (val b = readKeyStore(res.storage)) {
+                is Outcome.Err -> return b
+                is Outcome.Ok -> b.value
+            }
+            return when (val s = VaultSession.unlock(engine, DefaultKeyDerivation(engine), blob, passphrase, Slot.PASSPHRASE)) {
+                is Outcome.Err -> s
+                is Outcome.Ok -> Outcome.Ok(OpenVault(s.value, res.storage, res.catalog))
+            }
         } catch (e: Exception) {
-            // D6 catch-all — see open(). Any unexpected throw from the codec/session/storage/catalog
-            // round-trip is mapped to a typed error instead of crossing into the glue.
-            Outcome.Err(VaultError.Unexpected(e))
-        }
-
-    private fun roundTripInner(vault: OpenVault): Outcome<Unit> {
-        val codec = DchmCodec(engine)
-        val plaintext = SELF_CHECK_PLAINTEXT
-        val fileId = engine.randomBytes(OBJECT_ID_SIZE)
-        val wrappedDek = vault.session.generateDek()
-
-        val objectCipher = when (val c = seal(vault.session, wrappedDek, fileId, plaintext, codec)) {
-            is Outcome.Err -> return c
-            is Outcome.Ok -> c.value
-        }
-        val metaCipher = when (val m = seal(vault.session, wrappedDek, fileId, SELF_CHECK_META, codec)) {
-            is Outcome.Err -> return m
-            is Outcome.Ok -> m.value
-        }
-
-        val objBuf = Buffer().apply { write(objectCipher) }
-        when (val w = vault.storage.writeObject(fileId) { sink -> sink.write(objBuf, objBuf.size) }) {
-            is Outcome.Err -> return w
-            is Outcome.Ok -> Unit
-        }
-
-        // The row carries ids + opaque encrypted blobs only (enc_meta / dek_wrapped) — never content.
-        val item = Items(
-            id = fileId,
-            album_id = null,
-            kind = 0,
-            size = plaintext.size.toLong(),
-            created_at = 0L,
-            enc_meta = metaCipher,
-            dek_wrapped = wrappedDek,
-        )
-        when (val u = vault.catalog.upsertItem(item)) {
-            is Outcome.Err -> return u
-            is Outcome.Ok -> Unit
-        }
-
-        val fetched = when (val g = vault.catalog.getItem(fileId)) {
-            is Outcome.Err -> return g
-            is Outcome.Ok -> g.value
-                ?: return Outcome.Err(VaultError.Db(IllegalStateException("catalog row missing after upsert")))
-        }
-
-        val cipherBack = when (val r = vault.storage.readObject(fetched.id) { src -> src.buffered().readByteArray() }) {
-            is Outcome.Err -> return r
-            is Outcome.Ok -> r.value
-        }
-
-        val plainBack = when (val d = unseal(vault.session, fetched.dek_wrapped, fetched.id, cipherBack, codec)) {
-            is Outcome.Err -> return d
-            is Outcome.Ok -> d.value
-        }
-
-        return if (plainBack.contentEquals(plaintext)) {
-            Outcome.Ok(Unit)
-        } else {
-            // Decrypt succeeded but bytes differ — a composition bug, surfaced as an integrity failure.
-            Outcome.Err(VaultError.Crypto.IntegrityFailure)
+            return Outcome.Err(VaultError.Unexpected(e))
+        } finally {
+            passphrase.fill(0)
         }
     }
 
-    /** Encrypt [plaintext] into a `.dchm` container under the wrapped DEK; returns the container bytes. */
-    private fun seal(
-        session: VaultSession,
-        wrappedDek: ByteArray,
-        fileId: ByteArray,
-        plaintext: ByteArray,
-        codec: DchmCodec,
-    ): Outcome<ByteArray> =
-        session.useDek(wrappedDek) { raw ->
-            val out = Buffer()
-            codec.encryptContainer(
-                dek = raw,
-                noncePrefix = engine.randomBytes(DchmFormat.NONCE_PREFIX_SIZE),
-                createdAt = 0L,
-                fileId = fileId,
-                originalName = "",
-                mime = "application/octet-stream",
-                chunkSize = DchmFormat.DEFAULT_CHUNK_SIZE,
-                openSource = { Buffer().apply { write(plaintext) } },
-                sink = out,
-            ).map { out.readByteArray() }
-        }.flatMap { it }
+    /**
+     * Reopen an existing vault via the HARDWARE slot, prompting for biometrics through [authenticator].
+     * A cancelled prompt → `Auth`; a re-enrolled/invalidated key → `IntegrityFailure` (the UI then
+     * forces the passphrase, §3.3); no hardware slot → `MalformedContainer`.
+     */
+    suspend fun unlockWithBiometric(authenticator: BiometricAuthenticator): Outcome<OpenVault> {
+        return try {
+            val res = when (val r = openResources()) {
+                is Outcome.Err -> return r
+                is Outcome.Ok -> r.value
+            }
+            val blob = when (val b = readKeyStore(res.storage)) {
+                is Outcome.Err -> return b
+                is Outcome.Ok -> b.value
+            }
+            when (val s = VaultSession.unlockWithHardware(engine, blob, secureKeyStore, authenticator)) {
+                is Outcome.Err -> s
+                is Outcome.Ok -> Outcome.Ok(OpenVault(s.value, res.storage, res.catalog))
+            }
+        } catch (e: Exception) {
+            Outcome.Err(VaultError.Unexpected(e))
+        }
+    }
 
-    /** Decrypt a `.dchm` container back to plaintext under the wrapped DEK. */
-    private fun unseal(
-        session: VaultSession,
-        wrappedDek: ByteArray,
-        fileId: ByteArray,
-        container: ByteArray,
-        codec: DchmCodec,
-    ): Outcome<ByteArray> =
-        session.useDek(wrappedDek) { raw ->
-            val out = Buffer()
-            codec.decryptContainer(raw, fileId, Buffer().apply { write(container) }, out)
-                .map { out.readByteArray() }
-        }.flatMap { it }
+    /**
+     * Enroll the HARDWARE slot on an already-unlocked [vault] (the "enable biometric" step): wrap MK
+     * under the platform key (prompting through [authenticator]) and persist the updated keystore. A
+     * cancelled prompt leaves the keystore unchanged.
+     */
+    suspend fun enrollBiometric(vault: OpenVault, authenticator: BiometricAuthenticator): Outcome<Unit> {
+        return try {
+            val blob = when (val b = readKeyStore(vault.storage)) {
+                is Outcome.Err -> return b
+                is Outcome.Ok -> b.value
+            }
+            val updated = when (val u = vault.session.addHardwareSlot(blob, secureKeyStore, authenticator)) {
+                is Outcome.Err -> return u
+                is Outcome.Ok -> u.value
+            }
+            vault.storage.writeKeyStore(KeyStoreCodec.encode(updated))
+        } catch (e: Exception) {
+            Outcome.Err(VaultError.Unexpected(e))
+        }
+    }
 
-    /** Fresh diagnostic passphrase for [selfCheck] (consumed on use). Not a user secret — 5a only. */
-    private fun diagnosticPassphrase(): ByteArray = "darkchamber:selfcheck:v1".encodeToByteArray()
+    private class Resources(val storage: VaultStorage, val catalog: CatalogStore)
 
-    private companion object {
-        const val STAGE_OPEN = "vault-open"
-        const val STAGE_ROUND_TRIP = "vault-round-trip"
-        const val OBJECT_ID_SIZE = 16
-        val SELF_CHECK_PLAINTEXT = "darkchamber-selfcheck-plaintext".encodeToByteArray()
-        val SELF_CHECK_META = "darkchamber-selfcheck-meta".encodeToByteArray()
+    /** Resolve the root and open storage + catalog (no session yet). Fail-closed: first Err aborts. */
+    private fun openResources(): Outcome<Resources> {
+        val root = when (val r = rootResolver.resolve()) {
+            is Outcome.Err -> return r
+            is Outcome.Ok -> r.value
+        }
+        val storage = try {
+            VaultStorage(root)
+        } catch (e: Exception) {
+            return Outcome.Err(VaultError.Io(e))
+        }
+        return when (val c = catalogProvider.open(root)) {
+            is Outcome.Err -> c
+            is Outcome.Ok -> Outcome.Ok(Resources(storage, c.value))
+        }
+    }
+
+    /** Read + decode the persisted keystore; a missing keystore is `Unexpected` (no vault to unlock). */
+    private fun readKeyStore(storage: VaultStorage): Outcome<KeyStoreBlob> {
+        val bytes = when (val r = storage.readKeyStore()) {
+            is Outcome.Err -> return r
+            is Outcome.Ok -> r.value
+        } ?: return Outcome.Err(VaultError.Unexpected(IllegalStateException("no vault to unlock")))
+        return KeyStoreCodec.decode(bytes)
     }
 }

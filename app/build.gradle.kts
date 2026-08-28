@@ -50,9 +50,11 @@ kotlin {
                 implementation(libs.sqldelight.runtime)
             }
         }
-        // Bootstrap tests inject an in-memory driver into CatalogProvider (SqlDriver type).
+        // Bootstrap tests inject an in-memory driver into CatalogProvider (SqlDriver type);
+        // the biometric unlock paths are suspend, so runTest drives them.
         commonTest.dependencies {
             implementation(libs.sqldelight.runtime)
+            implementation(libs.kotlinx.coroutines.test)
         }
         getByName("androidHostTest").dependencies {
             implementation(libs.sqldelight.driver.sqlite)
