@@ -21,6 +21,13 @@ import dev.ehsanfahad.darkchamber.app.VaultBootstrap
  */
 interface RootComponent {
     val child: Value<RootChild>
+
+    /**
+     * Lock now if a session is open (no-op if already locked). Hosts call this when the app goes to
+     * the background (iOS `didEnterBackground`, Android `onStop` on a real background — not a config
+     * change), so a session never survives backgrounding (hard rules #1/#5). Idempotent.
+     */
+    fun lockIfUnlocked()
 }
 
 /** The two — and only two — gate children. */
@@ -70,5 +77,11 @@ class DefaultRootComponent(
         // Replace the entire unlocked subtree with a fresh locked child (the subtree — and any
         // decrypted-content state it held — ceases to exist).
         _child.value = RootChild.Locked(createLocked())
+    }
+
+    override fun lockIfUnlocked() {
+        // The unlocked child's lifecycle is standalone (not driven by the app lifecycle), so the host
+        // must ask us to lock on background; delegate to its teardown (which returns us to Locked).
+        (_child.value as? RootChild.Unlocked)?.component?.lock()
     }
 }

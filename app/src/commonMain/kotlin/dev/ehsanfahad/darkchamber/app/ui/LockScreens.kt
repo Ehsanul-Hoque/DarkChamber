@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -195,6 +196,9 @@ private fun GateScaffold(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            // Keep content clear of the status bar / notch (iOS) and system bars (Android edge-to-edge),
+            // while the Surface background still fills behind them.
+            .safeDrawingPadding()
             .verticalScroll(rememberScrollState())
             .padding(DarkChamberTheme.spacing.spaceLg),
         horizontalAlignment = Alignment.CenterHorizontally,

@@ -50,7 +50,7 @@ fun MainViewController(): UIViewController {
     )
 
     lifecycle.resume()
-    observeAppLifecycle(lifecycle)
+    observeAppLifecycle(lifecycle, root)
 
     return ComposeUIViewController { RootContent(root) }
 }
@@ -63,10 +63,13 @@ private val appKoin: Koin by lazy {
 }
 
 @OptIn(ExperimentalForeignApi::class)
-private fun observeAppLifecycle(lifecycle: LifecycleRegistry) {
+private fun observeAppLifecycle(lifecycle: LifecycleRegistry, root: RootComponent) {
     val center = NSNotificationCenter.defaultCenter
     center.addObserverForName(UIApplicationDidEnterBackgroundNotification, null, NSOperationQueue.mainQueue) { _ ->
-        lifecycle.stop() // background → lock (UnlockedComponent.onStop tears the session down)
+        // Lock the session on background (the child lifecycle is standalone, so drive it explicitly),
+        // then stop the root lifecycle so Compose pauses.
+        root.lockIfUnlocked()
+        lifecycle.stop()
     }
     center.addObserverForName(UIApplicationWillEnterForegroundNotification, null, NSOperationQueue.mainQueue) { _ ->
         lifecycle.resume()

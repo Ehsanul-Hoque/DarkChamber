@@ -27,13 +27,21 @@ import org.koin.core.context.GlobalContext
 class MainActivity : FragmentActivity() {
 
     private val koin get() = GlobalContext.get()
+    private lateinit var root: RootComponent
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
-        val root = retainedComponent { componentContext -> buildRoot(componentContext) }
+        root = retainedComponent { componentContext -> buildRoot(componentContext) }
         setContent { RootContent(root) }
+    }
+
+    override fun onStop() {
+        // Lock on a real background — but NOT on a configuration change (rotation), where the
+        // retained root deliberately keeps the session across the Activity's recreation.
+        if (!isChangingConfigurations) root.lockIfUnlocked()
+        super.onStop()
     }
 
     override fun onResume() {

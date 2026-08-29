@@ -89,6 +89,24 @@ class RootComponentTest {
         assertTrue(relocked.component !== unlocked.component, "lock must build a fresh locked subtree")
     }
 
+    @Test
+    fun lock_if_unlocked_locks_an_open_session() {
+        val root = root()
+        lockedOnUnlocked!!(openVault())
+        assertIs<RootChild.Unlocked>(root.child.value)
+
+        root.lockIfUnlocked()
+
+        assertIs<RootChild.Locked>(root.child.value)
+    }
+
+    @Test
+    fun lock_if_unlocked_is_a_noop_when_already_locked() {
+        val root = root()
+        root.lockIfUnlocked() // must not throw
+        assertIs<RootChild.Locked>(root.child.value)
+    }
+
     // A live vault with a cheap real session (Argon2id m=256KiB/t=1) + temp storage + in-memory catalog.
     private fun openVault(): VaultBootstrap.OpenVault {
         val engine = CryptographyKotlinEngine()
