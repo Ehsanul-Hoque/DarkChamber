@@ -5,6 +5,7 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyPermanentlyInvalidatedException
 import android.security.keystore.KeyProperties
 import android.security.keystore.StrongBoxUnavailableException
+import androidx.biometric.BiometricPrompt
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
 import dev.ehsanfahad.darkchamber.core.model.flatMap
@@ -28,11 +29,14 @@ import javax.crypto.spec.GCMParameterSpec
  * Per-use biometric binding (cycle 5b): the AndroidKeyStore key is created with
  * `setUserAuthenticationRequired(true)`, so a `Cipher` initialised under it can only `doFinal` after
  * the user authenticates *that Cipher instance* via a `BiometricPrompt.CryptoObject`. This actual
- * builds the `Cipher`, hands it to [BiometricAuthenticator] as the opaque `cryptoHandle`, and only
- * finalises on the **authorised Cipher** the authenticator returns — so Face/Touch ID is bound to the
- * key operation, not merely shown in front of it. Keeping the `CryptoObject`/`BiometricPrompt` in the
- * `:app` authenticator (not here) is what lets `:core:crypto` avoid an `androidx.biometric` dependency;
- * this file still only imports the sanctioned `java.security`/`javax.crypto` carve-out (hard rule #2).
+ * builds the `Cipher`, wraps it in a `CryptoObject`, hands **that** to [BiometricAuthenticator] as the
+ * opaque `cryptoHandle`, and only finalises on the **authorised CryptoObject's Cipher** the
+ * authenticator returns — so Face/Touch ID is bound to the key operation, not merely shown in front
+ * of it. Whoever builds the `CryptoObject` must touch both `javax.crypto` and `androidx.biometric`;
+ * keeping that here (the sanctioned hard-rule-#2 carve-out) is what keeps `javax.crypto` out of `:app`,
+ * whose authenticator only *presents* the `CryptoObject` and never sees a `Cipher`. This file is the
+ * carve-out that may import `java.security`/`javax.crypto` (+ the `androidx.biometric` `CryptoObject`
+ * wrapper — not a cipher primitive); [CryptoEngine] and everything else stay cryptography-kotlin only.
  *
  * A symmetric auth-required key gates ENCRYPT too, so [wrap] (enrollment) prompts once — documented.
  * Re-enrolled biometrics invalidate the key → `Cipher.init` throws `KeyPermanentlyInvalidatedException`
@@ -55,9 +59,10 @@ class AndroidSecureKeyStore(
         } catch (_: GeneralSecurityException) {
             return Outcome.Err(VaultError.Crypto.IntegrityFailure)
         }
-        // Authenticate THIS Cipher; only the authorised one can doFinal (never a throw across boundary).
-        return authenticator.authenticate(request(cipher)).flatMap { auth ->
-            val authorized = auth.handle as? Cipher ?: return@flatMap Outcome.Err(VaultError.Crypto.IntegrityFailure)
+        // Authenticate THIS CryptoObject; only its authorised Cipher can doFinal (never a throw out).
+        return authenticator.authenticate(request(BiometricPrompt.CryptoObject(cipher))).flatMap { auth ->
+            val authorized = (auth.handle as? BiometricPrompt.CryptoObject)?.cipher
+                ?: return@flatMap Outcome.Err(VaultError.Crypto.IntegrityFailure)
             try {
                 Outcome.Ok(authorized.iv + authorized.doFinal(mk)) // iv is the 12-byte GCM nonce
             } catch (_: GeneralSecurityException) {
@@ -78,8 +83,9 @@ class AndroidSecureKeyStore(
         } catch (_: GeneralSecurityException) {
             return Outcome.Err(VaultError.Crypto.IntegrityFailure)
         }
-        return authenticator.authenticate(request(cipher)).flatMap { auth ->
-            val authorized = auth.handle as? Cipher ?: return@flatMap Outcome.Err(VaultError.Crypto.IntegrityFailure)
+        return authenticator.authenticate(request(BiometricPrompt.CryptoObject(cipher))).flatMap { auth ->
+            val authorized = (auth.handle as? BiometricPrompt.CryptoObject)?.cipher
+                ?: return@flatMap Outcome.Err(VaultError.Crypto.IntegrityFailure)
             val ciphertext = blob.copyOfRange(GCM_IV_SIZE, blob.size)
             try {
                 Outcome.Ok(authorized.doFinal(ciphertext))
@@ -91,12 +97,12 @@ class AndroidSecureKeyStore(
     }
 
     // The prompt copy is a neutral default; the :app authenticator localises/overrides it and only
-    // relies on `cryptoHandle` (the Cipher to authorise). Honest copy per docs/DESIGN.md §11.
-    private fun request(cipher: Cipher): BiometricRequest = BiometricRequest(
+    // relies on `cryptoHandle` (the CryptoObject to authorise). Honest copy per docs/DESIGN.md §11.
+    private fun request(cryptoObject: BiometricPrompt.CryptoObject): BiometricRequest = BiometricRequest(
         title = PROMPT_TITLE,
         subtitle = PROMPT_SUBTITLE,
         cancelLabel = PROMPT_CANCEL,
-        cryptoHandle = cipher,
+        cryptoHandle = cryptoObject,
     )
 
     override fun deleteHardwareKey() {

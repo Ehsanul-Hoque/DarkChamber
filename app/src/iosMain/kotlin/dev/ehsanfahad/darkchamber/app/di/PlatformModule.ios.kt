@@ -2,6 +2,8 @@ package dev.ehsanfahad.darkchamber.app.di
 
 import dev.ehsanfahad.darkchamber.app.IosVaultRootResolver
 import dev.ehsanfahad.darkchamber.app.VaultRootResolver
+import dev.ehsanfahad.darkchamber.app.auth.IosBiometricAuthenticator
+import dev.ehsanfahad.darkchamber.core.crypto.BiometricAuthenticator
 import dev.ehsanfahad.darkchamber.core.crypto.IosSecureKeyStore
 import dev.ehsanfahad.darkchamber.core.crypto.SecureKeyStore
 import dev.ehsanfahad.darkchamber.core.db.CatalogStore
@@ -20,6 +22,7 @@ import org.koin.dsl.module
 actual fun platformModule(): Module = module {
     single<VaultRootResolver> { IosVaultRootResolver() }
     single<SecureKeyStore> { IosSecureKeyStore() }
+    single<BiometricAuthenticator> { IosBiometricAuthenticator() }
     single<CatalogProvider> { CatalogProvider { root -> openCatalog(root) } }
 }
 

@@ -50,6 +50,11 @@ kotlin {
         // phc-winner-argon2 cinterop instead (no Argon2 runtime dependency on that side).
         androidMain.dependencies {
             implementation(libs.bouncycastle.bcprov)
+            // The BiometricPrompt.CryptoObject wrapper that binds Face/Touch ID to the auth-required
+            // Keystore Cipher (cycle 5b). Confined to SecureKeyStore.android.kt (the hard-rule-#2
+            // carve-out) so building the CryptoObject — which needs both javax.crypto and the
+            // biometric wrapper — keeps javax.crypto out of :app. Not a cipher primitive.
+            implementation(libs.androidx.biometric)
         }
         // Auth-aware seams (cycle 5b) are suspend — runTest drives the coroutine unlock paths.
         commonTest.dependencies {

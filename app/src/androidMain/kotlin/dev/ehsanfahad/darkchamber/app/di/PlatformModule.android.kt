@@ -3,7 +3,11 @@ package dev.ehsanfahad.darkchamber.app.di
 import android.content.Context
 import dev.ehsanfahad.darkchamber.app.AndroidVaultRootResolver
 import dev.ehsanfahad.darkchamber.app.VaultRootResolver
+import dev.ehsanfahad.darkchamber.app.auth.ActivityHolder
+import dev.ehsanfahad.darkchamber.app.auth.AndroidBiometricAuthenticator
+import dev.ehsanfahad.darkchamber.app.auth.DefaultActivityHolder
 import dev.ehsanfahad.darkchamber.core.crypto.AndroidSecureKeyStore
+import dev.ehsanfahad.darkchamber.core.crypto.BiometricAuthenticator
 import dev.ehsanfahad.darkchamber.core.crypto.SecureKeyStore
 import dev.ehsanfahad.darkchamber.core.db.CatalogStore
 import dev.ehsanfahad.darkchamber.core.db.DriverFactory
@@ -22,6 +26,9 @@ import org.koin.dsl.module
 actual fun platformModule(): Module = module {
     single<VaultRootResolver> { AndroidVaultRootResolver(androidContext()) }
     single<SecureKeyStore> { AndroidSecureKeyStore() }
+    // The current FragmentActivity for the biometric prompt — set by MainActivity (TASK-011).
+    single<ActivityHolder> { DefaultActivityHolder() }
+    single<BiometricAuthenticator> { AndroidBiometricAuthenticator { get<ActivityHolder>().activity } }
     single<CatalogProvider> {
         val context = androidContext()
         CatalogProvider { root -> openCatalog(context, root) }
