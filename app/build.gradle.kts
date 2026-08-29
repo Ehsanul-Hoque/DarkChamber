@@ -40,6 +40,8 @@ kotlin {
             implementation(libs.decompose)
             implementation(libs.decompose.compose)
             implementation(libs.essenty.lifecycle)
+            // LockedComponent intents launch create/unlock on a lifecycle-scoped CoroutineScope.
+            implementation(libs.kotlinx.coroutines.core)
             // Path/root types for VaultRootResolver + VaultStorage(root) — kotlinx-io is core:storage's
             // API type. :app holds Path values only; every filesystem op stays in core:storage.
             implementation(libs.kotlinx.io.core)

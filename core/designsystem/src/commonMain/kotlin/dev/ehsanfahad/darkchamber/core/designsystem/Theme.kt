@@ -1,5 +1,8 @@
 package dev.ehsanfahad.darkchamber.core.designsystem
 
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ReadOnlyComposable
@@ -30,9 +33,48 @@ fun DarkChamberTheme(
         LocalDarkChamberShapes provides shapes,
         LocalDarkChamberSpacing provides spacing,
         LocalDarkChamberMotion provides motion,
-        content = content,
-    )
+    ) {
+        // Also install a Material 3 theme mapped from our tokens, so material components (buttons,
+        // text fields) inherit the chamber palette instead of Material defaults. Feature code reads
+        // roles via DarkChamberTheme; MaterialTheme is the substrate for the components it uses.
+        MaterialTheme(colorScheme = colors.toMaterialColorScheme(), content = content)
+    }
 }
+
+private fun DarkChamberColors.toMaterialColorScheme() =
+    if (isDark) {
+        darkColorScheme(
+            primary = accent,
+            onPrimary = onAccent,
+            primaryContainer = accentContainer,
+            onPrimaryContainer = onAccentContainer,
+            background = background,
+            onBackground = textPrimary,
+            surface = surface,
+            onSurface = textPrimary,
+            surfaceVariant = surfaceRaised,
+            onSurfaceVariant = textSecondary,
+            outline = outline,
+            error = danger,
+            onError = onDanger,
+        )
+    } else {
+        lightColorScheme(
+            primary = accent,
+            onPrimary = onAccent,
+            primaryContainer = accentContainer,
+            onPrimaryContainer = onAccentContainer,
+            background = background,
+            onBackground = textPrimary,
+            surface = surface,
+            onSurface = textPrimary,
+            surfaceVariant = surfaceRaised,
+            onSurfaceVariant = textSecondary,
+            outline = outline,
+            error = danger,
+            onError = onDanger,
+        )
+    }
 
 /** Role accessor — `DarkChamberTheme.colors.accent`, `DarkChamberTheme.spacing.spaceMd`, … */
 object DarkChamberTheme {

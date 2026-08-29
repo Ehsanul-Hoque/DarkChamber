@@ -14,11 +14,12 @@ import dev.ehsanfahad.darkchamber.core.model.VaultError
 class FakeBiometricAuthenticator(
     private val mode: Mode = Mode.Approve,
 ) : BiometricAuthenticator {
-    enum class Mode { Approve, Deny }
+    enum class Mode { Approve, Deny, Invalidated }
 
     override suspend fun authenticate(request: BiometricRequest): Outcome<BiometricAuth> =
         when (mode) {
             Mode.Approve -> Outcome.Ok(BiometricAuth(request.cryptoHandle))
             Mode.Deny -> Outcome.Err(VaultError.Auth.Cancelled)
+            Mode.Invalidated -> Outcome.Err(VaultError.Crypto.IntegrityFailure)
         }
 }

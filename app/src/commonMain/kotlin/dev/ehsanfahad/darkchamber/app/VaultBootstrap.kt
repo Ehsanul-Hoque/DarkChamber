@@ -52,6 +52,38 @@ class VaultBootstrap(
         val recoveryKey: String,
     )
 
+    /** Whether a vault exists yet, and whether it carries a biometric HARDWARE slot (lock-screen UX). */
+    class VaultStatus(val exists: Boolean, val hasHardwareSlot: Boolean)
+
+    /**
+     * A lightweight look at the persisted keystore — **no catalog opened** (no driver to leak) — so the
+     * lock screen can pick create-vs-unlock and whether to offer biometric. Resolves the root and reads
+     * `keys/mk.wrapped`: absent → no vault; present → decode and report the hardware slot.
+     */
+    fun probe(): Outcome<VaultStatus> {
+        return try {
+            val root = when (val r = rootResolver.resolve()) {
+                is Outcome.Err -> return r
+                is Outcome.Ok -> r.value
+            }
+            val storage = try {
+                VaultStorage(root)
+            } catch (e: Exception) {
+                return Outcome.Err(VaultError.Io(e))
+            }
+            val bytes = when (val b = storage.readKeyStore()) {
+                is Outcome.Err -> return b
+                is Outcome.Ok -> b.value
+            } ?: return Outcome.Ok(VaultStatus(exists = false, hasHardwareSlot = false))
+            when (val blob = KeyStoreCodec.decode(bytes)) {
+                is Outcome.Err -> blob
+                is Outcome.Ok -> Outcome.Ok(VaultStatus(exists = true, hasHardwareSlot = blob.value.hardwareWrap != null))
+            }
+        } catch (e: Exception) {
+            Outcome.Err(VaultError.Unexpected(e))
+        }
+    }
+
     /**
      * First run: create the vault (random MK wrapped by [passphrase] + a fresh recovery key), persist
      * its keystore, and return the live session plus the recovery-key display string. Refuses if a

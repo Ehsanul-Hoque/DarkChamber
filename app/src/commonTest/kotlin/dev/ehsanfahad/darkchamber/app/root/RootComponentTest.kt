@@ -1,6 +1,8 @@
 package dev.ehsanfahad.darkchamber.app.root
 
 import com.arkivanov.decompose.DefaultComponentContext
+import com.arkivanov.decompose.value.MutableValue
+import com.arkivanov.decompose.value.Value
 import com.arkivanov.essenty.lifecycle.LifecycleRegistry
 import org.koin.dsl.koinApplication
 import dev.ehsanfahad.darkchamber.app.VaultBootstrap
@@ -32,15 +34,30 @@ class RootComponentTest {
     private val testDir = Path(SystemTemporaryDirectory, "rct-${Random.nextULong()}")
     private val koin = koinApplication { }.koin
 
+    // Captures the onUnlocked hook the root wires into the locked child, so the test can drive the
+    // gate transition without the real LockedComponent's bootstrap machinery (covered elsewhere).
+    private var lockedOnUnlocked: ((VaultBootstrap.OpenVault) -> Unit)? = null
+
     @AfterTest
     fun cleanup() = deleteRecursively(testDir)
 
     private fun root(): DefaultRootComponent =
         DefaultRootComponent(
             componentContext = DefaultComponentContext(LifecycleRegistry()),
-            lockedFactory = { ctx, onUnlocked -> DefaultLockedComponent(ctx, LockMode.Unlock, onUnlocked) },
+            lockedFactory = { _, onUnlocked -> lockedOnUnlocked = onUnlocked; FakeLockedComponent() },
             unlockedFactory = { ctx, vault, onLock -> DefaultUnlockedComponent(ctx, vault, koin, onLock) },
         )
+
+    private class FakeLockedComponent : LockedComponent {
+        override val state: Value<LockState> = MutableValue(LockState(LockStep.Unlock))
+        override fun submitCreate(passphrase: ByteArray) = Unit
+        override fun submitPassphraseUnlock(passphrase: ByteArray) = Unit
+        override fun startBiometricUnlock() = Unit
+        override fun confirmRecoverySaved() = Unit
+        override fun enableBiometric() = Unit
+        override fun skipBiometric() = Unit
+        override fun dismissError() = Unit
+    }
 
     @Test
     fun starts_locked() {
@@ -52,8 +69,8 @@ class RootComponentTest {
         val root = root()
         val vault = openVault()
 
-        val locked = assertIs<RootChild.Locked>(root.child.value)
-        (locked.component as DefaultLockedComponent).completeUnlock(vault)
+        assertIs<RootChild.Locked>(root.child.value)
+        lockedOnUnlocked!!(vault)
 
         val unlocked = assertIs<RootChild.Unlocked>(root.child.value)
         assertSame(vault.session, unlocked.component.session, "the unlocked child must hold the fed session")
@@ -62,8 +79,8 @@ class RootComponentTest {
     @Test
     fun lock_returns_to_locked_and_replaces_the_subtree() {
         val root = root()
-        (assertIs<RootChild.Locked>(root.child.value).component as DefaultLockedComponent)
-            .completeUnlock(openVault())
+        assertIs<RootChild.Locked>(root.child.value)
+        lockedOnUnlocked!!(openVault())
         val unlocked = assertIs<RootChild.Unlocked>(root.child.value)
 
         unlocked.component.lock()
