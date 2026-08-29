@@ -1,27 +1,29 @@
 import XCTest
 import Shared
 
-/// Cycle 5a iOS acceptance (D3): drives the exported `Shared` framework on the simulator/device —
-/// the same cold-open + encrypted round-trip the Kotlin `iosSimulatorArm64Test` covers, but through
-/// the Swift ↔ framework boundary the app itself uses.
+/// Cycle 5b iOS acceptance (D3/D7): drives the exported `Shared` framework on the simulator — building
+/// the shared Compose session gate (`MainViewController()`) through the Swift ↔ framework boundary the
+/// app itself uses. Building the gate resolves `<Documents>/vault` (the locked screen probes the
+/// keystore), so the backup-exclusion attribute can be checked afterwards.
 ///
-/// Add this file to a Unit Testing Bundle target hosted by the `iosApp` app (see
-/// docs/verification/app-bootstrap-manual.md), then run with ⌘U or
+/// The full create → unlock flow is covered by the Kotlin `iosSimulatorArm64Test`
+/// (`IosVaultRootResolverTest`); real biometrics live on the on-device checklist
+/// (`docs/verification/session-gate-manual.md`). Run with ⌘U or
 /// `xcodebuild test -scheme iosApp -destination 'platform=iOS Simulator,name=iPhone 17'`.
 final class DarkChamberVaultTests: XCTestCase {
 
-    /// Cold-open the real vault and round-trip one encrypted object end to end.
-    func testColdOpenSelfCheckSucceeds() {
-        XCTAssertTrue(
-            IosBootstrapKt.runVaultSelfCheck(),
-            "iOS cold-open + encrypted round-trip failed"
-        )
+    /// The shared Compose gate builds through the framework (Koin graph + Decompose root construct).
+    @MainActor
+    func testMainViewControllerBuildsThroughTheFramework() {
+        let viewController = MainViewControllerKt.MainViewController()
+        XCTAssertNotNil(viewController, "the shared Compose session gate failed to build")
     }
 
     /// The Documents vault root must be excluded from iCloud/iTunes backup (deferred cycle-3 call).
+    @MainActor
     func testVaultRootIsExcludedFromBackup() throws {
-        // Ensure the vault root exists (runVaultSelfCheck resolves + creates <Documents>/vault).
-        XCTAssertTrue(IosBootstrapKt.runVaultSelfCheck())
+        // Building the gate resolves + creates <Documents>/vault and sets the backup-exclusion flag.
+        _ = MainViewControllerKt.MainViewController()
 
         let documents = try FileManager.default.url(
             for: .documentDirectory,
