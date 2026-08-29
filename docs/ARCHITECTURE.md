@@ -139,13 +139,22 @@ All viewer screens run under `FLAG_SECURE` (Android); iOS obscures the app-switc
 2. Auto-lock: on background beyond grace period (default 30 s, configurable), on device lock, on demand. Lock = zeroize MK/DEK caches, purge `tmp/`, invalidate decrypted bitmap caches, pop viewers.
 3. Compose side: single `VaultSession` state; every feature screen requires it — no screen can render decrypted content without a live session (compile-time enforced by API shape).
 
-> **Status — built (cycle 5a).** The composition root + cold-open exist in `:app`: `VaultBootstrap`
-> resolves the app-private vault root, opens the catalog + storage, and creates-or-unlocks a
-> `VaultSession` **by passphrase** (fail-closed, `Outcome`-typed — the first error aborts, never a
-> half-open vault). `selfCheck()` proves the whole stack by round-tripping one encrypted object
-> end-to-end. Step 1's **PIN/biometric** unlock, auto-lock (step 2), and the Compose session gate
-> (step 3) are **5b** — this cycle opens programmatically with a passphrase to prove the session
-> builds on a real device/simulator (see `docs/verification/app-bootstrap-manual.md`).
+> **Status — built (cycles 5a + 5b).** The composition root + cold-open exist in `:app`:
+> `VaultBootstrap` resolves the app-private vault root, opens the catalog + storage, and
+> creates/unlocks a `VaultSession` fail-closed (`Outcome`-typed — the first error aborts, never a
+> half-open vault). **5b adds the real gate:** the Decompose `RootComponent` has exactly two children,
+> `Locked` and `Unlocked`, and `Unlocked` is *constructed with* a live session — a decrypted-content
+> screen cannot exist outside that subtree by construction (step 3). **Per-use biometric unlock** is
+> cryptographic, not a UI checkpoint (step 1): the hardware MK-wrap key is auth-required
+> (`setUserAuthenticationRequired` + a `BiometricPrompt.CryptoObject` on Android; a
+> `.biometryCurrentSet` `SecAccessControl` + `LAContext` on iOS), with a passphrase fallback and, on
+> biometric re-enrollment, a forced-passphrase path (§3.3). **Lock** (step 2) runs on the manual Lock
+> button **and on background** (Android `onStop` guarded against config changes; iOS
+> `didEnterBackground`): zeroize MK, purge `tmp/`, close the catalog driver, dispose the session
+> scope, replace the whole `Unlocked` subtree. Still **Phase 1**: the configurable auto-lock
+> **timeout** + **device-lock** listener (step 2 hardcodes manual + on-background), and recovery-key
+> **entry** on a fresh device (create still *displays* it). See
+> `docs/verification/session-gate-manual.md`.
 
 ## 9. File metadata scrubber
 
