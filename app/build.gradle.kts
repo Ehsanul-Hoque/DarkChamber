@@ -56,7 +56,8 @@ kotlin {
             // + the main executor. :app only *presents* the CryptoObject — no cipher primitive here.
             implementation(libs.androidx.biometric)
             implementation(libs.androidx.fragment.ktx)
-            implementation(libs.androidx.core.ktx)
+            // Dispatchers.Main for the session-gate component intents on Android.
+            implementation(libs.kotlinx.coroutines.android)
         }
         // iOS platform module builds the native driver + opens the catalog (SqlDriver type).
         listOf("iosArm64Main", "iosSimulatorArm64Main").forEach { name ->

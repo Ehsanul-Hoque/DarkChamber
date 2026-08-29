@@ -35,8 +35,14 @@ dependencies {
     implementation(project(":app"))
     implementation(project(":core:model"))
     implementation(project(":core:logging"))
+    implementation(project(":core:designsystem"))
     implementation(libs.koin.android)
 
+    // The Decompose session gate: retainedComponent (survives config changes) + the shared RootContent.
+    implementation(libs.decompose)
+    implementation(libs.decompose.compose)
+    // MainActivity is a FragmentActivity (required by BiometricPrompt).
+    implementation(libs.androidx.fragment.ktx)
     implementation(libs.androidx.activity.compose)
 
     implementation(libs.compose.runtime)

@@ -1,8 +1,9 @@
 package dev.ehsanfahad.darkchamber.app.auth
 
+import android.os.Handler
+import android.os.Looper
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
-import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import dev.ehsanfahad.darkchamber.core.crypto.BiometricAuth
 import dev.ehsanfahad.darkchamber.core.crypto.BiometricAuthenticator
@@ -10,6 +11,7 @@ import dev.ehsanfahad.darkchamber.core.crypto.BiometricRequest
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
 import kotlinx.coroutines.suspendCancellableCoroutine
+import java.util.concurrent.Executor
 import kotlin.coroutines.resume
 
 /**
@@ -32,7 +34,10 @@ class AndroidBiometricAuthenticator(
             ?: return Outcome.Err(VaultError.Auth.Unavailable)
 
         return suspendCancellableCoroutine { cont ->
-            val executor = ContextCompat.getMainExecutor(activity)
+            // Main-thread executor without an androidx.core dependency (its newest release needs a
+            // newer AGP than the project pins). BiometricPrompt requires main-thread callbacks + call.
+            val mainHandler = Handler(Looper.getMainLooper())
+            val executor = Executor { command -> mainHandler.post(command) }
             val callback = object : BiometricPrompt.AuthenticationCallback() {
                 override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                     if (!cont.isActive) return
