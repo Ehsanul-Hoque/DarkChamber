@@ -75,6 +75,20 @@ class VaultBootstrapTest {
     }
 
     @Test
+    fun a_wrong_passphrase_does_not_open_the_catalog() {
+        // Seed a vault with a real catalog.
+        bootstrap().createVault(PASSPHRASE()).let {
+            assertTrue(it is Outcome.Ok); it.value.vault.session.close()
+        }
+        // The catalog is opened only after the secret verifies — a wrong passphrase must reject
+        // before this provider is ever invoked (else the driver would leak, one per attempt).
+        val exploding = CatalogProvider { error("catalog opened on a wrong-passphrase unlock — driver leak") }
+        val wrong = bootstrap(catalogProvider = exploding).unlock("nope".encodeToByteArray())
+        assertTrue(wrong is Outcome.Err, "wrong passphrase must not unlock")
+        assertTrue(wrong.error is VaultError.Crypto, "must fail on crypto, before the catalog is touched")
+    }
+
+    @Test
     fun create_enroll_then_unlock_with_biometric_approve() = runTest {
         val created = bootstrap().createVault(PASSPHRASE())
         assertTrue(created is Outcome.Ok)

@@ -37,7 +37,6 @@ enum class LockError {
     BiometricUnavailable,
     HardwareInvalidated,
     CreateFailed,
-    EnrollFailed,
     ProbeFailed,
 }
 
