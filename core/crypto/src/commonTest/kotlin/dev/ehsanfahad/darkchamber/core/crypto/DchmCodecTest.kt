@@ -37,6 +37,21 @@ class DchmCodecTest {
         }
     }
 
+    // --- encryptContainer reports the measured plaintext size (D7) -------------------------------
+
+    @Test
+    fun encrypt_returns_the_measured_plaintext_size() {
+        for (size in listOf(0, 1, 15, 16, 17, 100)) {
+            val result = codec.encryptContainer(
+                dek = dek, noncePrefix = prefix(size + 1), createdAt = 0L, fileId = fileId,
+                originalName = "n", mime = "m", chunkSize = 16,
+                openSource = { Buffer().apply { write(ByteArray(size)) } }, sink = Buffer(),
+            )
+            assertTrue(result is Outcome.Ok, "size=$size failed: $result")
+            assertEquals(size.toLong(), result.value, "size=$size wrong measured size")
+        }
+    }
+
     // --- round-trip identity across sizes (chunkSize = 16) ---------------------------------------
 
     @Test

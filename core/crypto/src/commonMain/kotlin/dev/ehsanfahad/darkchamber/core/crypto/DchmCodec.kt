@@ -19,7 +19,9 @@ import kotlinx.io.readByteArray
 class DchmCodec(private val engine: CryptoEngine) {
 
     /**
-     * Encode plaintext from [openSource] into a `.dchm` container written to [sink].
+     * Encode plaintext from [openSource] into a `.dchm` container written to [sink]. On success,
+     * returns the measured plaintext size in bytes (the value the header records) so callers can fill
+     * a catalog `size` column without re-reading the source.
      * [openSource] MUST return a fresh, independent source on each call — the codec reads it twice.
      */
     fun encryptContainer(
@@ -32,7 +34,7 @@ class DchmCodec(private val engine: CryptoEngine) {
         chunkSize: Int,
         openSource: () -> RawSource,
         sink: RawSink,
-    ): Outcome<Unit> {
+    ): Outcome<Long> {
         // Caller-contract preconditions: wrong-sized key material or a non-positive chunk size is a
         // programming error (fail loudly), not a runtime condition to swallow.
         require(dek.size == DchmFormat.DEK_SIZE) { "DEK must be ${DchmFormat.DEK_SIZE} bytes, was ${dek.size}" }
@@ -94,7 +96,7 @@ class DchmCodec(private val engine: CryptoEngine) {
                 }
             }
             out.flush()
-            Outcome.Ok(Unit)
+            Outcome.Ok(size)
         } catch (e: Exception) {
             Outcome.Err(VaultError.Io(e))
         }

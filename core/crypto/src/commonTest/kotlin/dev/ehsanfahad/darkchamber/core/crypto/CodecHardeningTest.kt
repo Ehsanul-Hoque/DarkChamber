@@ -20,7 +20,7 @@ class CodecHardeningTest {
         chunkSize: Int = 16,
         originalName: String = "n",
         data: ByteArray = "hi".encodeToByteArray(),
-    ): Outcome<Unit> = codec.encryptContainer(
+    ): Outcome<Long> = codec.encryptContainer(
         dek, noncePrefix, 0L, fileId, originalName, "m", chunkSize,
         { Buffer().apply { write(data) } }, Buffer(),
     )
