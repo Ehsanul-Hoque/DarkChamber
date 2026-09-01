@@ -149,6 +149,27 @@ class VaultObjectsTest {
     }
 
     @Test
+    fun shred_removes_the_row_and_the_object_and_a_reopen_is_absent() {
+        val storage = newStorage()
+        val catalog = newCatalog()
+        val vo = objects(newSession(), storage, catalog)
+        val id = (vo.importObject(kind = 0, name = "n", mime = "m", chunkSize = 64, openSource = source(ByteArray(80))) as Outcome.Ok).value
+
+        assertTrue(vo.shredObject(id) is Outcome.Ok)
+        assertEquals(null, (catalog.getItem(id) as Outcome.Ok).value, "the row (and wrapped DEK) must be gone")
+        assertFalse(storage.objectExists(id), "the object bytes must be gone")
+        val reopen = vo.openObject(id, Buffer())
+        assertTrue(reopen is Outcome.Err && reopen.error is VaultError.Io, "a reopen after shred is absent")
+    }
+
+    @Test
+    fun shred_of_an_unknown_id_is_an_io_error() {
+        val vo = objects(newSession(), newStorage(), newCatalog())
+        val result = vo.shredObject(ByteArray(16) { 7 })
+        assertTrue(result is Outcome.Err && result.error is VaultError.Io)
+    }
+
+    @Test
     fun a_row_insert_failure_deletes_the_object_no_orphan() {
         val storage = newStorage()
         val catalog = newCatalog()

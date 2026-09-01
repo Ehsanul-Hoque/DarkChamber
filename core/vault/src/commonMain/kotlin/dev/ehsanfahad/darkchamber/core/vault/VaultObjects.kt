@@ -8,6 +8,7 @@ import dev.ehsanfahad.darkchamber.core.db.Items
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
 import dev.ehsanfahad.darkchamber.core.model.flatMap
+import dev.ehsanfahad.darkchamber.core.model.map
 import dev.ehsanfahad.darkchamber.core.storage.VaultStorage
 import kotlinx.io.RawSink
 import kotlinx.io.RawSource
@@ -117,6 +118,24 @@ class VaultObjects(
             } catch (e: Exception) {
                 Outcome.Err(VaultError.Crypto.MalformedContainer)
             }
+        }
+    }
+
+    /**
+     * Crypto-shred object [id]: delete the catalog row **first** (that destroys `dek_wrapped`, and the
+     * shred is effective the instant the wrapped DEK is gone), then best-effort delete the object
+     * bytes. Orphaned ciphertext without a DEK is unrecoverable, so a failed byte-delete does **not**
+     * un-shred the data — the shred is `Ok` once the row is gone. An unknown id →
+     * `VaultError.Io(NoSuchElementException)`.
+     */
+    fun shredObject(id: ByteArray): Outcome<Unit> {
+        when (val got = catalog.getItem(id)) {
+            is Outcome.Err -> return got
+            is Outcome.Ok -> if (got.value == null) return absent(id)
+        }
+        return catalog.deleteItem(id).map {
+            storage.deleteObject(id) // best-effort; the DEK is already gone, so ignore any failure
+            Unit
         }
     }
 
