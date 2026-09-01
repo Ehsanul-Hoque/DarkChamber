@@ -6,6 +6,7 @@ import com.arkivanov.essenty.lifecycle.resume
 import com.arkivanov.essenty.lifecycle.stop
 import dev.ehsanfahad.darkchamber.app.VaultBootstrap
 import dev.ehsanfahad.darkchamber.app.testSqlDriver
+import dev.ehsanfahad.darkchamber.core.crypto.CryptoEngine
 import dev.ehsanfahad.darkchamber.core.crypto.CryptographyKotlinEngine
 import dev.ehsanfahad.darkchamber.core.crypto.DefaultKeyDerivation
 import dev.ehsanfahad.darkchamber.core.crypto.PassphraseKdfProfile
@@ -20,6 +21,7 @@ import kotlinx.io.files.SystemTemporaryDirectory
 import kotlinx.io.writeString
 import org.koin.core.Koin
 import org.koin.dsl.koinApplication
+import org.koin.dsl.module
 import kotlin.random.Random
 import kotlin.random.nextULong
 import kotlin.test.AfterTest
@@ -35,7 +37,11 @@ import kotlin.test.assertTrue
  */
 class UnlockedComponentTest {
     private val testDir = Path(SystemTemporaryDirectory, "uct-${Random.nextULong()}")
-    private val koin: Koin = koinApplication { }.koin
+    // The session scope builds a VaultObjects that resolves the CryptoEngine root single (as the
+    // real graph provides it), so the test Koin registers it too.
+    private val koin: Koin = koinApplication {
+        modules(module { single<CryptoEngine> { CryptographyKotlinEngine() } })
+    }.koin
 
     @AfterTest
     fun cleanup() = deleteRecursively(testDir)

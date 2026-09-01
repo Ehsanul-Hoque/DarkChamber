@@ -5,8 +5,10 @@ import com.arkivanov.decompose.value.MutableValue
 import com.arkivanov.decompose.value.Value
 import com.arkivanov.essenty.lifecycle.LifecycleRegistry
 import org.koin.dsl.koinApplication
+import org.koin.dsl.module
 import dev.ehsanfahad.darkchamber.app.VaultBootstrap
 import dev.ehsanfahad.darkchamber.app.testSqlDriver
+import dev.ehsanfahad.darkchamber.core.crypto.CryptoEngine
 import dev.ehsanfahad.darkchamber.core.crypto.CryptographyKotlinEngine
 import dev.ehsanfahad.darkchamber.core.crypto.DefaultKeyDerivation
 import dev.ehsanfahad.darkchamber.core.crypto.PassphraseKdfProfile
@@ -32,7 +34,10 @@ import kotlin.test.assertTrue
  */
 class RootComponentTest {
     private val testDir = Path(SystemTemporaryDirectory, "rct-${Random.nextULong()}")
-    private val koin = koinApplication { }.koin
+    // The Unlocked session scope builds a VaultObjects that resolves the CryptoEngine root single.
+    private val koin = koinApplication {
+        modules(module { single<CryptoEngine> { CryptographyKotlinEngine() } })
+    }.koin
 
     // Captures the onUnlocked hook the root wires into the locked child, so the test can drive the
     // gate transition without the real LockedComponent's bootstrap machinery (covered elsewhere).

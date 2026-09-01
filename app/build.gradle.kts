@@ -31,6 +31,7 @@ kotlin {
             api(project(":core:crypto"))
             api(project(":core:db"))
             implementation(project(":core:storage"))
+            implementation(project(":core:vault"))
             implementation(project(":core:logging"))
             // First shared UI (5b): the session gate lives here. Compose comes via the theme module.
             implementation(project(":core:designsystem"))

@@ -4,7 +4,11 @@ import com.arkivanov.decompose.ComponentContext
 import com.arkivanov.essenty.lifecycle.doOnDestroy
 import com.arkivanov.essenty.lifecycle.doOnStop
 import dev.ehsanfahad.darkchamber.app.VaultBootstrap
+import dev.ehsanfahad.darkchamber.app.nowEpochMillis
+import dev.ehsanfahad.darkchamber.core.crypto.CryptoEngine
+import dev.ehsanfahad.darkchamber.core.crypto.DchmCodec
 import dev.ehsanfahad.darkchamber.core.crypto.VaultSession
+import dev.ehsanfahad.darkchamber.core.vault.VaultObjects
 import org.koin.core.Koin
 import org.koin.core.qualifier.named
 import org.koin.core.scope.Scope
@@ -40,6 +44,19 @@ class DefaultUnlockedComponent(
             declare(vault.session)
             declare(vault.storage)
             declare(vault.catalog)
+            // The streaming object pipeline over this live session (5c). random = the engine's
+            // CSPRNG (the file_id / GCM nonce_prefix source); clock = wall time for created_at.
+            val engine = koin.get<CryptoEngine>()
+            declare(
+                VaultObjects(
+                    session = vault.session,
+                    storage = vault.storage,
+                    catalog = vault.catalog,
+                    codec = DchmCodec(engine),
+                    clock = ::nowEpochMillis,
+                    random = engine::randomBytes,
+                ),
+            )
         }
 
     private var tornDown = false
