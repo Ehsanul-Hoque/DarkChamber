@@ -80,6 +80,30 @@ class VaultSession private constructor(
     }
 
     /**
+     * Seals item metadata (e.g. the catalog `enc_meta` column) under MK: `nonce ‖ GCM(MK, META_AAD,
+     * plaintext)`, same construction as [generateDek] but with a distinct AAD so a meta blob can never
+     * be opened as a wrapped DEK (or vice-versa). The [plaintext] is caller-owned — not zeroized here.
+     * Openable without the object's DEK, so a list view can read names/mime without touching the object.
+     */
+    fun sealMeta(plaintext: ByteArray): ByteArray {
+        check(!closed) { "vault session is closed" }
+        val nonce = engine.randomBytes(WRAP_NONCE_SIZE)
+        return nonce + engine.aeadSeal(mk, nonce, META_AAD, plaintext)
+    }
+
+    /**
+     * Opens a blob produced by [sealMeta]. A tampered/foreign blob (including a wrapped DEK) →
+     * `IntegrityFailure`; a structurally short blob → `MalformedContainer`.
+     */
+    fun openMeta(blob: ByteArray): Outcome<ByteArray> {
+        check(!closed) { "vault session is closed" }
+        if (blob.size <= WRAP_NONCE_SIZE) return Outcome.Err(VaultError.Crypto.MalformedContainer)
+        val nonce = blob.copyOfRange(0, WRAP_NONCE_SIZE)
+        val ciphertext = blob.copyOfRange(WRAP_NONCE_SIZE, blob.size)
+        return engine.aeadOpen(mk, nonce, META_AAD, ciphertext)
+    }
+
+    /**
      * Re-wraps MK under a new passphrase, returning an updated KeyStore. **No object data is
      * re-encrypted** — only the PASSPHRASE slot changes. [oldPassphrase] must currently unlock the
      * slot (wrong → `IntegrityFailure`); a KeyStore without a PASSPHRASE slot → `MalformedContainer`.
@@ -171,6 +195,10 @@ class VaultSession private constructor(
     companion object {
         // Domain-separation label for DEK wraps; distinct from any content or MK-wrap AAD.
         private val DEK_WRAP_AAD = "darkchamber:dek-wrap:v1".encodeToByteArray()
+
+        // Domain-separation label for item-metadata seals; distinct from DEK_WRAP_AAD so a meta blob
+        // and a wrapped DEK can never cross-open even though both are sealed under MK.
+        private val META_AAD = "darkchamber:meta-seal:v1".encodeToByteArray()
 
         /**
          * Creates a brand-new vault: a random MK wrapped by [passphrase] and a fresh recovery key.
