@@ -44,3 +44,10 @@ kotlin {
         }
     }
 }
+
+// Forward the bounded-RAM streaming size override to the host test JVM so the 2 GiB opt-in works:
+// `./gradlew :core:vault:testAndroidHostTest -Pdchm.stream.bytes=2147483648` (or -D). Absent → default.
+tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
+    (findProperty("dchm.stream.bytes") as String? ?: System.getProperty("dchm.stream.bytes"))
+        ?.let { systemProperty("dchm.stream.bytes", it) }
+}
