@@ -91,6 +91,40 @@ class VaultObjectsTest {
     }
 
     @Test
+    fun open_meta_returns_name_and_mime_without_reading_the_object() {
+        val storage = newStorage()
+        val catalog = newCatalog()
+        val vo = objects(newSession(), storage, catalog)
+        val id = (vo.importObject(kind = 1, name = "vacation.jpg", mime = "image/jpeg", chunkSize = 64, openSource = source(ByteArray(50))) as Outcome.Ok).value
+
+        // Delete the object bytes — openMeta must still succeed, proving it reads only the row.
+        assertTrue(storage.deleteObject(id) is Outcome.Ok)
+        val meta = (vo.openMeta(id) as Outcome.Ok).value
+        assertEquals(ObjectMeta("vacation.jpg", "image/jpeg"), meta)
+    }
+
+    @Test
+    fun open_meta_of_an_unknown_id_is_an_io_error() {
+        val vo = objects(newSession(), newStorage(), newCatalog())
+        val result = vo.openMeta(ByteArray(16) { 5 })
+        assertTrue(result is Outcome.Err && result.error is VaultError.Io)
+    }
+
+    @Test
+    fun open_meta_of_a_tampered_enc_meta_is_a_crypto_error() {
+        val catalog = newCatalog()
+        val vo = objects(newSession(), newStorage(), catalog)
+        val id = (vo.importObject(kind = 0, name = "n", mime = "m", chunkSize = 64, openSource = source(ByteArray(20))) as Outcome.Ok).value
+
+        val row = (catalog.getItem(id) as Outcome.Ok).value!!
+        val tampered = row.enc_meta.copyOf().also { it[it.size - 1] = (it[it.size - 1].toInt() xor 0x01).toByte() }
+        assertTrue(catalog.upsertItem(row.copy(enc_meta = tampered)) is Outcome.Ok)
+
+        val result = vo.openMeta(id)
+        assertTrue(result is Outcome.Err && result.error is VaultError.Crypto, "tampered enc_meta must be a crypto error, was $result")
+    }
+
+    @Test
     fun open_of_an_unknown_id_is_an_io_error() {
         val vo = objects(newSession(), newStorage(), newCatalog())
         val result = vo.openObject(ByteArray(16) { 9 }, Buffer())

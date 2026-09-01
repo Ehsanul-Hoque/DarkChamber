@@ -100,6 +100,26 @@ class VaultObjects(
         }.flatMap { it }.flatMap { it }
     }
 
+    /**
+     * The list-view metadata ({name, mime}) for object [id], read from the catalog row's `enc_meta`
+     * **without touching the object store** — cheap enough for a gallery listing. An unknown id →
+     * `VaultError.Io(NoSuchElementException)`; a tampered `enc_meta` → the codec error from
+     * [VaultSession.openMeta] (`IntegrityFailure` / `MalformedContainer`).
+     */
+    fun openMeta(id: ByteArray): Outcome<ObjectMeta> {
+        val row = when (val got = catalog.getItem(id)) {
+            is Outcome.Err -> return got
+            is Outcome.Ok -> got.value ?: return absent(id)
+        }
+        return session.openMeta(row.enc_meta).flatMap { bytes ->
+            try {
+                Outcome.Ok(decodeMeta(bytes))
+            } catch (e: Exception) {
+                Outcome.Err(VaultError.Crypto.MalformedContainer)
+            }
+        }
+    }
+
     // Runs the encrypt inside a scoped DEK + an atomic object write, returning the measured size.
     private fun streamEncrypt(
         dekWrapped: ByteArray,
