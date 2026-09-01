@@ -79,6 +79,17 @@ Failed-attempt policy enforced in app logic: exponential backoff after 5 failure
 
 Raw MK/DEKs exist only in memory, held in a single `VaultSession`, zeroized best-effort on lock (`ByteArray.fill(0)`; GC-copy limits acknowledged in the threat model).
 
+### 3.3 Vault object pipeline (`core:vault`)
+
+**Status (cycle 5c — built).** `core:crypto`, `core:storage`, and `core:db` are isolated from each other by design (no cross-dependency); `core:vault` is the one place they compose. `VaultObjects` exposes the streaming object operations that close the Phase-0 exit criteria:
+
+- **`importObject`** — mint a per-object DEK (`VaultSession.generateDek`, wrapped under MK), stream-encrypt the source into a `.dchm` object via `DchmCodec.encryptContainer` written atomically to `VaultStorage` (bounded RAM — the codec's two-pass read needs a re-openable source, which captured/imported media on disk provides), seal a minimal `enc_meta` ({name,mime}) under MK (`VaultSession.sealMeta`, a distinct AAD from DEK-wrap), and persist the `items` row carrying the wrapped DEK + the measured plaintext size. **Fail-closed:** a row-insert failure deletes the just-written object (no orphan); a codec error aborts the atomic write and surfaces the precise `VaultError`.
+- **`openObject`** — read the row, unwrap the DEK (`useDek`, zeroized after), and stream-decrypt the container to a caller sink in bounded RAM. The `nonce_prefix` comes from the container prelude, not the row.
+- **`openMeta`** — decode {name,mime} from the row's `enc_meta` without touching the object store (cheap for a gallery listing).
+- **`shredObject`** — crypto-shred: delete the row (destroying `dek_wrapped`) **first**, then best-effort delete the object bytes; orphaned ciphertext without a DEK is unrecoverable, so a failed byte-delete does not un-shred.
+
+Everything returns `Outcome` (no throw crosses), and `core:vault` imports **no cipher primitive** — `.dchm` bytes stay opaque, crypto stays behind `DchmCodec`/`VaultSession`. The bounded-RAM property is proven by a generating-source streaming test at a configurable size (`dchm.stream.bytes`; 2 GiB opt-in) plus an on-device checklist. **Not built here:** random-access seek reads (§4) and the media viewers (§7) — those are Phase 1; `openObject` streams sequentially.
+
 ## 4. Storage layout (app-private only)
 
 ```
