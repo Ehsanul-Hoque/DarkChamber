@@ -1,5 +1,12 @@
 package dev.ehsanfahad.darkchamber.core.vault
 
-// iOS has no JVM system properties; the sim run uses the default volume. The real 2 GiB device
-// proof is the on-device checklist (docs/verification/streaming-2gb-manual.md), not this test.
-actual fun streamTestBytes(): Long = DEFAULT_STREAM_BYTES
+import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.toKString
+import platform.posix.getenv
+
+// iOS has no JVM system properties; the size override comes from the DCHM_STREAM_BYTES environment
+// variable (set it in the Xcode test scheme, or `DCHM_STREAM_BYTES=2147483648` for the 2 GiB opt-in
+// run on the simulator). Absent → the default volume.
+@OptIn(ExperimentalForeignApi::class)
+actual fun streamTestBytes(): Long =
+    getenv("DCHM_STREAM_BYTES")?.toKString()?.toLongOrNull() ?: DEFAULT_STREAM_BYTES
