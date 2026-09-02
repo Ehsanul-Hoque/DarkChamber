@@ -104,7 +104,14 @@ filesDir/                         (Android: /data/data/<pkg>/files · iOS: app c
 
 Rules: writes are atomic (temp + rename); `tmp/` is purged on vault lock, app start, and after each viewer session; **nothing is ever written to shared storage** except explicit user exports; Android `android:allowBackup="false"` + `fullBackupContent` deny-all so ADB/cloud device backups can't exfiltrate wrapped keys with ciphertext; iOS vault dir flagged `isExcludedFromBackup = true` (Phase 3 backup replaces OS backup deliberately).
 
-**Status (cycle 3 — built).** `core:storage` ships this layer as a `VaultStorage(root: Path, fs = SystemFileSystem)` facade that owns `objects/`, `thumbs/`, `keys/`, `tmp/` beneath the **injected root** and exposes the object store (sharded, atomic scoped write/read/delete/exists), the thumbnail store (flat `.tdchm`), the key-blob store (`readKeyStore`/`writeKeyStore`, null-if-absent), and tmp scratch (`useTempFile`/`purgeTmp`). Writes are atomic (temp sibling + `atomicMove`; **fsync-before-move is a documented v1 gap**), every op returns `Outcome`/`VaultError.Io` (no throw, nothing logged), and the module depends on `core:model` + `kotlinx-io` only — **not `core:crypto`** (`.dchm` bytes flow through as opaque sources/sinks). The Android backup-deny manifest + deny-all rule files landed here. **Deferred to the app cycle (5):** platform root-**resolution** (Android `filesDir` / iOS `Documents`) and the iOS `isExcludedFromBackup` runtime call — `VaultStorage` takes the resolved, backup-excluded root as a precondition. Seekable byte-range reads for the video/audio viewers are a Phase-1 storage primitive.
+**Status (cycle 3 — built).** `core:storage` ships this layer as a `VaultStorage(root: Path, fs = SystemFileSystem)` facade that owns `objects/`, `thumbs/`, `keys/`, `tmp/` beneath the **injected root**, exposing:
+
+- the object store (sharded, atomic scoped write/read/delete/exists);
+- the thumbnail store (flat `.tdchm`);
+- the key-blob store (`readKeyStore`/`writeKeyStore`, null-if-absent);
+- tmp scratch (`useTempFile`/`purgeTmp`).
+
+Writes are atomic (temp sibling + `atomicMove`; **fsync-before-move is a documented v1 gap**), every op returns `Outcome`/`VaultError.Io` (no throw, nothing logged), and the module depends on `core:model` + `kotlinx-io` only — **not `core:crypto`** (`.dchm` bytes flow through as opaque sources/sinks). The Android backup-deny manifest + deny-all rule files landed here. **Deferred to the app cycle (5):** platform root-**resolution** (Android `filesDir` / iOS `Documents`) and the iOS `isExcludedFromBackup` runtime call — `VaultStorage` takes the resolved, backup-excluded root as a precondition. Seekable byte-range reads for the video/audio viewers are a Phase-1 storage primitive.
 
 ## 5. Catalog database
 
@@ -122,7 +129,12 @@ Tables and purpose:
 - Search over encrypted names: an in-memory index built per unlock session (vault scale is thousands of items; linear decrypt-and-scan is fine — revisit if profiling disagrees).
 - **Migration policy:** SQLDelight migrations are committed alongside schema changes; CI runs an upgrade test from every previously released schema version, and release checklist (§14) includes "old vault opens" verification. A failed migration must fail closed (refuse to run) rather than risk catalog corruption.
 
-**Status — built (Phase 0 cycle 4).** `:core:db` ships schema v1 (`items` / `albums` / `audit_log`, `.sq` = canonical DDL) generating `DarkChamberDatabase`, plus `CatalogStore` — a thin `Outcome`-returning facade over an **injected `SqlDriver`** (per-table upsert/get/list/delete/count, a reactive `observeItems(albumId?): Flow<List<…>>`). Every column is either an opaque encrypted BLOB (`enc_meta`/`dek_wrapped`/`enc_name`/`enc_payload`) or a sanctioned plaintext index column — the catalog never interprets content. Failures map to the new **`VaultError.Db`** and the caller **fails closed** (`CatalogStore.create` refuses a half-open catalog); no exception crosses the boundary. The module depends on **`core:model` + SQLDelight only — no `core:crypto`** (field encryption composes above it); `verifyMigrations` guards the committed v1 schema dump. The **`DriverFactory` `expect/actual`** (Android `AndroidSqliteDriver` / iOS `NativeSqliteDriver`) is the production seam, compile-gated here — resolving the `Context` and the `<root>/db/catalog.db` path (dir created via `core:storage`) is **app cycle 5's job**; unit tests inject in-memory drivers.
+**Status — built (Phase 0 cycle 4).** `:core:db` ships schema v1 (`items` / `albums` / `audit_log`, `.sq` = canonical DDL) generating `DarkChamberDatabase`, plus `CatalogStore` — a thin `Outcome`-returning facade over an **injected `SqlDriver`** (per-table upsert/get/list/delete/count, a reactive `observeItems(albumId?): Flow<List<…>>`).
+
+- Every column is either an opaque encrypted BLOB (`enc_meta`/`dek_wrapped`/`enc_name`/`enc_payload`) or a sanctioned plaintext index column — the catalog never interprets content.
+- Failures map to **`VaultError.Db`** and the caller **fails closed** (`CatalogStore.create` refuses a half-open catalog); no exception crosses the boundary.
+- Depends on **`core:model` + SQLDelight only — no `core:crypto`** (field encryption composes above it); `verifyMigrations` guards the committed v1 schema dump.
+- The **`DriverFactory` `expect/actual`** (Android `AndroidSqliteDriver` / iOS `NativeSqliteDriver`) is the production seam, compile-gated here — resolving the `Context` and the `<root>/db/catalog.db` path (dir created via `core:storage`) is **app cycle 5's job**; unit tests inject in-memory drivers.
 
 ## 6. Private camera
 
