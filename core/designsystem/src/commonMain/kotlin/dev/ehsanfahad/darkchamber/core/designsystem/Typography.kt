@@ -12,7 +12,7 @@ import androidx.compose.ui.unit.sp
  * mono for "machine truth" (keys, hashes, version strings — anything the user verifies
  * character-by-character). No thin/light weights anywhere.
  *
- * NOTE: the IBM Plex faces are not bundled yet (no font resources this cycle), so the
+ * NOTE: the IBM Plex faces are not bundled yet (no font resources), so the
  * sans roles fall back to [FontFamily.Default] and the mono roles to
  * [FontFamily.Monospace]. Sizes/weights/line-heights already match the spec; swap the
  * families in when the Plex resources land.

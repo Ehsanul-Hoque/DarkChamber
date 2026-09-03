@@ -16,10 +16,10 @@ import kotlin.test.Test
 import kotlin.test.assertTrue
 
 /**
- * The fail-closed cold-open (D6): create-vault (keystore persisted), reopen via the unlock path,
+ * The fail-closed cold-open: create-vault (keystore persisted), reopen via the unlock path,
  * wrong-passphrase rejection, biometric enroll + unlock (approve/deny), and abort-on-first-Err.
  * Runs against a temp root + in-memory driver + [FakeSecureKeyStore] + [FakeBiometricAuthenticator];
- * the real Context/Documents/Keystore wiring is proven by the platform hosts (TASK-011/012).
+ * the real Context/Documents/Keystore wiring is proven by the platform hosts.
  */
 class VaultBootstrapTest {
     private val testDir = Path(SystemTemporaryDirectory, "vbt-${Random.nextULong()}")

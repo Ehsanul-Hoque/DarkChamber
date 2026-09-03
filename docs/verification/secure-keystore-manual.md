@@ -1,6 +1,6 @@
 # Manual verification — SecureKeyStore (HARDWARE slot)
 
-> Scope: cycle 2d. Verifies the two platform `SecureKeyStore` actuals
+> Scope: the hardware-keystore stage. Verifies the two platform `SecureKeyStore` actuals
 > (`AndroidSecureKeyStore`, `IosSecureKeyStore`) that CI **cannot** exercise. Run at release, and
 > whenever either actual or its platform-crypto usage changes.
 
@@ -25,11 +25,11 @@ covers the gap. **A release is not signed off until this checklist passes on rea
 - **What it does:** wraps the vault's MasterKey under a platform-held, hardware-backed key so the
   vault can be unlocked on *this device* without re-entering the passphrase, gated on the device
   being unlocked.
-- **What it is not (this cycle):** it is **not** a per-use biometric prompt and **not** an app-lock.
+- **What it is not:** it is **not** a per-use biometric prompt and **not** an app-lock.
   Per [ADR-002](../ADR/ADR-002-no-app-lock-feature.md) DarkChamber has no app-lock feature: the
   hardware slot protects *our own MasterKey wrap*, it does not gate the app UI. Per-use biometric
   auth (`setUserAuthenticationRequired` + `BiometricPrompt` on Android; `.biometryCurrentSet`
-  `SecAccessControl` + `LAContext` on iOS) arrives with the first UI cycle, which has an `Activity` /
+  `SecAccessControl` + `LAContext` on iOS) arrives with the first UI work, which has an `Activity` /
   app host to present the prompt. Do not describe the current behaviour as biometric protection.
 - **Device-local:** the hardware wrap is never written to a backup manifest; it is meaningless on any
   other device. The passphrase and recovery-key slots remain the cross-device unlock paths.

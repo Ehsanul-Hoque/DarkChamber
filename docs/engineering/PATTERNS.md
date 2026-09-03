@@ -80,8 +80,8 @@ sealed interface VaultError {
     data class Io(val cause: Throwable) : VaultError
 }
 
-// Resolved (cycle 2a): a hand-rolled sealed Outcome<T> in core:model — Ok(value) | Err(VaultError),
-// no Arrow. The full VaultError above is the target; core:model grows cases per cycle as needed.
+// Resolved: a hand-rolled sealed Outcome<T> in core:model — Ok(value) | Err(VaultError),
+// no Arrow. The full VaultError above is the target; core:model grows cases as needed.
 sealed interface Outcome<out T> { /* Ok(value) | Err(error) — see core:model */ }
 ```
 

@@ -12,7 +12,7 @@ const val MK_SIZE = 32
 /** GCM nonce length for every MK wrap. */
 const val WRAP_NONCE_SIZE = 12
 
-/** KDFs this version can actually derive a wrap key with (Argon2id landed in cycle 2c). */
+/** KDFs this version can actually derive a wrap key with. */
 val SUPPORTED_KDFS = setOf(KdfId.PBKDF2_SHA256, KdfId.HKDF_SHA256, KdfId.ARGON2ID)
 
 /**
@@ -47,7 +47,7 @@ object KeyStoreCodec {
             if (wrap.wrappedMk.isEmpty()) return Outcome.Err(VaultError.Crypto.MalformedContainer)
             // Reject KDF parameters the derivation would otherwise trip an uncaught precondition on
             // at unlock time (the engine requires PBKDF2 iterations > 0). A crafted/corrupt blob must
-            // surface as MalformedContainer here — never crash the unlock path (D10 / §6).
+            // surface as MalformedContainer here — never crash the unlock path (FORMAT §6).
             val params = wrap.kdfParams
             if (params is KdfParams.Pbkdf2 && params.iterations <= 0) {
                 return Outcome.Err(VaultError.Crypto.MalformedContainer)

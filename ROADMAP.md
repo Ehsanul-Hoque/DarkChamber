@@ -70,11 +70,11 @@ Goal: a walking skeleton with the security core proven before any product UI.
 
 - KMP project scaffold: `core-crypto`, `core-storage`, `core-db`, `app` (Compose Multiplatform), CI on GitHub Actions (Android + iOS builds, unit tests).
 - **Crypto core v1:** AES-256-GCM chunked streaming encryption/decryption (the `.dchm` container format — see docs/FORMAT.md), envelope key hierarchy, Argon2id KDF.
-- Platform keystores wired behind the injected `SecureKeyStore` seam: Android Keystore (StrongBox where available), iOS Keychain — device-unlocked now, per-use biometric with the UI cycle.
+- Platform keystores wired behind the injected `SecureKeyStore` seam: Android Keystore (StrongBox where available), iOS Keychain — device-unlocked now, per-use biometric with a later phase.
 - Vault metadata DB (SQLDelight) with encrypted fields; encrypted thumbnail store.
 - Test vectors + property tests for the container format; round-trip fuzzing.
 
-**Exit criteria:** encrypt → kill app → relaunch → biometric unlock → decrypt a 2 GB video by streaming, on both platforms, with plaintext never written to disk. ✅ *(the streaming encrypt/decrypt capability landed in cycle 5c — `:core:vault` bounded-RAM import + stream-decrypt, host/sim-tested at a configurable size with a 2 GiB opt-in + an on-device checklist; kill→relaunch→unlock proven in 5a/5b.)*
+**Exit criteria:** encrypt → kill app → relaunch → biometric unlock → decrypt a 2 GB video by streaming, on both platforms, with plaintext never written to disk. ✅ *(the streaming encrypt/decrypt capability landed in `:core:vault`: bounded-RAM import + stream-decrypt, host/sim-tested at a configurable size with a 2 GiB opt-in + an on-device checklist; kill→relaunch→unlock proven earlier in Phase 0.)*
 
 ### Phase 1 — MVP: Vault + Private Camera → **v1.0**
 

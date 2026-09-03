@@ -3,7 +3,7 @@
 # Runs on every PR to main. Fast checks on Linux; the expensive macOS iOS job is gated
 # to run only when shared/iOS code changes.
 #
-# SCOPE (Phase 0, cycle 1): builds the module skeleton and validates commits + deps.
+# SCOPE (Phase 0): builds the module skeleton and validates commits + deps.
 # The `quality` job (ktlint / detekt / Konsist / kover) stays COMMENTED OUT until those
 # convention plugins exist (docs/engineering/MODULES.md §5). `migrationTest` arrives after
 # v1.0 ships fixture vaults. Do NOT mark any check required in branch protection until the

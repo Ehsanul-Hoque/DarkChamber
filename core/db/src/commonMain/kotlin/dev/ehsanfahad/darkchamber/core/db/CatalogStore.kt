@@ -11,16 +11,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 
 /**
- * Thin `Outcome`-returning facade over the generated [DarkChamberDatabase] (cycle-4 spec §3.2).
+ * Thin `Outcome`-returning facade over the generated [DarkChamberDatabase].
  *
- * Constructed from an **injected** [SqlDriver] (D2) — the app resolves the platform driver + DB path
- * in cycle 5; here the store is host- and iOS-sim-testable against in-memory drivers. Every op
+ * Constructed from an **injected** [SqlDriver] — the app resolves the platform driver + DB path
+ * in the app module; here the store is host- and iOS-sim-testable against in-memory drivers. Every op
  * returns [Outcome]; any driver/SQL failure is caught and mapped to [VaultError.Db] — no exception
- * crosses the boundary (D5). Rows are the SQLDelight-generated types carrying **ids + opaque blobs
+ * crosses the boundary. Rows are the SQLDelight-generated types carrying **ids + opaque blobs
  * only** (the session-gate rule); the catalog never sees decrypted content.
  *
  * Field encryption is NOT here — `core:db` stores already-encrypted `enc_*` / `dek_wrapped` bytes as
- * opaque blobs (D1, hard rule #2); the feature/data layer composes `core:crypto` above the store.
+ * opaque blobs (hard rule #2); the feature/data layer composes `core:crypto` above the store.
  */
 class CatalogStore private constructor(
     private val driver: SqlDriver,
@@ -119,7 +119,7 @@ class CatalogStore private constructor(
 
     /**
      * Close the underlying [SqlDriver], releasing its DB connection/handle. Called by the session
-     * teardown on lock (the session scope owns the catalog's lifetime, cycle-5b). Idempotent-ish: a
+     * teardown on lock (the session scope owns the catalog's lifetime). Idempotent-ish: a
      * driver failure maps to [VaultError.Db]; after close the store must not be used again.
      */
     fun close(): Outcome<Unit> =
@@ -129,11 +129,11 @@ class CatalogStore private constructor(
         /**
          * Open the catalog on [driver], creating or migrating schema v1 as needed.
          *
-         * Fails **closed** (D6): a create/migration failure is [VaultError.Db], and the caller must
+         * Fails **closed**: a create/migration failure is [VaultError.Db], and the caller must
          * not proceed on a half-open catalog. A catalog written by a **newer** app (its `user_version`
          * exceeds [DarkChamberDatabase.Schema]'s) also fails closed — the catalog analog of
          * `UnsupportedFormatVersion`, so a downgrade never silently reads a future schema. Idempotent —
-         * opening an already-current driver is a no-op. The injected driver owns nothing crypto (D1).
+         * opening an already-current driver is a no-op. The injected driver owns nothing crypto.
          */
         fun create(
             driver: SqlDriver,

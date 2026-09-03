@@ -18,7 +18,7 @@ dependencyResolutionManagement {
     }
 
     // Share the single source of truth for versions with the main build, so the
-    // convention plugins (added in TASK-002 / REFACTOR-001) resolve plugin and
+    // convention plugins resolve plugin and
     // library versions from the same catalog the modules use.
     versionCatalogs {
         create("libs") {

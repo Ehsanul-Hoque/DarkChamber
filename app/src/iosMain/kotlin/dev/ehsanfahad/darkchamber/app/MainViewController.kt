@@ -24,7 +24,7 @@ import platform.UIKit.UIApplicationWillEnterForegroundNotification
 import platform.UIKit.UIViewController
 
 /**
- * The Swift-facing entry into the shared Compose session gate (D7). `iosApp` hosts the returned
+ * The Swift-facing entry into the shared Compose session gate. `iosApp` hosts the returned
  * `UIViewController` in SwiftUI. The gate's [RootComponent] is built on an Essenty
  * [LifecycleRegistry] whose STOP/RESUME track app background/foreground, so backgrounding locks the
  * vault (the iOS analogue of the Android `onStop` teardown; hard rules #1/#5). The session lives only

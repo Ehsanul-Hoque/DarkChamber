@@ -8,7 +8,7 @@ import kotlinx.io.files.SystemFileSystem
 
 /**
  * Prepares the on-disk vault layout root: creates `<root>` and `<root>/db/` (idempotent) and
- * returns `<root>`. This is the one filesystem-touching step of app-cycle root resolution — kept
+ * returns `<root>`. This is the one filesystem-touching step of app root resolution — kept
  * here because `core:storage` is the only module allowed to touch filesystem APIs (MODULES.md
  * §core). The platform base-path resolution (Android `filesDir` / iOS `Documents`) and the iOS
  * `isExcludedFromBackup` attribute call stay in `:app`.

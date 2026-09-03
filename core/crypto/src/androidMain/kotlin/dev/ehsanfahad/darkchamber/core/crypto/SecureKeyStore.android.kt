@@ -26,7 +26,7 @@ import javax.crypto.spec.GCMParameterSpec
  *
  * The stored blob is `iv ‖ ciphertext` (the GCM tag is appended to the ciphertext by the provider).
  *
- * Per-use biometric binding (cycle 5b): the AndroidKeyStore key is created with
+ * Per-use biometric binding: the AndroidKeyStore key is created with
  * `setUserAuthenticationRequired(true)`, so a `Cipher` initialised under it can only `doFinal` after
  * the user authenticates *that Cipher instance* via a `BiometricPrompt.CryptoObject`. This actual
  * builds the `Cipher`, wraps it in a `CryptoObject`, hands **that** to [BiometricAuthenticator] as the
@@ -135,7 +135,7 @@ class AndroidSecureKeyStore(
             .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
             .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
             .setKeySize(256)
-            // Per-use biometric binding (cycle 5b): every wrap/unwrap requires a fresh auth of the
+            // Per-use biometric binding: every wrap/unwrap requires a fresh auth of the
             // Cipher via a CryptoObject. setInvalidatedByBiometricEnrollment is true by default for
             // auth-required keys, so re-enrolling biometrics invalidates the key (→ IntegrityFailure).
             .setUserAuthenticationRequired(true)

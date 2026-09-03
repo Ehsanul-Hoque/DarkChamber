@@ -19,7 +19,7 @@ fun interface CatalogProvider {
 }
 
 /**
- * The platform-agnostic half of the composition root (D2): the crypto engine and the
+ * The platform-agnostic half of the composition root: the crypto engine and the
  * [VaultBootstrap] that composes the resolved root, catalog, storage, and session. The
  * platform-bound bindings ([dev.ehsanfahad.darkchamber.app.VaultRootResolver], [CatalogProvider],
  * and the `SecureKeyStore`) come from [platformModule].

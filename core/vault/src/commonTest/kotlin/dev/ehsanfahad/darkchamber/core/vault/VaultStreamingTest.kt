@@ -20,7 +20,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * Bounded-RAM streaming proof (5c §5.2 / TASK-007): push [streamTestBytes] through import → open
+ * Bounded-RAM streaming proof: push [streamTestBytes] through import → open
  * with a re-openable [GeneratingSource] and a discarding [CountingHashingSink], so the plaintext is
  * never held whole. The default 16 MiB spans 16 chunks; the 2 GiB opt-in
  * (`-Ddchm.stream.bytes=2147483648`) runs the identical path and needs ~size scratch disk for the

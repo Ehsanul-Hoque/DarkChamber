@@ -15,7 +15,7 @@ import kotlin.test.assertTrue
 /**
  * Host/sim-testable core of vault-root resolution: [DirectoryVaultRootResolver] creates
  * `<root>` + `<root>/db/` and runs the platform backup-exclusion hook. The real Context /
- * Documents / isExcludedFromBackup wiring is proven by the instrumented tests (TASK-008/009).
+ * Documents / isExcludedFromBackup wiring is proven by the instrumented tests.
  */
 class VaultRootResolverTest {
     private val testDir = Path(SystemTemporaryDirectory, "vrr-test-${Random.nextULong()}")

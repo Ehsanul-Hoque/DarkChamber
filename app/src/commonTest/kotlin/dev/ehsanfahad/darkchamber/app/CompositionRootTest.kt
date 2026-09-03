@@ -15,8 +15,8 @@ import kotlin.test.assertNotNull
 /**
  * The composition root resolves: `commonAppModule` + a test platform module (fake keystore, stub
  * resolver, uninvoked catalog opener) construct a [VaultBootstrap]. The real platform bindings
- * (Context / Documents / Keystore / driver) are proven by the instrumented tests (TASK-008/009);
- * this only asserts the graph wires up. The round-trip behaviour lands in TASK-005.
+ * (Context / Documents / Keystore / driver) are proven by the instrumented tests;
+ * this only asserts the graph wires up. The round-trip behaviour is covered separately.
  */
 class CompositionRootTest {
     private val testPlatformModule: Module = module {

@@ -37,7 +37,7 @@ class DchmCodecTest {
         }
     }
 
-    // --- encryptContainer reports the measured plaintext size (D7) -------------------------------
+    // --- encryptContainer reports the measured plaintext size -------------------------------
 
     @Test
     fun encrypt_returns_the_measured_plaintext_size() {

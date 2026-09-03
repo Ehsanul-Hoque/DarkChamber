@@ -6,8 +6,8 @@ plugins {
 }
 
 kotlin {
-    // iOS Argon2id (cycle 2c): compile the vendored phc-winner-argon2 reference sources
-    // into a per-arch libargon2.a from committed C (no prebuilt blob — spec D11), then
+    // iOS Argon2id: compile the vendored phc-winner-argon2 reference sources
+    // into a per-arch libargon2.a from committed C (no prebuilt blob), then
     // bundle it into the `argon2` cinterop klib. The iosMain actual calls argon2id_hash_raw.
     val argon2Dir = layout.projectDirectory.dir("src/nativeInterop/argon2")
     targets.withType<KotlinNativeTarget>().configureEach {
@@ -46,17 +46,17 @@ kotlin {
             implementation(libs.kotlinx.io.core)
             implementation(libs.kotlinx.serialization.cbor)
         }
-        // Argon2id (cycle 2c): pure-JVM BouncyCastle actual — host-testable. iOS uses the vendored
+        // Argon2id: pure-JVM BouncyCastle actual — host-testable. iOS uses the vendored
         // phc-winner-argon2 cinterop instead (no Argon2 runtime dependency on that side).
         androidMain.dependencies {
             implementation(libs.bouncycastle.bcprov)
             // The BiometricPrompt.CryptoObject wrapper that binds Face/Touch ID to the auth-required
-            // Keystore Cipher (cycle 5b). Confined to SecureKeyStore.android.kt (the hard-rule-#2
+            // Keystore Cipher. Confined to SecureKeyStore.android.kt (the hard-rule-#2
             // carve-out) so building the CryptoObject — which needs both javax.crypto and the
             // biometric wrapper — keeps javax.crypto out of :app. Not a cipher primitive.
             implementation(libs.androidx.biometric)
         }
-        // Auth-aware seams (cycle 5b) are suspend — runTest drives the coroutine unlock paths.
+        // Auth-aware seams are suspend — runTest drives the coroutine unlock paths.
         commonTest.dependencies {
             implementation(libs.kotlinx.coroutines.test)
         }

@@ -11,7 +11,7 @@ import dev.ehsanfahad.darkchamber.core.model.Outcome
  *
  * This is a plain interface, deliberately **not** `expect`/`actual`: the platform implementations
  * are stateful and need constructor arguments (Android `Context` + key alias; iOS Keychain service
- * string), so the app composition root constructs the right one and injects it (a later cycle).
+ * string), so the app composition root constructs the right one and injects it.
  * `commonMain` and [VaultSession] depend only on this interface, which lets `FakeSecureKeyStore`
  * exercise every HARDWARE-slot integration path on the JVM host.
  *
@@ -20,7 +20,7 @@ import dev.ehsanfahad.darkchamber.core.model.Outcome
  * carve-out that may import the platform's own key-storage APIs (Android Keystore + JCE Cipher, iOS
  * Keychain) — confined to those two actual files.
  *
- * Per-use biometric auth (cycle 5b): [wrap]/[unwrap] are `suspend` and take a
+ * Per-use biometric auth: [wrap]/[unwrap] are `suspend` and take a
  * [BiometricAuthenticator]. The platform actual presents the prompt through it and only completes
  * the crypto op with the **authenticated handle** it returns — so Face/Touch ID is bound
  * cryptographically to using the hardware key, not merely a UI gate in front of it. A cancelled

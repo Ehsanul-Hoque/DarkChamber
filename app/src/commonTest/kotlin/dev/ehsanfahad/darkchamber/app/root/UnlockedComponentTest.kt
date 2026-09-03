@@ -31,9 +31,9 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * The lock teardown (D5): manual `lock()` and Essenty `onStop` both run — exactly once — the full
+ * The lock teardown: manual `lock()` and Essenty `onStop` both run — exactly once — the full
  * sequence: zeroize the MK, purge `tmp/` scratch, close the catalog driver, dispose the session
- * scope, and signal the gate. Closes the 5a review-#3 driver leak.
+ * scope, and signal the gate. No driver is left open on lock.
  */
 class UnlockedComponentTest {
     private val testDir = Path(SystemTemporaryDirectory, "uct-${Random.nextULong()}")

@@ -3,7 +3,7 @@ plugins {
 }
 
 kotlin {
-    // The iOS umbrella framework (D1/D7): one static "Shared" framework the iosApp links.
+    // The iOS umbrella framework: one static "Shared" framework the iosApp links.
     // export(...) the modules whose public types cross into Swift via :app's API — core:model
     // (Outcome/VaultError), core:crypto (VaultSession/CryptoEngine/SecureKeyStore), core:db
     // (CatalogStore via CatalogProvider). Exported deps must be api() (below). core:storage /
@@ -24,8 +24,8 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
-            // Composition-root home: depends on every engine module wired in cycles 2–4
-            // plus the graduated logging module. No Compose this cycle (5a has no UI).
+            // Composition-root home: depends on every engine module (model/crypto/storage/db)
+            // plus the graduated logging module.
             // api(...) for the three modules exported into the iOS Shared framework.
             api(project(":core:model"))
             api(project(":core:crypto"))
@@ -33,11 +33,11 @@ kotlin {
             implementation(project(":core:storage"))
             implementation(project(":core:vault"))
             implementation(project(":core:logging"))
-            // First shared UI (5b): the session gate lives here. Compose comes via the theme module.
+            // First shared UI: the session gate lives here. Compose comes via the theme module.
             implementation(project(":core:designsystem"))
             implementation(libs.koin.core)
             // The Decompose session gate (RootComponent: Locked | Unlocked) + its Compose integration
-            // and the Essenty lifecycle that drives background-lock (TASK-008).
+            // and the Essenty lifecycle that drives background-lock.
             implementation(libs.decompose)
             implementation(libs.decompose.compose)
             implementation(libs.essenty.lifecycle)
@@ -47,7 +47,7 @@ kotlin {
             // API type. :app holds Path values only; every filesystem op stays in core:storage.
             implementation(libs.kotlinx.io.core)
         }
-        // Android launcher threads the Context via androidContext() (D2); koin-android
+        // Android launcher threads the Context via androidContext(); koin-android
         // carries that seam. sqldelight-runtime: the platform Koin module builds the real
         // driver (DriverFactory.create()) and passes it to CatalogStore.create (SqlDriver type).
         androidMain.dependencies {

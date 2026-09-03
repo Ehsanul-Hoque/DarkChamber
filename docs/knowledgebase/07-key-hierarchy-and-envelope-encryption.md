@@ -53,7 +53,7 @@ only in RAM, never on disk unwrapped.**
 The **HARDWARE slot is different**: there's no secret you type and no KDF. The platform's secure
 hardware (Android Keystore/StrongBox, iOS Keychain) holds a key that never leaves it and wraps MK
 for you — so the slot is stored as one **opaque platform blob**, not a `kdf_id` + parameters entry.
-It's **device-local** (never in a backup) and, this cycle, gated on the **device being unlocked**;
+It's **device-local** (never in a backup) and, for now, gated on the **device being unlocked**;
 a per-use biometric prompt is added later with the UI. It protects *our own MK wrap* — it is not an
 app-lock (see page 6 / ADR-002).
 
@@ -96,7 +96,7 @@ bytes are what matters**; the text is just a human-transcribable skin over them.
 
 ## What exists today
 
-As of this cycle the **key layer is complete** — all three slots exist and Argon2id is the default
+The **key layer is complete** — all three slots exist and Argon2id is the default
 passphrase KDF: MasterKey/DEK generation, the KeyStore wrap format, **Argon2id** passphrase wraps
 (64 MiB / 3 / 2, with PBKDF2 still supported for older wraps), HKDF recovery wraps, the recovery-key
 encoding, and an in-memory session that holds MK and hands out DEKs (zeroizing them after use) — all
@@ -105,7 +105,7 @@ with committed [KeyStore test vectors](../format-test-vectors/keystore) for both
 key and an iOS Keychain item wrap MK, **gated on the device being unlocked**. The integration is
 host-tested with a fake; the real platform code is verified by an
 [on-device checklist](../verification/secure-keystore-manual.md). Still to come with the first UI
-cycle: the **per-use biometric prompt** (this cycle only creates the device-unlocked key).
+layer: the **per-use biometric prompt** (the current build only creates the device-unlocked key).
 
 > [!NOTE]
 > **Key takeaways**

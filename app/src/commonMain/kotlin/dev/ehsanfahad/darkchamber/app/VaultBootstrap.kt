@@ -21,10 +21,10 @@ import kotlinx.io.files.Path
  * Resolves the app-private, backup-excluded vault root, opens the catalog + storage, and creates or
  * unlocks a [VaultSession]. Three ways in: [createVault] (first run — mints the passphrase + recovery
  * slots), [unlock] (passphrase), and [unlockWithBiometric] (the HARDWARE slot, §3.3). Every step is
- * `Outcome`-typed and the first failure aborts, never a half-initialized vault (D6). No exception
+ * `Outcome`-typed and the first failure aborts, never a half-initialized vault. No exception
  * crosses out (a catch-all maps an unexpected throw to [VaultError.Unexpected]); failures are logged
  * as a redacted code only by the caller (hard rule #4). The unlocked subtree owns the returned
- * [OpenVault] and its teardown (session zeroize, tmp purge, driver close — TASK-008).
+ * [OpenVault] and its teardown (session zeroize, tmp purge, driver close).
  *
  * Constructed by Koin ([dev.ehsanfahad.darkchamber.app.di.commonAppModule]).
  *

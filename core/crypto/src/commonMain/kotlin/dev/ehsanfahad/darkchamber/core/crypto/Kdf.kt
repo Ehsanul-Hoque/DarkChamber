@@ -48,7 +48,7 @@ enum class KdfId {
     /** HKDF-SHA256 — the recovery-key slot (input is already full entropy, no stretching). */
     HKDF_SHA256,
 
-    /** Argon2id — the memory-hard default passphrase KDF (platform bindings wired in cycle 2c). */
+    /** Argon2id — the memory-hard default passphrase KDF. */
     ARGON2ID,
 }
 

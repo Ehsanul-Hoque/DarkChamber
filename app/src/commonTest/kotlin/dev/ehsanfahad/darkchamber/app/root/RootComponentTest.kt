@@ -30,7 +30,7 @@ import kotlin.test.assertTrue
 /**
  * The structural session gate: the root starts Locked; a live vault fed through the locked child's
  * `onUnlocked` hook transitions to Unlocked holding that exact session; the unlocked child's `lock()`
- * returns to Locked. Pure component logic — no Compose (TASK-010) and no DI (TASK-008).
+ * returns to Locked. Pure component logic — no Compose and no DI.
  */
 class RootComponentTest {
     private val testDir = Path(SystemTemporaryDirectory, "rct-${Random.nextULong()}")

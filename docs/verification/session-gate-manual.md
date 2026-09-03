@@ -1,6 +1,6 @@
 # Manual verification — session gate + biometric unlock + lock lifecycle
 
-> Scope: cycle 5b. Verifies the structural session gate, the **per-use biometric binding**, the
+> Scope: the session-gate stage. Verifies the structural session gate, the **per-use biometric binding**, the
 > passphrase fallback, biometric invalidation, and the lock lifecycle (manual + on-background) on
 > **real hardware** — the parts the automated tests deliberately cannot reach (a real Keystore /
 > Keychain and a real Face/Touch ID prompt). Run at release, and whenever `core:crypto`'s
@@ -76,7 +76,7 @@ real Keystore/Keychain + biometric prompt need a device, which is what this chec
 - [ ] Android only: **rotate** the device while unlocked → it stays **unlocked** (a configuration
       change keeps the retained session; only a real background locks).
 - [ ] No decrypted scratch survives a lock: after locking, the app-private `tmp/` holds nothing
-      (there is no viewer yet this cycle, so this is mostly a forward guarantee — confirm `tmp/` is
+      (there is no viewer yet, so this is mostly a forward guarantee — confirm `tmp/` is
       empty via `adb shell run-as … ls files/vault/tmp` on Android).
 
 ### F. Honesty + confinement (spot check)

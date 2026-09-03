@@ -4,7 +4,7 @@
 # Apple target, using the Xcode toolchain's clang + the requested SDK.
 #
 # This is the reproducible target for the iOS Argon2id cinterop (docs/FORMAT.md §3,
-# cycle-2c spec D11): the static library is compiled from committed C source, never
+# F-Droid reproducible-builds goal): the static library is compiled from committed C source, never
 # checked in as a prebuilt blob. The Gradle :core:crypto build invokes this per iOS
 # arch and feeds the resulting .a to the `argon2` cinterop.
 #

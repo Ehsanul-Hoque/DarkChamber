@@ -12,7 +12,7 @@ import kotlin.test.assertTrue
 
 /**
  * Pins the [SecureKeyStore] contract via [FakeSecureKeyStore] so the HARDWARE-slot integration
- * (TASK-004) can rely on it. The real platform actuals must honour the same contract; they are
+ * can rely on it. The real platform actuals must honour the same contract; they are
  * verified by the on-device checklist, not here.
  *
  * Every wrap/unwrap here approves the biometric prompt; the deny/invalidated paths live in

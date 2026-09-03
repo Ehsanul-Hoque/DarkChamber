@@ -22,7 +22,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * Exercises the real file layer against a fresh temp root (D1) — runs on the JVM host
+ * Exercises the real file layer against a fresh temp root — runs on the JVM host
  * (`testAndroidHostTest`) and iOS sim (`iosSimulatorArm64Test`) alike, no fakes.
  */
 class VaultStorageTest {
@@ -76,7 +76,7 @@ class VaultStorageTest {
         assertTrue(isDir(Path(root, "tmp")))
     }
 
-    // --- Object store (TASK-002) ---
+    // --- Object store ---
 
     @Test
     fun writeObject_then_readObject_round_trips_at_the_sharded_path() {
@@ -87,7 +87,7 @@ class VaultStorageTest {
 
         assertIs<Outcome.Ok<Unit>>(storage.putObject(id, payload))
 
-        // Lands at objects/ab/cd/<hex>.dchm (D7).
+        // Lands at objects/ab/cd/<hex>.dchm.
         val hex = id.toHexString()
         val onDisk = Path(root, "objects", hex.substring(0, 2), hex.substring(2, 4), "$hex.dchm")
         assertTrue(isRegularFile(onDisk), "object at sharded path")
@@ -170,7 +170,7 @@ class VaultStorageTest {
         assertFalse(storage.objectExists(empty))
     }
 
-    // --- Thumbnail store (TASK-003) ---
+    // --- Thumbnail store ---
 
     @Test
     fun writeThumbnail_then_readThumbnail_round_trips_at_the_flat_path() {
@@ -214,7 +214,7 @@ class VaultStorageTest {
         assertIs<Outcome.Ok<Unit>>(storage.deleteThumbnail(id))
     }
 
-    // --- Key-blob store (TASK-004) ---
+    // --- Key-blob store ---
 
     @Test
     fun readKeyStore_on_a_fresh_root_is_Ok_null() {
@@ -258,7 +258,7 @@ class VaultStorageTest {
         assertIs<VaultError.Io>(read.error)
     }
 
-    // --- Tmp scratch (TASK-005) ---
+    // --- Tmp scratch ---
 
     @Test
     fun useTempFile_deletes_on_normal_return() {

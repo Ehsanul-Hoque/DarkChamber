@@ -8,7 +8,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
-/** Contract test over the fake seam — pins the approve/deny/invalidated outcomes for TASK-004. */
+/** Contract test over the fake seam — pins the approve/deny/invalidated outcomes. */
 class FakeBiometricAuthenticatorTest {
     private val request = BiometricRequest(title = "Unlock vault", cancelLabel = "Cancel")
 

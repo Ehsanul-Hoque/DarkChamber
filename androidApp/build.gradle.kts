@@ -53,9 +53,9 @@ dependencies {
     implementation(libs.compose.uiToolingPreview)
     debugImplementation(libs.compose.uiTooling)
 
-    // Instrumented cold-open smoke (cycle 5a, TASK-008): boots the real Koin graph on a
+    // Instrumented cold-open smoke: boots the real Koin graph on a
     // device/emulator. Runnable locally (./gradlew :androidApp:connectedFossDebugAndroidTest);
-    // NOT wired into pr.yml this cycle (the quality/instrumented job is still deferred).
+    // NOT wired into pr.yml yet (the quality/instrumented job is still deferred).
     androidTestImplementation(libs.androidx.testExt.junit)
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.junit)

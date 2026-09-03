@@ -26,11 +26,11 @@ import kotlin.random.nextULong
  * ```
  *
  * `.dchm` bytes flow through here as opaque sources/sinks — storage never sees ciphers
- * (no `core:crypto` dependency; the codec composes over storage at the call site, spec D6).
+ * (no `core:crypto` dependency; the codec composes over storage at the call site).
  *
- * **Precondition (D1/D3):** [root] is an app-provided, backup-excluded directory. Platform
+ * **Precondition:** [root] is an app-provided, backup-excluded directory. Platform
  * root-resolution (Android `filesDir` / iOS `Documents`) and the iOS `isExcludedFromBackup`
- * runtime call are the app cycle's job (cycle 5); this facade takes the resolved root as an
+ * runtime call live in the app module; this facade takes the resolved root as an
  * injected [Path], which makes the whole store host- and iOS-sim-testable against a temp root.
  *
  * @param root the resolved, backup-excluded vault directory.
@@ -49,7 +49,7 @@ class VaultStorage(
         fs.createDirectories(Path(root, "tmp"))
     }
 
-    // The encrypted object store: sharded objects/ab/cd/<hexId>.dchm (D7).
+    // The encrypted object store: sharded objects/ab/cd/<hexId>.dchm.
     private val objects = BlobStore(fs, Path(root, "objects"), extension = ".dchm", shard = true)
 
     /**
@@ -65,7 +65,7 @@ class VaultStorage(
     fun <R> readObject(fileId: ByteArray, block: (RawSource) -> R): Outcome<R> =
         objects.read(fileId, block)
 
-    /** Deletes the object blob (idempotent). Authoritative shred is destroying the DEK (cycle 4). */
+    /** Deletes the object blob (idempotent). Authoritative shred is destroying the DEK. */
     fun deleteObject(fileId: ByteArray): Outcome<Unit> = objects.delete(fileId)
 
     /** Whether an object blob exists for [fileId]. */
@@ -157,7 +157,7 @@ class VaultStorage(
 
     /**
      * Deletes every entry under `tmp/` (and only `tmp/`), leaving the directory itself. Called by
-     * the session/lock lifecycle (cycle 5) on lock, app launch, and after each viewer session, so
+     * the session/lock lifecycle on lock, app launch, and after each viewer session, so
      * no decrypted scratch survives a lock (hard rule #1).
      */
     fun purgeTmp(): Outcome<Unit> =

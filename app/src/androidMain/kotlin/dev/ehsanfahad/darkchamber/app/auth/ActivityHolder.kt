@@ -4,7 +4,7 @@ import androidx.fragment.app.FragmentActivity
 
 /**
  * Holds the current `FragmentActivity` so the biometric authenticator can present a `BiometricPrompt`
- * without a global/static Activity reference (which would leak). `MainActivity` (TASK-011) sets it on
+ * without a global/static Activity reference (which would leak). `MainActivity` sets it on
  * resume and clears it on pause; the authenticator reads it only at prompt time. Single-Activity app.
  */
 interface ActivityHolder {

@@ -56,7 +56,7 @@ class DchmCodec(private val engine: CryptoEngine) {
                 }
             }
 
-            // Enforce D8 / FORMAT.md §2.3 nonce disjointness: chunk counters must stay below the
+            // Enforce FORMAT.md §2.3 nonce disjointness: chunk counters must stay below the
             // reserved header counter 0xFFFFFFFF, or a chunk nonce would collide with the header's.
             if (chunkCountFor(size, chunkSize) > DchmFormat.HEADER_NONCE_COUNTER.toLong()) {
                 return Outcome.Err(VaultError.Io(IllegalStateException("object too large: chunk count exceeds the nonce space")))

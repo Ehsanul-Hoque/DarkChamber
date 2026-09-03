@@ -12,7 +12,7 @@ import platform.Foundation.NSUserDomainMask
 
 /**
  * iOS vault-root resolver: `<Documents>/vault`. Sets `isExcludedFromBackup = true` on the root —
- * the cycle-3 deferred runtime call that keeps the encrypted vault out of iCloud/iTunes backups.
+ * the runtime call that keeps the encrypted vault out of iCloud/iTunes backups.
  * Directory creation runs through `core:storage` (the shared [DirectoryVaultRootResolver] core).
  */
 @OptIn(ExperimentalForeignApi::class)

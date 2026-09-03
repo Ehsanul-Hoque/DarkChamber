@@ -26,7 +26,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /**
- * The locked surface's state machine (D4/§3.3), driven by a real [VaultBootstrap] over a temp root +
+ * The locked surface's state machine (§3.3), driven by a real [VaultBootstrap] over a temp root +
  * in-memory catalog + fakes. Screens (LockScreens) are compile-only; this pins the create → recovery
  * → enable → unlock flow and the biometric error → forced-passphrase transitions.
  */

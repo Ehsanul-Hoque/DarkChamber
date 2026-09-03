@@ -25,7 +25,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * The streaming import → persisted-DEK → stream-decrypt round-trip (5c TASK-004), against a temp-dir
+ * The streaming import → persisted-DEK → stream-decrypt round-trip, against a temp-dir
  * [VaultStorage] + an in-memory [CatalogStore] driver + a live [CryptographyKotlinEngine] session.
  * Covers boundaries (empty / partial-last-chunk), the catalog row, tamper detection, absent ids, and
  * the fail-closed cleanup on a row-insert failure.

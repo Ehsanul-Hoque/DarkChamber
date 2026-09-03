@@ -1,8 +1,8 @@
 # Vendored: phc-winner-argon2 (reference Argon2 implementation)
 
 This directory holds a **subset** of the phc-winner-argon2 reference sources, vendored so
-the iOS `argon2` cinterop (cycle 2c) can build `libargon2.a` from committed C — never a
-prebuilt binary blob (spec D11, F-Droid reproducible-builds goal). It provides the
+the iOS `argon2` cinterop can build `libargon2.a` from committed C — never a
+prebuilt binary blob (F-Droid reproducible-builds goal). It provides the
 Argon2id used for the passphrase key-wrap slot (`docs/FORMAT.md` §3).
 
 ## Upstream

@@ -15,7 +15,7 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 
 /**
- * iOS composition root (D2). Binds the platform-resolved vault root (from `NSDocumentDirectory`,
+ * iOS composition root. Binds the platform-resolved vault root (from `NSDocumentDirectory`,
  * backup-excluded), the Keychain-backed `SecureKeyStore`, and the catalog opener (real
  * `NativeSqliteDriver` under `<root>/db/catalog.db`).
  */

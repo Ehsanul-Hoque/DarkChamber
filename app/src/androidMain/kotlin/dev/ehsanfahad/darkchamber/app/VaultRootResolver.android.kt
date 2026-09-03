@@ -6,7 +6,7 @@ import kotlinx.io.files.Path
 
 /**
  * Android vault-root resolver: `<filesDir>/vault` on app-private internal storage. No backup call —
- * the manifest already denies OS/cloud backup (cycle 3: `allowBackup=false` + deny-all rules), so
+ * the manifest already denies OS/cloud backup (`allowBackup=false` + deny-all rules), so
  * the default no-op exclusion hook is correct here.
  */
 class AndroidVaultRootResolver(context: Context) : VaultRootResolver {

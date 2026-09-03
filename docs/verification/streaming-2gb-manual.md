@@ -1,6 +1,6 @@
 # Manual verification — 2 GB streaming encrypt / stream-decrypt (bounded RAM)
 
-> Scope: cycle 5c — the **Phase 0 exit criterion**: *encrypt → decrypt a 2 GB video by streaming,
+> Scope: the streaming vault-object pipeline — the **Phase 0 exit criterion**: *encrypt → decrypt a 2 GB video by streaming,
 > on both platforms, with plaintext never written to disk.* Verifies that `:core:vault`'s
 > `importObject`/`openObject` move an object far larger than RAM through **O(chunkSize) memory** —
 > the part the small fast tests deliberately do not size up to. Run at release, and whenever
@@ -74,4 +74,4 @@ viewer features land (Phase 1). At that point, re-run this checklist end-to-end:
 
 Until then, the streaming **capability** (bounded-RAM encrypt + 2 GiB stream-decrypt) is proven by
 the opt-in run above on both platforms; kill → relaunch → biometric-unlock is already covered by
-`docs/verification/session-gate-manual.md` (cycle 5b).
+`docs/verification/session-gate-manual.md`.

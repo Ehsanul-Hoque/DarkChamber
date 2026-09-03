@@ -14,7 +14,7 @@ enum class Slot {
     RECOVERY,
 
     /**
-     * A hardware-keystore-held key (device-local, never in backups). Built in cycle 2d: it is
+     * A hardware-keystore-held key (device-local, never in backups): it is
      * carried in [KeyStoreBlob.hardwareWrap] as an opaque [HardwareWrapEntry], **not** as a
      * [WrapEntry] — a TEE key has no `kdfId`/`kdfParams`. This value labels that slot conceptually;
      * it does not appear as a `WrapEntry.slot` in practice.
@@ -24,9 +24,9 @@ enum class Slot {
 
 /**
  * One wrapped copy of the MasterKey. [wrappedMk] is `AES-256-GCM(deriveWrapKey(secret, kdfParams), MK)`
- * over the [nonce], with the wrap's own parameters bound as AAD (built in TASK-006). [kdfId] duplicates
+ * over the [nonce], with the wrap's own parameters bound as AAD. [kdfId] duplicates
  * `kdfParams.kdfId` on purpose: it lets a reader recognise an unsupported/reserved KDF (e.g. Argon2id
- * before cycle 2c wires it) and answer `UnsupportedFormatVersion`, without needing that KDF's params
+ * before it is wired) and answer `UnsupportedFormatVersion`, without needing that KDF's params
  * type to exist yet.
  */
 @Serializable
@@ -77,7 +77,7 @@ class HardwareWrapEntry(val blob: ByteArray) {
  * MasterKey. Serialized as CBOR ([KeyStoreCodec]); persisted verbatim to `keys/mk.wrapped` by the
  * storage layer. Never a `.dchm`-under-MK — you need this to *obtain* MK.
  *
- * [hardwareWrap] is the optional HARDWARE slot (cycle 2d). It is **absent by default**: because the
+ * [hardwareWrap] is the optional HARDWARE slot. It is **absent by default**: because the
  * CBOR config does not encode defaults, a null [hardwareWrap] emits zero bytes, so a vault with no
  * hardware slot serializes byte-for-byte as before (existing passphrase/recovery blobs are unchanged
  * and still open — "old vaults always open").

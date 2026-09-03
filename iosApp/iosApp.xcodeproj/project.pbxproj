@@ -214,7 +214,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# Build, embed, and sign the :app Shared umbrella framework for the active\n# Xcode configuration / SDK / architecture (cycle 5a).\ncd \"$SRCROOT/..\"\n./gradlew :app:embedAndSignAppleFrameworkForXcode\n";
+			shellScript = "# Build, embed, and sign the :app Shared umbrella framework for the active\n# Xcode configuration / SDK / architecture.\ncd \"$SRCROOT/..\"\n./gradlew :app:embedAndSignAppleFrameworkForXcode\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

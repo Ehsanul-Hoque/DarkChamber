@@ -115,8 +115,8 @@ Per-object: dek_wrapped = AES-256-GCM(key = MK, data = DEK), stored in the catal
   blob's internal structure (Android `iv ‖ ciphertext`; iOS Keychain payload). It is stored in the
   optional `hardware_wrap` field of the KeyStore blob (§3.1), **never** as a `WrapEntry`, is
   **device-local** (never written to a backup manifest), and unlocks with **no user secret** — the
-  gate is the platform's. This cycle gates it on **device-unlocked**; per-use biometric prompting is
-  added with the UI cycle. Because `hardware_wrap` is optional and absent by default, a vault with no
+  gate is the platform's. It currently gates on **device-unlocked**; per-use biometric prompting is
+  added with the UI layer. Because `hardware_wrap` is optional and absent by default, a vault with no
   hardware slot serializes exactly as before — existing passphrase/recovery blobs are byte-for-byte
   unchanged and still open.
 - Cross-device restore requires: backup ciphertext + manifest + (passphrase or recovery key). Nothing else.

@@ -1,11 +1,11 @@
 # Manual verification — app cold-open bootstrap
 
-> Scope: cycle 5a. Verifies the app host + composition root — `VaultBootstrap` cold-open, platform
+> Scope: the app-host stage. Verifies the app host + composition root — `VaultBootstrap` cold-open, platform
 > vault-root resolution, catalog + storage wiring, and the iOS `Shared` framework — on real
 > hardware and in Xcode, covering what the automated smoke tests cannot. Run at release, and
 > whenever the bootstrap, platform resolution, DI graph, or the iOS framework export changes.
 >
-> **Updated for 5b.** The 5a diagnostic launch probe (`runVaultSelfCheck` / `iOSApp.init` /
+> **Historical note.** An earlier diagnostic launch probe (`runVaultSelfCheck` / `iOSApp.init` /
 > `VaultBootstrap.selfCheck()`) is **removed** — the app now boots to a real create/unlock UI. The
 > **on-device flow** below is superseded by
 > [`session-gate-manual.md`](./session-gate-manual.md); this doc's still-current value is the iOS
@@ -19,13 +19,13 @@ The cold-open + encrypted round-trip is proven by fast tests before you touch a 
   — the Koin graph resolves; `VaultBootstrapTest` drives `createVault` → reopen (`unlock`) against a
   temp root + in-memory driver + `FakeSecureKeyStore`, plus the wrong-passphrase + biometric paths.
 - **iOS-runtime specifics (iOS sim):** `IosVaultRootResolverTest` (in `:app:iosSimulatorArm64Test`)
-  resolves the real `<Documents>/vault`, asserts the deferred cycle-3 `isExcludedFromBackup == true`
+  resolves the real `<Documents>/vault`, asserts the `isExcludedFromBackup == true`
   runtime call took, and `createVault` → `unlock`s through the real iOS graph on the simulator.
 - **Android instrumented (device/emulator):**
   `./gradlew :androidApp:connectedFossDebugAndroidTest` — boots the real Koin graph with a real
   `Context`; asserts `<filesDir>/vault/db/catalog.db` + `keys/mk.wrapped` exist, an encrypted
   `.dchm` object is written, and **nothing lands in external/shared storage** (hard rule #1).
-  Not wired into CI this cycle (the instrumented/quality job is still deferred).
+  Not wired into CI yet (the instrumented/quality job is still deferred).
 
 ## iOS — the `Shared` framework in Xcode
 
@@ -75,7 +75,7 @@ Both cases must pass (verified green on the simulator):
 ## On-device manual checklist (physical hardware)
 
 The automated tests above run on a host, an emulator, and a simulator. This section is the
-**physical-device backstop** (mirrors the cycle-2d SecureKeyStore checklist): the real filesystem
+**physical-device backstop** (mirrors the SecureKeyStore checklist): the real filesystem
 sandbox, real Keystore/Keychain, and real backup behaviour only fully manifest on a shipped device.
 Run it at release and whenever the bootstrap, platform resolution, or backup posture changes.
 
@@ -103,8 +103,8 @@ Run it at release and whenever the bootstrap, platform resolution, or backup pos
    ```
    Nothing vault-related (no `.dchm`, no plaintext). (The instrumented test already asserts this; the
    manual pass is the belt-and-suspenders on a real device.)
-5. **Backup denied.** The manifest sets `allowBackup="false"` + deny-all extraction/backup rules
-   (cycle 3). Optional spot-check: `adb backup` produces no app data.
+5. **Backup denied.** The manifest sets `allowBackup="false"` + deny-all extraction/backup rules.
+   Optional spot-check: `adb backup` produces no app data.
 
 ### iOS — physical iPhone
 
@@ -112,16 +112,16 @@ Run it at release and whenever the bootstrap, platform resolution, or backup pos
 2. **Kill + relaunch (reopen/unlock).** Swipe-kill the app, relaunch → it opens on the **Unlock**
    screen and reopens the existing vault via the persisted Keychain/keystore path (not a recreate).
 3. **Vault is app-private + backup-excluded.** The vault is under the app container's `Documents`,
-   which is app-private by sandbox. Confirm the deferred `isExcludedFromBackup == true` on the vault
+   which is app-private by sandbox. Confirm the `isExcludedFromBackup == true` on the vault
    root holds on-device (the XCTest asserts it on the simulator; on a device it is what keeps the
    encrypted vault out of iCloud/iTunes backups). If inspecting a device backup, confirm no
    `Documents/vault` payload is present.
 4. **No plaintext leaves the vault.** No vault content is written to a shared container, Files-app
-   location, or Photos — decrypted bytes live only in memory this cycle (hard rule #1).
+   location, or Photos — decrypted bytes live only in memory (hard rule #1).
 
 ### Sign-off
 
 A release is not signed off until this checklist passes on **both** a physical Android device and a
-physical iPhone. Record the device models + OS versions in the release notes (as the 2d SecureKeyStore
-checklist requires). This cycle proves cold-open + storage/backup posture only; the per-use biometric
-prompt and session/lock gate arrive in 5b and get their own checklist additions.
+physical iPhone. Record the device models + OS versions in the release notes (as the SecureKeyStore
+checklist requires). This checklist proves cold-open + storage/backup posture only; the per-use biometric
+prompt and session/lock gate have their own checklist (session-gate-manual.md).

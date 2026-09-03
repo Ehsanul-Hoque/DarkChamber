@@ -1,7 +1,7 @@
 import XCTest
 import Shared
 
-/// Cycle 5b iOS acceptance (D3/D7): drives the exported `Shared` framework on the simulator — building
+/// iOS acceptance: drives the exported `Shared` framework on the simulator — building
 /// the shared Compose session gate (`MainViewController()`) through the Swift ↔ framework boundary the
 /// app itself uses. Building the gate resolves `<Documents>/vault` (the locked screen probes the
 /// keystore), so the backup-exclusion attribute can be checked afterwards.
@@ -19,7 +19,7 @@ final class DarkChamberVaultTests: XCTestCase {
         XCTAssertNotNil(viewController, "the shared Compose session gate failed to build")
     }
 
-    /// The Documents vault root must be excluded from iCloud/iTunes backup (deferred cycle-3 call).
+    /// The Documents vault root must be excluded from iCloud/iTunes backup (runtime call).
     @MainActor
     func testVaultRootIsExcludedFromBackup() throws {
         // Building the gate resolves + creates <Documents>/vault and sets the backup-exclusion flag.

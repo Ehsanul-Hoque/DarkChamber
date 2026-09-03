@@ -3,7 +3,7 @@ import Shared
 
 /// Hosts the shared Compose session gate (Kotlin `MainViewController()` from the `Shared`
 /// framework) inside SwiftUI. The gate owns the lock/create/unlock UI; SwiftUI only provides the
-/// window. Mirrors the Android `MainActivity` host (cycle 5b).
+/// window. Mirrors the Android `MainActivity` host.
 struct ComposeGateView: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> UIViewController {
         MainViewControllerKt.MainViewController()

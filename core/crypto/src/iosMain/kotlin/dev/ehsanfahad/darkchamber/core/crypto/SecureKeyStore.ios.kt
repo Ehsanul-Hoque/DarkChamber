@@ -71,7 +71,7 @@ import platform.Security.kSecAccessControlBiometryCurrentSet
  * [CryptoEngine]. Shared across iosArm64 + iosSimulatorArm64 and works on the simulator (no Secure
  * Enclave required).
  *
- * Per-use biometric binding (cycle 5b): the item carries a `SecAccessControl` created with
+ * Per-use biometric binding: the item carries a `SecAccessControl` created with
  * `kSecAccessControlBiometryCurrentSet`, so the Keychain releases the secret only after a Face/Touch ID
  * evaluation whose enrolled set is unchanged — re-enrolling biometrics invalidates it (→
  * [VaultError.Crypto.IntegrityFailure], the forced-passphrase-fallback trigger, §3.3). Each call first

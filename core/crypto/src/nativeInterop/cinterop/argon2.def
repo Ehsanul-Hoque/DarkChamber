@@ -1,4 +1,4 @@
-# cinterop for the vendored phc-winner-argon2 reference library (cycle-2c).
+# cinterop for the vendored phc-winner-argon2 reference library.
 #
 # Only the raw hashing surface is exposed; the iosMain actual (Argon2.ios.kt) calls
 # argon2id_hash_raw(...). The static library is compiled from committed C source by

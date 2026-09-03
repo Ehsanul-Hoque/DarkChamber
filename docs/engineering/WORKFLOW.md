@@ -2,6 +2,12 @@
 
 > Part of the [Engineering Guide](./README.md). Hooks, commit conventions, branching.
 
+> **A note on "phases" and internal increments.** [`../../ROADMAP.md`](../../ROADMAP.md) plans the
+> product in **phases** — that's the unit of record in the repo and in commit history. Day-to-day the
+> work is carved into smaller internal build increments; those live outside the committed tree and are
+> not something a contributor needs. If you see an old reference to one (e.g. in git history), read it
+> as "an early build increment within a phase" — nothing more.
+
 ## 1. Hooks — Lefthook
 
 **Lefthook** (single binary, no Node runtime) runs local hooks; installed via `lefthook install` (wrapped as `./gradlew installHooks`). Commit-message validation uses a small shell regex — no Node dependency:

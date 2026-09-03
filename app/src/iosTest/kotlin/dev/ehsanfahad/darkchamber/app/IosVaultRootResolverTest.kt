@@ -19,9 +19,9 @@ import kotlin.test.Test
 import kotlin.test.assertTrue
 
 /**
- * Cycle 5a/5b acceptance on the iOS simulator — the iOS-runtime-specific glue no common test can
+ * iOS-simulator acceptance — the iOS-runtime-specific glue no common test can
  * reach: [IosVaultRootResolver] resolves the real `<Documents>/vault` root and sets
- * `isExcludedFromBackup = true` (the deferred cycle-3 runtime call), and the full real graph
+ * `isExcludedFromBackup = true` (the runtime call), and the full real graph
  * (Documents root + native SQLite driver + Keychain `SecureKeyStore`) create-then-unlocks a vault by
  * passphrase — the hardware/biometric slot is untouched (device-only). Runs via
  * `./gradlew :app:iosSimulatorArm64Test`.
@@ -34,7 +34,7 @@ class IosVaultRootResolverTest {
         assertTrue(outcome is Outcome.Ok, "resolve failed: $outcome")
         assertTrue(
             isExcludedFromBackup(outcome.value.toString()),
-            "vault root is not isExcludedFromBackup — the cycle-3 runtime call did not take",
+            "vault root is not isExcludedFromBackup — the runtime call did not take",
         )
     }
 
@@ -57,7 +57,7 @@ class IosVaultRootResolverTest {
 
     private fun passphrase(): ByteArray = "correct-horse-battery".encodeToByteArray()
 
-    // A tiny KoinApplication holder so each build is disposed (no leaked container — 5a #3 spirit).
+    // A tiny KoinApplication holder so each build is disposed (no leaked container).
     private class Graph(private val app: org.koin.core.KoinApplication) {
         inline fun <T> use(block: (org.koin.core.Koin) -> T): T = try {
             block(app.koin)

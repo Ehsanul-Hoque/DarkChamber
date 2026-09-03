@@ -19,14 +19,14 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 
 /**
- * Android composition root (D2). Binds the platform-resolved vault root (from `Context.filesDir`,
+ * Android composition root. Binds the platform-resolved vault root (from `Context.filesDir`,
  * threaded via `androidContext()`), the Keystore-backed `SecureKeyStore`, and the catalog opener
  * (real `AndroidSqliteDriver` under `<root>/db/catalog.db`).
  */
 actual fun platformModule(): Module = module {
     single<VaultRootResolver> { AndroidVaultRootResolver(androidContext()) }
     single<SecureKeyStore> { AndroidSecureKeyStore() }
-    // The current FragmentActivity for the biometric prompt — set by MainActivity (TASK-011).
+    // The current FragmentActivity for the biometric prompt — set by MainActivity.
     single<ActivityHolder> { DefaultActivityHolder() }
     single<BiometricAuthenticator> { AndroidBiometricAuthenticator { get<ActivityHolder>().activity } }
     single<CatalogProvider> {
@@ -38,7 +38,7 @@ actual fun platformModule(): Module = module {
 private fun openCatalog(context: Context, vaultRoot: Path): Outcome<CatalogStore> =
     try {
         // Absolute catalog path under the backup-excluded vault root (db/ created by the resolver).
-        // TASK-008's instrumented test verifies the DB actually lands at <filesDir>/vault/db/.
+        // The instrumented test verifies the DB actually lands at <filesDir>/vault/db/.
         val dbPath = Path(Path(vaultRoot, "db"), "catalog.db").toString()
         CatalogStore.create(DriverFactory(context, dbPath).create())
     } catch (e: Exception) {

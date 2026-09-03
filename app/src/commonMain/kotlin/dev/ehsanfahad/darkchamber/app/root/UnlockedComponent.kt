@@ -17,14 +17,14 @@ import kotlin.random.nextULong
 
 /**
  * The unlocked child — **constructed with a live vault**, which is the structural gate invariant: a
- * decrypted-content screen cannot exist without a [VaultSession]. This cycle it exposes the [session]
+ * decrypted-content screen cannot exist without a [VaultSession]. For now it exposes the [session]
  * and a manual [lock]; the real vault UI is Phase 1.
  *
  * It owns a **Koin session scope** holding the vault's session/storage/catalog (feature UI resolves
  * session-scoped deps from it in Phase 1). Locking — manually **or** on background (Essenty
  * `onStop`) — runs the teardown once: zeroize the MK, purge decrypted `tmp/` scratch, close the
  * catalog driver, dispose the scope, then hand control back to the gate (→ Locked). A session that
- * survives backgrounding is theater (hard rules #1/#5; closes the 5a review-#3 driver leak).
+ * survives backgrounding is theater (hard rules #1/#5; no driver is left open on lock).
  */
 interface UnlockedComponent {
     val session: VaultSession
@@ -44,7 +44,7 @@ class DefaultUnlockedComponent(
             declare(vault.session)
             declare(vault.storage)
             declare(vault.catalog)
-            // The streaming object pipeline over this live session (5c). random = the engine's
+            // The streaming object pipeline over this live session. random = the engine's
             // CSPRNG (the file_id / GCM nonce_prefix source); clock = wall time for created_at.
             val engine = koin.get<CryptoEngine>()
             declare(
@@ -81,7 +81,7 @@ class DefaultUnlockedComponent(
         tornDown = true
         vault.session.close() // zeroize MK (hard rule #5)
         vault.storage.purgeTmp() // wipe decrypted scratch (hard rule #1)
-        vault.catalog.close() // close the SqlDriver (resolves 5a review #3)
+        vault.catalog.close() // close the SqlDriver (no leak on lock)
         scope.close() // dispose the session scope
     }
 

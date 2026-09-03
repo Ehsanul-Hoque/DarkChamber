@@ -14,13 +14,13 @@ import org.koin.dsl.koinApplication
 import java.io.File
 
 /**
- * Cycle 5b acceptance: boots the real Koin graph on a device/emulator with a real `Context` — real
+ * Instrumented acceptance: boots the real Koin graph on a device/emulator with a real `Context` — real
  * `filesDir` vault root, real `AndroidSqliteDriver`, real Keystore-backed `SecureKeyStore` —
  * create-then-unlocks a vault **by passphrase** (the hardware/biometric slot needs a real prompt, so
  * it lives on the on-device checklist), and spot-checks hard rule #1 (no plaintext to shared storage).
  *
  * Runnable locally: `./gradlew :androidApp:connectedFossDebugAndroidTest` (needs a device or
- * emulator). Not wired into CI this cycle — the instrumented/quality job is still deferred.
+ * emulator). Not wired into CI yet — the instrumented/quality job is still deferred.
  */
 @RunWith(AndroidJUnit4::class)
 class VaultBootstrapInstrumentedTest {

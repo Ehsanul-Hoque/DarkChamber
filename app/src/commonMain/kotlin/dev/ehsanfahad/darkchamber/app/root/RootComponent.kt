@@ -13,7 +13,7 @@ import dev.ehsanfahad.darkchamber.app.VaultBootstrap
  * The **structural session gate** (docs/ARCHITECTURE.md §8). The root has exactly two children —
  * [RootChild.Locked] and [RootChild.Unlocked] — and the unlocked child is *constructed with* a live
  * vault. A decrypted-content screen cannot exist outside the unlocked subtree by construction;
- * locking replaces the whole unlocked subtree (and, TASK-008, zeroizes the session).
+ * locking replaces the whole unlocked subtree (and zeroizes the session).
  *
  * The gate is held in an in-memory [Value], **never** a serializable Decompose config: a
  * [dev.ehsanfahad.darkchamber.core.crypto.VaultSession] holds the raw MasterKey and must never be
@@ -38,7 +38,7 @@ sealed interface RootChild {
 
 /**
  * @param lockedFactory builds the locked child, given a context and the `onUnlocked` hook it calls
- *   once its create/unlock flow (TASK-010) produces a live [VaultBootstrap.OpenVault].
+ *   once its create/unlock flow produces a live [VaultBootstrap.OpenVault].
  * @param unlockedFactory builds the unlocked child, given a context, the live vault, and the `onLock`
  *   hook it calls to tear down and return to locked.
  */
@@ -49,7 +49,7 @@ class DefaultRootComponent(
 ) : RootComponent, ComponentContext by componentContext {
 
     // The active child owns its own lifecycle; a transition destroys the outgoing child — disposing
-    // anything scoped to it (TASK-008's Koin session scope) — before the new one is built. Standalone
+    // anything scoped to it (the Koin session scope) — before the new one is built. Standalone
     // contexts (not childContext) so the registry is ours to destroy; the session is never persisted
     // (hard rule #5), so there is no saved-state child to restore.
     private var childLifecycle: LifecycleRegistry? = null

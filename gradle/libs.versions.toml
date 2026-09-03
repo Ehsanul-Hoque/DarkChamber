@@ -17,7 +17,7 @@ material3 = "1.11.0-alpha07"
 
 # --- Phase 0+ target dependencies (docs/engineering/MODULES.md §6) ------------
 # Declared now for the whole target architecture; most stay UNUSED until their
-# cycle wires them in. No network/backend/analytics/crash coordinate appears here
+# consumer wires them in. No network/backend/analytics/crash coordinate appears here
 # (ADR-004 / hard rule #3) — the catalog being the only dependency source is what
 # keeps that enforceable.
 cryptographyKotlin = "0.6.0"   # pinned EXACTLY (pre-1.0) — wrapped by CryptoEngine; do not bump casually
@@ -32,15 +32,15 @@ detekt = "1.23.8"
 konsist = "0.17.3"
 kover = "0.9.9"
 buildkonfig = "0.22.0"
-# core:crypto (cycle 2a): .dchm streaming IO + CBOR header. JetBrains-official, KMP, GPLv3-OK.
+# core:crypto: .dchm streaming IO + CBOR header. JetBrains-official, KMP, GPLv3-OK.
 kotlinxIo = "0.9.1"
 kotlinxSerialization = "1.11.0"   # serialization runtime (cbor); the compiler plugin tracks `kotlin`
-# core:db (cycle 4): reactive catalog Flow (sqldelight-coroutines) + host/iOS test drivers.
+# core:db: reactive catalog Flow (sqldelight-coroutines) + host/iOS test drivers.
 kotlinxCoroutines = "1.11.0"
-# core:crypto (cycle 2c): pure-JVM Argon2id for the Android/host passphrase-wrap actual. GPLv3-OK
+# core:crypto: pure-JVM Argon2id for the Android/host passphrase-wrap actual. GPLv3-OK
 # (BouncyCastle is MIT-style). iOS uses the vendored phc-winner-argon2 cinterop instead.
 bouncycastle = "1.85.2"
-# --- Session gate + biometric (cycle 5b) --------------------------------------
+# --- Session gate + biometric --------------------------------------
 # androidx.biometric BASE (not -ktx: no stable -ktx exists; our BiometricAuthenticator
 # seam already exposes suspend, so the -ktx coroutine helpers aren't needed). 1.1.0 is
 # the stable line carrying BiometricPrompt + CryptoObject (crypto-bound auth). Apache-2.0.
@@ -71,7 +71,7 @@ compose-ui = { module = "org.jetbrains.compose.ui:ui", version.ref = "composeMul
 compose-components-resources = { module = "org.jetbrains.compose.components:components-resources", version.ref = "composeMultiplatform" }
 compose-uiToolingPreview = { module = "org.jetbrains.compose.ui:ui-tooling-preview", version.ref = "composeMultiplatform" }
 
-# --- Phase 0+ target libraries (declared now, consumed in later cycles) -------
+# --- Phase 0+ target libraries (declared now, consumed later) -------
 # Crypto — core:crypto is the ONLY module permitted to depend on these.
 cryptography-core = { module = "dev.whyoleg.cryptography:cryptography-core", version.ref = "cryptographyKotlin" }
 cryptography-provider-optimal = { module = "dev.whyoleg.cryptography:cryptography-provider-optimal", version.ref = "cryptographyKotlin" }
@@ -106,7 +106,7 @@ decompose = { module = "com.arkivanov.decompose:decompose", version.ref = "decom
 decompose-compose = { module = "com.arkivanov.decompose:extensions-compose", version.ref = "decompose" }
 # Essenty lifecycle — the RootComponent LifecycleRegistry (:app), driven by the platform hosts.
 essenty-lifecycle = { module = "com.arkivanov.essenty:lifecycle", version.ref = "essenty" }
-# Biometric unlock (cycle 5b) — Android-only; the iOS side uses platform LocalAuthentication.
+# Biometric unlock — Android-only; the iOS side uses platform LocalAuthentication.
 # core:crypto/:app androidMain present BiometricPrompt with a crypto-bound CryptoObject.
 androidx-biometric = { module = "androidx.biometric:biometric", version.ref = "androidxBiometric" }
 androidx-fragment-ktx = { module = "androidx.fragment:fragment-ktx", version.ref = "androidxFragment" }
@@ -129,7 +129,7 @@ composeCompiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "k
 kotlinMultiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
 kotlinSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 
-# --- Phase 0+ target plugins (declared now, applied in later cycles) ----------
+# --- Phase 0+ target plugins (declared now, applied later) ----------
 sqldelight = { id = "app.cash.sqldelight", version.ref = "sqldelight" }
 detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
 kover = { id = "org.jetbrains.kotlinx.kover", version.ref = "kover" }

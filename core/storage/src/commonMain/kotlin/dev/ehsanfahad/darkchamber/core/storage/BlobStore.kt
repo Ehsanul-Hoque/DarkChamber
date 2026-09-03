@@ -9,11 +9,11 @@ import kotlinx.io.files.Path
 
 /**
  * The shared blob primitive backing both the object store (sharded) and the thumbnail store
- * (flat). Pure I/O over opaque bytes — it never sees ciphers (spec D6); `.dchm`/`.tdchm`
+ * (flat). Pure I/O over opaque bytes — it never sees ciphers; `.dchm`/`.tdchm`
  * content streams through the scoped [write]/[read] blocks as a [RawSink]/[RawSource].
  *
  * Every operation returns an [Outcome]; any failure is mapped to [VaultError.Io] and no
- * exception crosses the boundary (spec D7). Nothing here logs a path, id, or content (#4).
+ * exception crosses the boundary. Nothing here logs a path, id, or content (#4).
  *
  * @param baseDir the store root (e.g. `root/objects` or `root/thumbs`).
  * @param extension on-disk suffix including the dot (`.dchm` / `.tdchm`).
@@ -87,7 +87,7 @@ internal class BlobStore(
         }
     }
 
-    // hex is the safe on-disk charset over the id (no traversal); first 2 bytes → ab/cd shards (D7).
+    // hex is the safe on-disk charset over the id (no traversal); first 2 bytes → ab/cd shards.
     private fun pathFor(fileId: ByteArray): Path {
         val hex = fileId.toHexString()
         return if (shard) {

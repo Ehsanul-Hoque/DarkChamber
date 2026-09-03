@@ -3,12 +3,12 @@ package dev.ehsanfahad.darkchamber.core.crypto
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 
 /**
- * The seam for a per-use biometric prompt (cycle 5b). Presents Face/Touch ID (Android
+ * The seam for a per-use biometric prompt. Presents Face/Touch ID (Android
  * `BiometricPrompt`, iOS `LAContext`) and, on success, returns an **authenticated handle**
  * the [SecureKeyStore] actual uses to complete the wrapped-MK crypto op — so the biometric
  * is bound *cryptographically* to unwrapping the key, not merely a UI check in front of it.
  *
- * Like [SecureKeyStore] (cycle 2d), this is a plain injected interface, deliberately **not**
+ * Like [SecureKeyStore], this is a plain injected interface, deliberately **not**
  * `expect`/`actual`: the platform implementations are stateful (Android needs the current
  * `FragmentActivity`; iOS an `LAContext`) and are constructed by the app composition root.
  * `commonMain` and [VaultSession] depend only on this interface, which lets

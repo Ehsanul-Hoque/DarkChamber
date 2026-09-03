@@ -3,8 +3,7 @@ package dev.ehsanfahad.darkchamber.core.model
 /**
  * Typed error surface for the vault, returned via [Outcome] (docs/engineering/PATTERNS.md §5).
  *
- * Sealed so later cycles add cases (auth, keystore, storage) without breaking exhaustive
- * handling. This cycle (2a — the `.dchm` codec) defines only the cases the container needs.
+ * Sealed so later work adds cases (auth, keystore, storage) without breaking exhaustive handling.
  */
 sealed interface VaultError {
     /** Cryptographic / container-format failures. */
@@ -20,8 +19,8 @@ sealed interface VaultError {
     }
 
     /**
-     * Biometric / device-auth failure at the `SecureKeyStore`/`BiometricAuthenticator` boundary
-     * (cycle 5b). Distinct from [Crypto.IntegrityFailure]: a cancelled prompt or missing enrollment
+     * Biometric / device-auth failure at the `SecureKeyStore`/`BiometricAuthenticator` boundary.
+     * Distinct from [Crypto.IntegrityFailure]: a cancelled prompt or missing enrollment
      * is a benign auth outcome (retry / fall back to passphrase), NOT possible tampering. A
      * permanently invalidated key (biometrics re-enrolled) surfaces as [Crypto.IntegrityFailure]
      * instead, since the wrap can no longer be opened.

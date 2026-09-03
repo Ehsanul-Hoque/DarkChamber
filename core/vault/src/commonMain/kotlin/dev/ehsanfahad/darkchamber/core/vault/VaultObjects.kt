@@ -15,7 +15,7 @@ import kotlinx.io.RawSource
 
 /**
  * Vault-object operations — the one place `core:crypto` (session/codec), `core:storage` (objects),
- * and `core:db` (catalog rows) compose (5c). Everything streams in bounded RAM (O(chunkSize)) and
+ * and `core:db` (catalog rows) compose. Everything streams in bounded RAM (O(chunkSize)) and
  * returns [Outcome]; no exception crosses the boundary, and no cipher primitive is imported here —
  * `.dchm` bytes flow through storage opaque, crypto stays behind [DchmCodec] / [VaultSession].
  *
