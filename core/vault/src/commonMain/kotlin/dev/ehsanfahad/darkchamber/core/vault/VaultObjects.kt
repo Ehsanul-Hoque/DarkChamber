@@ -40,15 +40,61 @@ class VaultObjects(
      * carrying the wrapped DEK + a minimal `enc_meta` ({name, mime}). Returns the new 16-byte
      * `file_id`.
      *
-     * [openSource] MUST return a fresh, independent source on each call — the codec reads it twice
-     * (size+digest, then chunks). **Fail-closed:** if the row insert fails after the object is
-     * written, the object is deleted so no orphan ciphertext is left behind.
+     * The codec reads the payload twice (size+digest, then chunks), so [openSource] should return a
+     * fresh, independent source on each call. When it cannot — a content-provider or
+     * security-scoped stream that opens exactly once — the payload is spilled into app-private
+     * `tmp/` and imported from there (see the re-openability probe below). **Fail-closed:** if the
+     * row insert fails after the object is written, the object is deleted so no orphan ciphertext is
+     * left behind.
      */
     fun importObject(
         kind: Int,
         name: String,
         mime: String,
         chunkSize: Int = DchmFormat.DEFAULT_CHUNK_SIZE,
+        openSource: () -> RawSource,
+    ): Outcome<ByteArray> {
+        // Probe re-openability BEFORE reading anything. The check cannot be done after a failure:
+        // by then the only stream a one-shot source will ever give has already been consumed by the
+        // codec's first pass, leaving nothing to spill. So open one source and hold it, then try for
+        // a second — if that fails, the held source is the only one there is.
+        //
+        // Cost on the happy path is two extra open/close calls with no bytes read; the payoff is
+        // that a re-openable source streams straight into the container and its plaintext never
+        // touches disk at all (hard rule #1). A provider that refuses two *concurrent* opens is
+        // spilled unnecessarily — slower, still correct.
+        val held = try {
+            openSource()
+        } catch (e: Exception) {
+            return Outcome.Err(VaultError.Io(e)) // never opened: nothing to spill, nothing to retry
+        }
+        val reopenable = try {
+            openSource().use { }
+            true
+        } catch (_: Exception) {
+            false
+        }
+
+        if (reopenable) {
+            try {
+                held.close()
+            } catch (_: Exception) {
+                // the probe source is unread scratch; a close failure must not fail the import
+            }
+            return storeObject(kind, name, mime, chunkSize, openSource)
+        }
+
+        return storage
+            .useSpilledCopy(held) { spilled -> storeObject(kind, name, mime, chunkSize, spilled) }
+            .flatMap { it }
+    }
+
+    // Encrypt + record, given a source that can be opened as many times as the codec needs.
+    private fun storeObject(
+        kind: Int,
+        name: String,
+        mime: String,
+        chunkSize: Int,
         openSource: () -> RawSource,
     ): Outcome<ByteArray> {
         val fileId = random(FILE_ID_SIZE)
