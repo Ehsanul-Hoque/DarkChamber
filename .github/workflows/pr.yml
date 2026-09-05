@@ -107,7 +107,10 @@ jobs:
 
   ios-compile:
     needs: changes
-    if: needs.changes.outputs.ios == 'true'
+    # Gated twice: only when shared/iOS code changed, and only once the PR is marked ready.
+    # macOS minutes bill at 10x, so a draft PR keeps the fast Linux signal on every push while
+    # the expensive compile waits for the end of the cycle. (Moot once the repo is public.)
+    if: needs.changes.outputs.ios == 'true' && github.event.pull_request.draft == false
     runs-on: macos-latest        # ~10x the cost of Linux — that's why it's gated
     steps:
       - uses: actions/checkout@v4
