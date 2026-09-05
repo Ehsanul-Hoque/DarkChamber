@@ -67,9 +67,4 @@ class VaultStreamingTest {
         session.close()
     }
 
-    private fun deleteRecursively(path: Path) {
-        val md = SystemFileSystem.metadataOrNull(path) ?: return
-        if (md.isDirectory) for (child in SystemFileSystem.list(path)) deleteRecursively(child)
-        SystemFileSystem.delete(path, mustExist = false)
-    }
 }

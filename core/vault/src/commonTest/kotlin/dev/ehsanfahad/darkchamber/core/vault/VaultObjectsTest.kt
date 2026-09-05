@@ -185,9 +185,4 @@ class VaultObjectsTest {
         assertFalse(storage.objectExists(knownId), "the orphaned object must be deleted on a row failure")
     }
 
-    private fun deleteRecursively(path: Path) {
-        val md = SystemFileSystem.metadataOrNull(path) ?: return
-        if (md.isDirectory) for (child in SystemFileSystem.list(path)) deleteRecursively(child)
-        SystemFileSystem.delete(path, mustExist = false)
-    }
 }

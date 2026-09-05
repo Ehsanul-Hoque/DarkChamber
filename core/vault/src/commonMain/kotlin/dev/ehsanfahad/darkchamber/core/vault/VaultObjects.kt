@@ -7,9 +7,12 @@ import dev.ehsanfahad.darkchamber.core.db.CatalogStore
 import dev.ehsanfahad.darkchamber.core.db.Items
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
+import dev.ehsanfahad.darkchamber.core.model.VaultItemKind
 import dev.ehsanfahad.darkchamber.core.model.flatMap
 import dev.ehsanfahad.darkchamber.core.model.map
 import dev.ehsanfahad.darkchamber.core.storage.VaultStorage
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.io.RawSink
 import kotlinx.io.RawSource
 
@@ -112,14 +115,47 @@ class VaultObjects(
             is Outcome.Err -> return got
             is Outcome.Ok -> got.value ?: return absent(id)
         }
-        return session.openMeta(row.enc_meta).flatMap { bytes ->
+        return readMeta(row.enc_meta)
+    }
+
+    /**
+     * The listing feeding a gallery: each catalog row joined to its decrypted [ObjectMeta], so
+     * features consume [VaultItemSummary] and never a SQLDelight row type. Re-emits whenever the
+     * catalog changes (an import, a shred), so callers never refresh by hand. Pass [albumId] to
+     * narrow to one album, or `null` for everything.
+     *
+     * A row whose `enc_meta` will not open is **listed with the error**, never dropped — omitting it
+     * would hide tampering, and its plaintext columns are still usable (§4). Only the metadata is
+     * decrypted here; object bytes are never touched, which is what makes this cheap enough to run
+     * over a whole vault.
+     *
+     * The flow inherits `CatalogStore.observeItems`' contract: a driver failure surfaces as an
+     * exception **in the flow**, not an `Outcome`, so the collector is responsible for catching it
+     * (the gallery component maps it to an error state). Swallowing it here would turn a broken
+     * catalog into a silently empty vault, which is exactly the fail-closed rule's target.
+     */
+    fun observeItems(albumId: ByteArray? = null): Flow<List<VaultItemSummary>> =
+        catalog.observeItems(albumId).map { rows -> rows.map(::toSummary) }
+
+    private fun toSummary(row: Items): VaultItemSummary =
+        VaultItemSummary(
+            id = row.id,
+            kind = VaultItemKind.fromCode(row.kind),
+            size = row.size,
+            createdAt = row.created_at,
+            meta = readMeta(row.enc_meta),
+        )
+
+    // Unseal + decode a row's enc_meta. A malformed plaintext (post-unseal) is a container problem,
+    // not an integrity one — the GCM tag already verified, so the bytes are ours but unreadable.
+    private fun readMeta(encMeta: ByteArray): Outcome<ObjectMeta> =
+        session.openMeta(encMeta).flatMap { bytes ->
             try {
                 Outcome.Ok(decodeMeta(bytes))
             } catch (e: Exception) {
                 Outcome.Err(VaultError.Crypto.MalformedContainer)
             }
         }
-    }
 
     /**
      * Crypto-shred object [id]: delete the catalog row **first** (that destroys `dek_wrapped`, and the

@@ -26,11 +26,16 @@ kotlin {
             implementation(project(":core:db"))
             implementation(libs.kotlinx.io.core)
             implementation(libs.kotlinx.serialization.cbor)
+            // observeItems maps the catalog's reactive Flow into domain summaries. core:db declares
+            // coroutines as `implementation`, so the Flow type is not on our classpath transitively.
+            implementation(libs.kotlinx.coroutines.core)
         }
         commonTest.dependencies {
             // Tests build a real CatalogStore over a raw in-memory SqlDriver (the testSqlDriver
             // expect/actual below) + a temp-dir VaultStorage + a live CryptographyKotlinEngine session.
             implementation(libs.sqldelight.runtime)
+            implementation(libs.kotlinx.coroutines.test)
+            implementation(libs.turbine)
         }
         // Host tests inject an in-memory JDBC driver.
         getByName("androidHostTest").dependencies {
