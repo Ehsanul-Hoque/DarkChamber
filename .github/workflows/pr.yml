@@ -3,11 +3,14 @@
 # Runs on every PR to main. Fast checks on Linux; the expensive macOS iOS job is gated
 # to run only when shared/iOS code changes.
 #
-# SCOPE (Phase 0): builds the module skeleton and validates commits + deps.
-# The `quality` job (ktlint / detekt / Konsist / kover) stays COMMENTED OUT until those
-# convention plugins exist (docs/engineering/MODULES.md §5). `migrationTest` arrives after
-# v1.0 ships fixture vaults. Do NOT mark any check required in branch protection until the
-# quality job is green — see nightly/release/test-build which remain *.yml.disabled.
+# SCOPE: builds the modules, validates commits + deps, and enforces the SECURITY-INVARIANT
+# architecture rules (:konsist — cipher confinement, no network, no telemetry SDK, shared-storage
+# confinement, logger confinement). Those run in the `build` job because they guard the hard rules
+# in CLAUDE.md and must gate every PR.
+# The `quality` job (ktlint / detekt / kover) stays COMMENTED OUT until those convention plugins
+# exist (docs/engineering/MODULES.md §5). `migrationTest` arrives after v1.0 ships fixture vaults.
+# Do NOT mark any check required in branch protection until the quality job is green — see
+# nightly/release/test-build which remain *.yml.disabled.
 name: PR
 
 on:
@@ -63,7 +66,8 @@ jobs:
         with:
           fail-on-severity: high
 
-  # Compiles the module skeleton and runs the JVM/Android host unit tests across modules.
+  # Compiles the modules, enforces the security-invariant architecture rules, and runs the
+  # JVM/Android host unit tests across modules.
   build:
     runs-on: ubuntu-latest
     steps:
@@ -74,13 +78,19 @@ jobs:
           java-version: "21"
       - uses: gradle/actions/setup-gradle@v4
 
+      - name: Security architecture rules (Konsist)
+        # Runs first: it is seconds of work and a violation of a hard security rule should fail
+        # the PR before we spend minutes assembling. Own step so the failure is attributable.
+        run: ./gradlew :konsist:test
+
       - name: Assemble Android (foss debug) + host unit tests
         # assembleFossDebug builds :androidApp (+ its :core:model dep); testAndroidHostTest
         # runs the common/Android-host unit tests in every core module.
         run: ./gradlew :androidApp:assembleFossDebug testAndroidHostTest
 
-  # --- Deferred: the quality gate. Uncomment once the darkchamber.quality /
-  #     darkchamber.konsist convention plugins add these tasks (MODULES.md §5, TESTING.md §5).
+  # --- Deferred: the quality gate. Uncomment once the darkchamber.quality convention plugin adds
+  #     these tasks (MODULES.md §5, TESTING.md §5). Konsist is NOT here — the security-invariant
+  #     rules already run in the `build` job above, where they gate every PR.
   # quality:
   #   runs-on: ubuntu-latest
   #   steps:
@@ -90,8 +100,8 @@ jobs:
   #         distribution: temurin
   #         java-version: "21"
   #     - uses: gradle/actions/setup-gradle@v4
-  #     - name: Static analysis (ktlint, detekt, Konsist)
-  #       run: ./gradlew ktlintCheck detekt konsistTest
+  #     - name: Static analysis (ktlint, detekt)
+  #       run: ./gradlew ktlintCheck detekt
   #     - name: Coverage gates
   #       run: ./gradlew koverVerify
 
