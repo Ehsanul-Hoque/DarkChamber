@@ -58,7 +58,13 @@ jobs:
 
   # Supply-chain gate: flags new dependencies & incompatible licenses on the PR
   # (docs/engineering/RELEASE.md §6). New runtime deps need justification in the PR body.
+  #
+  # The Dependency Review API needs Advanced Security on a PRIVATE repo, so this skips while the
+  # repo is private and starts running by itself the moment it goes public — no edit needed at
+  # release time. The project's real supply-chain gate is Gradle dependency verification
+  # (gradle/verification-metadata.xml): checksums, enforced locally and offline.
   dependency-review:
+    if: github.event.repository.visibility == 'public'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
