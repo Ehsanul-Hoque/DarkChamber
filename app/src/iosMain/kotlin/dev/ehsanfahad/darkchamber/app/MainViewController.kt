@@ -19,9 +19,17 @@ import org.koin.core.Koin
 import org.koin.core.context.startKoin
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSOperationQueue
+import platform.UIKit.UIApplication
+import platform.UIKit.UIApplicationDidBecomeActiveNotification
 import platform.UIKit.UIApplicationDidEnterBackgroundNotification
 import platform.UIKit.UIApplicationWillEnterForegroundNotification
+import platform.UIKit.UIApplicationWillResignActiveNotification
+import platform.UIKit.UIBlurEffect
+import platform.UIKit.UIBlurEffectStyle
+import platform.UIKit.UIViewAutoresizingFlexibleHeight
+import platform.UIKit.UIViewAutoresizingFlexibleWidth
 import platform.UIKit.UIViewController
+import platform.UIKit.UIVisualEffectView
 
 /**
  * The Swift-facing entry into the shared Compose session gate. `iosApp` hosts the returned
@@ -51,6 +59,7 @@ fun MainViewController(): UIViewController {
 
     lifecycle.resume()
     observeAppLifecycle(lifecycle, root)
+    observeSnapshotCover()
 
     return ComposeUIViewController { RootContent(root) }
 }
@@ -73,5 +82,35 @@ private fun observeAppLifecycle(lifecycle: LifecycleRegistry, root: RootComponen
     }
     center.addObserverForName(UIApplicationWillEnterForegroundNotification, null, NSOperationQueue.mainQueue) { _ ->
         lifecycle.resume()
+    }
+}
+
+/** The blur laid over the window while the app is inactive; `null` whenever the app is on screen. */
+private var snapshotCover: UIVisualEffectView? = null
+
+/**
+ * Obscures the app-switcher snapshot. iOS takes that snapshot after `willResignActive`, so a blur
+ * added there is what the system captures instead of vault content.
+ *
+ * This is **not** screenshot blocking. iOS has no `FLAG_SECURE` equivalent, so a user (or anyone
+ * holding the unlocked device) can still capture what is on screen; docs/THREAT_MODEL.md says so and
+ * no UI copy may imply otherwise. Whole-window rather than per-screen, for the same reason as
+ * Android's flag: a screen can forget to opt in.
+ */
+@OptIn(ExperimentalForeignApi::class)
+private fun observeSnapshotCover() {
+    val center = NSNotificationCenter.defaultCenter
+    center.addObserverForName(UIApplicationWillResignActiveNotification, null, NSOperationQueue.mainQueue) { _ ->
+        if (snapshotCover != null) return@addObserverForName
+        val window = UIApplication.sharedApplication.keyWindow ?: return@addObserverForName
+        val cover = UIVisualEffectView(effect = UIBlurEffect.effectWithStyle(UIBlurEffectStyle.UIBlurEffectStyleSystemThickMaterialDark))
+        cover.setFrame(window.bounds)
+        cover.setAutoresizingMask(UIViewAutoresizingFlexibleWidth or UIViewAutoresizingFlexibleHeight)
+        window.addSubview(cover)
+        snapshotCover = cover
+    }
+    center.addObserverForName(UIApplicationDidBecomeActiveNotification, null, NSOperationQueue.mainQueue) { _ ->
+        snapshotCover?.removeFromSuperview()
+        snapshotCover = null
     }
 }

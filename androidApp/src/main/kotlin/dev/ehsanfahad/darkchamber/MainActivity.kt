@@ -1,6 +1,7 @@
 package dev.ehsanfahad.darkchamber
 
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.fragment.app.FragmentActivity
@@ -31,6 +32,11 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
+        // Unconditionally, for the whole app: screenshots and screen recording are blocked and the
+        // app-switcher thumbnail is blank. Whole-app rather than per-screen on purpose — every
+        // screen in the unlocked tree shows vault content, the locked tree shows the recovery key,
+        // and a defence a new screen can forget to opt into is not a defence.
+        window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         super.onCreate(savedInstanceState)
 
         root = retainedComponent { componentContext -> buildRoot(componentContext) }
