@@ -3,6 +3,8 @@ package dev.ehsanfahad.darkchamber.app.di
 import dev.ehsanfahad.darkchamber.app.IosVaultRootResolver
 import dev.ehsanfahad.darkchamber.app.VaultRootResolver
 import dev.ehsanfahad.darkchamber.app.auth.IosBiometricAuthenticator
+import dev.ehsanfahad.darkchamber.app.picker.IosFilePicker
+import dev.ehsanfahad.darkchamber.app.picker.rootViewController
 import dev.ehsanfahad.darkchamber.core.crypto.BiometricAuthenticator
 import dev.ehsanfahad.darkchamber.core.crypto.IosSecureKeyStore
 import dev.ehsanfahad.darkchamber.core.crypto.SecureKeyStore
@@ -10,6 +12,7 @@ import dev.ehsanfahad.darkchamber.core.db.CatalogStore
 import dev.ehsanfahad.darkchamber.core.db.DriverFactory
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
+import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
 import kotlinx.io.files.Path
 import org.koin.core.module.Module
 import org.koin.dsl.module
@@ -23,6 +26,8 @@ actual fun platformModule(): Module = module {
     single<VaultRootResolver> { IosVaultRootResolver() }
     single<SecureKeyStore> { IosSecureKeyStore() }
     single<BiometricAuthenticator> { IosBiometricAuthenticator() }
+    // The vault feature's picker seam, presented from the app's single Compose host.
+    single<FilePicker> { IosFilePicker(::rootViewController) }
     single<CatalogProvider> { CatalogProvider { root -> openCatalog(root) } }
 }
 

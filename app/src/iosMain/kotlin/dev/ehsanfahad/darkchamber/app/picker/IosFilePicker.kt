@@ -1,0 +1,121 @@
+package dev.ehsanfahad.darkchamber.app.picker
+
+import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
+import dev.ehsanfahad.darkchamber.feature.vault.api.PickedFile
+import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.io.RawSource
+import kotlinx.io.files.Path
+import kotlinx.io.files.SystemFileSystem
+import platform.Foundation.NSURL
+import platform.UIKit.UIApplication
+import platform.UIKit.UIDocumentPickerViewController
+import platform.UIKit.UIDocumentPickerDelegateProtocol
+import platform.UIKit.UIViewController
+import platform.UniformTypeIdentifiers.UTTypeItem
+import platform.darwin.NSObject
+import kotlin.coroutines.resume
+
+/**
+ * iOS's document picker as the [FilePicker] seam.
+ *
+ * Opened **in place** rather than `asCopy`: a copy would put a second plaintext copy of the file in
+ * our container before we ever encrypt it. Reading the original instead means holding a
+ * security-scoped resource, which [PickedFile.close] hands back.
+ */
+@OptIn(ExperimentalForeignApi::class)
+class IosFilePicker(private val presenter: () -> UIViewController?) : FilePicker {
+
+    override suspend fun pickFile(): PickedFile? {
+        val host = presenter() ?: error("no view controller to present the picker from")
+
+        val url = suspendCancellableCoroutine<NSURL?> { continuation ->
+            val controller = UIDocumentPickerViewController(forOpeningContentTypes = listOf(UTTypeItem))
+            // The delegate is retained by this local until the picker calls back; the controller
+            // holds it weakly, so it is kept alive by the closure captured in the continuation.
+            val delegate = PickerDelegate { picked -> continuation.resume(picked) }
+            controller.delegate = delegate
+            continuation.invokeOnCancellation { controller.dismissViewControllerAnimated(true, null) }
+            host.presentViewController(controller, animated = true, completion = null)
+        } ?: return null // the user backed out
+
+        val scoped = url.startAccessingSecurityScopedResource()
+        val path = url.path ?: run {
+            if (scoped) url.stopAccessingSecurityScopedResource()
+            error("the picked file has no filesystem path")
+        }
+        return IosPickedFile(url = url, path = path, scoped = scoped)
+    }
+}
+
+/**
+ * Bridges the picker's delegate callbacks into the coroutine. Both outcomes — a pick and a
+ * cancellation — resume exactly once; `null` means cancelled, which the import treats as an ordinary
+ * outcome rather than a failure.
+ */
+private class PickerDelegate(private val onResult: (NSURL?) -> Unit) : NSObject(), UIDocumentPickerDelegateProtocol {
+    private var resumed = false
+
+    override fun documentPicker(controller: UIDocumentPickerViewController, didPickDocumentsAtURLs: List<*>) {
+        deliver(didPickDocumentsAtURLs.firstOrNull() as? NSURL)
+    }
+
+    override fun documentPickerWasCancelled(controller: UIDocumentPickerViewController) {
+        deliver(null)
+    }
+
+    private fun deliver(url: NSURL?) {
+        if (resumed) return
+        resumed = true
+        onResult(url)
+    }
+}
+
+/**
+ * A picked file read straight from its security-scoped location — never copied. [close] gives the
+ * scoped resource back, so a picked file must always be closed, including when the import fails.
+ */
+private class IosPickedFile(
+    private val url: NSURL,
+    private val path: String,
+    private val scoped: Boolean,
+) : PickedFile {
+
+    override val name: String = url.lastPathComponent ?: FALLBACK_NAME
+
+    // The picker deals in files, not MIME; the vault stores a type it can map to a viewer later.
+    override val mime: String = mimeForExtension(url.pathExtension)
+
+    override fun openSource(): RawSource = SystemFileSystem.source(Path(path))
+
+    override fun close() {
+        if (scoped) url.stopAccessingSecurityScopedResource()
+    }
+
+    private companion object {
+        const val FALLBACK_NAME = "file"
+    }
+}
+
+/** A deliberately small map: enough for the viewers v1 ships, honest `application/octet-stream` otherwise. */
+private fun mimeForExtension(extension: String?): String =
+    when (extension?.lowercase()) {
+        "jpg", "jpeg" -> "image/jpeg"
+        "png" -> "image/png"
+        "heic" -> "image/heic"
+        "gif" -> "image/gif"
+        "webp" -> "image/webp"
+        "mp4", "m4v" -> "video/mp4"
+        "mov" -> "video/quicktime"
+        "mp3" -> "audio/mpeg"
+        "m4a" -> "audio/mp4"
+        "wav" -> "audio/wav"
+        "pdf" -> "application/pdf"
+        "txt" -> "text/plain"
+        "md" -> "text/markdown"
+        else -> "application/octet-stream"
+    }
+
+/** The app's root view controller — the single Compose host this app presents everything from. */
+internal fun rootViewController(): UIViewController? =
+    UIApplication.sharedApplication.keyWindow?.rootViewController
