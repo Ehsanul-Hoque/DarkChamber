@@ -71,6 +71,9 @@ Tick each line. A failure here is a release blocker.
 - [ ] Dump one and confirm it is not the original: `... cat <one .dchm> | head -c 16 | xxd` starts
       with the `DCHM` magic, and the file is **not** byte-identical to the imported original.
 - [ ] `files/vault/tmp` is empty, and stays empty after a lock.
+- [ ] Kill the app mid-import of a large cloud-provider file (the spill path), then relaunch and
+      reach the lock screen. `files/vault/tmp` is empty again — a cold open purges scratch that no
+      lock was ever there to clean up.
 - [ ] Nothing appears in shared storage: the imported file has **not** been copied anywhere under
       `/sdcard`, and the vault does not appear in the system Files app or the gallery app.
 

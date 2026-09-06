@@ -6,6 +6,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.cancellation.CancellationException
 
 /** What came of an import attempt. Cancelling is its own outcome, distinct from success and failure. */
 internal sealed interface ImportResult {
@@ -36,6 +37,10 @@ internal class ImportFile(
     suspend operator fun invoke(): ImportResult {
         val picked = try {
             picker.pickFile() ?: return ImportResult.Cancelled
+        } catch (e: CancellationException) {
+            // The unlocked subtree was destroyed (a lock) while the picker was up. Coroutine
+            // cancellation is not an import failure and must not be swallowed into one.
+            throw e
         } catch (e: Exception) {
             // The picker could not even be shown — no grant was taken, so there is nothing to close.
             return ImportResult.Failed(VaultError.Unexpected(e))
@@ -46,6 +51,10 @@ internal class ImportFile(
                 is Outcome.Ok -> ImportResult.Imported
                 is Outcome.Err -> ImportResult.Failed(result.error)
             }
+        } catch (e: CancellationException) {
+            // Same here: a lock cancels the scope mid-import. Rethrow so the caller's coroutine
+            // actually stops instead of reporting a phantom failure — the grant still closes below.
+            throw e
         } catch (e: Exception) {
             // core:vault returns Outcome rather than throwing, so this is the "should never happen"
             // net that keeps a lower-layer escape from taking the UI down with it.

@@ -9,8 +9,11 @@ import dev.ehsanfahad.darkchamber.feature.vault.ThrowingVaultItems
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
+import kotlinx.io.RawSource
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
@@ -69,6 +72,24 @@ class ImportFileTest {
         assertTrue(picked.closed, "the grant is released even when the import throws")
     }
 
+    /**
+     * A lock cancels the scope the import runs on. Cancellation is not an import failure: swallowing
+     * it into `Failed` would keep the coroutine running past its cancellation and raise a phantom
+     * error banner on a component that is already being torn down.
+     */
+    @Test
+    fun cancellation_propagates_and_still_releases_the_grant() = runTest {
+        val picked = FakePickedFile()
+        val importer = ImportFile(
+            picker = FakeFilePicker(picked),
+            vault = CancellingVaultItems(),
+            ioContext = UnconfinedTestDispatcher(),
+        )
+
+        assertFailsWith<CancellationException> { importer() }
+        assertTrue(picked.closed, "a cancelled import must still release the grant")
+    }
+
     /** A picker that cannot even be shown is a failure, but there is no grant to release. */
     @Test
     fun a_picker_that_fails_to_open_is_a_failure_not_a_crash() = runTest {
@@ -80,4 +101,12 @@ class ImportFileTest {
         assertIs<VaultError.Unexpected>(result.error)
         assertEquals(0, vault.importCalls)
     }
+}
+
+/** A vault seam that behaves like an import interrupted by a lock cancelling the scope. */
+private class CancellingVaultItems : VaultItems {
+    override fun observe(albumId: ByteArray?) = throw UnsupportedOperationException("not used")
+
+    override fun import(name: String, mime: String, openSource: () -> RawSource) =
+        throw CancellationException("the session was torn down mid-import")
 }

@@ -33,7 +33,8 @@ kotlin {
             // content-free code (hard rule #4). Kermit is confined to that module.
             implementation(project(":core:logging"))
             // Presentation: a feature's screen is a Decompose component holding Value<State>
-            // (docs/engineering/PATTERNS.md §3), wired by the feature's own Koin module (§1).
+            // (docs/engineering/PATTERNS.md §3). Koin is here for features that own a module; a
+            // session-scoped feature exports a factory instead and may not use it (§1).
             implementation(libs.decompose)
             implementation(libs.decompose.compose)
             implementation(libs.koin.core)

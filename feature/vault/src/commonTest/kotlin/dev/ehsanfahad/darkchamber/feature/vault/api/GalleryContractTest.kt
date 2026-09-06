@@ -55,4 +55,13 @@ class GalleryContractTest {
         assertFalse(rendered.contains("passport-scan"), "the name must not appear in $rendered")
         assertFalse(rendered.contains("application/pdf"), "the mime must not appear in $rendered")
     }
+
+    /** The meta on its own is just as loggable as the tile that holds it, so it redacts too. */
+    @Test
+    fun readable_meta_toString_never_leaks_the_name_or_mime() {
+        val rendered = GalleryItemMeta.Readable("passport-scan.pdf", "application/pdf").toString()
+
+        assertFalse(rendered.contains("passport-scan"), "the name must not appear in $rendered")
+        assertFalse(rendered.contains("application/pdf"), "the mime must not appear in $rendered")
+    }
 }

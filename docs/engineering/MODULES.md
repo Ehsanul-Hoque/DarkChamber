@@ -17,7 +17,7 @@ DarkChamber is a multi-module Gradle project. Isolation is real (compile-time), 
 
 - `core:model` — pure Kotlin domain types (`VaultItem`, `Album`, `Note`), MIME handling. Depends on nothing.
 - `core:crypto` — the `.dchm` codec (normative spec: [`../FORMAT.md`](../FORMAT.md)), key hierarchy, KDF, DEK lifecycle, `CryptoEngine` interface wrapping `cryptography-kotlin`, `expect/actual SecureKeyStore` (Keystore/Secure Enclave). **The only module allowed to touch cipher primitives.**
-- `core:storage` — app-private file layout, atomic writes, `tmp/` hygiene, thumbnail store. **The only module allowed to touch filesystem APIs.** *Built:* `VaultStorage(root: Path, fs = SystemFileSystem)` owns `objects/ thumbs/ keys/ tmp/` under an injected root, exposing:
+- `core:storage` — app-private file layout, atomic writes, `tmp/` hygiene, thumbnail store. **The only module allowed to touch the vault's filesystem.** The one carve-out is the app module's platform boundary — the root resolver (`filesDir` / `NSDocumentDirectory`) and the iOS file picker, which reads a user-picked file at a security-scoped path that is outside the vault root and never written to. No feature module touches a filesystem API at all. *Built:* `VaultStorage(root: Path, fs = SystemFileSystem)` owns `objects/ thumbs/ keys/ tmp/` under an injected root, exposing:
     - object store — `writeObject`/`readObject`/`deleteObject`/`objectExists`, sharded, scoped atomic temp+`atomicMove`;
     - thumbnail store — `writeThumbnail`/… flat `.tdchm`;
     - key-blob store — `readKeyStore` (null-if-absent) / `writeKeyStore`;

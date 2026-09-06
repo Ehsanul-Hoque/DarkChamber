@@ -81,7 +81,12 @@ class GalleryItem(
  */
 sealed interface GalleryItemMeta {
     /** The metadata opened and verified. */
-    data class Readable(val name: String, val mime: String) : GalleryItemMeta
+    data class Readable(val name: String, val mime: String) : GalleryItemMeta {
+        // Redacted like [GalleryItem]'s: these two fields are decrypted vault content, so the
+        // generated data-class toString would print a file name into any log line that renders
+        // this value (hard rule #4).
+        override fun toString(): String = "Readable(name=${name.length} chars, mime=${mime.length} chars)"
+    }
 
     /**
      * The metadata failed to open — corruption or tampering. The item still lists and can still be

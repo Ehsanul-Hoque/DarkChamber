@@ -84,6 +84,7 @@ class VaultImportSpillTest {
 
         val id = vo.import("one-shot.bin", opener)
         assertIs<Outcome.Ok<ByteArray>>(id, "a one-shot source must still import")
+        assertEquals(opener.created, opener.closes, "the spilled source must be closed, not leaked")
 
         val out = Buffer()
         assertTrue(vo.openObject(id.value, out) is Outcome.Ok, "the stored object must open")
@@ -143,6 +144,9 @@ class VaultImportSpillTest {
         // path opens the original exactly twice instead, so this count is what distinguishes them —
         // and it pins the cost of the probe, which is the whole trade being made here.
         assertEquals(4, opener.opens, "re-openable payloads stream in place; no copy is made")
+        // Including the held probe source, which is unread scratch the import must still close —
+        // on Android every one of these is an open provider file descriptor.
+        assertEquals(opener.created, opener.closes, "every source the import opened must be closed")
         assertTrue(opener.sourcesFullyRead >= 1, "the original source supplied the bytes")
         assertEquals(emptyList(), tmpEntries(), "the happy path leaves no scratch behind")
     }
@@ -155,19 +159,30 @@ class VaultImportSpillTest {
 private class SourceOpener(private val data: ByteArray, private val maxOpens: Int) {
     var opens = 0
         private set
+    /** Sources actually handed out (an open that throws produces none). */
+    var created = 0
+        private set
+    var closes = 0
+        private set
     var sourcesFullyRead = 0
         private set
 
     fun open(): RawSource {
         opens++
         if (opens > maxOpens) throw IOException("source cannot be opened again (attempt $opens)")
-        return CountingSource(data) { sourcesFullyRead++ }
+        created++
+        return CountingSource(data, onExhausted = { sourcesFullyRead++ }, onClose = { closes++ })
     }
 }
 
-private class CountingSource(data: ByteArray, private val onExhausted: () -> Unit) : RawSource {
+private class CountingSource(
+    data: ByteArray,
+    private val onExhausted: () -> Unit,
+    private val onClose: () -> Unit,
+) : RawSource {
     private val buffer = Buffer().apply { write(data) }
     private var reported = false
+    private var closed = false
 
     override fun readAtMostTo(sink: Buffer, byteCount: Long): Long {
         val read = buffer.readAtMostTo(sink, byteCount)
@@ -178,5 +193,11 @@ private class CountingSource(data: ByteArray, private val onExhausted: () -> Uni
         return read
     }
 
-    override fun close() = buffer.close()
+    override fun close() {
+        if (!closed) {
+            closed = true
+            onClose()
+        }
+        buffer.close()
+    }
 }
