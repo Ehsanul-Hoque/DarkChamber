@@ -46,7 +46,7 @@ fun MainViewController(): UIViewController {
                 onUnlocked = onUnlocked,
             )
         },
-        unlockedFactory = { ctx, vault, onLock -> DefaultUnlockedComponent(ctx, vault, koin, onLock) },
+        unlockedFactory = { ctx, vault, onLock -> DefaultUnlockedComponent(ctx, vault, koin, onLock = onLock) },
     )
 
     lifecycle.resume()

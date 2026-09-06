@@ -1,8 +1,14 @@
 package dev.ehsanfahad.darkchamber.app.root
 
 import com.arkivanov.decompose.ComponentContext
+import com.arkivanov.decompose.router.stack.ChildStack
+import com.arkivanov.decompose.router.stack.StackNavigation
+import com.arkivanov.decompose.router.stack.childStack
+import com.arkivanov.decompose.value.Value
 import com.arkivanov.essenty.lifecycle.doOnDestroy
 import com.arkivanov.essenty.lifecycle.doOnStop
+import dev.ehsanfahad.darkchamber.feature.vault.api.VaultGalleryComponent
+import dev.ehsanfahad.darkchamber.feature.vault.vaultGalleryComponent
 import dev.ehsanfahad.darkchamber.app.VaultBootstrap
 import dev.ehsanfahad.darkchamber.app.nowEpochMillis
 import dev.ehsanfahad.darkchamber.core.crypto.CryptoEngine
@@ -12,6 +18,8 @@ import dev.ehsanfahad.darkchamber.core.vault.VaultObjects
 import org.koin.core.Koin
 import org.koin.core.qualifier.named
 import org.koin.core.scope.Scope
+import kotlinx.coroutines.Dispatchers
+import kotlin.coroutines.CoroutineContext
 import kotlin.random.Random
 import kotlin.random.nextULong
 
@@ -28,14 +36,25 @@ import kotlin.random.nextULong
  */
 interface UnlockedComponent {
     val session: VaultSession
+
+    /** The feature screens living inside the unlocked subtree. */
+    val stack: Value<ChildStack<*, UnlockedChild>>
+
     /** Lock now: tear down and return the gate to locked. */
     fun lock()
+}
+
+/** A screen inside the unlocked subtree. Viewers join this list once the seekable read path exists. */
+sealed interface UnlockedChild {
+    class Gallery(val component: VaultGalleryComponent) : UnlockedChild
 }
 
 class DefaultUnlockedComponent(
     componentContext: ComponentContext,
     private val vault: VaultBootstrap.OpenVault,
-    koin: Koin,
+    private val koin: Koin,
+    // Handed to the feature components so host tests can drive them without a platform main looper.
+    private val mainContext: CoroutineContext = Dispatchers.Main,
     private val onLock: () -> Unit,
 ) : UnlockedComponent, ComponentContext by componentContext {
 
@@ -58,6 +77,21 @@ class DefaultUnlockedComponent(
                 ),
             )
         }
+
+    private val navigation = StackNavigation<Config>()
+
+    override val stack: Value<ChildStack<*, UnlockedChild>> =
+        childStack(
+            source = navigation,
+            initialConfiguration = Config.Gallery,
+            // No state preservation, deliberately. A saved stack would be written into the platform's
+            // saved-instance state — i.e. to disk — and the configs that will join Gallery carry item
+            // ids. There is nothing to restore anyway: the session never survives process death, so a
+            // relaunch always starts Locked (hard rules #1/#5).
+            serializer = null,
+            handleBackButton = true,
+            childFactory = ::createChild,
+        )
 
     private var tornDown = false
 
@@ -83,6 +117,28 @@ class DefaultUnlockedComponent(
         vault.storage.purgeTmp() // wipe decrypted scratch (hard rule #1)
         vault.catalog.close() // close the SqlDriver (no leak on lock)
         scope.close() // dispose the session scope
+    }
+
+    private fun createChild(config: Config, context: ComponentContext): UnlockedChild =
+        when (config) {
+            Config.Gallery -> UnlockedChild.Gallery(
+                // VaultObjects comes from the session scope, so the gallery cannot outlive the
+                // session; the picker is a platform seam from the root graph.
+                vaultGalleryComponent(
+                    componentContext = context,
+                    vaultObjects = scope.get(),
+                    picker = koin.get(),
+                    mainContext = mainContext,
+                ),
+            )
+        }
+
+    /**
+     * A screen's address inside the unlocked subtree. Configs carry **ids only** — never a session,
+     * never decrypted bytes — so that a future `Viewer(itemId)` stays safe to hold.
+     */
+    private sealed interface Config {
+        data object Gallery : Config
     }
 
     private companion object {

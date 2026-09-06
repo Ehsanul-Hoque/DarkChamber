@@ -69,7 +69,7 @@ class MainActivity : FragmentActivity() {
                 )
             },
             unlockedFactory = { ctx, vault, onLock ->
-                DefaultUnlockedComponent(ctx, vault, koin, onLock)
+                DefaultUnlockedComponent(ctx, vault, koin, onLock = onLock)
             },
         )
 }

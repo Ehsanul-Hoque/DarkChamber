@@ -4,6 +4,7 @@ import com.arkivanov.decompose.DefaultComponentContext
 import com.arkivanov.essenty.lifecycle.LifecycleRegistry
 import com.arkivanov.essenty.lifecycle.resume
 import com.arkivanov.essenty.lifecycle.stop
+import dev.ehsanfahad.darkchamber.app.FakeFilePicker
 import dev.ehsanfahad.darkchamber.app.VaultBootstrap
 import dev.ehsanfahad.darkchamber.app.testSqlDriver
 import dev.ehsanfahad.darkchamber.core.crypto.CryptoEngine
@@ -14,11 +15,14 @@ import dev.ehsanfahad.darkchamber.core.crypto.VaultSession
 import dev.ehsanfahad.darkchamber.core.db.CatalogStore
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.storage.VaultStorage
+import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
 import kotlinx.io.buffered
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 import kotlinx.io.files.SystemTemporaryDirectory
 import kotlinx.io.writeString
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import org.koin.core.Koin
 import org.koin.dsl.koinApplication
 import org.koin.dsl.module
@@ -35,12 +39,19 @@ import kotlin.test.assertTrue
  * sequence: zeroize the MK, purge `tmp/` scratch, close the catalog driver, dispose the session
  * scope, and signal the gate. No driver is left open on lock.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 class UnlockedComponentTest {
     private val testDir = Path(SystemTemporaryDirectory, "uct-${Random.nextULong()}")
     // The session scope builds a VaultObjects that resolves the CryptoEngine root single (as the
     // real graph provides it), so the test Koin registers it too.
     private val koin: Koin = koinApplication {
-        modules(module { single<CryptoEngine> { CryptographyKotlinEngine() } })
+        modules(
+            module {
+                single<CryptoEngine> { CryptographyKotlinEngine() }
+                // Constructing the unlocked subtree constructs the gallery, which needs the picker.
+                single<FilePicker> { FakeFilePicker() }
+            },
+        )
     }.koin
 
     @AfterTest
@@ -57,6 +68,7 @@ class UnlockedComponentTest {
             componentContext = DefaultComponentContext(LifecycleRegistry().apply { resume() }),
             vault = vault.open,
             koin = koin,
+            mainContext = UnconfinedTestDispatcher(),
             onLock = { locked = true },
         )
 
@@ -80,6 +92,7 @@ class UnlockedComponentTest {
             componentContext = DefaultComponentContext(lifecycle),
             vault = vault.open,
             koin = koin,
+            mainContext = UnconfinedTestDispatcher(),
             onLock = { locked = true },
         )
 
@@ -87,6 +100,51 @@ class UnlockedComponentTest {
 
         assertTrue(locked, "onStop must lock the session")
         assertFailsWith<IllegalStateException> { vault.open.session.generateDek() }
+    }
+
+    /**
+     * The unlocked subtree opens on the gallery, and it is the only thing on the stack — a viewer
+     * config joins it once the seekable read path exists.
+     */
+    @Test
+    fun the_subtree_opens_on_the_gallery() {
+        val vault = openVault()
+        val component = DefaultUnlockedComponent(
+            componentContext = DefaultComponentContext(LifecycleRegistry().apply { resume() }),
+            vault = vault.open,
+            koin = koin,
+            mainContext = UnconfinedTestDispatcher(),
+            onLock = {},
+        )
+
+        val stack = component.stack.value
+        assertTrue(stack.active.instance is UnlockedChild.Gallery, "the gallery is the active child")
+        assertTrue(stack.backStack.isEmpty(), "nothing sits behind it yet")
+
+        component.lock()
+    }
+
+    /**
+     * The gallery is built from the **session** scope, so it cannot exist without a live session —
+     * the structural gate invariant, one level below the root.
+     */
+    @Test
+    fun locking_disposes_the_scope_the_gallery_was_built_from() {
+        val vault = openVault()
+        val component = DefaultUnlockedComponent(
+            componentContext = DefaultComponentContext(LifecycleRegistry().apply { resume() }),
+            vault = vault.open,
+            koin = koin,
+            mainContext = UnconfinedTestDispatcher(),
+            onLock = {},
+        )
+        assertTrue(component.stack.value.active.instance is UnlockedChild.Gallery)
+
+        component.lock()
+
+        assertFailsWith<IllegalStateException>("the session backing the gallery is gone") {
+            vault.open.session.generateDek()
+        }
     }
 
     @Test
@@ -97,6 +155,7 @@ class UnlockedComponentTest {
             componentContext = DefaultComponentContext(LifecycleRegistry().apply { resume() }),
             vault = vault.open,
             koin = koin,
+            mainContext = UnconfinedTestDispatcher(),
             onLock = { lockCount++ },
         )
 

@@ -1,7 +1,9 @@
 package dev.ehsanfahad.darkchamber.app.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -33,10 +35,12 @@ import dev.ehsanfahad.darkchamber.app.root.LockStep
 import dev.ehsanfahad.darkchamber.app.root.LockedComponent
 import dev.ehsanfahad.darkchamber.app.root.RootChild
 import dev.ehsanfahad.darkchamber.app.root.RootComponent
+import dev.ehsanfahad.darkchamber.app.root.UnlockedChild
 import dev.ehsanfahad.darkchamber.app.root.UnlockedComponent
 import dev.ehsanfahad.darkchamber.core.designsystem.Aperture
 import dev.ehsanfahad.darkchamber.core.designsystem.ApertureState
 import dev.ehsanfahad.darkchamber.core.designsystem.DarkChamberTheme
+import dev.ehsanfahad.darkchamber.feature.vault.presentation.VaultGalleryContent
 
 /**
  * The shared UI for the session gate (docs/DESIGN.md). Copy is honest (hard rule #6): the recovery
@@ -162,13 +166,45 @@ private fun UnlockScreen(
 
 @Composable
 private fun UnlockedContent(component: UnlockedComponent) {
-    GateScaffold(aperture = ApertureState.Open, title = "Vault unlocked") {
-        Text(
-            "Your vault is open. The vault UI arrives in a later release.",
-            style = DarkChamberTheme.typography.body,
-            color = DarkChamberTheme.colors.textSecondary,
-        )
-        Button(onClick = component::lock, modifier = Modifier.fillMaxWidth()) { Text("Lock") }
+    Column(modifier = Modifier.fillMaxSize()) {
+        UnlockedBar(onLock = component::lock)
+
+        val stack by component.stack.subscribeAsState()
+        Box(modifier = Modifier.weight(1f)) {
+            when (val child = stack.active.instance) {
+                is UnlockedChild.Gallery -> VaultGalleryContent(child.component)
+            }
+        }
+    }
+}
+
+/** The one chrome the unlocked subtree owns: an open aperture and the manual lock. */
+@Composable
+private fun UnlockedBar(onLock: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+        modifier = Modifier
+            .fillMaxWidth()
+            .safeDrawingPadding()
+            .padding(horizontal = DarkChamberTheme.spacing.spaceMd, vertical = DarkChamberTheme.spacing.spaceXs),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Aperture(
+                state = ApertureState.Open,
+                contentDescription = "Vault unlocked",
+                size = DarkChamberTheme.spacing.spaceLg,
+            )
+            Text(
+                "Vault",
+                style = DarkChamberTheme.typography.title,
+                color = DarkChamberTheme.colors.textPrimary,
+                modifier = Modifier.padding(start = DarkChamberTheme.spacing.spaceXs),
+            )
+        }
+        TextButton(onClick = onLock) {
+            Text("Lock", style = DarkChamberTheme.typography.label, color = DarkChamberTheme.colors.accent)
+        }
     }
 }
 

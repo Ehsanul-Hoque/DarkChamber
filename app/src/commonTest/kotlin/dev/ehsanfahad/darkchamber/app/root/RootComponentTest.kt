@@ -4,6 +4,10 @@ import com.arkivanov.decompose.DefaultComponentContext
 import com.arkivanov.decompose.value.MutableValue
 import com.arkivanov.decompose.value.Value
 import com.arkivanov.essenty.lifecycle.LifecycleRegistry
+import dev.ehsanfahad.darkchamber.app.FakeFilePicker
+import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import org.koin.dsl.koinApplication
 import org.koin.dsl.module
 import dev.ehsanfahad.darkchamber.app.VaultBootstrap
@@ -32,11 +36,18 @@ import kotlin.test.assertTrue
  * `onUnlocked` hook transitions to Unlocked holding that exact session; the unlocked child's `lock()`
  * returns to Locked. Pure component logic — no Compose and no DI.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 class RootComponentTest {
     private val testDir = Path(SystemTemporaryDirectory, "rct-${Random.nextULong()}")
     // The Unlocked session scope builds a VaultObjects that resolves the CryptoEngine root single.
     private val koin = koinApplication {
-        modules(module { single<CryptoEngine> { CryptographyKotlinEngine() } })
+        modules(
+            module {
+                single<CryptoEngine> { CryptographyKotlinEngine() }
+                // The unlocked subtree builds the gallery, which needs the picker seam.
+                single<FilePicker> { FakeFilePicker() }
+            },
+        )
     }.koin
 
     // Captures the onUnlocked hook the root wires into the locked child, so the test can drive the
@@ -50,7 +61,7 @@ class RootComponentTest {
         DefaultRootComponent(
             componentContext = DefaultComponentContext(LifecycleRegistry()),
             lockedFactory = { _, onUnlocked -> lockedOnUnlocked = onUnlocked; FakeLockedComponent() },
-            unlockedFactory = { ctx, vault, onLock -> DefaultUnlockedComponent(ctx, vault, koin, onLock) },
+            unlockedFactory = { ctx, vault, onLock -> DefaultUnlockedComponent(ctx, vault, koin, mainContext = UnconfinedTestDispatcher(), onLock = onLock) },
         )
 
     private class FakeLockedComponent : LockedComponent {
