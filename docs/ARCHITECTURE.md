@@ -109,7 +109,7 @@ Rules: writes are atomic (temp + rename); `tmp/` is purged on vault lock, app st
 - the object store (sharded, atomic scoped write/read/delete/exists);
 - the thumbnail store (flat `.tdchm`);
 - the key-blob store (`readKeyStore`/`writeKeyStore`, null-if-absent);
-- tmp scratch (`useTempFile`/`purgeTmp`).
+- tmp scratch (`useTempFile`/`purgeTmp`), plus `useSpilledCopy` — copy a **one-shot** source into `tmp/` and hand the caller a re-openable view of it, deleted on return and on throw. Import needs it because the codec reads its payload twice while a provider stream may open only once; it is a fallback, never the default path.
 
 Writes are atomic (temp sibling + `atomicMove`; **fsync-before-move is a documented v1 gap**), every op returns `Outcome`/`VaultError.Io` (no throw, nothing logged), and the module depends on `core:model` + `kotlinx-io` only — **not `core:crypto`** (`.dchm` bytes flow through as opaque sources/sinks). The Android backup-deny manifest + deny-all rule files landed here. **Resolved in the app module:** platform root-**resolution** (Android `filesDir` / iOS `Documents`) and the iOS `isExcludedFromBackup` runtime call — `VaultStorage` takes the resolved, backup-excluded root as a precondition. Seekable byte-range reads for the video/audio viewers are a Phase-1 storage primitive.
 
@@ -122,6 +122,8 @@ Tables and purpose:
 | Table       | Purpose                                                        | Encrypted columns                                                   | Plaintext columns (why)                                                                       |
 |-------------|----------------------------------------------------------------|---------------------------------------------------------------------|-----------------------------------------------------------------------------------------------|
 | `items`     | One row per vault object (files & notes; `kind` discriminates) | `enc_meta` (name, MIME, dims, duration, origin hint), `dek_wrapped` | `id`, `album_id`, `kind`, `size`, `created_at` — needed for sorting/paging without decryption |
+
+`kind` is named by `VaultItemKind` in `core:model`: **`UNKNOWN = 0`, `FILE = 1`, `NOTE = 2`**. These are persisted values, so after v1.0 the mapping may only be *added to*, never renumbered — a renumbering silently reinterprets every existing row. Zero is deliberately not a real kind, so a defaulted or corrupted row decodes to `UNKNOWN` instead of masquerading as a file, and decoding an unrecognised code never throws: a row written by a newer build must not crash an older one.
 | `albums`    | Albums/folders                                                 | `enc_name`                                                          | `id`, `kek_variant` (per-album password flag)                                                 |
 | `audit_log` | Break-in events (failed unlocks, intruder captures)            | event payload                                                       | `id`, `timestamp`                                                                             |
 
@@ -154,7 +156,12 @@ Pipeline goal: sensor → JPEG/HEIC or MP4 bytes → encrypting sink → `object
 | PDF                | v1: decrypt → `tmp/` file → `PdfRenderer` → delete on close. v1.x: `memfd_create` (NDK) for RAM-backed fd, or Pdfium wrapper accepting streams | `PDFDocument(data:)` — fully in-memory                                                                       |
 | Other (docx/zip/…) | "Decrypt & open in…": decrypt → `tmp/` → `FileProvider` share intent → warning dialog → post-use cleanup + optional re-import of edits         | Same via `UIActivityViewController` + temporary file coordinator                                             |
 
-All viewer screens run under `FLAG_SECURE` (Android); iOS obscures the app-switcher snapshot and blanks on `willResignActive` (screenshot *blocking* isn't possible on iOS — documented honestly in the threat model; optional screenshot-detected warning via `userDidTakeScreenshotNotification`).
+**Status — built:** the screen protection, and the gallery those viewers will open from.
+
+- **Screen protection is whole-app, not per-viewer.** `:androidApp` sets `FLAG_SECURE` unconditionally in `MainActivity.onCreate` (screenshots, screen recording and the app-switcher thumbnail); `:app`'s `MainViewController` lays a thick-material blur over the key window on `willResignActive` and removes it on `didBecomeActive`. Everything in the unlocked tree is vault content and the locked tree shows the recovery key, so nothing opts out — and a per-screen wrapper a new screen forgets is a silent leak. Screenshot *blocking* remains impossible on iOS (no `FLAG_SECURE` equivalent); the threat model says so and no UI copy may imply otherwise. The optional `userDidTakeScreenshotNotification` warning is still unbuilt.
+- **`:feature:vault`** ships the gallery (an adaptive grid over `VaultObjects.observeItems`, with the square media slot reserved at the size a thumbnail will occupy) and single-file import through a `FilePicker` seam implemented per platform in `:app` — Android's Storage Access Framework, iOS's document picker opened **in place** rather than `asCopy`, so no plaintext copy is made before encryption. An item whose `enc_meta` will not open is rendered as an unverifiable tile rather than dropped: hiding it would conceal tampering.
+
+**Not built here:** every viewer in the table above, and the seekable byte-range reads (§4) they need. Tapping a tile is deliberately inert until then.
 
 ## 8. Unlock, session & lock lifecycle
 
