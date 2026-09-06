@@ -24,7 +24,10 @@ kotlin {
             implementation(project(":core:crypto"))
             implementation(project(":core:storage"))
             implementation(project(":core:db"))
-            implementation(libs.kotlinx.io.core)
+            // api, not implementation: importObject/openObject take and return kotlinx-io
+            // RawSource/RawSink, so the type is part of this module's public surface — a consumer
+            // cannot call them without it.
+            api(libs.kotlinx.io.core)
             implementation(libs.kotlinx.serialization.cbor)
             // observeItems maps the catalog's reactive Flow into domain summaries. core:db declares
             // coroutines as `implementation`, so the Flow type is not on our classpath transitively.
