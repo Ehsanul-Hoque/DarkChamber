@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -49,7 +48,9 @@ internal fun GalleryScreen(
 ) {
     val spacing = DarkChamberTheme.spacing
 
-    Box(modifier = modifier.fillMaxSize().safeDrawingPadding()) {
+    // No insets here: the host applies them once for the whole unlocked subtree, so a screen that
+    // added its own would inset twice.
+    Box(modifier = modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
             state.error?.let { error ->
                 ErrorBanner(error = error, onDismiss = onDismissError)

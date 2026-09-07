@@ -166,7 +166,11 @@ private fun UnlockScreen(
 
 @Composable
 private fun UnlockedContent(component: UnlockedComponent) {
-    Column(modifier = Modifier.fillMaxSize()) {
+    // The window insets are applied once, here, for the whole unlocked subtree — the bar and every
+    // feature screen below it. Applying them again inside a screen would inset twice (a gap under
+    // the bar), and leaving them to each screen means the first one that forgets sits under the
+    // system bars.
+    Column(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
         UnlockedBar(onLock = component::lock)
 
         val stack by component.stack.subscribeAsState()
@@ -186,7 +190,6 @@ private fun UnlockedBar(onLock: () -> Unit) {
         horizontalArrangement = Arrangement.SpaceBetween,
         modifier = Modifier
             .fillMaxWidth()
-            .safeDrawingPadding()
             .padding(horizontal = DarkChamberTheme.spacing.spaceMd, vertical = DarkChamberTheme.spacing.spaceXs),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
