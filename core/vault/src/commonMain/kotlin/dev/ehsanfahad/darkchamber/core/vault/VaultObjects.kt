@@ -84,9 +84,22 @@ class VaultObjects(
             return storeObject(kind, name, mime, chunkSize, openSource)
         }
 
-        return storage
-            .useSpilledCopy(held) { spilled -> storeObject(kind, name, mime, chunkSize, spilled) }
-            .flatMap { it }
+        // useSpilledCopy owns `held` once it starts copying — but it can throw before it gets there
+        // (its scratch-name collision loop touches the filesystem first), and storeObject can throw
+        // if the session dies mid-import. Either way the provider stream would be leaked and the
+        // throw would escape a function whose contract is that no exception crosses the boundary.
+        return try {
+            storage
+                .useSpilledCopy(held) { spilled -> storeObject(kind, name, mime, chunkSize, spilled) }
+                .flatMap { it }
+        } catch (e: Exception) {
+            try {
+                held.close()
+            } catch (_: Exception) {
+                // best-effort: report the failure that actually broke the import, not this one
+            }
+            Outcome.Err(VaultError.Unexpected(e))
+        }
     }
 
     // Encrypt + record, given a source that can be opened as many times as the codec needs.

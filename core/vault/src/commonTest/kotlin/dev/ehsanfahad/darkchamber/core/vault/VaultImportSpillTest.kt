@@ -150,6 +150,45 @@ class VaultImportSpillTest {
         assertTrue(opener.sourcesFullyRead >= 1, "the original source supplied the bytes")
         assertEquals(emptyList(), tmpEntries(), "the happy path leaves no scratch behind")
     }
+
+    /**
+     * A lock can zeroize the session while an import is spilling. The encrypt then throws rather
+     * than returning, from inside the spill's block — so the failure must still arrive as an
+     * `Outcome` (the function's contract is that no exception crosses the boundary), and the held
+     * provider stream, an open file descriptor on Android, must still be released.
+     */
+    @Test
+    fun a_throw_from_inside_the_spill_is_an_error_and_still_releases_the_held_source() {
+        val session = newSession()
+        val vo = VaultObjects(
+            session = session,
+            storage = newStorage(),
+            catalog = newCatalog(),
+            codec = DchmCodec(engine),
+            clock = { 42L },
+            random = Random(5).let { r -> { n: Int -> r.nextBytes(n) } },
+        )
+        val opener = SourceOpener(ByteArray(64) { it.toByte() }, maxOpens = 1)
+        session.close() // the lock lands mid-import: the MK is gone
+
+        val result = vo.importObject(
+            kind = VaultItemKind.FILE.code,
+            name = "doomed.bin",
+            mime = "application/octet-stream",
+            chunkSize = 64,
+            openSource = opener::open,
+        )
+
+        assertIs<Outcome.Err>(result, "a dead session must not throw out of importObject")
+        assertIs<VaultError.Unexpected>(result.error)
+        // At least once: the spill takes ownership and closes it, and the catch closes defensively
+        // because it cannot know how far the spill got. Closing twice is benign; leaking is not.
+        assertTrue(
+            opener.closes >= opener.created,
+            "the held provider stream must be released, was ${opener.closes} of ${opener.created}",
+        )
+        assertEquals(emptyList(), tmpEntries(), "no scratch survives the failure")
+    }
 }
 
 /**
