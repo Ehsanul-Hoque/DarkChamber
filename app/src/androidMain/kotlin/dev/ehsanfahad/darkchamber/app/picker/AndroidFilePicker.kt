@@ -32,7 +32,10 @@ class AndroidFilePicker(private val activity: () -> FragmentActivity?) : FilePic
             // live screen. The launcher is unregistered on every path, including cancellation.
             var launcher: ActivityResultLauncher<Array<String>>? = null
             launcher = host.activityResultRegistry.register(
-                "darkchamber-import-${host.hashCode()}-${continuation.hashCode()}",
+                // A monotonic counter, not a hash: `register` throws on a key that is already in
+                // use, and hashes can repeat. The component's guard makes overlapping picks
+                // unlikely, but a crash is a poor way to find out it was only unlikely.
+                "darkchamber-import-${nextRequestKey()}",
                 ActivityResultContracts.OpenDocument(),
             ) { picked: Uri? ->
                 launcher?.unregister()
@@ -47,6 +50,12 @@ class AndroidFilePicker(private val activity: () -> FragmentActivity?) : FilePic
 
     private companion object {
         const val ANY_TYPE = "*/*"
+
+        // Registry keys must be unique among *live* registrations. Requests only ever come from the
+        // main thread (the picker is presented from a screen), so a plain counter is enough.
+        private var requestCounter = 0L
+
+        fun nextRequestKey(): Long = requestCounter++
     }
 }
 
