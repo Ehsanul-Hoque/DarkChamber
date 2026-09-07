@@ -8,7 +8,6 @@ import kotlinx.io.RawSource
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 import platform.Foundation.NSURL
-import platform.UIKit.UIApplication
 import platform.UIKit.UIDocumentPickerViewController
 import platform.UIKit.UIDocumentPickerDelegateProtocol
 import platform.UIKit.UIViewController
@@ -136,7 +135,3 @@ private fun mimeForExtension(extension: String?): String =
         "md" -> "text/markdown"
         else -> "application/octet-stream"
     }
-
-/** The app's root view controller — the single Compose host this app presents everything from. */
-internal fun rootViewController(): UIViewController? =
-    UIApplication.sharedApplication.keyWindow?.rootViewController

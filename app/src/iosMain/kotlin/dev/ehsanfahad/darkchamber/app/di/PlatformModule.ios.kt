@@ -4,7 +4,7 @@ import dev.ehsanfahad.darkchamber.app.IosVaultRootResolver
 import dev.ehsanfahad.darkchamber.app.VaultRootResolver
 import dev.ehsanfahad.darkchamber.app.auth.IosBiometricAuthenticator
 import dev.ehsanfahad.darkchamber.app.picker.IosFilePicker
-import dev.ehsanfahad.darkchamber.app.picker.rootViewController
+import dev.ehsanfahad.darkchamber.app.rootViewController
 import dev.ehsanfahad.darkchamber.core.crypto.BiometricAuthenticator
 import dev.ehsanfahad.darkchamber.core.crypto.IosSecureKeyStore
 import dev.ehsanfahad.darkchamber.core.crypto.SecureKeyStore

@@ -13,13 +13,14 @@ import dev.ehsanfahad.darkchamber.app.root.RootComponent
 import dev.ehsanfahad.darkchamber.app.ui.RootContent
 import dev.ehsanfahad.darkchamber.core.crypto.BiometricAuthenticator
 import dev.ehsanfahad.darkchamber.core.logging.initLogging
+import dev.ehsanfahad.darkchamber.core.logging.logVaultError
+import dev.ehsanfahad.darkchamber.core.model.VaultError
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.Dispatchers
 import org.koin.core.Koin
 import org.koin.core.context.startKoin
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSOperationQueue
-import platform.UIKit.UIApplication
 import platform.UIKit.UIApplicationDidBecomeActiveNotification
 import platform.UIKit.UIApplicationDidEnterBackgroundNotification
 import platform.UIKit.UIApplicationWillEnterForegroundNotification
@@ -102,7 +103,12 @@ private fun observeSnapshotCover() {
     val center = NSNotificationCenter.defaultCenter
     center.addObserverForName(UIApplicationWillResignActiveNotification, null, NSOperationQueue.mainQueue) { _ ->
         if (snapshotCover != null) return@addObserverForName
-        val window = UIApplication.sharedApplication.keyWindow ?: return@addObserverForName
+        val window = keyWindow() ?: run {
+            // Silent failure would leave vault content in the app-switcher card, so make it visible
+            // in a diagnostic log (event name only — no content, hard rule #4).
+            logVaultError(SNAPSHOT_COVER_STAGE, VaultError.Unexpected(IllegalStateException("no window")))
+            return@addObserverForName
+        }
         val cover = UIVisualEffectView(effect = UIBlurEffect.effectWithStyle(UIBlurEffectStyle.UIBlurEffectStyleSystemThickMaterialDark))
         cover.setFrame(window.bounds)
         cover.setAutoresizingMask(UIViewAutoresizingFlexibleWidth or UIViewAutoresizingFlexibleHeight)
@@ -114,3 +120,6 @@ private fun observeSnapshotCover() {
         snapshotCover = null
     }
 }
+
+// Stage label for the redaction boundary: an event name, never content.
+private const val SNAPSHOT_COVER_STAGE = "ios-snapshot-cover"
