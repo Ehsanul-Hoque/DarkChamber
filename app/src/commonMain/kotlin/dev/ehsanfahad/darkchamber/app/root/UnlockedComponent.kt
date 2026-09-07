@@ -87,9 +87,9 @@ class DefaultUnlockedComponent(
      *
      * Lock deliberately does not *wait*: `lock()` runs on the UI thread (the button, Android
      * `onStop`, iOS `didEnterBackground`), so awaiting a multi-second import would freeze the app
-     * and delay zeroizing the key — the opposite of what hard rule #5 asks for. Work already inside
-     * a blocking encrypt therefore still finishes its current step; `VaultObjects` makes that safe
-     * by failing closed and leaving no orphan behind.
+     * and delay zeroizing the key — the opposite of what hard rule #5 asks for. It does not need to:
+     * `VaultObjects` guards the source it streams from, so an encrypt already in flight notices the
+     * closed session within a buffered read and aborts, leaving no object, row or scratch behind.
      */
     private val featureWork = SupervisorJob()
 

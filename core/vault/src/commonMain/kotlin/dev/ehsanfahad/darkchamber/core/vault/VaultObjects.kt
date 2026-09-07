@@ -108,8 +108,20 @@ class VaultObjects(
         }
     }
 
-    // Encrypt + record, given a source that can be opened as many times as the codec needs.
+    // Encrypt + record, given a source that can be opened as many times as the codec needs. Every
+    // source handed to the codec is guarded, so a lock during a long import stops it within a chunk
+    // rather than encrypting the rest of the file against a session the user already closed.
     private fun storeObject(
+        kind: Int,
+        name: String,
+        mime: String,
+        chunkSize: Int,
+        openSource: () -> RawSource,
+    ): Outcome<ByteArray> = storeGuarded(kind, name, mime, chunkSize) {
+        SessionGuardedSource(openSource()) { session.isOpen }
+    }
+
+    private fun storeGuarded(
         kind: Int,
         name: String,
         mime: String,

@@ -31,6 +31,16 @@ class VaultSession private constructor(
     private var closed = false
 
     /**
+     * Whether the master key is still live. Long streaming work polls this between chunks so it can
+     * abort promptly when a lock zeroizes the session, instead of encrypting the rest of a large
+     * file against a session the user has already closed.
+     *
+     * Advisory only: every operation still checks for itself, so a caller cannot use a stale `true`
+     * to slip past a closed session — the worst a race costs is one more chunk.
+     */
+    val isOpen: Boolean get() = !closed
+
+    /**
      * A fresh per-object DEK, returned **only in wrapped form** (`nonce ‖ GCM(MK, DEK)`), suitable for
      * the catalog's `dek_wrapped` column. The raw DEK never leaves this call — access it later through
      * [useDek]. Destroying the wrapped bytes is crypto-shredding the object.
