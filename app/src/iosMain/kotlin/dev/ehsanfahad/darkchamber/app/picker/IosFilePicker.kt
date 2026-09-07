@@ -26,16 +26,37 @@ import kotlin.coroutines.resume
 @OptIn(ExperimentalForeignApi::class)
 class IosFilePicker(private val presenter: () -> UIViewController?) : FilePicker {
 
+    /**
+     * Strong references to the delegates of presentations still in flight.
+     *
+     * `UIDocumentPickerViewController.delegate` is a **weak** property, so the controller does not
+     * keep our bridge object alive. Without this set the delegate can be collected between
+     * presenting the picker and the user tapping, after which neither callback fires: `pickFile()`
+     * suspends forever and the caller sits mid-import with no way out but a lock.
+     *
+     * A set rather than one field so overlapping picks cannot evict each other's delegate. Only ever
+     * touched on the main thread — presentation and UIKit callbacks both run there.
+     */
+    private val activeDelegates = mutableSetOf<PickerDelegate>()
+
     override suspend fun pickFile(): PickedFile? {
         val host = presenter() ?: error("no view controller to present the picker from")
 
         val url = suspendCancellableCoroutine<NSURL?> { continuation ->
             val controller = UIDocumentPickerViewController(forOpeningContentTypes = listOf(UTTypeItem))
-            // The delegate is retained by this local until the picker calls back; the controller
-            // holds it weakly, so it is kept alive by the closure captured in the continuation.
-            val delegate = PickerDelegate { picked -> continuation.resume(picked) }
+            var delegate: PickerDelegate? = null
+            delegate = PickerDelegate { picked ->
+                // Released once the picker has spoken; UIKit zeroes its weak reference, so a stray
+                // later message finds nil rather than a dangling object.
+                delegate?.let(activeDelegates::remove)
+                continuation.resume(picked)
+            }
+            activeDelegates += delegate
             controller.delegate = delegate
-            continuation.invokeOnCancellation { controller.dismissViewControllerAnimated(true, null) }
+            continuation.invokeOnCancellation {
+                activeDelegates.remove(delegate)
+                controller.dismissViewControllerAnimated(true, null)
+            }
             host.presentViewController(controller, animated = true, completion = null)
         } ?: return null // the user backed out
 

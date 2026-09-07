@@ -56,6 +56,11 @@ Tick each line. A failure here is a release blocker.
 - [ ] Same four checks: empty state, pick an image, cancel with no error, double-tap opens one picker.
 - [ ] Import a file from **iCloud Drive**. It completes (this exercises the security-scoped path).
 - [ ] Import a large file (≥ 200 MB). It completes and the size matches.
+- [ ] **Pick and cancel five times in a row, unhurried** (leave the picker open a few seconds each
+      time). Every attempt returns to the gallery. The document picker's delegate is held weakly by
+      UIKit, so a lost strong reference shows up as a picker that dismisses with the button stuck on
+      "Importing…" — and because collection timing varies, a single successful pick does not prove
+      the reference is held.
 
 ### Persistence
 
