@@ -15,6 +15,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.domain.ImportResult
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveGallery
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.catch
@@ -39,7 +40,10 @@ internal class DefaultVaultGalleryComponent(
     mainContext: CoroutineContext = Dispatchers.Main,
 ) : VaultGalleryComponent, ComponentContext by componentContext {
 
-    private val scope = CoroutineScope(mainContext + SupervisorJob())
+    // SupervisorJob so one failed intent does not kill the component's other work, but parented to
+    // whatever Job the caller passed: the app scopes feature work to the vault session, and
+    // cancelling that must cancel this too — before the session it runs against is zeroized.
+    private val scope = CoroutineScope(mainContext + SupervisorJob(mainContext[Job]))
 
     private val _state = MutableValue(GalleryState())
     override val state: Value<GalleryState> = _state

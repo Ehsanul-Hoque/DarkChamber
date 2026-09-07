@@ -81,7 +81,13 @@ class VaultObjects(
             } catch (_: Exception) {
                 // the probe source is unread scratch; a close failure must not fail the import
             }
-            return storeObject(kind, name, mime, chunkSize, openSource)
+            // Wrapped for the same reason as the spill path below: a lock can zeroize the session
+            // mid-import, and a throw must not escape a function that promises an Outcome.
+            return try {
+                storeObject(kind, name, mime, chunkSize, openSource)
+            } catch (e: Exception) {
+                Outcome.Err(VaultError.Unexpected(e))
+            }
         }
 
         // useSpilledCopy owns `held` once it starts copying — but it can throw before it gets there
@@ -126,7 +132,15 @@ class VaultObjects(
         }
 
         // 2. Seal the metadata and persist the row. Fail-closed: a row failure removes the object.
-        val encMeta = session.sealMeta(encodeMeta(ObjectMeta(name, mime)))
+        //    Sealing can also *throw* rather than return — a lock zeroizing the MK between the write
+        //    and this line is the real case — and object bytes with no row and no DEK are
+        //    unrecoverable garbage that would otherwise accumulate, so clean up before rethrowing.
+        val encMeta = try {
+            session.sealMeta(encodeMeta(ObjectMeta(name, mime)))
+        } catch (e: Exception) {
+            storage.deleteObject(fileId) // best-effort; no orphan ciphertext without a row
+            throw e
+        }
         val row = Items(
             id = fileId,
             album_id = null,

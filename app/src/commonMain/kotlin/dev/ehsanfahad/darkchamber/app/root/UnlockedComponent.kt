@@ -19,6 +19,8 @@ import org.koin.core.Koin
 import org.koin.core.qualifier.named
 import org.koin.core.scope.Scope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlin.coroutines.CoroutineContext
 import kotlin.random.Random
 import kotlin.random.nextULong
@@ -78,6 +80,19 @@ class DefaultUnlockedComponent(
             )
         }
 
+    /**
+     * Parent of every feature coroutine in this session. Cancelling it is the **first** thing lock
+     * does, so work that has not yet entered a blocking call stops before the MK is zeroized rather
+     * than running on against a dead session.
+     *
+     * Lock deliberately does not *wait*: `lock()` runs on the UI thread (the button, Android
+     * `onStop`, iOS `didEnterBackground`), so awaiting a multi-second import would freeze the app
+     * and delay zeroizing the key — the opposite of what hard rule #5 asks for. Work already inside
+     * a blocking encrypt therefore still finishes its current step; `VaultObjects` makes that safe
+     * by failing closed and leaving no orphan behind.
+     */
+    private val featureWork = SupervisorJob()
+
     private val navigation = StackNavigation<Config>()
 
     override val stack: Value<ChildStack<*, UnlockedChild>> =
@@ -113,6 +128,7 @@ class DefaultUnlockedComponent(
     private fun tearDown() {
         if (tornDown) return
         tornDown = true
+        featureWork.cancel() // stop feature coroutines BEFORE the session they run against dies
         vault.session.close() // zeroize MK (hard rule #5)
         vault.storage.purgeTmp() // wipe decrypted scratch (hard rule #1)
         vault.catalog.close() // close the SqlDriver (no leak on lock)
@@ -128,7 +144,7 @@ class DefaultUnlockedComponent(
                     componentContext = context,
                     vaultObjects = scope.get(),
                     picker = koin.get(),
-                    mainContext = mainContext,
+                    mainContext = mainContext + featureWork,
                 ),
             )
         }

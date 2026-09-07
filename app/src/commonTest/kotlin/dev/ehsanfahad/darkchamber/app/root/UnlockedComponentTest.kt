@@ -147,6 +147,39 @@ class UnlockedComponentTest {
         }
     }
 
+    /**
+     * Lock cancels feature coroutines **before** zeroizing the session they run against, so an
+     * import that has not yet entered its blocking encrypt stops instead of running on against a
+     * dead MK. Lock does not *wait* for one that has: `lock()` runs on the UI thread, so awaiting a
+     * multi-second import would freeze the app and delay zeroizing the key.
+     */
+    @Test
+    fun locking_cancels_feature_work_before_the_session_dies() {
+        val vault = openVault()
+        val component = DefaultUnlockedComponent(
+            componentContext = DefaultComponentContext(LifecycleRegistry().apply { resume() }),
+            vault = vault.open,
+            koin = koin,
+            mainContext = UnconfinedTestDispatcher(),
+            onLock = {},
+        )
+        val gallery = (component.stack.value.active.instance as UnlockedChild.Gallery).component
+
+        // Before the lock the scope runs: the fake picker cancels inline, so the intent completes
+        // and clears its own flag.
+        gallery.importFile()
+        assertFalse(gallery.state.value.importing, "the intent ran to completion while unlocked")
+
+        component.lock()
+
+        // After the lock the coroutine never starts, so the flag it sets synchronously is never
+        // cleared — that stuck flag *is* the evidence the scope is dead. Harmless: locking replaces
+        // the whole subtree, so this state is discarded with the component that holds it.
+        gallery.importFile()
+        assertTrue(gallery.state.value.importing, "a cancelled scope never ran the import body")
+        assertFailsWith<IllegalStateException> { vault.open.session.generateDek() }
+    }
+
     @Test
     fun teardown_runs_only_once() {
         var lockCount = 0
