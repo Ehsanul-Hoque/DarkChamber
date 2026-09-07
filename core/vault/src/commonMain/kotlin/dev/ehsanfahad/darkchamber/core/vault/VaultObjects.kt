@@ -11,8 +11,11 @@ import dev.ehsanfahad.darkchamber.core.model.VaultItemKind
 import dev.ehsanfahad.darkchamber.core.model.flatMap
 import dev.ehsanfahad.darkchamber.core.model.map
 import dev.ehsanfahad.darkchamber.core.storage.VaultStorage
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlin.coroutines.CoroutineContext
 import kotlinx.io.RawSink
 import kotlinx.io.RawSource
 
@@ -33,6 +36,9 @@ class VaultObjects(
     private val codec: DchmCodec,
     private val clock: () -> Long,
     private val random: (Int) -> ByteArray,
+    // Where the listing's per-row metadata decrypt runs. Injected so tests stay deterministic; the
+    // default keeps that crypto off whatever thread a caller collects on.
+    private val mapContext: CoroutineContext = Dispatchers.Default,
 ) {
     /**
      * Stream-encrypt the plaintext from [openSource] into the vault: a fresh per-object DEK (wrapped
@@ -214,13 +220,21 @@ class VaultObjects(
      * decrypted here; object bytes are never touched, which is what makes this cheap enough to run
      * over a whole vault.
      *
+     * The per-row unseal is AES-GCM plus a CBOR decode, so it runs on [mapContext] rather than
+     * wherever the caller happens to collect — a re-emission in a large vault is one GCM open per
+     * row, and on a UI thread that is jank the collector cannot see coming. `flowOn` is applied
+     * here, in the module that owns the crypto, so no consumer has to remember it; the collector's
+     * own context still receives the emissions.
+     *
      * The flow inherits `CatalogStore.observeItems`' contract: a driver failure surfaces as an
      * exception **in the flow**, not an `Outcome`, so the collector is responsible for catching it
      * (the gallery component maps it to an error state). Swallowing it here would turn a broken
      * catalog into a silently empty vault, which is exactly the fail-closed rule's target.
      */
     fun observeItems(albumId: ByteArray? = null): Flow<List<VaultItemSummary>> =
-        catalog.observeItems(albumId).map { rows -> rows.map(::toSummary) }
+        catalog.observeItems(albumId)
+            .map { rows -> rows.map(::toSummary) }
+            .flowOn(mapContext)
 
     private fun toSummary(row: Items): VaultItemSummary =
         VaultItemSummary(

@@ -11,7 +11,11 @@ import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
 import dev.ehsanfahad.darkchamber.core.model.VaultItemKind
 import dev.ehsanfahad.darkchamber.core.storage.VaultStorage
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Runnable
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlinx.io.Buffer
@@ -19,6 +23,7 @@ import kotlinx.io.RawSource
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 import kotlinx.io.files.SystemTemporaryDirectory
+import kotlin.coroutines.CoroutineContext
 import kotlin.random.Random
 import kotlin.random.nextULong
 import kotlin.test.AfterTest
@@ -54,7 +59,9 @@ class VaultItemSummaryTest {
 
     private fun source(data: ByteArray): () -> RawSource = { Buffer().apply { write(data) } }
 
-    private fun fixture(): Pair<VaultObjects, CatalogStore> {
+    // Dispatchers.Unconfined, not a TestDispatcher: a test dispatcher built outside runTest carries
+    // its own scheduler, and runTest then waits forever for a scheduler it does not own.
+    private fun fixture(mapContext: CoroutineContext = Dispatchers.Unconfined): Pair<VaultObjects, CatalogStore> {
         val catalog = (CatalogStore.create(testSqlDriver(), UnconfinedTestDispatcher()) as Outcome.Ok).value
         val rng = Random(11).let { r -> { n: Int -> r.nextBytes(n) } }
         val objects = VaultObjects(
@@ -64,6 +71,7 @@ class VaultItemSummaryTest {
             codec = DchmCodec(engine),
             clock = { 1_000L },
             random = rng,
+            mapContext = mapContext,
         )
         return objects to catalog
     }
@@ -190,6 +198,30 @@ class VaultItemSummaryTest {
         catalog.close()
     }
 
+    /**
+     * The per-row unseal is AES-GCM plus a CBOR decode. It must not run wherever the caller
+     * collects — on a gallery that is the UI thread, once per row, on every re-emission — so
+     * `observeItems` moves it onto its own context. Asserted by counting dispatches: without the
+     * `flowOn` the mapping stays in the collector's context and this dispatcher is never used.
+     */
+    @Test
+    fun the_metadata_decrypt_runs_off_the_collectors_context() = runTest {
+        // Delegates to a dispatcher sharing runTest's scheduler, so the work it counts actually
+        // runs. (Wrapping Dispatchers.Unconfined does not work: this wrapper reports that dispatch
+        // is needed, and Unconfined.dispatch only services yield() — the emission never arrives.)
+        val counting = CountingDispatcher(StandardTestDispatcher(testScheduler))
+        val (vo, catalog) = fixture(mapContext = counting)
+        vo.importFile("a.txt", "text/plain", byteArrayOf(1))
+
+        vo.observeItems().test {
+            assertEquals(1, awaitItem().size)
+            cancelAndIgnoreRemainingEvents()
+        }
+
+        assertTrue(counting.dispatches > 0, "the row mapping must be dispatched to the map context")
+        catalog.close()
+    }
+
     @Test
     fun summaries_with_equal_content_are_equal() {
         val meta = Outcome.Ok(ObjectMeta("a.txt", "text/plain"))
@@ -202,5 +234,16 @@ class VaultItemSummaryTest {
         assertEquals(one, two, "equal content must compare equal")
         assertEquals(one.hashCode(), two.hashCode(), "equal values must share a hash")
         assertTrue(one != other, "a different id must not compare equal")
+    }
+}
+
+/** Records whether work was actually handed to it — the evidence that `flowOn` is in effect. */
+private class CountingDispatcher(private val delegate: CoroutineDispatcher) : CoroutineDispatcher() {
+    var dispatches = 0
+        private set
+
+    override fun dispatch(context: CoroutineContext, block: Runnable) {
+        dispatches++
+        delegate.dispatch(context, block)
     }
 }
