@@ -6,6 +6,7 @@ import android.provider.OpenableColumns
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.FragmentActivity
+import dev.ehsanfahad.darkchamber.app.system.SystemUiHandoff
 import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
 import dev.ehsanfahad.darkchamber.feature.vault.api.PickedFile
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -21,12 +22,24 @@ import kotlin.coroutines.resume
  * made persistable: the bytes are read once, straight into a `.dchm` object, so holding a standing
  * permission on someone's file after the import would be access we do not need.
  */
-class AndroidFilePicker(private val activity: () -> FragmentActivity?) : FilePicker {
+class AndroidFilePicker(
+    private val activity: () -> FragmentActivity?,
+    private val handoff: SystemUiHandoff,
+) : FilePicker {
 
     override suspend fun pickFile(): PickedFile? {
         val host = activity() ?: error("no activity to present the picker from")
 
-        val uri = suspendCancellableCoroutine<Uri?> { continuation ->
+        // SAF is a separate activity, so launching it *stops* ours. Without this the on-background
+        // auto-lock tears the session down mid-pick and the result arrives with nothing to receive
+        // it. The exemption covers the round-trip only, and is released on every path.
+        val uri = handoff.during { awaitPickedUri(host) } ?: return null // the user backed out
+
+        return AndroidPickedFile(host.contentResolver, uri)
+    }
+
+    private suspend fun awaitPickedUri(host: FragmentActivity): Uri? =
+        suspendCancellableCoroutine<Uri?> { continuation ->
             // Registered against the registry directly rather than via registerForActivityResult:
             // the latter must be called before the activity starts, and we are launching from a
             // live screen. The launcher is unregistered on every path, including cancellation.
@@ -43,10 +56,7 @@ class AndroidFilePicker(private val activity: () -> FragmentActivity?) : FilePic
             }
             continuation.invokeOnCancellation { launcher.unregister() }
             launcher.launch(arrayOf(ANY_TYPE))
-        } ?: return null // the user backed out
-
-        return AndroidPickedFile(host.contentResolver, uri)
-    }
+        }
 
     private companion object {
         const val ANY_TYPE = "*/*"

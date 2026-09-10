@@ -181,7 +181,12 @@ Pipeline goal: sensor → JPEG/HEIC or MP4 bytes → encrypting sink → `object
 > biometric re-enrollment, a forced-passphrase path (§3.3). **Lock** (step 2) runs on the manual Lock
 > button **and on background** (Android `onStop` guarded against config changes; iOS
 > `didEnterBackground`): zeroize MK, purge `tmp/`, close the catalog driver, dispose the session
-> scope, replace the whole `Unlocked` subtree. Still **Phase 1**: the configurable auto-lock
+> scope, replace the whole `Unlocked` subtree. The **one** background that does not lock immediately
+> is a system-UI handoff the app launched itself — Android's file picker is a separate activity, so
+> reaching it stops us, and locking there would destroy the screen its result comes back to. The gate
+> defers that lock while the handoff is outstanding and arms a 2-minute watchdog for a picker the
+> user abandons; every other background locks at once (`SystemUiHandoff`, THREAT_MODEL invariants).
+> Still **Phase 1**: the configurable auto-lock
 > **timeout** + **device-lock** listener (step 2 hardcodes manual + on-background), and recovery-key
 > **entry** on a fresh device (create still *displays* it). See
 > `docs/verification/session-gate-manual.md`.

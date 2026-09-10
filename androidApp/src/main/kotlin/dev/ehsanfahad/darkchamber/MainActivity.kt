@@ -43,9 +43,18 @@ class MainActivity : FragmentActivity() {
         setContent { RootContent(root) }
     }
 
+    override fun onStart() {
+        super.onStart()
+        // Back on screen. Cancels a lock the gate deferred for a picker we launched — the user came
+        // back, so the handoff was not abandoned.
+        root.onForeground()
+    }
+
     override fun onStop() {
         // Lock on a real background — but NOT on a configuration change (rotation), where the
-        // retained root deliberately keeps the session across the Activity's recreation.
+        // retained root deliberately keeps the session across the Activity's recreation. The gate
+        // itself defers (never skips) the lock while a picker we launched is still in flight; SAF
+        // is a separate activity, so this callback is exactly what firing it looks like.
         if (!isChangingConfigurations) root.lockIfUnlocked()
         super.onStop()
     }
@@ -77,5 +86,7 @@ class MainActivity : FragmentActivity() {
             unlockedFactory = { ctx, vault, onLock ->
                 DefaultUnlockedComponent(ctx, vault, koin, onLock = onLock)
             },
+            // The same instance the file picker marks its round-trip on.
+            handoff = koin.get(),
         )
 }

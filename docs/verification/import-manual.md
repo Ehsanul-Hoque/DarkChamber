@@ -38,7 +38,7 @@ Tick each line. A failure here is a release blocker.
 
 ### Import — Android
 
-- [x] Create a vault, save the recovery key, unlock. The gallery shows the empty state, **not** a
+- [ ] Create a vault, save the recovery key, unlock. The gallery shows the empty state, **not** a
       spinner that never resolves.
 - [ ] Tap **Add file**, pick an image. The picker opens; picking returns to the gallery and a tile
       appears with the right name, a readable size and a recent age.

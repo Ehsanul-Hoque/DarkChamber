@@ -32,7 +32,7 @@ actual fun platformModule(): Module = module {
     single<ActivityHolder> { DefaultActivityHolder() }
     single<BiometricAuthenticator> { AndroidBiometricAuthenticator { get<ActivityHolder>().activity } }
     // The vault feature's picker seam, reaching the current activity the same way.
-    single<FilePicker> { AndroidFilePicker { get<ActivityHolder>().activity } }
+    single<FilePicker> { AndroidFilePicker({ get<ActivityHolder>().activity }, get()) }
     single<CatalogProvider> {
         val context = androidContext()
         CatalogProvider { root -> openCatalog(context, root) }

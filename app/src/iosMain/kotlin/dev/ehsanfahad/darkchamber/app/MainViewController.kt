@@ -56,6 +56,10 @@ fun MainViewController(): UIViewController {
             )
         },
         unlockedFactory = { ctx, vault, onLock -> DefaultUnlockedComponent(ctx, vault, koin, onLock = onLock) },
+        // Wired for symmetry, and for the pickers Phase 1 still has to add. iOS never *needs* the
+        // exemption today: `UIDocumentPickerViewController` is presented inside our own window, so
+        // the app stays foreground-active and `didEnterBackground` never fires during a pick.
+        handoff = koin.get(),
     )
 
     lifecycle.resume()
@@ -82,6 +86,7 @@ private fun observeAppLifecycle(lifecycle: LifecycleRegistry, root: RootComponen
         lifecycle.stop()
     }
     center.addObserverForName(UIApplicationWillEnterForegroundNotification, null, NSOperationQueue.mainQueue) { _ ->
+        root.onForeground()
         lifecycle.resume()
     }
 }

@@ -34,6 +34,13 @@
 - Any plaintext temp file is deleted immediately after use and on vault lock.
 - No plaintext thumbnails outside the encrypted thumbnail store.
 - Raw MK/DEKs are zeroized best-effort after use (GC-copy limits acknowledged).
+- The vault locks when the app goes to the background. **One exemption:** a file picker the app
+  launched itself is a separate activity on Android, so reaching it backgrounds us — locking there
+  would destroy the screen the picker's result returns to, making import impossible. While such a
+  handoff is outstanding the lock is *deferred*, never skipped: the MasterKey stays in memory for
+  the length of the pick, a watchdog locks the vault if the picker is abandoned (2 minutes), and the
+  app-switcher card stays blank throughout. Nothing else — the home button, another app, the screen
+  locking — is exempt.
 - A violation of any invariant is a P0 security bug, regardless of user impact observed.
 
 ## Reporting

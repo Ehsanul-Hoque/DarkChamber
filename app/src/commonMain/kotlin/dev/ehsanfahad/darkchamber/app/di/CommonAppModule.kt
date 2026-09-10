@@ -1,6 +1,7 @@
 package dev.ehsanfahad.darkchamber.app.di
 
 import dev.ehsanfahad.darkchamber.app.VaultBootstrap
+import dev.ehsanfahad.darkchamber.app.system.SystemUiHandoff
 import dev.ehsanfahad.darkchamber.core.crypto.CryptoEngine
 import dev.ehsanfahad.darkchamber.core.crypto.CryptographyKotlinEngine
 import dev.ehsanfahad.darkchamber.core.db.CatalogStore
@@ -27,6 +28,10 @@ fun interface CatalogProvider {
 val commonAppModule: Module = module {
     // The one sanctioned cryptographic primitive seam (hard rule #2).
     single<CryptoEngine> { CryptographyKotlinEngine() }
+
+    // Shared by the pickers (which start the handoff) and the gate (which reads it before locking
+    // on background), so it must be one instance for the whole process.
+    single { SystemUiHandoff() }
 
     single {
         VaultBootstrap(
