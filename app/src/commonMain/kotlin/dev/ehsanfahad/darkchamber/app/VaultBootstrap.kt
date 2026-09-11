@@ -63,14 +63,9 @@ class VaultBootstrap(
      */
     fun probe(): Outcome<VaultStatus> {
         return try {
-            val root = when (val r = rootResolver.resolve()) {
-                is Outcome.Err -> return r
-                is Outcome.Ok -> r.value
-            }
-            val storage = try {
-                VaultStorage(root)
-            } catch (e: Exception) {
-                return Outcome.Err(VaultError.Io(e))
+            val storage = when (val s = openStorage()) {
+                is Outcome.Err -> return s
+                is Outcome.Ok -> s.value.storage
             }
             val bytes = when (val b = storage.readKeyStore()) {
                 is Outcome.Err -> return b
@@ -210,14 +205,25 @@ class VaultBootstrap(
 
     private class StorageAt(val root: Path, val storage: VaultStorage)
 
-    /** Resolve the root and open storage (no catalog, no session yet). */
+    /**
+     * Resolve the root and open storage (no catalog, no session yet).
+     *
+     * Every path through here is a **cold open** — the lock-screen probe, a create, an unlock — so
+     * it is also where `tmp/` is purged (docs/ARCHITECTURE.md §4: scratch is wiped on lock *and* on
+     * launch). Lock-time purging alone is not enough: a process killed mid-import can leave a
+     * spilled plaintext copy behind (`useSpilledCopy`) with no lock to clean it up, and
+     * docs/THREAT_MODEL.md promises only ciphertext on a locked device. Purging here is safe
+     * because no session can be live while storage is being opened.
+     */
     private fun openStorage(): Outcome<StorageAt> {
         val root = when (val r = rootResolver.resolve()) {
             is Outcome.Err -> return r
             is Outcome.Ok -> r.value
         }
         return try {
-            Outcome.Ok(StorageAt(root, VaultStorage(root)))
+            val storage = VaultStorage(root)
+            storage.purgeTmp() // best-effort: a scratch file we cannot delete must not block the open
+            Outcome.Ok(StorageAt(root, storage))
         } catch (e: Exception) {
             Outcome.Err(VaultError.Io(e))
         }

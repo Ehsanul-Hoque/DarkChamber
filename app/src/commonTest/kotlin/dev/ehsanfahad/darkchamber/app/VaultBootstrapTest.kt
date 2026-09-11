@@ -6,9 +6,11 @@ import dev.ehsanfahad.darkchamber.core.db.CatalogStore
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
 import kotlinx.coroutines.test.runTest
+import kotlinx.io.buffered
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 import kotlinx.io.files.SystemTemporaryDirectory
+import kotlinx.io.writeString
 import kotlin.random.Random
 import kotlin.random.nextULong
 import kotlin.test.AfterTest
@@ -142,6 +144,32 @@ class VaultBootstrapTest {
         assertTrue(outcome.error is VaultError.Db)
         // Aborted before any keystore was written — no half-open vault.
         assertTrue(!SystemFileSystem.exists(Path(Path(vaultBase, "keys"), "mk.wrapped")), "half-open vault left a keystore")
+    }
+
+    /**
+     * A cold open wipes `tmp/`. Lock-time purging alone is not enough: a process killed mid-import
+     * leaves the import's spilled plaintext copy behind with no lock to clean it up, and
+     * docs/THREAT_MODEL.md promises only ciphertext on a locked or powered-off device.
+     */
+    @Test
+    fun a_cold_open_purges_leftover_plaintext_scratch() = runTest {
+        bootstrap().createVault(PASSPHRASE()).let {
+            assertTrue(it is Outcome.Ok); it.value.vault.session.close()
+        }
+        // Stand in for a spill that outlived its import because the process was killed.
+        val orphan = Path(Path(vaultBase, "tmp"), "scratch-orphan")
+        SystemFileSystem.sink(orphan).buffered().use { it.writeString("plaintext that must not survive") }
+        assertTrue(SystemFileSystem.exists(orphan))
+
+        assertTrue(bootstrap().probe() is Outcome.Ok, "the lock-screen probe is the launch-time cold open")
+        assertTrue(!SystemFileSystem.exists(orphan), "scratch must not survive a cold open")
+
+        // And the same on the unlock path, which is a cold open too.
+        SystemFileSystem.sink(orphan).buffered().use { it.writeString("still must not survive") }
+        val reopened = bootstrap().unlock(PASSPHRASE())
+        assertTrue(reopened is Outcome.Ok, "reopen failed: $reopened")
+        reopened.value.session.close()
+        assertTrue(!SystemFileSystem.exists(orphan), "scratch must not survive an unlock")
     }
 
     private fun PASSPHRASE(): ByteArray = "correct-horse-battery".encodeToByteArray()

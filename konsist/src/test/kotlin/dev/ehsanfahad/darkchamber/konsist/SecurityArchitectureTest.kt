@@ -97,6 +97,9 @@ class ScanCoverageTest {
             "app", "androidApp",
             "core/model", "core/crypto", "core/storage", "core/db",
             "core/vault", "core/designsystem", "core/logging",
+            // Every new feature module belongs here: the rules are absence assertions, so a module
+            // the scan never reaches is a module the security invariants do not cover.
+            "feature/vault",
         )
         val missing = modules.filter { module -> productionFiles.none { it.inModule(module) } }
 

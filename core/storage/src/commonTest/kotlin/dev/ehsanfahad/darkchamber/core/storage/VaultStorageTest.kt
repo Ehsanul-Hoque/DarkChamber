@@ -2,6 +2,9 @@ package dev.ehsanfahad.darkchamber.core.storage
 
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
+import kotlinx.io.Buffer
+import kotlinx.io.IOException
+import kotlinx.io.RawSource
 import kotlinx.io.buffered
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
@@ -293,6 +296,47 @@ class VaultStorageTest {
     }
 
     @Test
+    fun useSpilledCopy_gives_a_reopenable_view_of_a_one_shot_source() {
+        val storage = VaultStorage(freshRoot())
+        val data = Random.nextBytes(5000)
+        val oneShot = OneShotSource(data)
+
+        val reads = storage.useSpilledCopy(oneShot) { openSource ->
+            // The point of the spill: the codec opens the payload twice.
+            List(2) { openSource().buffered().use { src -> src.readByteArray() } }
+        }
+
+        assertIs<Outcome.Ok<List<ByteArray>>>(reads)
+        reads.value.forEach { assertContentEquals(data, it, "each re-open must yield the whole source") }
+        assertTrue(oneShot.closed, "the one-shot source is consumed and closed by the spill")
+    }
+
+    @Test
+    fun useSpilledCopy_deletes_the_scratch_on_success_and_on_failure() {
+        val root = freshRoot()
+        val storage = VaultStorage(root)
+        val tmpDir = Path(root, "tmp")
+
+        storage.useSpilledCopy(OneShotSource(Random.nextBytes(64))) { "ok" }
+        assertEquals(emptyList(), SystemFileSystem.list(tmpDir), "no plaintext scratch survives success")
+
+        assertFailsWith<IllegalStateException> {
+            storage.useSpilledCopy(OneShotSource(Random.nextBytes(64))) { error("boom") }
+        }
+        assertEquals(emptyList(), SystemFileSystem.list(tmpDir), "no plaintext scratch survives a failure")
+    }
+
+    @Test
+    fun useSpilledCopy_maps_a_copy_failure_to_Err_Io() {
+        val storage = VaultStorage(freshRoot())
+
+        val result = storage.useSpilledCopy(FailingSource()) { "never reached" }
+
+        assertIs<Outcome.Err>(result)
+        assertIs<VaultError.Io>(result.error, "a source that fails mid-copy is an Io error")
+    }
+
+    @Test
     fun purgeTmp_clears_only_tmp_and_is_ok_when_empty() {
         val root = freshRoot()
         val storage = VaultStorage(root)
@@ -339,4 +383,25 @@ class VaultStorageTest {
 
     private fun VaultStorage.getObject(id: ByteArray): Outcome<ByteArray> =
         readObject(id) { source -> source.buffered().use { it.readByteArray() } }
+}
+
+/** A source that can be read exactly once — the shape of a provider stream that will not re-open. */
+private class OneShotSource(data: ByteArray) : RawSource {
+    private val buffer = Buffer().apply { write(data) }
+    var closed = false
+        private set
+
+    override fun readAtMostTo(sink: Buffer, byteCount: Long): Long = buffer.readAtMostTo(sink, byteCount)
+
+    override fun close() {
+        closed = true
+        buffer.close()
+    }
+}
+
+/** A source that blows up mid-read, standing in for a provider stream that dies during the copy. */
+private class FailingSource : RawSource {
+    override fun readAtMostTo(sink: Buffer, byteCount: Long): Long = throw IOException("read failed")
+
+    override fun close() = Unit
 }

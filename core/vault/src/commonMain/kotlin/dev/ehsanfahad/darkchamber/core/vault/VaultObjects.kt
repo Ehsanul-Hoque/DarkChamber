@@ -7,9 +7,15 @@ import dev.ehsanfahad.darkchamber.core.db.CatalogStore
 import dev.ehsanfahad.darkchamber.core.db.Items
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
+import dev.ehsanfahad.darkchamber.core.model.VaultItemKind
 import dev.ehsanfahad.darkchamber.core.model.flatMap
 import dev.ehsanfahad.darkchamber.core.model.map
 import dev.ehsanfahad.darkchamber.core.storage.VaultStorage
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
+import kotlin.coroutines.CoroutineContext
 import kotlinx.io.RawSink
 import kotlinx.io.RawSource
 
@@ -30,6 +36,9 @@ class VaultObjects(
     private val codec: DchmCodec,
     private val clock: () -> Long,
     private val random: (Int) -> ByteArray,
+    // Where the listing's per-row metadata decrypt runs. Injected so tests stay deterministic; the
+    // default keeps that crypto off whatever thread a caller collects on.
+    private val mapContext: CoroutineContext = Dispatchers.Default,
 ) {
     /**
      * Stream-encrypt the plaintext from [openSource] into the vault: a fresh per-object DEK (wrapped
@@ -37,15 +46,92 @@ class VaultObjects(
      * carrying the wrapped DEK + a minimal `enc_meta` ({name, mime}). Returns the new 16-byte
      * `file_id`.
      *
-     * [openSource] MUST return a fresh, independent source on each call — the codec reads it twice
-     * (size+digest, then chunks). **Fail-closed:** if the row insert fails after the object is
-     * written, the object is deleted so no orphan ciphertext is left behind.
+     * The codec reads the payload twice (size+digest, then chunks), so [openSource] should return a
+     * fresh, independent source on each call. When it cannot — a content-provider or
+     * security-scoped stream that opens exactly once — the payload is spilled into app-private
+     * `tmp/` and imported from there (see the re-openability probe below). **Fail-closed:** if the
+     * row insert fails after the object is written, the object is deleted so no orphan ciphertext is
+     * left behind.
      */
     fun importObject(
         kind: Int,
         name: String,
         mime: String,
         chunkSize: Int = DchmFormat.DEFAULT_CHUNK_SIZE,
+        openSource: () -> RawSource,
+    ): Outcome<ByteArray> {
+        // Probe re-openability BEFORE reading anything. The check cannot be done after a failure:
+        // by then the only stream a one-shot source will ever give has already been consumed by the
+        // codec's first pass, leaving nothing to spill. So open one source and hold it, then try for
+        // a second — if that fails, the held source is the only one there is.
+        //
+        // Cost on the happy path is two extra open/close calls with no bytes read; the payoff is
+        // that a re-openable source streams straight into the container and its plaintext never
+        // touches disk at all (hard rule #1). A provider that refuses two *concurrent* opens is
+        // spilled unnecessarily — slower, still correct.
+        val held = try {
+            openSource()
+        } catch (e: Exception) {
+            return Outcome.Err(VaultError.Io(e)) // never opened: nothing to spill, nothing to retry
+        }
+        val reopenable = try {
+            openSource().use { }
+            true
+        } catch (_: Exception) {
+            false
+        }
+
+        if (reopenable) {
+            try {
+                held.close()
+            } catch (_: Exception) {
+                // the probe source is unread scratch; a close failure must not fail the import
+            }
+            // Wrapped for the same reason as the spill path below: a lock can zeroize the session
+            // mid-import, and a throw must not escape a function that promises an Outcome.
+            return try {
+                storeObject(kind, name, mime, chunkSize, openSource)
+            } catch (e: Exception) {
+                Outcome.Err(VaultError.Unexpected(e))
+            }
+        }
+
+        // useSpilledCopy owns `held` once it starts copying — but it can throw before it gets there
+        // (its scratch-name collision loop touches the filesystem first), and storeObject can throw
+        // if the session dies mid-import. Either way the provider stream would be leaked and the
+        // throw would escape a function whose contract is that no exception crosses the boundary.
+        return try {
+            storage
+                .useSpilledCopy(held) { spilled -> storeObject(kind, name, mime, chunkSize, spilled) }
+                .flatMap { it }
+        } catch (e: Exception) {
+            try {
+                held.close()
+            } catch (_: Exception) {
+                // best-effort: report the failure that actually broke the import, not this one
+            }
+            Outcome.Err(VaultError.Unexpected(e))
+        }
+    }
+
+    // Encrypt + record, given a source that can be opened as many times as the codec needs. Every
+    // source handed to the codec is guarded, so a lock during a long import stops it within a chunk
+    // rather than encrypting the rest of the file against a session the user already closed.
+    private fun storeObject(
+        kind: Int,
+        name: String,
+        mime: String,
+        chunkSize: Int,
+        openSource: () -> RawSource,
+    ): Outcome<ByteArray> = storeGuarded(kind, name, mime, chunkSize) {
+        SessionGuardedSource(openSource()) { session.isOpen }
+    }
+
+    private fun storeGuarded(
+        kind: Int,
+        name: String,
+        mime: String,
+        chunkSize: Int,
         openSource: () -> RawSource,
     ): Outcome<ByteArray> {
         val fileId = random(FILE_ID_SIZE)
@@ -64,7 +150,15 @@ class VaultObjects(
         }
 
         // 2. Seal the metadata and persist the row. Fail-closed: a row failure removes the object.
-        val encMeta = session.sealMeta(encodeMeta(ObjectMeta(name, mime)))
+        //    Sealing can also *throw* rather than return — a lock zeroizing the MK between the write
+        //    and this line is the real case — and object bytes with no row and no DEK are
+        //    unrecoverable garbage that would otherwise accumulate, so clean up before rethrowing.
+        val encMeta = try {
+            session.sealMeta(encodeMeta(ObjectMeta(name, mime)))
+        } catch (e: Exception) {
+            storage.deleteObject(fileId) // best-effort; no orphan ciphertext without a row
+            throw e
+        }
         val row = Items(
             id = fileId,
             album_id = null,
@@ -112,14 +206,55 @@ class VaultObjects(
             is Outcome.Err -> return got
             is Outcome.Ok -> got.value ?: return absent(id)
         }
-        return session.openMeta(row.enc_meta).flatMap { bytes ->
+        return readMeta(row.enc_meta)
+    }
+
+    /**
+     * The listing feeding a gallery: each catalog row joined to its decrypted [ObjectMeta], so
+     * features consume [VaultItemSummary] and never a SQLDelight row type. Re-emits whenever the
+     * catalog changes (an import, a shred), so callers never refresh by hand. Pass [albumId] to
+     * narrow to one album, or `null` for everything.
+     *
+     * A row whose `enc_meta` will not open is **listed with the error**, never dropped — omitting it
+     * would hide tampering, and its plaintext columns are still usable (§4). Only the metadata is
+     * decrypted here; object bytes are never touched, which is what makes this cheap enough to run
+     * over a whole vault.
+     *
+     * The per-row unseal is AES-GCM plus a CBOR decode, so it runs on [mapContext] rather than
+     * wherever the caller happens to collect — a re-emission in a large vault is one GCM open per
+     * row, and on a UI thread that is jank the collector cannot see coming. `flowOn` is applied
+     * here, in the module that owns the crypto, so no consumer has to remember it; the collector's
+     * own context still receives the emissions.
+     *
+     * The flow inherits `CatalogStore.observeItems`' contract: a driver failure surfaces as an
+     * exception **in the flow**, not an `Outcome`, so the collector is responsible for catching it
+     * (the gallery component maps it to an error state). Swallowing it here would turn a broken
+     * catalog into a silently empty vault, which is exactly the fail-closed rule's target.
+     */
+    fun observeItems(albumId: ByteArray? = null): Flow<List<VaultItemSummary>> =
+        catalog.observeItems(albumId)
+            .map { rows -> rows.map(::toSummary) }
+            .flowOn(mapContext)
+
+    private fun toSummary(row: Items): VaultItemSummary =
+        VaultItemSummary(
+            id = row.id,
+            kind = VaultItemKind.fromCode(row.kind),
+            size = row.size,
+            createdAt = row.created_at,
+            meta = readMeta(row.enc_meta),
+        )
+
+    // Unseal + decode a row's enc_meta. A malformed plaintext (post-unseal) is a container problem,
+    // not an integrity one — the GCM tag already verified, so the bytes are ours but unreadable.
+    private fun readMeta(encMeta: ByteArray): Outcome<ObjectMeta> =
+        session.openMeta(encMeta).flatMap { bytes ->
             try {
                 Outcome.Ok(decodeMeta(bytes))
             } catch (e: Exception) {
                 Outcome.Err(VaultError.Crypto.MalformedContainer)
             }
         }
-    }
 
     /**
      * Crypto-shred object [id]: delete the catalog row **first** (that destroys `dek_wrapped`, and the

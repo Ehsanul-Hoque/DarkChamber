@@ -156,6 +156,31 @@ class VaultStorage(
     }
 
     /**
+     * Spills a **one-shot** [source] into `tmp/` and runs [block] with an opener that yields a fresh
+     * source over that copy each time it is called. The scratch file is deleted when [block] returns
+     * or throws ([useTempFile]'s guarantee), and [source] is consumed and closed here.
+     *
+     * This exists for import: the `.dchm` codec reads its payload twice, so a provider stream that
+     * cannot be re-opened would otherwise be unusable. It is a **fallback**, never the default path —
+     * a re-openable source must be imported straight through, without ever landing plaintext on
+     * disk. The copy is app-private and inside `tmp/`, which is purged on lock, on launch, and after
+     * each viewer session, so this stays within hard rule #1 rather than around it.
+     *
+     * A failure while **copying** maps to `Err(Io)`. [block]'s own exception propagates unchanged,
+     * like [useTempFile] — reporting it as an `Io` would blame the spill for a caller's failure —
+     * and the scratch file is deleted either way.
+     */
+    fun <R> useSpilledCopy(source: RawSource, block: (openSource: () -> RawSource) -> R): Outcome<R> =
+        useTempFile { path ->
+            try {
+                source.use { src -> fs.sink(path).buffered().use { it.transferFrom(src) } }
+            } catch (e: Exception) {
+                return@useTempFile Outcome.Err(VaultError.Io(e))
+            }
+            Outcome.Ok(block { fs.source(path).buffered() })
+        }
+
+    /**
      * Deletes every entry under `tmp/` (and only `tmp/`), leaving the directory itself. Called by
      * the session/lock lifecycle on lock, app launch, and after each viewer session, so
      * no decrypted scratch survives a lock (hard rule #1).

@@ -24,13 +24,21 @@ kotlin {
             implementation(project(":core:crypto"))
             implementation(project(":core:storage"))
             implementation(project(":core:db"))
-            implementation(libs.kotlinx.io.core)
+            // api, not implementation: importObject/openObject take and return kotlinx-io
+            // RawSource/RawSink, so the type is part of this module's public surface — a consumer
+            // cannot call them without it.
+            api(libs.kotlinx.io.core)
             implementation(libs.kotlinx.serialization.cbor)
+            // observeItems maps the catalog's reactive Flow into domain summaries. core:db declares
+            // coroutines as `implementation`, so the Flow type is not on our classpath transitively.
+            implementation(libs.kotlinx.coroutines.core)
         }
         commonTest.dependencies {
             // Tests build a real CatalogStore over a raw in-memory SqlDriver (the testSqlDriver
             // expect/actual below) + a temp-dir VaultStorage + a live CryptographyKotlinEngine session.
             implementation(libs.sqldelight.runtime)
+            implementation(libs.kotlinx.coroutines.test)
+            implementation(libs.turbine)
         }
         // Host tests inject an in-memory JDBC driver.
         getByName("androidHostTest").dependencies {

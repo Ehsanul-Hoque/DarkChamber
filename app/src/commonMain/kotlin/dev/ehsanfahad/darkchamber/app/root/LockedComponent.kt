@@ -13,6 +13,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.coroutines.CoroutineContext
 
 /** The step the locked surface is showing (its little create → recovery → enable → unlock flow). */
@@ -75,6 +76,13 @@ class DefaultLockedComponent(
     private val bootstrap: VaultBootstrap,
     private val authenticator: BiometricAuthenticator,
     mainContext: CoroutineContext = Dispatchers.Main,
+    /**
+     * Where key derivation runs. Argon2id at the production cost (m=64 MiB, t=3, p=2) is ~1 s of
+     * solid CPU on a fast device and several on a slow one; on [mainContext] that is a frozen UI —
+     * including the progress indicator that is supposed to report it — and an ANR risk. Every state
+     * write stays on [mainContext]; only the derivation moves.
+     */
+    private val workContext: CoroutineContext = Dispatchers.Default,
     private val onUnlocked: (VaultBootstrap.OpenVault) -> Unit,
 ) : LockedComponent, ComponentContext by componentContext {
 
@@ -102,7 +110,7 @@ class DefaultLockedComponent(
         }
 
     override fun submitCreate(passphrase: ByteArray) = launchGuarded {
-        when (val r = bootstrap.createVault(passphrase)) {
+        when (val r = withContext(workContext) { bootstrap.createVault(passphrase) }) {
             is Outcome.Ok -> {
                 pendingVault = r.value.vault
                 _state.value = LockState(LockStep.Recovery(r.value.recoveryKey))
@@ -130,7 +138,7 @@ class DefaultLockedComponent(
     }
 
     override fun submitPassphraseUnlock(passphrase: ByteArray) = launchGuarded {
-        when (val r = bootstrap.unlock(passphrase)) {
+        when (val r = withContext(workContext) { bootstrap.unlock(passphrase) }) {
             is Outcome.Ok -> finishUnlock(r.value)
             is Outcome.Err -> _state.value = _state.value.copy(busy = false, error = LockError.WrongPassphrase)
         }

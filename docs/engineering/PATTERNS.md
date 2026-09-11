@@ -8,6 +8,12 @@
 - `core` modules export their own Koin modules (`cryptoModule`, `storageModule`, `dbModule`).
 - The **app module is the composition root** — the only place that depends on every `:impl` and calls `startKoin { modules(...) }` via an `expect/actual` initializer in `core:model`-adjacent plumbing.
 - No `core:di` aggregator — it would invert the isolation rule.
+- **Session-scoped features expose a factory instead of a module.** A feature whose dependencies live
+  in the vault's session scope (anything reaching `VaultObjects`) cannot own a Koin module without
+  either hardcoding the app's scope qualifier or resolving from the root graph, where a live session
+  must never be registered. Those features export one factory function taking what they need, and the
+  app calls it from inside the session scope — `:feature:vault`'s `vaultGalleryComponent(...)` is the
+  first. Features with only root-scope dependencies still own a module.
 
 ```kotlin
 // feature/vault/impl/di/VaultModule.kt
@@ -32,21 +38,47 @@ RootComponent
 
 `UnlockedComponent` is *constructed with* a non-null `VaultSession` (the in-memory MK holder). When the session locks (background grace expiry, device lock, panic), the root **replaces the whole Unlocked subtree with Locked** — every screen, viewer, and decrypted bitmap cache is torn down by construction, not by per-screen cleanup code. No feature screen can exist without a session because its parent cannot exist without one. This is the compile-time enforcement of ARCHITECTURE.md §8.
 
-## 3. Presentation — MVI ViewModels
+## 3. Presentation — the component *is* the state holder
 
-KMP `androidx.lifecycle.ViewModel` retained via Decompose. Hand-rolled MVI contract (no extra dependency):
+There is no separate ViewModel layer. A Decompose component holds its own state and exposes named
+intents; the composable renders it and calls them. One lifecycle system, no `androidx.lifecycle`
+dependency in feature modules, and the same shape from the session gate down through every feature:
 
 ```kotlin
-interface MviViewModel<S, I, E> {
-    val state: StateFlow<S>     // immutable UI state
-    val effects: Flow<E>        // one-shot effects (navigation, snackbars)
-    fun onIntent(intent: I)
+interface VaultGalleryComponent {
+    val state: Value<GalleryState>   // immutable UI state
+    fun importFile()                 // named intents, not onIntent(sealed Intent)
+    fun dismissError()
+}
+
+class DefaultVaultGalleryComponent(
+    componentContext: ComponentContext,
+    private val runImport: ImportFile,
+    mainContext: CoroutineContext = Dispatchers.Main,
+) : VaultGalleryComponent, ComponentContext by componentContext {
+
+    private val scope = CoroutineScope(mainContext + SupervisorJob())
+    private val _state = MutableValue(GalleryState())
+    override val state: Value<GalleryState> = _state
+
+    init { doOnDestroy { scope.cancel() } }
 }
 ```
 
-Pairs with Turbine tests asserting exact `State`/`Effect` sequences ([`TESTING.md`](./TESTING.md)).
+Rules that carry weight:
 
-State classes in viewer/vault features hold **references (item ids), not decrypted bytes** — decrypted content lives in session-scoped caches inside `core:storage`/Coil, so a retained `State` never pins plaintext past a lock.
+- **`mainContext` is injected**, defaulting to `Dispatchers.Main`, so host tests drive components
+  without a platform main looper. Long or blocking work moves to its own injected context.
+- **Guards are set synchronously**, before the coroutine is scheduled — a busy/importing flag set
+  inside `launch` lets a double tap through.
+- **State holds ids and display metadata, never decrypted bytes.** Decrypted content lives in
+  session-scoped caches, so a retained `State` cannot pin plaintext past a lock.
+- **One-shot effects are added per feature only where a screen needs one.** Most do not; an empty
+  `Flow<Effect>` on every component is ceremony.
+
+Tests assert on `Value` directly. A component whose work is a `Flow` uses Turbine on that flow
+([`TESTING.md`](./TESTING.md)); note that under `UnconfinedTestDispatcher` a coroutine started by an
+intent completes inline, so a concurrency guard needs `StandardTestDispatcher` to be exercised at all.
 
 ## 4. Logging — local, honest, minimal
 

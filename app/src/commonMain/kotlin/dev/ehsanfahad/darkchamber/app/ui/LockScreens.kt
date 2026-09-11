@@ -1,7 +1,9 @@
 package dev.ehsanfahad.darkchamber.app.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -33,10 +35,12 @@ import dev.ehsanfahad.darkchamber.app.root.LockStep
 import dev.ehsanfahad.darkchamber.app.root.LockedComponent
 import dev.ehsanfahad.darkchamber.app.root.RootChild
 import dev.ehsanfahad.darkchamber.app.root.RootComponent
+import dev.ehsanfahad.darkchamber.app.root.UnlockedChild
 import dev.ehsanfahad.darkchamber.app.root.UnlockedComponent
 import dev.ehsanfahad.darkchamber.core.designsystem.Aperture
 import dev.ehsanfahad.darkchamber.core.designsystem.ApertureState
 import dev.ehsanfahad.darkchamber.core.designsystem.DarkChamberTheme
+import dev.ehsanfahad.darkchamber.feature.vault.presentation.VaultGalleryContent
 
 /**
  * The shared UI for the session gate (docs/DESIGN.md). Copy is honest (hard rule #6): the recovery
@@ -58,117 +62,174 @@ fun RootContent(component: RootComponent, modifier: Modifier = Modifier) {
     }
 }
 
+/**
+ * The gate is **one** screen with several steps, not several screens. The scaffold — and with it the
+ * aperture — is called once, here, so the iris keeps a single identity as the step changes and can
+ * animate between open fractions (docs/DESIGN.md §7.3: "while keys unwrap, the iris opens from
+ * closed"). Calling the scaffold inside each step's branch instead gives every step its own iris,
+ * and a freshly composed [Aperture] starts *at* its target — it would snap, never animate.
+ */
 @Composable
 private fun LockedContent(component: LockedComponent) {
     val state by component.state.subscribeAsState()
-    when (val step = state.step) {
-        is LockStep.Create -> CreateVaultScreen(state, component::submitCreate)
-        is LockStep.Recovery -> RecoveryKeyScreen(step.recoveryKey, component::confirmRecoverySaved)
-        is LockStep.EnableBiometric -> EnableBiometricScreen(state, component::enableBiometric, component::skipBiometric)
-        is LockStep.Unlock -> UnlockScreen(state, component::submitPassphraseUnlock, component::startBiometricUnlock)
-    }
-}
-
-@Composable
-private fun CreateVaultScreen(state: LockState, onCreate: (ByteArray) -> Unit) {
-    GateScaffold(aperture = ApertureState.Closed, title = "Create your vault", error = state.error) {
-        var passphrase by remember { mutableStateOf("") }
-        Text(
-            "Choose a passphrase. It is the only way in besides your recovery key — we can't reset it.",
-            style = DarkChamberTheme.typography.body,
-            color = DarkChamberTheme.colors.textSecondary,
-        )
-        PassphraseField(passphrase, { passphrase = it }, "Passphrase")
-        Button(
-            onClick = { onCreate(passphrase.encodeToByteArray()) },
-            enabled = !state.busy && passphrase.isNotEmpty(),
-            modifier = Modifier.fillMaxWidth(),
-        ) { Text("Create vault") }
-    }
-}
-
-@Composable
-private fun RecoveryKeyScreen(recoveryKey: String, onConfirm: () -> Unit) {
-    GateScaffold(aperture = ApertureState.Unlocking, title = "Save your recovery key") {
-        Text(
-            "This is the only way to reach your vault if you forget your passphrase or replace this " +
-                "device. Write it down and store it somewhere safe — if you lose it, your data is gone. " +
-                "We never see it and can't recover it.",
-            style = DarkChamberTheme.typography.body,
-            color = DarkChamberTheme.colors.textSecondary,
-        )
-        Surface(
-            color = DarkChamberTheme.colors.surfaceRaised,
-            shape = DarkChamberTheme.shapes.large,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text(
-                recoveryKey,
-                style = DarkChamberTheme.typography.monoKey,
-                color = DarkChamberTheme.colors.textPrimary,
-                modifier = Modifier.padding(DarkChamberTheme.spacing.spaceMd),
-            )
-        }
-        Button(onClick = onConfirm, modifier = Modifier.fillMaxWidth()) { Text("I've saved it") }
-    }
-}
-
-@Composable
-private fun EnableBiometricScreen(state: LockState, onEnable: () -> Unit, onSkip: () -> Unit) {
-    GateScaffold(aperture = ApertureState.Unlocking, title = "Unlock with biometrics?", error = state.error) {
-        Text(
-            "Use Face or fingerprint to unlock next time. Your passphrase still works, and you can turn " +
-                "this off later.",
-            style = DarkChamberTheme.typography.body,
-            color = DarkChamberTheme.colors.textSecondary,
-        )
-        Button(onClick = onEnable, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) {
-            Text("Enable biometrics")
-        }
-        TextButton(onClick = onSkip, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) {
-            Text("Not now")
+    val step = state.step
+    GateScaffold(
+        aperture = step.aperture(state.busy),
+        title = step.title(),
+        error = state.error,
+        busy = state.busy,
+    ) {
+        when (step) {
+            is LockStep.Create -> CreateVaultStep(state, component::submitCreate)
+            is LockStep.Recovery -> RecoveryKeyStep(step.recoveryKey, component::confirmRecoverySaved)
+            is LockStep.EnableBiometric -> EnableBiometricStep(state, component::enableBiometric, component::skipBiometric)
+            is LockStep.Unlock -> UnlockStep(state, component::submitPassphraseUnlock, component::startBiometricUnlock)
         }
     }
 }
 
+/** Where the iris sits for each step. Half-open is "in the middle of getting you in". */
+private fun LockStep.aperture(busy: Boolean): ApertureState = when (this) {
+    // Key derivation (Argon2id) takes real seconds — the iris opening is the progress.
+    is LockStep.Create -> if (busy) ApertureState.Unlocking else ApertureState.Closed
+    is LockStep.Recovery -> ApertureState.Unlocking
+    is LockStep.EnableBiometric -> ApertureState.Unlocking
+    is LockStep.Unlock -> if (busy) ApertureState.Unlocking else ApertureState.Closed
+}
+
+private fun LockStep.title(): String = when (this) {
+    is LockStep.Create -> "Create your vault"
+    is LockStep.Recovery -> "Save your recovery key"
+    is LockStep.EnableBiometric -> "Unlock with biometrics?"
+    is LockStep.Unlock -> "Unlock"
+}
+
 @Composable
-private fun UnlockScreen(
+private fun CreateVaultStep(state: LockState, onCreate: (ByteArray) -> Unit) {
+    var passphrase by remember { mutableStateOf("") }
+    Text(
+        "Choose a passphrase. It is the only way in besides your recovery key — we can't reset it.",
+        style = DarkChamberTheme.typography.body,
+        color = DarkChamberTheme.colors.textSecondary,
+    )
+    PassphraseField(passphrase, { passphrase = it }, "Passphrase")
+    Button(
+        onClick = { onCreate(passphrase.encodeToByteArray()) },
+        enabled = !state.busy && passphrase.isNotEmpty(),
+        modifier = Modifier.fillMaxWidth(),
+    ) { Text("Create vault") }
+}
+
+@Composable
+private fun RecoveryKeyStep(recoveryKey: String, onConfirm: () -> Unit) {
+    Text(
+        "This is the only way to reach your vault if you forget your passphrase or replace this " +
+            "device. Write it down and store it somewhere safe — if you lose it, your data is gone. " +
+            "We never see it and can't recover it.",
+        style = DarkChamberTheme.typography.body,
+        color = DarkChamberTheme.colors.textSecondary,
+    )
+    Surface(
+        color = DarkChamberTheme.colors.surfaceRaised,
+        shape = DarkChamberTheme.shapes.large,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text(
+            recoveryKey,
+            style = DarkChamberTheme.typography.monoKey,
+            color = DarkChamberTheme.colors.textPrimary,
+            modifier = Modifier.padding(DarkChamberTheme.spacing.spaceMd),
+        )
+    }
+    Button(onClick = onConfirm, modifier = Modifier.fillMaxWidth()) { Text("I've saved it") }
+}
+
+@Composable
+private fun EnableBiometricStep(state: LockState, onEnable: () -> Unit, onSkip: () -> Unit) {
+    Text(
+        "Use Face or fingerprint to unlock next time. Your passphrase still works, and you can turn " +
+            "this off later.",
+        style = DarkChamberTheme.typography.body,
+        color = DarkChamberTheme.colors.textSecondary,
+    )
+    Button(onClick = onEnable, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) {
+        Text("Enable biometrics")
+    }
+    TextButton(onClick = onSkip, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) {
+        Text("Not now")
+    }
+}
+
+@Composable
+private fun UnlockStep(
     state: LockState,
     onPassphrase: (ByteArray) -> Unit,
     onBiometric: () -> Unit,
 ) {
-    val aperture = if (state.busy) ApertureState.Unlocking else ApertureState.Closed
-    GateScaffold(aperture = aperture, title = "Unlock", error = state.error) {
-        var passphrase by remember { mutableStateOf("") }
-        // Biometric is primary only when a live hardware slot exists and we're not forced to passphrase.
-        if (state.hasBiometric && !state.forcePassphrase) {
-            Button(onClick = onBiometric, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) {
-                Text("Unlock with biometrics")
-            }
-            Text(
-                "or use your passphrase",
-                style = DarkChamberTheme.typography.caption,
-                color = DarkChamberTheme.colors.textSecondary,
-            )
+    var passphrase by remember { mutableStateOf("") }
+    // Biometric is primary only when a live hardware slot exists and we're not forced to passphrase.
+    if (state.hasBiometric && !state.forcePassphrase) {
+        Button(onClick = onBiometric, enabled = !state.busy, modifier = Modifier.fillMaxWidth()) {
+            Text("Unlock with biometrics")
         }
-        PassphraseField(passphrase, { passphrase = it }, "Passphrase")
-        Button(
-            onClick = { onPassphrase(passphrase.encodeToByteArray()) },
-            enabled = !state.busy && passphrase.isNotEmpty(),
-            modifier = Modifier.fillMaxWidth(),
-        ) { Text("Unlock") }
+        Text(
+            "or use your passphrase",
+            style = DarkChamberTheme.typography.caption,
+            color = DarkChamberTheme.colors.textSecondary,
+        )
     }
+    PassphraseField(passphrase, { passphrase = it }, "Passphrase")
+    Button(
+        onClick = { onPassphrase(passphrase.encodeToByteArray()) },
+        enabled = !state.busy && passphrase.isNotEmpty(),
+        modifier = Modifier.fillMaxWidth(),
+    ) { Text("Unlock") }
 }
 
 @Composable
 private fun UnlockedContent(component: UnlockedComponent) {
-    GateScaffold(aperture = ApertureState.Open, title = "Vault unlocked") {
-        Text(
-            "Your vault is open. The vault UI arrives in a later release.",
-            style = DarkChamberTheme.typography.body,
-            color = DarkChamberTheme.colors.textSecondary,
-        )
-        Button(onClick = component::lock, modifier = Modifier.fillMaxWidth()) { Text("Lock") }
+    // The window insets are applied once, here, for the whole unlocked subtree — the bar and every
+    // feature screen below it. Applying them again inside a screen would inset twice (a gap under
+    // the bar), and leaving them to each screen means the first one that forgets sits under the
+    // system bars.
+    Column(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
+        UnlockedBar(onLock = component::lock)
+
+        val stack by component.stack.subscribeAsState()
+        Box(modifier = Modifier.weight(1f)) {
+            when (val child = stack.active.instance) {
+                is UnlockedChild.Gallery -> VaultGalleryContent(child.component)
+            }
+        }
+    }
+}
+
+/** The one chrome the unlocked subtree owns: an open aperture and the manual lock. */
+@Composable
+private fun UnlockedBar(onLock: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = DarkChamberTheme.spacing.spaceMd, vertical = DarkChamberTheme.spacing.spaceXs),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Aperture(
+                state = ApertureState.Open,
+                contentDescription = "Vault unlocked",
+                size = DarkChamberTheme.spacing.spaceLg,
+            )
+            Text(
+                "Vault",
+                style = DarkChamberTheme.typography.title,
+                color = DarkChamberTheme.colors.textPrimary,
+                modifier = Modifier.padding(start = DarkChamberTheme.spacing.spaceXs),
+            )
+        }
+        TextButton(onClick = onLock) {
+            Text("Lock", style = DarkChamberTheme.typography.label, color = DarkChamberTheme.colors.accent)
+        }
     }
 }
 
@@ -191,6 +252,10 @@ private fun GateScaffold(
     aperture: ApertureState,
     title: String,
     error: LockError? = null,
+    // Only true while work is actually running. The half-open aperture is a *visual* state some
+    // steps sit in permanently (saving the recovery key, choosing biometrics) — tying the spinner
+    // to it showed a progress indicator for work that had already finished.
+    busy: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     Column(
@@ -210,7 +275,7 @@ private fun GateScaffold(
             Text(error.message(), style = DarkChamberTheme.typography.body, color = DarkChamberTheme.colors.danger)
         }
         content()
-        if (aperture == ApertureState.Unlocking) {
+        if (busy) {
             Spacer(Modifier.height(DarkChamberTheme.spacing.spaceXs))
             CircularProgressIndicator(color = DarkChamberTheme.colors.accent)
         }

@@ -1,6 +1,7 @@
 package dev.ehsanfahad.darkchamber
 
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.fragment.app.FragmentActivity
@@ -31,15 +32,29 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
+        // Unconditionally, for the whole app: screenshots and screen recording are blocked and the
+        // app-switcher thumbnail is blank. Whole-app rather than per-screen on purpose — every
+        // screen in the unlocked tree shows vault content, the locked tree shows the recovery key,
+        // and a defence a new screen can forget to opt into is not a defence.
+        window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         super.onCreate(savedInstanceState)
 
         root = retainedComponent { componentContext -> buildRoot(componentContext) }
         setContent { RootContent(root) }
     }
 
+    override fun onStart() {
+        super.onStart()
+        // Back on screen. Cancels a lock the gate deferred for a picker we launched — the user came
+        // back, so the handoff was not abandoned.
+        root.onForeground()
+    }
+
     override fun onStop() {
         // Lock on a real background — but NOT on a configuration change (rotation), where the
-        // retained root deliberately keeps the session across the Activity's recreation.
+        // retained root deliberately keeps the session across the Activity's recreation. The gate
+        // itself defers (never skips) the lock while a picker we launched is still in flight; SAF
+        // is a separate activity, so this callback is exactly what firing it looks like.
         if (!isChangingConfigurations) root.lockIfUnlocked()
         super.onStop()
     }
@@ -69,7 +84,9 @@ class MainActivity : FragmentActivity() {
                 )
             },
             unlockedFactory = { ctx, vault, onLock ->
-                DefaultUnlockedComponent(ctx, vault, koin, onLock)
+                DefaultUnlockedComponent(ctx, vault, koin, onLock = onLock)
             },
+            // The same instance the file picker marks its round-trip on.
+            handoff = koin.get(),
         )
 }

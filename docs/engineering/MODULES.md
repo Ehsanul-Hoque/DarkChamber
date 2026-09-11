@@ -17,7 +17,7 @@ DarkChamber is a multi-module Gradle project. Isolation is real (compile-time), 
 
 - `core:model` — pure Kotlin domain types (`VaultItem`, `Album`, `Note`), MIME handling. Depends on nothing.
 - `core:crypto` — the `.dchm` codec (normative spec: [`../FORMAT.md`](../FORMAT.md)), key hierarchy, KDF, DEK lifecycle, `CryptoEngine` interface wrapping `cryptography-kotlin`, `expect/actual SecureKeyStore` (Keystore/Secure Enclave). **The only module allowed to touch cipher primitives.**
-- `core:storage` — app-private file layout, atomic writes, `tmp/` hygiene, thumbnail store. **The only module allowed to touch filesystem APIs.** *Built:* `VaultStorage(root: Path, fs = SystemFileSystem)` owns `objects/ thumbs/ keys/ tmp/` under an injected root, exposing:
+- `core:storage` — app-private file layout, atomic writes, `tmp/` hygiene, thumbnail store. **The only module allowed to touch the vault's filesystem.** The one carve-out is the app module's platform boundary — the root resolver (`filesDir` / `NSDocumentDirectory`) and the iOS file picker, which reads a user-picked file at a security-scoped path that is outside the vault root and never written to. No feature module touches a filesystem API at all. *Built:* `VaultStorage(root: Path, fs = SystemFileSystem)` owns `objects/ thumbs/ keys/ tmp/` under an injected root, exposing:
     - object store — `writeObject`/`readObject`/`deleteObject`/`objectExists`, sharded, scoped atomic temp+`atomicMove`;
     - thumbnail store — `writeThumbnail`/… flat `.tdchm`;
     - key-blob store — `readKeyStore` (null-if-absent) / `writeKeyStore`;
@@ -36,9 +36,19 @@ DarkChamber is a multi-module Gradle project. Isolation is real (compile-time), 
     - `shredObject` — crypto-shreds (delete the row/DEK first, best-effort delete the bytes).
 
     Everything is `Outcome`-typed and bounded-RAM (O(chunkSize)); depends on `core:model`+`crypto`+`storage`+`db` and imports **no cipher primitive** (`.dchm` bytes stay opaque, crypto stays behind `DchmCodec`/`VaultSession`). Random-access seek reads + the media viewers are Phase 1.
-- `core:designsystem` — theme + tokens per [`../DESIGN.md`](../DESIGN.md), shared Compose components, secure-screen wrappers (`FLAG_SECURE` / snapshot obscuring live here so no feature re-implements them). *Built:* `DarkChamberTheme` (semantic color/type/shape/spacing/motion roles — consumers read roles, never raw hex — plus a Material 3 substrate mapped from the tokens) and the **`Aperture`** signature (the reserved full-circle unlock affordance, §7). Applied via the `darkchamber.kmp.compose` convention plugin. Still ahead: Plex fonts + the secure-screen wrappers.
+- `core:designsystem` — theme + tokens per [`../DESIGN.md`](../DESIGN.md), shared Compose components. *Built:* `DarkChamberTheme` (semantic color/type/shape/spacing/motion roles — consumers read roles, never raw hex — plus a Material 3 substrate mapped from the tokens) and the **`Aperture`** signature (the reserved full-circle unlock affordance, §7). Compose artifacts are re-exported as `api`, so every feature inherits one Compose version and declares none itself. Applied via the `darkchamber.kmp.compose` convention plugin. Still ahead: Plex fonts.
+
+    **Secure screens are not here.** `FLAG_SECURE` and the iOS snapshot blur are whole-app properties set by the platform hosts (`:androidApp`'s `MainActivity`, `:app`'s `MainViewController`), not per-screen wrappers: everything in the unlocked tree is vault content and the locked tree shows the recovery key, so there is nothing to opt out of, and a wrapper a new screen forgets to apply is a silent leak.
 - `core:logging` — Kermit setup (see [`PATTERNS.md`](./PATTERNS.md) §4 — no Crashlytics, no remote anything). *Built:* `initLogging()` (Kermit + platform writer only) and `redactCause(VaultError): String` / `logVaultError(stage, error)` — the hard-rule-#4 boundary that reduces any `VaultError` to a content-free code (`Io`/`Db`/`Crypto.*`), never the carried cause message, a path, an id, or vault content.
 - `core:testing` — shared fakes, fixtures, test dispatchers, Turbine helpers, format test-vector loaders (test-only).
+
+### Feature modules
+
+- `:feature:vault` — the gallery and import. *Built:* a public `api` package (the gallery component contract, `GalleryState`/`GalleryItem`, and the `FilePicker`/`PickedFile` seam the app implements) plus one factory, `vaultGalleryComponent(...)`; everything else — `domain` use cases, the `data` adapter over `VaultObjects`, the component and the Compose screen — is `internal`. It depends on **`core:vault` only** for vault access: no cipher primitive, no filesystem API, no SQLDelight type is reachable from it. Single-module for now; the `api`/`impl` split (§2) happens when a second feature needs the contract, and the `internal` discipline makes that a folder move.
+
+### Verification modules
+
+- `:konsist` — a JVM test-only module holding the architecture rules (§4.2). No convention plugin: there is exactly one consumer, so it applies the Kotlin JVM plugin directly, and a `darkchamber.konsist` plugin would be indirection without a payoff.
 
 ### App modules
 
@@ -87,42 +97,33 @@ Cross-module isolation is enforced by what each `build.gradle.kts` declares. If 
 
 ### 4.2 Architectural (Konsist)
 
-Konsist runs as JUnit tests in `:konsist` and asserts what the compiler can't. Beyond the standard layer/naming rules (use cases in `..domain.usecase..`, ViewModels in `..presentation..`, DTOs confined to `..data..`), DarkChamber adds **security-invariant rules**:
+Konsist runs as JUnit tests in `:konsist` and asserts what the compiler can't. **Built:** the
+security-invariant rules below, running in `pr.yml`'s enabled build job — ahead of the assemble, so a
+hard-rule violation fails a PR in seconds rather than minutes. Layer/naming rules (use cases in
+`..domain.usecase..`, DTOs confined to `..data..`) land with the rest of the quality tooling.
 
-```kotlin
-class SecurityArchitectureTest {
+The five rules, each a denylist over production imports:
 
-    @Test
-    fun `cipher primitives are only imported inside core-crypto`() {
-        // dev.whyoleg.cryptography.*, javax.crypto.*, CommonCrypto interop, etc.
-        Konsist.scopeFromProduction()
-            .files
-            .filterNot { it.moduleName == "core.crypto" }
-            .assertFalse { file ->
-                file.imports.any { it.name.startsWith("dev.whyoleg.cryptography") ||
-                                   it.name.startsWith("javax.crypto") }
-            }
-    }
+| Rule | Confined to | Guards |
+|------|-------------|--------|
+| Cipher primitives — `dev.whyoleg.cryptography`, `javax.crypto`, `java.security`, `org.bouncycastle`, `platform.CoreCrypto`, `platform.Security` | `core:crypto` | hard rule #2 |
+| Networking — `java.net`, `javax.net`, `okhttp3`, `retrofit2`, `io.ktor`, `platform.Foundation.NSURL{Session,Request,Connection}`, `platform.Network` | nowhere | hard rule #3 / ADR-004 |
+| Analytics & crash SDKs — Firebase, Crashlytics, Sentry, Amplitude, Mixpanel, AppsFlyer, GMS analytics | nowhere | hard rule #4 |
+| Shared storage — `android.provider.MediaStore`, `android.os.Environment`, anything matching `*ExternalStorage*` | `core:storage` | hard rule #1 |
+| The logger — `co.touchlab.kermit` | `core:logging` | hard rule #4 (redaction boundary) |
 
-    @Test
-    fun `shared-storage APIs are only touched inside core-storage`() {
-        // MediaStore, Environment.getExternalStorage*, NSSearchPath outside sandbox, …
-        Konsist.scopeFromProduction()
-            .files
-            .filterNot { it.moduleName == "core.storage" }
-            .assertFalse { file ->
-                file.imports.any { it.name.startsWith("android.provider.MediaStore") ||
-                                   it.name.contains("ExternalStorage") }
-            }
-    }
+Two details that make these real rather than decorative:
 
-    @Test
-    fun `log calls never reference content fields`() {
-        // heuristic guard for the PATTERNS.md §4 rule; reviewed, not sufficient alone
-        // (tag-based check: forbid known content accessors in logging call arguments)
-    }
-}
-```
+- **Production is derived from the path** (`src/<sourceSet>/` where the set is `main` or ends in
+  `Main`), not Konsist's own source-set notion, because KMP puts production code in
+  `commonMain`/`androidMain`/`iosMain`. Test code is deliberately out of scope.
+- **Every rule is an absence assertion**, so a scope that resolved to zero files would pass all five
+  while checking nothing. A companion test asserts the scan reaches every module holding Kotlin
+  sources and sees a meaningful number of imports — **a new module must be added to that list**, or
+  the invariants silently do not cover it. A second test drives each denylist over synthetic import
+  names to prove it matches its targets *and* stops at the right edge: `NSURLSession` is forbidden
+  while `NSURL`, which the iOS vault root resolver needs, is not, and the Storage Access Framework is
+  allowed because it is how the user hands us a file to import.
 
 These make the [`THREAT_MODEL.md`](../THREAT_MODEL.md) invariants self-policing: violating "all crypto goes through `CryptoEngine`" or "plaintext never touches shared storage" fails CI.
 
@@ -132,22 +133,31 @@ An included `:build-logic` build centralizes KMP/Compose/quality setup into conv
 
 ```
 build-logic/src/main/kotlin/
-├── darkchamber.kmp.library.gradle.kts      # KMP targets + common deps
-├── darkchamber.kmp.feature.gradle.kts      # feature preset (compose, koin, viewmodel)
-├── darkchamber.android.application.gradle.kts
-├── darkchamber.compose.gradle.kts
-├── darkchamber.quality.gradle.kts          # detekt + ktlint + kover, uniform
-└── darkchamber.konsist.gradle.kts
+├── darkchamber.kmp.library.gradle.kts      # built — KMP targets + common deps
+├── darkchamber.kmp.compose.gradle.kts      # built — kmp.library + Compose Multiplatform
+├── darkchamber.kmp.feature.gradle.kts      # built — kmp.compose + Decompose/Koin/designsystem/logging
+├── darkchamber.android.application.gradle.kts   # built
+└── darkchamber.quality.gradle.kts          # planned — detekt + ktlint + kover, uniform
 ```
 
+There is deliberately **no `darkchamber.konsist` plugin**: `:konsist` is the single consumer of those
+rules and applies the Kotlin JVM plugin directly.
+
+`darkchamber.kmp.feature` also carries `-lsqlite3` in the native `linkerOpts`. Every feature reaches
+the catalog transitively (`feature → core:vault → core:db`), whose native driver binds system sqlite3
+by cinterop, and those linker options do not propagate across module boundaries — so the flag lives
+in the plugin, solved once, rather than being rediscovered per feature.
+
 ```kotlin
-// feature/notes/build.gradle.kts — complete file
+// feature/vault/build.gradle.kts — complete file
 plugins { id("darkchamber.kmp.feature") }
 
-kotlin.sourceSets.commonMain.dependencies {
-    implementation(projects.feature.vault.api)
-    implementation(projects.core.model)
-    implementation(projects.core.designsystem)
+kotlin {
+    sourceSets {
+        commonMain.dependencies {
+            api(project(":core:vault"))
+        }
+    }
 }
 ```
 

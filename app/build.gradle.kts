@@ -35,6 +35,9 @@ kotlin {
             implementation(project(":core:logging"))
             // First shared UI: the session gate lives here. Compose comes via the theme module.
             implementation(project(":core:designsystem"))
+            // The vault feature: the gallery child of the unlocked subtree. The app is the only
+            // module that may depend on a feature (docs/engineering/MODULES.md §1).
+            implementation(project(":feature:vault"))
             implementation(libs.koin.core)
             // The Decompose session gate (RootComponent: Locked | Unlocked) + its Compose integration
             // and the Essenty lifecycle that drives background-lock.

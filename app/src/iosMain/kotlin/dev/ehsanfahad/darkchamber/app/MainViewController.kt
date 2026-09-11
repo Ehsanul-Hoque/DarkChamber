@@ -13,15 +13,24 @@ import dev.ehsanfahad.darkchamber.app.root.RootComponent
 import dev.ehsanfahad.darkchamber.app.ui.RootContent
 import dev.ehsanfahad.darkchamber.core.crypto.BiometricAuthenticator
 import dev.ehsanfahad.darkchamber.core.logging.initLogging
+import dev.ehsanfahad.darkchamber.core.logging.logVaultError
+import dev.ehsanfahad.darkchamber.core.model.VaultError
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.Dispatchers
 import org.koin.core.Koin
 import org.koin.core.context.startKoin
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSOperationQueue
+import platform.UIKit.UIApplicationDidBecomeActiveNotification
 import platform.UIKit.UIApplicationDidEnterBackgroundNotification
 import platform.UIKit.UIApplicationWillEnterForegroundNotification
+import platform.UIKit.UIApplicationWillResignActiveNotification
+import platform.UIKit.UIBlurEffect
+import platform.UIKit.UIBlurEffectStyle
+import platform.UIKit.UIViewAutoresizingFlexibleHeight
+import platform.UIKit.UIViewAutoresizingFlexibleWidth
 import platform.UIKit.UIViewController
+import platform.UIKit.UIVisualEffectView
 
 /**
  * The Swift-facing entry into the shared Compose session gate. `iosApp` hosts the returned
@@ -46,11 +55,16 @@ fun MainViewController(): UIViewController {
                 onUnlocked = onUnlocked,
             )
         },
-        unlockedFactory = { ctx, vault, onLock -> DefaultUnlockedComponent(ctx, vault, koin, onLock) },
+        unlockedFactory = { ctx, vault, onLock -> DefaultUnlockedComponent(ctx, vault, koin, onLock = onLock) },
+        // Wired for symmetry, and for the pickers Phase 1 still has to add. iOS never *needs* the
+        // exemption today: `UIDocumentPickerViewController` is presented inside our own window, so
+        // the app stays foreground-active and `didEnterBackground` never fires during a pick.
+        handoff = koin.get(),
     )
 
     lifecycle.resume()
     observeAppLifecycle(lifecycle, root)
+    observeSnapshotCover()
 
     return ComposeUIViewController { RootContent(root) }
 }
@@ -72,6 +86,45 @@ private fun observeAppLifecycle(lifecycle: LifecycleRegistry, root: RootComponen
         lifecycle.stop()
     }
     center.addObserverForName(UIApplicationWillEnterForegroundNotification, null, NSOperationQueue.mainQueue) { _ ->
+        root.onForeground()
         lifecycle.resume()
     }
 }
+
+/** The blur laid over the window while the app is inactive; `null` whenever the app is on screen. */
+private var snapshotCover: UIVisualEffectView? = null
+
+/**
+ * Obscures the app-switcher snapshot. iOS takes that snapshot after `willResignActive`, so a blur
+ * added there is what the system captures instead of vault content.
+ *
+ * This is **not** screenshot blocking. iOS has no `FLAG_SECURE` equivalent, so a user (or anyone
+ * holding the unlocked device) can still capture what is on screen; docs/THREAT_MODEL.md says so and
+ * no UI copy may imply otherwise. Whole-window rather than per-screen, for the same reason as
+ * Android's flag: a screen can forget to opt in.
+ */
+@OptIn(ExperimentalForeignApi::class)
+private fun observeSnapshotCover() {
+    val center = NSNotificationCenter.defaultCenter
+    center.addObserverForName(UIApplicationWillResignActiveNotification, null, NSOperationQueue.mainQueue) { _ ->
+        if (snapshotCover != null) return@addObserverForName
+        val window = keyWindow() ?: run {
+            // Silent failure would leave vault content in the app-switcher card, so make it visible
+            // in a diagnostic log (event name only — no content, hard rule #4).
+            logVaultError(SNAPSHOT_COVER_STAGE, VaultError.Unexpected(IllegalStateException("no window")))
+            return@addObserverForName
+        }
+        val cover = UIVisualEffectView(effect = UIBlurEffect.effectWithStyle(UIBlurEffectStyle.UIBlurEffectStyleSystemThickMaterialDark))
+        cover.setFrame(window.bounds)
+        cover.setAutoresizingMask(UIViewAutoresizingFlexibleWidth or UIViewAutoresizingFlexibleHeight)
+        window.addSubview(cover)
+        snapshotCover = cover
+    }
+    center.addObserverForName(UIApplicationDidBecomeActiveNotification, null, NSOperationQueue.mainQueue) { _ ->
+        snapshotCover?.removeFromSuperview()
+        snapshotCover = null
+    }
+}
+
+// Stage label for the redaction boundary: an event name, never content.
+private const val SNAPSHOT_COVER_STAGE = "ios-snapshot-cover"

@@ -16,6 +16,10 @@ name: PR
 on:
   pull_request:
     branches: [main]
+    # `ready_for_review` is NOT in the default type set (opened, synchronize, reopened), so without
+    # it marking a draft PR ready fires no event at all — and the `ios-compile` job, which is gated
+    # on `draft == false`, stays skipped from the draft's last run with nothing to re-evaluate it.
+    types: [opened, synchronize, reopened, ready_for_review]
 
 # Cancel superseded runs on the same PR.
 concurrency:
@@ -58,7 +62,13 @@ jobs:
 
   # Supply-chain gate: flags new dependencies & incompatible licenses on the PR
   # (docs/engineering/RELEASE.md §6). New runtime deps need justification in the PR body.
+  #
+  # The Dependency Review API needs Advanced Security on a PRIVATE repo, so this skips while the
+  # repo is private and starts running by itself the moment it goes public — no edit needed at
+  # release time. The project's real supply-chain gate is Gradle dependency verification
+  # (gradle/verification-metadata.xml): checksums, enforced locally and offline.
   dependency-review:
+    if: github.event.repository.visibility == 'public'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -107,7 +117,10 @@ jobs:
 
   ios-compile:
     needs: changes
-    if: needs.changes.outputs.ios == 'true'
+    # Gated twice: only when shared/iOS code changed, and only once the PR is marked ready.
+    # macOS minutes bill at 10x, so a draft PR keeps the fast Linux signal on every push while
+    # the expensive compile waits for the end of the cycle. (Moot once the repo is public.)
+    if: needs.changes.outputs.ios == 'true' && github.event.pull_request.draft == false
     runs-on: macos-latest        # ~10x the cost of Linux — that's why it's gated
     steps:
       - uses: actions/checkout@v4

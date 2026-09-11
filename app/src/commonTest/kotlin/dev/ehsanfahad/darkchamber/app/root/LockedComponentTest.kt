@@ -12,8 +12,12 @@ import dev.ehsanfahad.darkchamber.core.crypto.BiometricAuthenticator
 import dev.ehsanfahad.darkchamber.core.crypto.CryptographyKotlinEngine
 import dev.ehsanfahad.darkchamber.core.db.CatalogStore
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
+import kotlin.coroutines.CoroutineContext
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 import kotlinx.io.files.SystemTemporaryDirectory
@@ -49,13 +53,16 @@ class LockedComponentTest {
 
     private fun component(
         authenticator: BiometricAuthenticator = FakeBiometricAuthenticator(),
+        mainContext: CoroutineContext = UnconfinedTestDispatcher(),
+        workContext: CoroutineContext = UnconfinedTestDispatcher(),
         onUnlocked: (VaultBootstrap.OpenVault) -> Unit = {},
     ): DefaultLockedComponent =
         DefaultLockedComponent(
             componentContext = DefaultComponentContext(LifecycleRegistry()),
             bootstrap = bootstrap(),
             authenticator = authenticator,
-            mainContext = UnconfinedTestDispatcher(),
+            mainContext = mainContext,
+            workContext = workContext,
             onUnlocked = onUnlocked,
         )
 
@@ -80,6 +87,55 @@ class LockedComponentTest {
 
         c.skipBiometric()
         assertTrue(unlocked != null, "skipping biometric must still unlock")
+        unlocked?.session?.close()
+    }
+
+    // Argon2id at the production cost is ~1 s of CPU on a fast device. Run on the main context it
+    // freezes the UI — including the progress indicator that is meant to be reporting it — and
+    // risks an ANR on a slow one. These two pin the handoff by giving the work context a scheduler
+    // of its own: if the derivation ran inline on the main context, draining the main scheduler
+    // alone would already have produced the result.
+
+    @Test
+    fun creating_a_vault_derives_off_the_main_context() = runTest {
+        val workScheduler = TestCoroutineScheduler()
+        val c = component(
+            mainContext = StandardTestDispatcher(testScheduler),
+            workContext = StandardTestDispatcher(workScheduler),
+        )
+
+        c.submitCreate(pw())
+        advanceUntilIdle() // drain the main context only
+
+        assertEquals(LockStep.Create, c.state.value.step, "derivation must not have run on the main context")
+        assertTrue(c.state.value.busy, "the gate is busy while the work context holds the derivation")
+
+        workScheduler.advanceUntilIdle() // now let the derivation run
+        advanceUntilIdle() // and the state write land back on the main context
+
+        assertIs<LockStep.Recovery>(c.state.value.step, "the derivation's result still has to arrive")
+    }
+
+    @Test
+    fun unlocking_derives_off_the_main_context() = runTest {
+        component().submitCreate(pw()) // seed a vault on the default unconfined contexts
+        val workScheduler = TestCoroutineScheduler()
+        var unlocked: VaultBootstrap.OpenVault? = null
+        val c = component(
+            mainContext = StandardTestDispatcher(testScheduler),
+            workContext = StandardTestDispatcher(workScheduler),
+            onUnlocked = { unlocked = it },
+        )
+
+        c.submitPassphraseUnlock(pw())
+        advanceUntilIdle()
+
+        assertTrue(unlocked == null, "the passphrase must not be verified on the main context")
+
+        workScheduler.advanceUntilIdle()
+        advanceUntilIdle()
+
+        assertTrue(unlocked != null, "the unlock still has to complete")
         unlocked?.session?.close()
     }
 
