@@ -7,10 +7,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -71,6 +74,18 @@ internal fun GalleryScreen(
             shape = DarkChamberTheme.shapes.large,
             modifier = Modifier.align(Alignment.BottomEnd).padding(spacing.spaceLg),
         ) {
+            if (state.importing) {
+                // Indeterminate on purpose: the import reports no byte count yet, and a bar that
+                // invented one would be a lie (hard rule #6). What this does promise is only that
+                // work is still running — which a static label cannot, and a multi-minute import
+                // from a cloud provider otherwise reads as frozen.
+                CircularProgressIndicator(
+                    color = DarkChamberTheme.colors.onAccent,
+                    strokeWidth = 2.dp,
+                    modifier = Modifier.size(spacing.spaceMd),
+                )
+                Spacer(Modifier.width(spacing.spaceXs))
+            }
             Text(text = if (state.importing) "Importing…" else "Add file", style = DarkChamberTheme.typography.label)
         }
     }
