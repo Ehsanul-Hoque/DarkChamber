@@ -47,6 +47,22 @@ real Keystore/Keychain + biometric prompt need a device, which is what this chec
       (no promise beyond `docs/THREAT_MODEL.md`).
 - [ ] "I've saved it" advances; you cannot skip past the recovery key without confirming.
 
+### A2. The gate stays responsive and honest while it works
+
+Key derivation is the one slow step in the app (Argon2id, m=64 MiB) and it is easy to regress into
+blocking the UI thread — where the progress indicator freezes along with everything else, so a
+frozen spinner is the symptom to watch for.
+
+- [ ] Tapping **Create vault** shows a progress indicator, and that indicator **is actually
+      spinning** — the app is not frozen while the key is derived.
+- [ ] Same on **Unlock** with a passphrase.
+- [ ] The screen stays interactive while deriving (the passphrase field still scrolls / the
+      keyboard still dismisses).
+- [ ] The **recovery-key** step shows **no** progress indicator — nothing is running there.
+- [ ] The **Enable biometrics?** step shows one **only** while the system prompt is being set up.
+- [ ] The aperture **animates** between steps (closed → part-open) rather than jumping. Its opening
+      is the create/unlock progress (`docs/DESIGN.md` §7.3).
+
 ### B. Enable biometric (the per-use binding)
 - [ ] The **Enable biometrics?** step appears; the copy says the passphrase still works.
 - [ ] Tap **Enable biometrics** → a **real Face/Touch ID prompt appears** (this is the enrollment
@@ -75,6 +91,13 @@ real Keystore/Keychain + biometric prompt need a device, which is what this chec
       (asks to unlock), i.e. the session did not survive backgrounding.
 - [ ] Android only: **rotate** the device while unlocked → it stays **unlocked** (a configuration
       change keeps the retained session; only a real background locks).
+- [ ] Android only: unlocked → **Add file** → the picker opens and the app is stopped → pick a file
+      → you return to the **gallery**, still unlocked, and the file imports. Reaching a picker the
+      app launched itself is the one background that does not lock (`docs/THREAT_MODEL.md`); every
+      other background above still must.
+- [ ] Android only: unlocked → **Add file** → leave the picker open and **walk away for 3 minutes**
+      → the vault is **Locked** when you come back. The exemption is a deferral, not an exemption
+      without end.
 - [ ] No decrypted scratch survives a lock: after locking, the app-private `tmp/` holds nothing
       (there is no viewer yet, so this is mostly a forward guarantee — confirm `tmp/` is
       empty via `adb shell run-as … ls files/vault/tmp` on Android).
