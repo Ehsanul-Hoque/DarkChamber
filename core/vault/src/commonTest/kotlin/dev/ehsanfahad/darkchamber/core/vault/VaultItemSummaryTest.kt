@@ -64,12 +64,15 @@ class VaultItemSummaryTest {
     private fun fixture(mapContext: CoroutineContext = Dispatchers.Unconfined): Pair<VaultObjects, CatalogStore> {
         val catalog = (CatalogStore.create(testSqlDriver(), UnconfinedTestDispatcher()) as Outcome.Ok).value
         val rng = Random(11).let { r -> { n: Int -> r.nextBytes(n) } }
+        // Advances one tick per import, starting at 1_000. The listing is ordered by created_at, so
+        // a frozen clock would make every row a tie and any order assertion meaningless.
+        var now = 1_000L
         val objects = VaultObjects(
             session = newSession(),
             storage = newStorage(),
             catalog = catalog,
             codec = DchmCodec(engine),
-            clock = { 1_000L },
+            clock = { now++ },
             random = rng,
             mapContext = mapContext,
         )
@@ -177,7 +180,8 @@ class VaultItemSummaryTest {
             vo.importFile("second.txt", "text/plain", byteArrayOf(2))
             val both = awaitItem()
             assertEquals(2, both.size, "re-emits again")
-            assertEquals(listOf("first.txt", "second.txt"), both.map { (it.meta as Outcome.Ok).value.name })
+            // Newest first: the file just imported heads the listing the gallery draws.
+            assertEquals(listOf("second.txt", "first.txt"), both.map { (it.meta as Outcome.Ok).value.name })
             cancelAndIgnoreRemainingEvents()
         }
         catalog.close()

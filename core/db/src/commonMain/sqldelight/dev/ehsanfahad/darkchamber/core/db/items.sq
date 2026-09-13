@@ -21,11 +21,14 @@ VALUES (?, ?, ?, ?, ?, ?, ?);
 selectItemById:
 SELECT * FROM items WHERE id = ?;
 
+-- Newest first, both listings: these feed a gallery, and an import the user just made belongs at
+-- the top of the grid rather than off the bottom of it. items_created serves either direction, so
+-- this is an ORDER BY change only — no schema change, no migration.
 selectItemsByAlbum:
-SELECT * FROM items WHERE album_id = ? ORDER BY created_at;
+SELECT * FROM items WHERE album_id = ? ORDER BY created_at DESC;
 
 selectAllItems:
-SELECT * FROM items ORDER BY created_at;
+SELECT * FROM items ORDER BY created_at DESC;
 
 deleteItemById:
 DELETE FROM items WHERE id = ?;

@@ -76,13 +76,15 @@ class CatalogStoreTest {
     }
 
     @Test
-    fun listItems_all_is_ordered_by_created_at() {
+    fun listItems_all_is_newest_first() {
         store.upsertItem(item(1, createdAt = 300L)).unwrap()
         store.upsertItem(item(2, createdAt = 100L)).unwrap()
         store.upsertItem(item(3, createdAt = 200L)).unwrap()
 
+        // Newest first: the catalog feeds a gallery, and what a user just added is what they expect
+        // to see without scrolling. Oldest-first buries every import at the bottom of the grid.
         val ids = store.listItems().unwrap().map { it.created_at }
-        assertEquals(listOf(100L, 200L, 300L), ids)
+        assertEquals(listOf(300L, 200L, 100L), ids)
     }
 
     @Test
@@ -95,7 +97,8 @@ class CatalogStoreTest {
 
         val inA = store.listItems(albumA).unwrap()
         assertEquals(2, inA.size)
-        assertEquals(listOf(100L, 300L), inA.map { it.created_at })
+        // Same order as the unfiltered listing — an album must not sort differently from the vault.
+        assertEquals(listOf(300L, 100L), inA.map { it.created_at })
     }
 
     @Test
@@ -174,7 +177,7 @@ class CatalogStoreTest {
             assertEquals(listOf(100L), awaitItem().map { it.created_at }, "re-emits after insert")
 
             obsStore.upsertItem(item(2, createdAt = 50L)).unwrap()
-            assertEquals(listOf(50L, 100L), awaitItem().map { it.created_at }, "ordered by created_at")
+            assertEquals(listOf(100L, 50L), awaitItem().map { it.created_at }, "newest first")
 
             obsStore.deleteItem(byteArrayOf(1)).unwrap()
             assertEquals(listOf(50L), awaitItem().map { it.created_at }, "re-emits after delete")
