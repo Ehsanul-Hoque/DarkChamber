@@ -52,12 +52,20 @@ class VaultObjects(
      * `tmp/` and imported from there (see the re-openability probe below). **Fail-closed:** if the
      * row insert fails after the object is written, the object is deleted so no orphan ciphertext is
      * left behind.
+     *
+     * [onProgress] receives the **cumulative** count of payload bytes read so far — one monotonic
+     * run from 0 to `2 × size`, because both of the codec's passes are counted. The two-pass read is
+     * the container's business, not the user's, so this module reports bytes and nothing else: the
+     * caller owns the denominator, the percentage and the decision of what to draw when no size is
+     * known. A spilled one-shot source is copied to `tmp/` before any of this, and that copy is not
+     * counted — the end point must not depend on whether the source could be re-opened.
      */
     fun importObject(
         kind: Int,
         name: String,
         mime: String,
         chunkSize: Int = DchmFormat.DEFAULT_CHUNK_SIZE,
+        onProgress: (Long) -> Unit = {},
         openSource: () -> RawSource,
     ): Outcome<ByteArray> {
         // Probe re-openability BEFORE reading anything. The check cannot be done after a failure:
@@ -90,7 +98,7 @@ class VaultObjects(
             // Wrapped for the same reason as the spill path below: a lock can zeroize the session
             // mid-import, and a throw must not escape a function that promises an Outcome.
             return try {
-                storeObject(kind, name, mime, chunkSize, openSource)
+                storeObject(kind, name, mime, chunkSize, onProgress, openSource)
             } catch (e: Exception) {
                 Outcome.Err(VaultError.Unexpected(e))
             }
@@ -102,7 +110,7 @@ class VaultObjects(
         // throw would escape a function whose contract is that no exception crosses the boundary.
         return try {
             storage
-                .useSpilledCopy(held) { spilled -> storeObject(kind, name, mime, chunkSize, spilled) }
+                .useSpilledCopy(held) { spilled -> storeObject(kind, name, mime, chunkSize, onProgress, spilled) }
                 .flatMap { it }
         } catch (e: Exception) {
             try {
@@ -122,9 +130,21 @@ class VaultObjects(
         name: String,
         mime: String,
         chunkSize: Int,
+        onProgress: (Long) -> Unit,
         openSource: () -> RawSource,
-    ): Outcome<ByteArray> = storeGuarded(kind, name, mime, chunkSize) {
-        SessionGuardedSource(openSource()) { session.isOpen }
+    ): Outcome<ByteArray> {
+        // One counter for the whole import, declared here rather than inside the opener: the codec
+        // opens a fresh source per pass, so a per-source counter would restart halfway and the
+        // caller would watch the same bytes arrive twice.
+        var processed = 0L
+        return storeGuarded(kind, name, mime, chunkSize) {
+            SessionGuardedSource(
+                ProgressSource(openSource()) { n ->
+                    processed += n
+                    onProgress(processed)
+                },
+            ) { session.isOpen }
+        }
     }
 
     private fun storeGuarded(
