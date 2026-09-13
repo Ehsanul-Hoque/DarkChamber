@@ -63,6 +63,24 @@ frozen spinner is the symptom to watch for.
 - [ ] The aperture **animates** between steps (closed → part-open) rather than jumping. Its opening
       is the create/unlock progress (`docs/DESIGN.md` §7.3).
 
+### A3. Copying the recovery key
+
+The clipboard is a shared surface, and both platforms do something by default that we suppress. These
+checks confirm the suppression actually took effect — the copy itself working proves nothing.
+
+- [ ] **Copy** puts the recovery key on the clipboard: paste it into a notes app and it matches the
+      key shown, character for character.
+- [ ] The confirmation copy says what really happens (it clears in about a minute) and promises
+      nothing more — no claim that the clipboard is private or secure.
+- [ ] **Android 13+:** copying shows **no preview toast containing the key**, and the key does not
+      appear in the keyboard's clipboard history.
+- [ ] **Wait 60 seconds, then paste again.** The key is gone — an unrelated paste or nothing at all,
+      never the key.
+- [ ] **iOS, needs a second signed-in Apple device:** copy the key, then within two minutes try to
+      paste on a paired Mac or iPad. **Nothing appears.** Universal Clipboard must not carry it —
+      this is the check that a plain pasteboard write would fail.
+- [ ] "Write it down" guidance is still present. Copying is an addition, not a replacement.
+
 ### B. Enable biometric (the per-use binding)
 - [ ] The **Enable biometrics?** step appears; the copy says the passphrase still works.
 - [ ] Tap **Enable biometrics** → a **real Face/Touch ID prompt appears** (this is the enrollment

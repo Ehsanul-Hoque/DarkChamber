@@ -62,6 +62,31 @@ Tick each line. A failure here is a release blocker.
       "Importing…" — and because collection timing varies, a single successful pick does not prove
       the reference is held.
 
+### Batch import (both platforms)
+
+Run these against the **photo picker** and then repeat the first two against **Add files**, since the
+two pickers reach the same queue by different platform APIs.
+
+- [ ] Select **20 photos in one gesture**. All 20 import, the count shown matches what you picked,
+      and the gallery holds 20 more tiles when it finishes.
+- [ ] The progress reports **both levels**: a file count that advances ("12 of 20"), and for each
+      file either a bar that fills once or an indeterminate indicator — never a bar that fills,
+      resets and fills again (the container reads each file twice; the UI must not show that twice).
+- [ ] Include **one file from a cloud provider** (Drive / iCloud Drive) in a batch. It completes —
+      this is the one-shot source that exercises the spill path, now inside a batch.
+- [ ] Include a file you have **no permission to read** if you can arrange one. The batch finishes
+      the others and reports honestly how many could not be read; it does **not** stop at the failure.
+- [ ] The notice **"Keep DarkChamber open — locking the vault or leaving the app stops the import"**
+      is visible for the whole import, not just at the start.
+- [ ] **Cancel mid-batch** while a large video is encrypting. It stops within a second or two, not
+      at the end of that file; already-imported items stay in the gallery; the app-private `tmp/` is
+      empty afterwards.
+- [ ] **Lock mid-batch** (tap Lock, or background the app). After unlocking, every item imported
+      before the lock is present and intact, and there is no half-written item: `objects/` holds only
+      complete `.dchm` files, no catalog row lacks a blob, and `tmp/` is empty.
+- [ ] New tiles arrive **newest-first, at the top of the grid, and visibly animate in** as each
+      import commits — you can tell which tile just landed without counting.
+
 ### Persistence
 
 - [ ] Import a file, then **kill the app** (swipe away / stop from Xcode) and relaunch. The gate
