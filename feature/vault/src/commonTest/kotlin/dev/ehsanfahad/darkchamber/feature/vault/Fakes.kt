@@ -6,6 +6,7 @@ import dev.ehsanfahad.darkchamber.core.model.VaultItemKind
 import dev.ehsanfahad.darkchamber.core.vault.ObjectMeta
 import dev.ehsanfahad.darkchamber.core.vault.VaultItemSummary
 import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
+import dev.ehsanfahad.darkchamber.feature.vault.api.PhotoPicker
 import dev.ehsanfahad.darkchamber.feature.vault.api.PickedFile
 import dev.ehsanfahad.darkchamber.feature.vault.domain.VaultItems
 import kotlinx.coroutines.flow.Flow
@@ -25,6 +26,25 @@ internal class FakeFilePicker(
         private set
 
     override suspend fun pickFiles(): List<PickedFile> {
+        calls++
+        failure?.let { throw it }
+        return result
+    }
+}
+
+/**
+ * A photo picker that hands back whatever the test configured, or cancels, or refuses to open.
+ * Mirrors [FakeFilePicker] on purpose: the two seams differ in how they present, never in what they
+ * return.
+ */
+internal class FakePhotoPicker(
+    private val result: List<PickedFile> = emptyList(),
+    private val failure: Throwable? = null,
+) : PhotoPicker {
+    var calls = 0
+        private set
+
+    override suspend fun pickPhotos(): List<PickedFile> {
         calls++
         failure?.let { throw it }
         return result
