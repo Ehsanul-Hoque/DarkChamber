@@ -41,11 +41,12 @@ class IosFilePicker(private val presenter: () -> UIViewController?) : FilePicker
      */
     private val activeDelegates = mutableSetOf<PickerDelegate>()
 
-    override suspend fun pickFile(): PickedFile? {
+    override suspend fun pickFiles(): List<PickedFile> {
         val host = presenter() ?: error("no view controller to present the picker from")
 
-        val url = suspendCancellableCoroutine<NSURL?> { continuation ->
+        val urls = suspendCancellableCoroutine { continuation ->
             val controller = UIDocumentPickerViewController(forOpeningContentTypes = listOf(UTTypeItem))
+            controller.allowsMultipleSelection = true
             var delegate: PickerDelegate? = null
             delegate = PickerDelegate { picked ->
                 // Released once the picker has spoken; UIKit zeroes its weak reference, so a stray
@@ -60,37 +61,43 @@ class IosFilePicker(private val presenter: () -> UIViewController?) : FilePicker
                 controller.dismissViewControllerAnimated(true, null)
             }
             host.presentViewController(controller, animated = true, completion = null)
-        } ?: return null // the user backed out
-
-        val scoped = url.startAccessingSecurityScopedResource()
-        val path = url.path ?: run {
-            if (scoped) url.stopAccessingSecurityScopedResource()
-            error("the picked file has no filesystem path")
         }
-        return IosPickedFile(url = url, path = path, scoped = scoped)
+
+        // A URL we cannot open is dropped rather than failing the pick: one odd file among twenty
+        // must not cost the user the other nineteen. Its scoped access is handed straight back.
+        return urls.mapNotNull { url ->
+            val scoped = url.startAccessingSecurityScopedResource()
+            val path = url.path
+            if (path == null) {
+                if (scoped) url.stopAccessingSecurityScopedResource()
+                null
+            } else {
+                IosPickedFile(url = url, path = path, scoped = scoped)
+            }
+        }
     }
 }
 
 /**
  * Bridges the picker's delegate callbacks into the coroutine. Both outcomes — a pick and a
- * cancellation — resume exactly once; `null` means cancelled, which the import treats as an ordinary
- * outcome rather than a failure.
+ * cancellation — resume exactly once; an empty list means cancelled, which the import treats as an
+ * ordinary outcome rather than a failure.
  */
-private class PickerDelegate(private val onResult: (NSURL?) -> Unit) : NSObject(), UIDocumentPickerDelegateProtocol {
+private class PickerDelegate(private val onResult: (List<NSURL>) -> Unit) : NSObject(), UIDocumentPickerDelegateProtocol {
     private var resumed = false
 
     override fun documentPicker(controller: UIDocumentPickerViewController, didPickDocumentsAtURLs: List<*>) {
-        deliver(didPickDocumentsAtURLs.firstOrNull() as? NSURL)
+        deliver(didPickDocumentsAtURLs.filterIsInstance<NSURL>())
     }
 
     override fun documentPickerWasCancelled(controller: UIDocumentPickerViewController) {
-        deliver(null)
+        deliver(emptyList())
     }
 
-    private fun deliver(url: NSURL?) {
+    private fun deliver(urls: List<NSURL>) {
         if (resumed) return
         resumed = true
-        onResult(url)
+        onResult(urls)
     }
 }
 

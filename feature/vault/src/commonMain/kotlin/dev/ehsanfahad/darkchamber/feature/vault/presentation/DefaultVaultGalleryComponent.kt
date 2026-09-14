@@ -6,6 +6,7 @@ import com.arkivanov.decompose.value.Value
 import com.arkivanov.essenty.lifecycle.doOnDestroy
 import dev.ehsanfahad.darkchamber.core.logging.logVaultError
 import dev.ehsanfahad.darkchamber.core.model.VaultError
+import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryError
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryState
@@ -23,6 +24,7 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.launch
 import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * The gallery's state holder, in the session gate's presentation style
@@ -36,6 +38,7 @@ import kotlin.coroutines.CoroutineContext
 internal class DefaultVaultGalleryComponent(
     componentContext: ComponentContext,
     observeGallery: ObserveGallery,
+    private val picker: FilePicker,
     private val runImport: ImportFile,
     mainContext: CoroutineContext = Dispatchers.Main,
 ) : VaultGalleryComponent, ComponentContext by componentContext {
@@ -70,16 +73,38 @@ internal class DefaultVaultGalleryComponent(
         _state.value = _state.value.copy(importing = true, error = null)
 
         scope.launch {
-            val result = runImport()
-            _state.value = when (result) {
-                // The new row arrives through the listing flow; nothing to insert by hand.
-                is ImportResult.Imported -> _state.value.copy(importing = false)
-                is ImportResult.Cancelled -> _state.value.copy(importing = false)
-                is ImportResult.Failed -> {
-                    logVaultError(IMPORT_STAGE, result.error)
-                    _state.value.copy(importing = false, error = GalleryError.ImportFailed)
+            val picked = try {
+                picker.pickFiles()
+            } catch (e: CancellationException) {
+                // The unlocked subtree was destroyed (a lock) while the picker was up. Cancellation
+                // is not an import failure and must not be swallowed into one.
+                throw e
+            } catch (e: Exception) {
+                // The picker could not even be shown — no grant was taken, nothing to close.
+                logVaultError(IMPORT_STAGE, VaultError.Unexpected(e))
+                _state.value = _state.value.copy(importing = false, error = GalleryError.ImportFailed)
+                return@launch
+            }
+
+            // An empty pick is the user backing out. Not an error, and no banner.
+            var failed = false
+            for (file in picked) {
+                // Sequential, and one bad file does not end the batch: the other forty-nine were
+                // still chosen deliberately. The rows themselves arrive through the listing flow,
+                // so each import shows up in the grid as it commits.
+                when (val result = runImport(file)) {
+                    is ImportResult.Imported -> Unit
+                    is ImportResult.Failed -> {
+                        logVaultError(IMPORT_STAGE, result.error)
+                        failed = true
+                    }
                 }
             }
+
+            _state.value = _state.value.copy(
+                importing = false,
+                error = if (failed) GalleryError.ImportFailed else _state.value.error,
+            )
         }
     }
 

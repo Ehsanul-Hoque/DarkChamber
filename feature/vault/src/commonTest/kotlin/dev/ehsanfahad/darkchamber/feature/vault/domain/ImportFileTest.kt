@@ -2,7 +2,6 @@ package dev.ehsanfahad.darkchamber.feature.vault.domain
 
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
-import dev.ehsanfahad.darkchamber.feature.vault.FakeFilePicker
 import dev.ehsanfahad.darkchamber.feature.vault.FakePickedFile
 import dev.ehsanfahad.darkchamber.feature.vault.FakeVaultItems
 import dev.ehsanfahad.darkchamber.feature.vault.ThrowingVaultItems
@@ -20,15 +19,15 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class ImportFileTest {
 
-    private fun importFile(picker: FakeFilePicker, vault: VaultItems) =
-        ImportFile(picker = picker, vault = vault, ioContext = UnconfinedTestDispatcher())
+    private fun importFile(vault: VaultItems) =
+        ImportFile(vault = vault, ioContext = UnconfinedTestDispatcher())
 
     @Test
     fun a_picked_file_is_imported_under_its_own_name_and_mime() = runTest {
         val picked = FakePickedFile(name = "notes.pdf", mime = "application/pdf")
         val vault = FakeVaultItems()
 
-        val result = importFile(FakeFilePicker(picked), vault)()
+        val result = importFile(vault)(picked)
 
         assertIs<ImportResult.Imported>(result)
         assertEquals(1, vault.importCalls)
@@ -46,22 +45,11 @@ class ImportFileTest {
         val picked = FakePickedFile(name = "remote.mov", mime = "video/quicktime", size = null)
         val vault = FakeVaultItems()
 
-        val result = importFile(FakeFilePicker(picked), vault)()
+        val result = importFile(vault)(picked)
 
         assertIs<ImportResult.Imported>(result)
         assertEquals("remote.mov", vault.lastName)
         assertTrue(picked.closed, "the platform grant is released")
-    }
-
-    /** Changing your mind is an ordinary outcome, not a failure banner. */
-    @Test
-    fun cancelling_the_picker_imports_nothing_and_is_not_an_error() = runTest {
-        val vault = FakeVaultItems()
-
-        val result = importFile(FakeFilePicker(result = null), vault)()
-
-        assertIs<ImportResult.Cancelled>(result)
-        assertEquals(0, vault.importCalls, "nothing is imported on cancel")
     }
 
     @Test
@@ -69,7 +57,7 @@ class ImportFileTest {
         val picked = FakePickedFile()
         val vault = FakeVaultItems(importResult = Outcome.Err(VaultError.Crypto.IntegrityFailure))
 
-        val result = importFile(FakeFilePicker(picked), vault)()
+        val result = importFile(vault)(picked)
 
         assertIs<ImportResult.Failed>(result)
         assertEquals(VaultError.Crypto.IntegrityFailure, result.error, "the vault's error is not flattened")
@@ -80,7 +68,7 @@ class ImportFileTest {
     fun a_thrown_import_is_mapped_and_still_releases_the_grant() = runTest {
         val picked = FakePickedFile()
 
-        val result = importFile(FakeFilePicker(picked), ThrowingVaultItems())()
+        val result = importFile(ThrowingVaultItems())(picked)
 
         assertIs<ImportResult.Failed>(result)
         assertIs<VaultError.Unexpected>(result.error, "a throw that escaped a lower layer is Unexpected")
@@ -95,26 +83,10 @@ class ImportFileTest {
     @Test
     fun cancellation_propagates_and_still_releases_the_grant() = runTest {
         val picked = FakePickedFile()
-        val importer = ImportFile(
-            picker = FakeFilePicker(picked),
-            vault = CancellingVaultItems(),
-            ioContext = UnconfinedTestDispatcher(),
-        )
+        val importer = ImportFile(vault = CancellingVaultItems(), ioContext = UnconfinedTestDispatcher())
 
-        assertFailsWith<CancellationException> { importer() }
+        assertFailsWith<CancellationException> { importer(picked) }
         assertTrue(picked.closed, "a cancelled import must still release the grant")
-    }
-
-    /** A picker that cannot even be shown is a failure, but there is no grant to release. */
-    @Test
-    fun a_picker_that_fails_to_open_is_a_failure_not_a_crash() = runTest {
-        val vault = FakeVaultItems()
-
-        val result = importFile(FakeFilePicker(failure = IllegalStateException("no activity")), vault)()
-
-        assertIs<ImportResult.Failed>(result)
-        assertIs<VaultError.Unexpected>(result.error)
-        assertEquals(0, vault.importCalls)
     }
 }
 

@@ -33,7 +33,8 @@ fun vaultGalleryComponent(
     return DefaultVaultGalleryComponent(
         componentContext = componentContext,
         observeGallery = ObserveGallery(items),
-        runImport = ImportFile(picker = picker, vault = items),
+        picker = picker,
+        runImport = ImportFile(vault = items),
         mainContext = mainContext,
     )
 }

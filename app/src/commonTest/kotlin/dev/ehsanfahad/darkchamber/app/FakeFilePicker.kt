@@ -8,5 +8,5 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.PickedFile
  * gallery — but never drive an import; the real platform pickers live in `androidMain`/`iosMain`.
  */
 class FakeFilePicker : FilePicker {
-    override suspend fun pickFile(): PickedFile? = null
+    override suspend fun pickFiles(): List<PickedFile> = emptyList()
 }

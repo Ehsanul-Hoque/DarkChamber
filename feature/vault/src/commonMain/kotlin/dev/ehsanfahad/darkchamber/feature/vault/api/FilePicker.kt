@@ -3,7 +3,7 @@ package dev.ehsanfahad.darkchamber.feature.vault.api
 import kotlinx.io.RawSource
 
 /**
- * The platform seam for choosing a file to import — Android's Storage Access Framework, iOS's
+ * The platform seam for choosing files to import — Android's Storage Access Framework, iOS's
  * document picker. The implementations live in the app module, which owns the platform host, the
  * same way the biometric authenticator's do; this module only states the contract.
  *
@@ -14,10 +14,14 @@ interface FilePicker {
     /**
      * Present the picker and suspend until the user chooses or cancels.
      *
-     * Returns `null` when the user cancels — a cancellation is an ordinary outcome, not an error,
-     * and must not surface as a failure banner. Throws only if the picker itself cannot be shown.
+     * Returns the files in the order the platform reported them, or an **empty list** when the user
+     * cancels — a cancellation is an ordinary outcome, not an error, and must not surface as a
+     * failure banner. Throws only if the picker itself cannot be shown.
+     *
+     * Every returned file holds a platform grant, so the caller must close **all** of them, not
+     * only the ones it manages to import.
      */
-    suspend fun pickFile(): PickedFile?
+    suspend fun pickFiles(): List<PickedFile>
 }
 
 /**

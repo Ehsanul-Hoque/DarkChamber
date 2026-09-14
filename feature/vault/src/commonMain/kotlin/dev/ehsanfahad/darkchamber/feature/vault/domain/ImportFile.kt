@@ -2,50 +2,37 @@ package dev.ehsanfahad.darkchamber.feature.vault.domain
 
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
-import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
+import dev.ehsanfahad.darkchamber.feature.vault.api.PickedFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.cancellation.CancellationException
 
-/** What came of an import attempt. Cancelling is its own outcome, distinct from success and failure. */
+/** What came of an import attempt. */
 internal sealed interface ImportResult {
     data object Imported : ImportResult
-
-    /** The user dismissed the picker. Nothing happened; nothing to report. */
-    data object Cancelled : ImportResult
 
     data class Failed(val error: VaultError) : ImportResult
 }
 
 /**
- * Pick a file and stream it into the vault.
+ * Stream one already-picked file into the vault.
+ *
+ * Choosing the file is the caller's job: a pick can yield many files, and each of them is one call
+ * to this — the step a batch repeats.
  *
  * The picked file is closed in a `finally` on **every** path — success, vault failure, or a throw —
  * because closing releases the platform grant (an Android URI permission, an iOS security-scoped
  * resource) that would otherwise leak for the life of the process.
  *
- * The import itself is blocking and does real cryptographic work over the whole payload, so it runs
- * on [ioContext], off whatever thread drove the intent. The picker stays on the caller's context:
- * presenting UI is a main-thread affair.
+ * The import is blocking and does real cryptographic work over the whole payload, so it runs on
+ * [ioContext], off whatever thread drove the intent.
  */
 internal class ImportFile(
-    private val picker: FilePicker,
     private val vault: VaultItems,
     private val ioContext: CoroutineContext = Dispatchers.Default,
 ) {
-    suspend operator fun invoke(): ImportResult {
-        val picked = try {
-            picker.pickFile() ?: return ImportResult.Cancelled
-        } catch (e: CancellationException) {
-            // The unlocked subtree was destroyed (a lock) while the picker was up. Coroutine
-            // cancellation is not an import failure and must not be swallowed into one.
-            throw e
-        } catch (e: Exception) {
-            // The picker could not even be shown — no grant was taken, so there is nothing to close.
-            return ImportResult.Failed(VaultError.Unexpected(e))
-        }
-
+    suspend operator fun invoke(picked: PickedFile): ImportResult {
         return try {
             when (val result = withContext(ioContext) { vault.import(picked.name, picked.mime, picked::openSource) }) {
                 is Outcome.Ok -> ImportResult.Imported

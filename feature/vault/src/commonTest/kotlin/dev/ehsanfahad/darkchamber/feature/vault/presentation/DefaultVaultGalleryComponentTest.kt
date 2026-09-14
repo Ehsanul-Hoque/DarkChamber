@@ -45,7 +45,8 @@ class DefaultVaultGalleryComponentTest {
         return DefaultVaultGalleryComponent(
             componentContext = DefaultComponentContext(lifecycle),
             observeGallery = ObserveGallery(vault),
-            runImport = ImportFile(picker = picker, vault = vault, ioContext = dispatcher),
+            picker = picker,
+            runImport = ImportFile(vault = vault, ioContext = dispatcher),
             mainContext = dispatcher,
         )
     }
@@ -123,14 +124,66 @@ class DefaultVaultGalleryComponentTest {
     }
 
     @Test
+    fun every_picked_file_is_imported_in_the_order_it_was_picked() = runTest {
+        val vault = FakeVaultItems()
+        val picked = listOf(
+            FakePickedFile(name = "one.jpg"),
+            FakePickedFile(name = "two.jpg"),
+            FakePickedFile(name = "three.jpg"),
+        )
+        val component = component(vault, picker = FakeFilePicker(picked))
+
+        component.importFile()
+
+        assertEquals(3, vault.importCalls, "a multi-select imports every file, not just the first")
+        assertEquals(listOf("one.jpg", "two.jpg", "three.jpg"), vault.importedNames, "order is preserved")
+        assertTrue(picked.all { it.closed }, "every grant is released, not only the last")
+        assertNull(component.state.value.error)
+        assertFalse(component.state.value.importing)
+    }
+
+    /** One unreadable file must not cost the user the other forty-nine. */
+    @Test
+    fun a_file_that_fails_does_not_stop_the_rest_of_the_batch() = runTest {
+        val vault = FakeVaultItems(failFor = setOf("broken.jpg"))
+        val picked = listOf(
+            FakePickedFile(name = "good.jpg"),
+            FakePickedFile(name = "broken.jpg"),
+            FakePickedFile(name = "later.jpg"),
+        )
+        val component = component(vault, picker = FakeFilePicker(picked))
+
+        component.importFile()
+
+        assertEquals(listOf("good.jpg", "broken.jpg", "later.jpg"), vault.importedNames, "the batch continues")
+        assertEquals(GalleryError.ImportFailed, component.state.value.error, "the failure is still reported")
+        assertTrue(picked.all { it.closed }, "a failure mid-batch does not leak the remaining grants")
+        assertFalse(component.state.value.importing)
+    }
+
+    @Test
     fun cancelling_the_picker_leaves_no_error_behind() = runTest {
         val vault = FakeVaultItems()
-        val component = component(vault, picker = FakeFilePicker(result = null))
+        // An empty list is how the seam says "the user backed out" — not an error, not a failure.
+        val component = component(vault, picker = FakeFilePicker(emptyList()))
 
         component.importFile()
 
         assertNull(component.state.value.error, "a cancelled picker is not a failure")
         assertFalse(component.state.value.importing)
+        assertEquals(0, vault.importCalls)
+    }
+
+    /** A picker that cannot even be shown is a failure, but there is no grant to release. */
+    @Test
+    fun a_picker_that_fails_to_open_is_reported_not_crashed() = runTest {
+        val vault = FakeVaultItems()
+        val component = component(vault, picker = FakeFilePicker(failure = IllegalStateException("no activity")))
+
+        component.importFile()
+
+        assertEquals(GalleryError.ImportFailed, component.state.value.error)
+        assertFalse(component.state.value.importing, "a picker failure still clears the flag")
         assertEquals(0, vault.importCalls)
     }
 
@@ -144,7 +197,8 @@ class DefaultVaultGalleryComponentTest {
         val component = DefaultVaultGalleryComponent(
             componentContext = DefaultComponentContext(lifecycle),
             observeGallery = ObserveGallery(vault),
-            runImport = ImportFile(picker = picker, vault = vault, ioContext = dispatcher),
+            picker = picker,
+            runImport = ImportFile(vault = vault, ioContext = dispatcher),
             mainContext = dispatcher,
         )
 

@@ -18,7 +18,7 @@ import kotlin.coroutines.resume
  * Android's Storage Access Framework as the [FilePicker] seam. Mirrors how the biometric
  * authenticator reaches the current `FragmentActivity` — through a holder, never a static reference.
  *
- * The picker asks for a **read** grant on one file the user chose. The grant is deliberately *not*
+ * The picker asks for a **read** grant on the files the user chose. The grant is deliberately *not*
  * made persistable: the bytes are read once, straight into a `.dchm` object, so holding a standing
  * permission on someone's file after the import would be access we do not need.
  */
@@ -27,19 +27,19 @@ class AndroidFilePicker(
     private val handoff: SystemUiHandoff,
 ) : FilePicker {
 
-    override suspend fun pickFile(): PickedFile? {
+    override suspend fun pickFiles(): List<PickedFile> {
         val host = activity() ?: error("no activity to present the picker from")
 
         // SAF is a separate activity, so launching it *stops* ours. Without this the on-background
         // auto-lock tears the session down mid-pick and the result arrives with nothing to receive
         // it. The exemption covers the round-trip only, and is released on every path.
-        val uri = handoff.during { awaitPickedUri(host) } ?: return null // the user backed out
+        val uris = handoff.during { awaitPickedUris(host) } // empty ⇒ the user backed out
 
-        return AndroidPickedFile(host.contentResolver, uri)
+        return uris.map { AndroidPickedFile(host.contentResolver, it) }
     }
 
-    private suspend fun awaitPickedUri(host: FragmentActivity): Uri? =
-        suspendCancellableCoroutine<Uri?> { continuation ->
+    private suspend fun awaitPickedUris(host: FragmentActivity): List<Uri> =
+        suspendCancellableCoroutine { continuation ->
             // Registered against the registry directly rather than via registerForActivityResult:
             // the latter must be called before the activity starts, and we are launching from a
             // live screen. The launcher is unregistered on every path, including cancellation.
@@ -49,8 +49,10 @@ class AndroidFilePicker(
                 // use, and hashes can repeat. The component's guard makes overlapping picks
                 // unlikely, but a crash is a poor way to find out it was only unlikely.
                 "darkchamber-import-${nextRequestKey()}",
-                ActivityResultContracts.OpenDocument(),
-            ) { picked: Uri? ->
+                // OpenMultipleDocuments delivers an empty list on cancel, which is exactly the
+                // seam's "the user backed out" — no separate null case to carry.
+                ActivityResultContracts.OpenMultipleDocuments(),
+            ) { picked: List<Uri> ->
                 launcher?.unregister()
                 continuation.resume(picked)
             }

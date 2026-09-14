@@ -15,13 +15,15 @@ import kotlinx.io.RawSource
 
 /** A picker that hands back whatever the test configured, or cancels, or refuses to open. */
 internal class FakeFilePicker(
-    private val result: PickedFile? = null,
+    private val result: List<PickedFile> = emptyList(),
     private val failure: Throwable? = null,
 ) : FilePicker {
+    constructor(single: PickedFile) : this(listOf(single))
+
     var calls = 0
         private set
 
-    override suspend fun pickFile(): PickedFile? {
+    override suspend fun pickFiles(): List<PickedFile> {
         calls++
         failure?.let { throw it }
         return result
@@ -61,8 +63,11 @@ internal class FakePickedFile(
  */
 internal class FakeVaultItems(
     private val importResult: Outcome<ByteArray> = Outcome.Ok(byteArrayOf(7)),
+    /** Names that fail instead, so a batch can be given one bad file among good ones. */
+    private val failFor: Set<String> = emptySet(),
 ) : VaultItems {
     val summaries = MutableStateFlow<List<VaultItemSummary>>(emptyList())
+    val importedNames = mutableListOf<String>()
     var importCalls = 0
         private set
     var lastName: String? = null
@@ -81,8 +86,9 @@ internal class FakeVaultItems(
         importCalls++
         lastName = name
         lastMime = mime
+        importedNames += name
         openSource() // the real implementation reads it; make sure the fake exercises the opener too
-        return importResult
+        return if (name in failFor) Outcome.Err(VaultError.Io(RuntimeException("unreadable"))) else importResult
     }
 }
 
