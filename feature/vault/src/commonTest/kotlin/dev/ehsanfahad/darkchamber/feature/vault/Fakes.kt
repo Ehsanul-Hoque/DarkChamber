@@ -88,6 +88,8 @@ internal class FakeVaultItems(
     private val failFor: Set<String> = emptySet(),
     /** Cumulative byte counts to report while importing, standing in for the codec's two passes. */
     private val bytesPerImport: List<Long> = emptyList(),
+    /** Runs as each file starts, so a test can cancel or lock partway through a batch. */
+    private val onImport: (String) -> Unit = {},
 ) : VaultItems {
     val summaries = MutableStateFlow<List<VaultItemSummary>>(emptyList())
     val importedNames = mutableListOf<String>()
@@ -109,13 +111,18 @@ internal class FakeVaultItems(
         name: String,
         mime: String,
         onProgress: (Long) -> Unit,
+        isActive: () -> Boolean,
         openSource: () -> RawSource,
     ): Outcome<ByteArray> {
         importCalls++
         lastName = name
         lastMime = mime
         importedNames += name
+        onImport(name)
         openSource() // the real implementation reads it; make sure the fake exercises the opener too
+        // The real guard aborts a read once the predicate goes false; the fake checks once, which is
+        // enough to prove the caller is wired to it.
+        if (!isActive()) return Outcome.Err(VaultError.Io(RuntimeException("stopped")))
         bytesPerImport.forEach(onProgress)
         return if (name in failFor) Outcome.Err(VaultError.Io(RuntimeException("unreadable"))) else importResult
     }
@@ -129,6 +136,7 @@ internal class ThrowingVaultItems : VaultItems {
         name: String,
         mime: String,
         onProgress: (Long) -> Unit,
+        isActive: () -> Boolean,
         openSource: () -> RawSource,
     ): Outcome<ByteArray> = throw IllegalStateException("import exploded")
 }
@@ -141,6 +149,7 @@ internal class CancellingVaultItems : VaultItems {
         name: String,
         mime: String,
         onProgress: (Long) -> Unit,
+        isActive: () -> Boolean,
         openSource: () -> RawSource,
     ): Outcome<ByteArray> = throw CancellationException("the session was torn down mid-import")
 }

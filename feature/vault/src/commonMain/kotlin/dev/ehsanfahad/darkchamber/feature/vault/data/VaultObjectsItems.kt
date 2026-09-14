@@ -26,6 +26,7 @@ internal class VaultObjectsItems(private val objects: VaultObjects) : VaultItems
         name: String,
         mime: String,
         onProgress: (Long) -> Unit,
+        isActive: () -> Boolean,
         openSource: () -> RawSource,
     ): Outcome<ByteArray> =
         objects.importObject(
@@ -33,6 +34,7 @@ internal class VaultObjectsItems(private val objects: VaultObjects) : VaultItems
             name = name,
             mime = mime,
             onProgress = onProgress,
+            isActive = isActive,
             openSource = openSource,
         )
 }

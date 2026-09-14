@@ -32,10 +32,14 @@ internal class ImportFile(
     private val vault: VaultItems,
     private val ioContext: CoroutineContext = Dispatchers.Default,
 ) {
-    suspend operator fun invoke(picked: PickedFile, onProgress: (Long) -> Unit = {}): ImportResult {
+    suspend operator fun invoke(
+        picked: PickedFile,
+        isActive: () -> Boolean = { true },
+        onProgress: (Long) -> Unit = {},
+    ): ImportResult {
         return try {
             val imported = withContext(ioContext) {
-                vault.import(picked.name, picked.mime, onProgress, picked::openSource)
+                vault.import(picked.name, picked.mime, onProgress, isActive, picked::openSource)
             }
             when (imported) {
                 is Outcome.Ok -> ImportResult.Imported

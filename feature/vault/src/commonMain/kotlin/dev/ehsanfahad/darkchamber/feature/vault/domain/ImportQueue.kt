@@ -1,6 +1,6 @@
 package dev.ehsanfahad.darkchamber.feature.vault.domain
 
-import dev.ehsanfahad.darkchamber.core.model.VaultError
+import dev.ehsanfahad.darkchamber.feature.vault.api.FailedImport
 import dev.ehsanfahad.darkchamber.feature.vault.api.PickedFile
 
 /**
@@ -22,13 +22,8 @@ internal data class ImportProgress(
         "ImportProgress(index=$index, total=$total, name=${name.length} chars, fileFraction=$fileFraction)"
 }
 
-/** A file the batch could not import, and why. */
-internal data class FailedFile(val name: String, val error: VaultError) {
-    override fun toString(): String = "FailedFile(name=${name.length} chars, error=$error)"
-}
-
 /** What a finished batch amounts to: how many landed, and which ones did not. */
-internal data class ImportSummary(val imported: Int, val failed: List<FailedFile>) {
+internal data class ImportSummary(val imported: Int, val failed: List<FailedImport>) {
     override fun toString(): String = "ImportSummary(imported=$imported, failed=${failed.size})"
 }
 
@@ -43,9 +38,9 @@ internal data class ImportSummary(val imported: Int, val failed: List<FailedFile
  * rest continue: the other forty-nine were chosen just as deliberately. The summary says what
  * landed and what did not, so a single bad file can never present itself as a failed import.
  *
- * **A cancellation is not a failure.** A lock (or a user cancel) cancels the coroutine, which
- * propagates — recording it as a failed file would tell the user their photo could not be imported
- * when in fact they locked the vault.
+ * **A cancellation is not a failure.** [isActive] going false stops the batch — within a read, not
+ * at the end of the current file — and the interrupted file is recorded in neither list: nothing
+ * was wrong with it. A lock cancels the coroutine instead, which propagates.
  *
  * Every [PickedFile] holds a platform grant. [ImportFile] closes the one it is handed, on every
  * path; the ones a stopped batch never reached are closed here.
@@ -54,17 +49,18 @@ internal class ImportQueue(private val importFile: ImportFile) {
 
     suspend operator fun invoke(
         files: List<PickedFile>,
+        isActive: () -> Boolean = { true },
         onProgress: (ImportProgress) -> Unit = {},
     ): ImportSummary {
         var imported = 0
-        val failed = mutableListOf<FailedFile>()
+        val failed = mutableListOf<FailedImport>()
 
         // Incremented *before* the import runs: from that point the file is ImportFile's to close,
         // so a cancellation mid-file must not close it a second time here (on iOS an unbalanced
         // stopAccessingSecurityScopedResource is a real bug, not a no-op).
         var next = 0
         try {
-            while (next < files.size) {
+            while (next < files.size && isActive()) {
                 val file = files[next]
                 val index = next
                 next++
@@ -72,12 +68,13 @@ internal class ImportQueue(private val importFile: ImportFile) {
                 val total = file.size
                 onProgress(ImportProgress(index, files.size, file.name, total.startingFraction()))
 
-                val result = importFile(file) { bytes ->
+                val result = importFile(file, isActive) { bytes ->
                     onProgress(ImportProgress(index, files.size, file.name, total.fractionAt(bytes)))
                 }
                 when (result) {
                     is ImportResult.Imported -> imported++
-                    is ImportResult.Failed -> failed += FailedFile(file.name, result.error)
+                    // A file that stopped because the user stopped the batch is not a broken file.
+                    is ImportResult.Failed -> if (isActive()) failed += FailedImport(file.name, result.error)
                 }
             }
         } finally {

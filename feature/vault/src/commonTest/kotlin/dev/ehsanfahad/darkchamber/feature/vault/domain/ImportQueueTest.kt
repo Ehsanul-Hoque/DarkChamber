@@ -4,6 +4,7 @@ import dev.ehsanfahad.darkchamber.core.model.VaultError
 import dev.ehsanfahad.darkchamber.feature.vault.CancellingVaultItems
 import dev.ehsanfahad.darkchamber.feature.vault.FakePickedFile
 import dev.ehsanfahad.darkchamber.feature.vault.FakeVaultItems
+import dev.ehsanfahad.darkchamber.feature.vault.api.FailedImport
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
@@ -133,7 +134,7 @@ class ImportQueueTest {
     @Test
     fun a_file_name_never_reaches_a_log_line() {
         val progress = ImportProgress(index = 1, total = 4, name = "tax-return.pdf", fileFraction = 0.5f)
-        val summary = ImportSummary(imported = 1, failed = listOf(FailedFile("passport.jpg", VaultError.Crypto.IntegrityFailure)))
+        val summary = ImportSummary(imported = 1, failed = listOf(FailedImport("passport.jpg", VaultError.Crypto.IntegrityFailure)))
 
         // Both types carry decrypted vault content, so the generated data-class toString would print
         // a file name into any log line that renders them (hard rule #4).
