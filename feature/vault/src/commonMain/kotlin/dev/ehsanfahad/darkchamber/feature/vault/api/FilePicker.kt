@@ -35,6 +35,20 @@ interface PickedFile : AutoCloseable {
     val mime: String
 
     /**
+     * The file's byte size **if the platform will say**, and `null` if it will not.
+     *
+     * Progress needs a denominator before the encrypt begins, and the codec only learns the true
+     * size during its first pass — too late to draw anything with. The picker knows it earlier, so
+     * it is carried here.
+     *
+     * `null` means unknown, never zero and never a number to guess at: a cloud provider routinely
+     * declines to size a file it has not downloaded. A bar drawn against an invented total is a UI
+     * that lies about progress (hard rule #6) — show an indeterminate indicator instead. It is a
+     * hint for display only; nothing about the import depends on it being present or correct.
+     */
+    val size: Long?
+
+    /**
      * Open a fresh, independent source over the file's bytes.
      *
      * Should be callable more than once — the `.dchm` codec reads its payload twice — but a

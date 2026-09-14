@@ -38,6 +38,21 @@ class ImportFileTest {
         assertTrue(picked.closed, "the platform grant is released")
     }
 
+    @Test
+    fun a_file_whose_size_the_platform_will_not_report_imports_like_any_other() = runTest {
+        // Cloud providers routinely decline to give a size for a file that is not downloaded yet.
+        // That costs the caller its progress denominator, and nothing else: the import itself never
+        // needed the number, so an unknown size must never become a reason to refuse the file.
+        val picked = FakePickedFile(name = "remote.mov", mime = "video/quicktime", size = null)
+        val vault = FakeVaultItems()
+
+        val result = importFile(FakeFilePicker(picked), vault)()
+
+        assertIs<ImportResult.Imported>(result)
+        assertEquals("remote.mov", vault.lastName)
+        assertTrue(picked.closed, "the platform grant is released")
+    }
+
     /** Changing your mind is an ordinary outcome, not a failure banner. */
     @Test
     fun cancelling_the_picker_imports_nothing_and_is_not_an_error() = runTest {

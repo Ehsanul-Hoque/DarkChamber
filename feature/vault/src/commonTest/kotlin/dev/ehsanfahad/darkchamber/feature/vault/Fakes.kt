@@ -28,11 +28,17 @@ internal class FakeFilePicker(
     }
 }
 
-/** A picked file that records whether its platform grant was released. */
+/**
+ * A picked file that records whether its platform grant was released.
+ *
+ * [size] defaults to the payload's real length — the ordinary case, where the platform knows. Pass
+ * `null` explicitly for the provider that will not say.
+ */
 internal class FakePickedFile(
     override val name: String = "photo.jpg",
     override val mime: String = "image/jpeg",
     private val data: ByteArray = byteArrayOf(1, 2, 3),
+    override val size: Long? = data.size.toLong(),
 ) : PickedFile {
     var closed = false
         private set

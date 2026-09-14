@@ -7,6 +7,9 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.io.RawSource
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
+import platform.Foundation.NSFileManager
+import platform.Foundation.NSFileSize
+import platform.Foundation.NSNumber
 import platform.Foundation.NSURL
 import platform.UIKit.UIDocumentPickerViewController
 import platform.UIKit.UIDocumentPickerDelegateProtocol
@@ -106,6 +109,8 @@ private class IosPickedFile(
     // The picker deals in files, not MIME; the vault stores a type it can map to a viewer later.
     override val mime: String = mimeForExtension(url.pathExtension)
 
+    override val size: Long? = fileSizeOrNull(path)
+
     override fun openSource(): RawSource = SystemFileSystem.source(Path(path))
 
     override fun close() {
@@ -116,6 +121,20 @@ private class IosPickedFile(
         const val FALLBACK_NAME = "file"
     }
 }
+
+/**
+ * The file's size from the filesystem, or `null` if it cannot be read.
+ *
+ * An iCloud file that has not been downloaded still reports its size, so this usually succeeds —
+ * but the attribute lookup can fail (the file moved, the scoped access was refused), and an unknown
+ * size is a display concern only. Nothing about the import depends on it, so a failure here must
+ * never become a failure to import.
+ */
+@OptIn(ExperimentalForeignApi::class)
+private fun fileSizeOrNull(path: String): Long? =
+    (NSFileManager.defaultManager.attributesOfItemAtPath(path, error = null)?.get(NSFileSize) as? NSNumber)
+        ?.longLongValue
+        ?.takeIf { it >= 0L }
 
 /** A deliberately small map: enough for the viewers v1 ships, honest `application/octet-stream` otherwise. */
 private fun mimeForExtension(extension: String?): String =

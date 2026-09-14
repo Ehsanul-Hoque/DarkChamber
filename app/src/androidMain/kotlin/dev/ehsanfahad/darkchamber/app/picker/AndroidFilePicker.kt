@@ -83,6 +83,8 @@ private class AndroidPickedFile(
 
     override val mime: String = resolver.getType(uri) ?: FALLBACK_MIME
 
+    override val size: Long? = openableSizeOrNull(resolver.querySize(uri))
+
     override fun openSource(): RawSource =
         resolver.openInputStream(uri)?.asSource()
             ?: error("the provider returned no stream for the picked file")
@@ -104,3 +106,20 @@ private fun ContentResolver.queryDisplayName(uri: Uri): String? =
         val column = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
         if (column >= 0 && cursor.moveToFirst()) cursor.getString(column) else null
     }
+
+// Null when the provider omits the column, leaves it NULL, or cannot be queried at all — each of
+// which means the same thing to us, and none of which is worth failing an import over.
+private fun ContentResolver.querySize(uri: Uri): Long? =
+    query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+        val column = cursor.getColumnIndex(OpenableColumns.SIZE)
+        if (column >= 0 && cursor.moveToFirst() && !cursor.isNull(column)) cursor.getLong(column) else null
+    }
+
+/**
+ * What a provider reported for `OpenableColumns.SIZE`, reduced to a size we will show or `null`.
+ *
+ * A negative value is how a provider says it does not know — a cloud file that has not been
+ * downloaded is the common case — and that is not a number to draw a bar with. Zero is kept: an
+ * empty file is a file.
+ */
+internal fun openableSizeOrNull(reported: Long?): Long? = reported?.takeIf { it >= 0L }
