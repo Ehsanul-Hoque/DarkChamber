@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.io.Buffer
 import kotlinx.io.RawSource
+import kotlin.coroutines.cancellation.CancellationException
 
 /** A picker that hands back whatever the test configured, or cancels, or refuses to open. */
 internal class FakeFilePicker(
@@ -65,6 +66,8 @@ internal class FakeVaultItems(
     private val importResult: Outcome<ByteArray> = Outcome.Ok(byteArrayOf(7)),
     /** Names that fail instead, so a batch can be given one bad file among good ones. */
     private val failFor: Set<String> = emptySet(),
+    /** Cumulative byte counts to report while importing, standing in for the codec's two passes. */
+    private val bytesPerImport: List<Long> = emptyList(),
 ) : VaultItems {
     val summaries = MutableStateFlow<List<VaultItemSummary>>(emptyList())
     val importedNames = mutableListOf<String>()
@@ -82,12 +85,18 @@ internal class FakeVaultItems(
         return summaries
     }
 
-    override fun import(name: String, mime: String, openSource: () -> RawSource): Outcome<ByteArray> {
+    override fun import(
+        name: String,
+        mime: String,
+        onProgress: (Long) -> Unit,
+        openSource: () -> RawSource,
+    ): Outcome<ByteArray> {
         importCalls++
         lastName = name
         lastMime = mime
         importedNames += name
         openSource() // the real implementation reads it; make sure the fake exercises the opener too
+        bytesPerImport.forEach(onProgress)
         return if (name in failFor) Outcome.Err(VaultError.Io(RuntimeException("unreadable"))) else importResult
     }
 }
@@ -96,8 +105,24 @@ internal class FakeVaultItems(
 internal class ThrowingVaultItems : VaultItems {
     override fun observe(albumId: ByteArray?): Flow<List<VaultItemSummary>> = MutableStateFlow(emptyList())
 
-    override fun import(name: String, mime: String, openSource: () -> RawSource): Outcome<ByteArray> =
-        throw IllegalStateException("import exploded")
+    override fun import(
+        name: String,
+        mime: String,
+        onProgress: (Long) -> Unit,
+        openSource: () -> RawSource,
+    ): Outcome<ByteArray> = throw IllegalStateException("import exploded")
+}
+
+/** A seam that behaves like an import interrupted by a lock cancelling the scope. */
+internal class CancellingVaultItems : VaultItems {
+    override fun observe(albumId: ByteArray?): Flow<List<VaultItemSummary>> = MutableStateFlow(emptyList())
+
+    override fun import(
+        name: String,
+        mime: String,
+        onProgress: (Long) -> Unit,
+        openSource: () -> RawSource,
+    ): Outcome<ByteArray> = throw CancellationException("the session was torn down mid-import")
 }
 
 internal fun summary(

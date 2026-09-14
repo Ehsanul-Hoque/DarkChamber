@@ -6,6 +6,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultGalleryComponent
 import dev.ehsanfahad.darkchamber.feature.vault.data.VaultObjectsItems
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ImportFile
+import dev.ehsanfahad.darkchamber.feature.vault.domain.ImportQueue
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveGallery
 import dev.ehsanfahad.darkchamber.feature.vault.presentation.DefaultVaultGalleryComponent
 import kotlinx.coroutines.Dispatchers
@@ -34,7 +35,7 @@ fun vaultGalleryComponent(
         componentContext = componentContext,
         observeGallery = ObserveGallery(items),
         picker = picker,
-        runImport = ImportFile(vault = items),
+        runImports = ImportQueue(ImportFile(vault = items)),
         mainContext = mainContext,
     )
 }

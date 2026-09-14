@@ -14,6 +14,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryError
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
 import dev.ehsanfahad.darkchamber.feature.vault.damagedMeta
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ImportFile
+import dev.ehsanfahad.darkchamber.feature.vault.domain.ImportQueue
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveGallery
 import dev.ehsanfahad.darkchamber.feature.vault.domain.VaultItems
 import dev.ehsanfahad.darkchamber.feature.vault.readableMeta
@@ -46,7 +47,7 @@ class DefaultVaultGalleryComponentTest {
             componentContext = DefaultComponentContext(lifecycle),
             observeGallery = ObserveGallery(vault),
             picker = picker,
-            runImport = ImportFile(vault = vault, ioContext = dispatcher),
+            runImports = ImportQueue(ImportFile(vault = vault, ioContext = dispatcher)),
             mainContext = dispatcher,
         )
     }
@@ -198,7 +199,7 @@ class DefaultVaultGalleryComponentTest {
             componentContext = DefaultComponentContext(lifecycle),
             observeGallery = ObserveGallery(vault),
             picker = picker,
-            runImport = ImportFile(vault = vault, ioContext = dispatcher),
+            runImports = ImportQueue(ImportFile(vault = vault, ioContext = dispatcher)),
             mainContext = dispatcher,
         )
 
@@ -230,6 +231,10 @@ private class ExplodingVaultItems : VaultItems {
     override fun observe(albumId: ByteArray?): Flow<List<VaultItemSummary>> =
         flow { throw IllegalStateException("catalog unreadable") }
 
-    override fun import(name: String, mime: String, openSource: () -> RawSource): Outcome<ByteArray> =
-        Outcome.Ok(byteArrayOf(1))
+    override fun import(
+        name: String,
+        mime: String,
+        onProgress: (Long) -> Unit,
+        openSource: () -> RawSource,
+    ): Outcome<ByteArray> = Outcome.Ok(byteArrayOf(1))
 }

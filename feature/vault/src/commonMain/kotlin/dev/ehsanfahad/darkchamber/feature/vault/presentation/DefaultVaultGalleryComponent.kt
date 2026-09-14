@@ -11,8 +11,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryError
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryState
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultGalleryComponent
-import dev.ehsanfahad.darkchamber.feature.vault.domain.ImportFile
-import dev.ehsanfahad.darkchamber.feature.vault.domain.ImportResult
+import dev.ehsanfahad.darkchamber.feature.vault.domain.ImportQueue
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveGallery
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -39,7 +38,7 @@ internal class DefaultVaultGalleryComponent(
     componentContext: ComponentContext,
     observeGallery: ObserveGallery,
     private val picker: FilePicker,
-    private val runImport: ImportFile,
+    private val runImports: ImportQueue,
     mainContext: CoroutineContext = Dispatchers.Main,
 ) : VaultGalleryComponent, ComponentContext by componentContext {
 
@@ -86,24 +85,15 @@ internal class DefaultVaultGalleryComponent(
                 return@launch
             }
 
-            // An empty pick is the user backing out. Not an error, and no banner.
-            var failed = false
-            for (file in picked) {
-                // Sequential, and one bad file does not end the batch: the other forty-nine were
-                // still chosen deliberately. The rows themselves arrive through the listing flow,
-                // so each import shows up in the grid as it commits.
-                when (val result = runImport(file)) {
-                    is ImportResult.Imported -> Unit
-                    is ImportResult.Failed -> {
-                        logVaultError(IMPORT_STAGE, result.error)
-                        failed = true
-                    }
-                }
-            }
+            // An empty pick is the user backing out: the queue does nothing and reports nothing.
+            // The rows themselves arrive through the listing flow, so each import shows up in the
+            // grid as it commits.
+            val summary = runImports(picked)
+            summary.failed.forEach { logVaultError(IMPORT_STAGE, it.error) }
 
             _state.value = _state.value.copy(
                 importing = false,
-                error = if (failed) GalleryError.ImportFailed else _state.value.error,
+                error = if (summary.failed.isEmpty()) _state.value.error else GalleryError.ImportFailed,
             )
         }
     }

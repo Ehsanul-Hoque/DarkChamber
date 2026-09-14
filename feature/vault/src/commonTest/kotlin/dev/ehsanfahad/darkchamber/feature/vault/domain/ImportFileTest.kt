@@ -2,6 +2,7 @@ package dev.ehsanfahad.darkchamber.feature.vault.domain
 
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
+import dev.ehsanfahad.darkchamber.feature.vault.CancellingVaultItems
 import dev.ehsanfahad.darkchamber.feature.vault.FakePickedFile
 import dev.ehsanfahad.darkchamber.feature.vault.FakeVaultItems
 import dev.ehsanfahad.darkchamber.feature.vault.ThrowingVaultItems
@@ -88,12 +89,4 @@ class ImportFileTest {
         assertFailsWith<CancellationException> { importer(picked) }
         assertTrue(picked.closed, "a cancelled import must still release the grant")
     }
-}
-
-/** A vault seam that behaves like an import interrupted by a lock cancelling the scope. */
-private class CancellingVaultItems : VaultItems {
-    override fun observe(albumId: ByteArray?) = throw UnsupportedOperationException("not used")
-
-    override fun import(name: String, mime: String, openSource: () -> RawSource) =
-        throw CancellationException("the session was torn down mid-import")
 }

@@ -32,11 +32,14 @@ internal class ImportFile(
     private val vault: VaultItems,
     private val ioContext: CoroutineContext = Dispatchers.Default,
 ) {
-    suspend operator fun invoke(picked: PickedFile): ImportResult {
+    suspend operator fun invoke(picked: PickedFile, onProgress: (Long) -> Unit = {}): ImportResult {
         return try {
-            when (val result = withContext(ioContext) { vault.import(picked.name, picked.mime, picked::openSource) }) {
+            val imported = withContext(ioContext) {
+                vault.import(picked.name, picked.mime, onProgress, picked::openSource)
+            }
+            when (imported) {
                 is Outcome.Ok -> ImportResult.Imported
-                is Outcome.Err -> ImportResult.Failed(result.error)
+                is Outcome.Err -> ImportResult.Failed(imported.error)
             }
         } catch (e: CancellationException) {
             // Same here: a lock cancels the scope mid-import. Rethrow so the caller's coroutine
