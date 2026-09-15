@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -32,6 +33,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryError
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryState
+import dev.ehsanfahad.darkchamber.feature.vault.api.ImportState
 
 /**
  * The vault gallery (docs/DESIGN.md). Reads theme **roles** only — no raw hex, no hardcoded colors —
@@ -45,7 +47,10 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryState
 internal fun GalleryScreen(
     state: GalleryState,
     now: Long,
-    onImport: () -> Unit,
+    onAddPhotos: () -> Unit,
+    onAddFiles: () -> Unit,
+    onCancelImport: () -> Unit,
+    onAcknowledgeImport: () -> Unit,
     onDismissError: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -66,27 +71,167 @@ internal fun GalleryScreen(
             }
         }
 
+        // Bottom of the screen: the import affordances, or — while a batch runs — what it is
+        // doing and how to stop it. One at a time: offering "Add photos" mid-import would invite a
+        // second batch the coordinator would only refuse.
+        Box(
+            contentAlignment = Alignment.BottomEnd,
+            modifier = Modifier.align(Alignment.BottomEnd).fillMaxWidth().padding(spacing.spaceLg),
+        ) {
+            when (val batch = state.batch) {
+                is ImportState.Running -> ImportProgressCard(batch = batch, onCancel = onCancelImport)
+                ImportState.Picking -> ImportNoticeCard(text = "Choose what to add…")
+                is ImportState.Finished -> ImportSummaryCard(batch = batch, onDismiss = onAcknowledgeImport)
+                ImportState.Idle -> ImportActions(onAddPhotos = onAddPhotos, onAddFiles = onAddFiles)
+            }
+        }
+    }
+}
+
+/** "Add photos" leads, because the library is where most of what people vault already lives. */
+@Composable
+private fun ImportActions(onAddPhotos: () -> Unit, onAddFiles: () -> Unit) {
+    val spacing = DarkChamberTheme.spacing
+
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        TextButton(onClick = onAddFiles) {
+            Text(
+                text = "Add files",
+                style = DarkChamberTheme.typography.label,
+                color = DarkChamberTheme.colors.accent,
+            )
+        }
+        Spacer(Modifier.width(spacing.spaceXs))
         ExtendedFloatingActionButton(
-            onClick = onImport,
+            onClick = onAddPhotos,
             containerColor = DarkChamberTheme.colors.accent,
             contentColor = DarkChamberTheme.colors.onAccent,
             // Rounded, never a circle: the full-circle radius belongs to the aperture (DESIGN.md §7).
             shape = DarkChamberTheme.shapes.large,
-            modifier = Modifier.align(Alignment.BottomEnd).padding(spacing.spaceLg),
         ) {
-            if (state.importing) {
-                // Indeterminate on purpose: the import reports no byte count yet, and a bar that
-                // invented one would be a lie (hard rule #6). What this does promise is only that
-                // work is still running — which a static label cannot, and a multi-minute import
-                // from a cloud provider otherwise reads as frozen.
-                CircularProgressIndicator(
-                    color = DarkChamberTheme.colors.onAccent,
-                    strokeWidth = 2.dp,
-                    modifier = Modifier.size(spacing.spaceMd),
-                )
-                Spacer(Modifier.width(spacing.spaceXs))
+            Text(text = "Add photos", style = DarkChamberTheme.typography.label)
+        }
+    }
+}
+
+/**
+ * A running batch: which file of how many, how far into it, the notice, and a way out.
+ *
+ * The per-file indicator is **determinate only when the platform gave a size**; otherwise it is
+ * indeterminate, because a bar filling against an invented total misreports progress (hard rule #6).
+ * The file count is always shown, so there is something truthful to watch either way.
+ */
+@Composable
+private fun ImportProgressCard(batch: ImportState.Running, onCancel: () -> Unit) {
+    val colors = DarkChamberTheme.colors
+    val spacing = DarkChamberTheme.spacing
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(color = colors.surfaceRaised, shape = DarkChamberTheme.shapes.large)
+            .padding(spacing.spaceMd),
+    ) {
+        Text(
+            text = "Importing ${batch.index + 1} of ${batch.total}",
+            style = DarkChamberTheme.typography.body,
+            color = colors.textPrimary,
+        )
+        Text(
+            text = batch.name,
+            style = DarkChamberTheme.typography.caption,
+            color = colors.textSecondary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = spacing.spaceXs),
+        )
+
+        val fraction = batch.fileFraction
+        if (fraction == null) {
+            LinearProgressIndicator(
+                color = colors.accent,
+                trackColor = colors.surface,
+                modifier = Modifier.fillMaxWidth().padding(top = spacing.spaceXs),
+            )
+        } else {
+            LinearProgressIndicator(
+                progress = { fraction },
+                color = colors.accent,
+                trackColor = colors.surface,
+                modifier = Modifier.fillMaxWidth().padding(top = spacing.spaceXs),
+            )
+        }
+
+        Text(
+            text = KEEP_OPEN_NOTICE,
+            style = DarkChamberTheme.typography.caption,
+            color = colors.textSecondary,
+            modifier = Modifier.padding(top = spacing.spaceXs),
+        )
+
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = onCancel) {
+                // Says what cancelling actually costs: the files already in the vault stay there.
+                Text("Stop (keeps what's added)", style = DarkChamberTheme.typography.label, color = colors.accent)
             }
-            Text(text = if (state.importing) "Importing…" else "Add file", style = DarkChamberTheme.typography.label)
+        }
+    }
+}
+
+/** The gap between tapping and the picker appearing, where the notice already applies. */
+@Composable
+private fun ImportNoticeCard(text: String) {
+    val colors = DarkChamberTheme.colors
+    val spacing = DarkChamberTheme.spacing
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(color = colors.surfaceRaised, shape = DarkChamberTheme.shapes.large)
+            .padding(spacing.spaceMd),
+    ) {
+        Text(text = text, style = DarkChamberTheme.typography.body, color = colors.textPrimary)
+        Text(
+            text = KEEP_OPEN_NOTICE,
+            style = DarkChamberTheme.typography.caption,
+            color = colors.textSecondary,
+            modifier = Modifier.padding(top = spacing.spaceXs),
+        )
+    }
+}
+
+/**
+ * What a finished batch amounts to. Says how many could not be read rather than implying everything
+ * worked, and never claims a reason it does not have (hard rule #6).
+ */
+@Composable
+private fun ImportSummaryCard(batch: ImportState.Finished, onDismiss: () -> Unit) {
+    val colors = DarkChamberTheme.colors
+    val spacing = DarkChamberTheme.spacing
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(color = colors.sealedContainer, shape = DarkChamberTheme.shapes.large)
+            .padding(start = spacing.spaceMd),
+    ) {
+        Column(modifier = Modifier.weight(1f).padding(vertical = spacing.spaceXs)) {
+            Text(
+                text = GalleryFormat.importedCount(batch.imported),
+                style = DarkChamberTheme.typography.body,
+                color = colors.textPrimary,
+            )
+            if (batch.failed.isNotEmpty()) {
+                Text(
+                    text = GalleryFormat.failedCount(batch.failed.size),
+                    style = DarkChamberTheme.typography.caption,
+                    color = colors.danger,
+                )
+            }
+        }
+        TextButton(onClick = onDismiss) {
+            Text("Done", style = DarkChamberTheme.typography.label, color = colors.accent)
         }
     }
 }
@@ -227,6 +372,14 @@ private fun ByteArray.toHexKey(): String = joinToString("") { byte ->
 }
 
 private const val HEX = "0123456789abcdef"
+
+/**
+ * The load-bearing sentence of this screen (spec §4.4). A lock or a background ends a batch, and
+ * afterwards there is nobody left to tell — the state died with the session. Warning beforehand is
+ * the only chance there is, so it stays visible for the whole import, not just at the start.
+ */
+private const val KEEP_OPEN_NOTICE =
+    "Keep DarkChamber open — locking the vault or leaving the app stops the import."
 
 /** Wide enough for a name to read at two columns on a phone, narrow enough for three on a tablet. */
 private val TILE_MIN_WIDTH = 132.dp

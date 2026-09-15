@@ -46,4 +46,19 @@ class GalleryFormatTest {
     fun a_future_timestamp_reads_as_just_now() {
         assertEquals("just now", GalleryFormat.age(createdAt = 2_000, now = 1_000))
     }
+
+    @Test
+    fun a_finished_batch_counts_honestly_and_reads_as_english() {
+        assertEquals("1 file added to the vault.", GalleryFormat.importedCount(1))
+        assertEquals("48 files added to the vault.", GalleryFormat.importedCount(48))
+        // Not "0 files added": a batch where everything failed should not read like a success with
+        // an awkward number in it.
+        assertEquals("Nothing was added.", GalleryFormat.importedCount(0))
+    }
+
+    @Test
+    fun unreadable_files_are_counted_without_claiming_why() {
+        assertEquals("1 file couldn't be read.", GalleryFormat.failedCount(1))
+        assertEquals("2 files couldn't be read.", GalleryFormat.failedCount(2))
+    }
 }

@@ -28,10 +28,13 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.hours
 import kotlinx.io.RawSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -43,6 +46,7 @@ class DefaultVaultGalleryComponentTest {
     private fun TestScope.component(
         vault: VaultItems,
         imports: VaultImports = FakeImports(),
+        progressInterval: Duration = Duration.ZERO,
     ): DefaultVaultGalleryComponent {
         val dispatcher = UnconfinedTestDispatcher(testScheduler)
         return DefaultVaultGalleryComponent(
@@ -50,6 +54,8 @@ class DefaultVaultGalleryComponentTest {
             observeGallery = ObserveGallery(vault),
             imports = imports,
             mainContext = dispatcher,
+            // No throttling by default: these tests are about which states arrive, not how often.
+            progressInterval = progressInterval,
         )
     }
 
@@ -99,15 +105,63 @@ class DefaultVaultGalleryComponentTest {
     }
 
     @Test
-    fun the_import_intent_is_handed_to_the_batch_rather_than_run_here() = runTest {
+    fun every_import_intent_is_handed_to_the_batch_rather_than_run_here() = runTest {
         val imports = FakeImports()
         val component = component(FakeVaultItems(), imports = imports)
 
-        component.importFile()
+        component.importFiles()
+        component.importPhotos()
+        component.cancelImport()
+        component.acknowledgeImport()
 
         // The component does not pick, loop or guard against a double tap: the batch outlives it,
         // so the batch is what knows whether one is already running.
         assertEquals(1, imports.fileRequests)
+        assertEquals(1, imports.photoRequests)
+        assertEquals(1, imports.cancels)
+        assertEquals(1, imports.acknowledged)
+    }
+
+    @Test
+    fun the_running_state_reaches_the_screen_whole() = runTest {
+        val imports = FakeImports()
+        val component = component(FakeVaultItems(), imports = imports)
+
+        val running = ImportState.Running(index = 11, total = 50, name = "IMG_0042.HEIC", fileFraction = 0.25f)
+        imports.emit(running)
+
+        // Not flattened into flags on the way past: the screen needs the count, the name and the
+        // fraction, and reducing them here would mean inventing a second vocabulary for the same
+        // thing — one of them always a frame behind.
+        assertEquals(running, component.state.value.batch)
+        assertTrue(component.state.value.importing)
+    }
+
+    /**
+     * A batch reports every buffered read — kilobytes apart — which is far finer than a screen can
+     * show. Throttling belongs here rather than in the core, where the honest byte count has to stay
+     * intact for anything else watching it.
+     */
+    @Test
+    fun progress_updates_are_throttled_but_the_batch_ending_is_never_delayed() = runTest {
+        val imports = FakeImports()
+        // An interval no test can outrun, so every Running after the first is dropped.
+        val component = component(FakeVaultItems(), imports = imports, progressInterval = 1.hours)
+
+        imports.emit(ImportState.Running(index = 0, total = 3, name = "a.jpg", fileFraction = 0.1f))
+        imports.emit(ImportState.Running(index = 0, total = 3, name = "a.jpg", fileFraction = 0.5f))
+        imports.emit(ImportState.Running(index = 1, total = 3, name = "b.jpg", fileFraction = 0.9f))
+
+        val throttled = component.state.value.batch
+        assertIs<ImportState.Running>(throttled)
+        assertEquals(0.1f, throttled.fileFraction, "later progress inside the window is dropped")
+
+        imports.emit(ImportState.Finished(imported = 3, failed = emptyList()))
+
+        // The frames that matter are never held back: a finished batch must not sit behind a
+        // throttle window, or the UI keeps claiming an import is running after it has stopped.
+        assertIs<ImportState.Finished>(component.state.value.batch)
+        assertFalse(component.state.value.importing)
     }
 
     @Test

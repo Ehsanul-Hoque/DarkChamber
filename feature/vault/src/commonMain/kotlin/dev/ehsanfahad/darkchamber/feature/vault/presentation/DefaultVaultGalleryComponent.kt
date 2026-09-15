@@ -18,10 +18,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.launchIn
 import kotlin.coroutines.CoroutineContext
+import kotlin.time.Duration
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * The gallery's state holder, in the session gate's presentation style
@@ -37,6 +43,12 @@ internal class DefaultVaultGalleryComponent(
     observeGallery: ObserveGallery,
     private val imports: VaultImports,
     mainContext: CoroutineContext = Dispatchers.Main,
+    // How often a *running* batch is allowed to redraw. The batch reports every buffered read —
+    // kilobytes apart — which is far finer than a screen can show or a user can perceive, and
+    // recomposing the grid at that rate would cost more than the encrypt does. Throttling here
+    // rather than in the core keeps the honest byte count intact for anything else that watches it
+    // (spec §6.3). Zero in tests, where every state is worth asserting.
+    private val progressInterval: Duration = PROGRESS_INTERVAL,
 ) : VaultGalleryComponent, ComponentContext by componentContext {
 
     // SupervisorJob so one failed intent does not kill the component's other work, but parented to
@@ -64,15 +76,20 @@ internal class DefaultVaultGalleryComponent(
         // The batch runs on the session, not here: this only watches it. The component can be
         // destroyed and rebuilt mid-import and will simply pick the state back up.
         imports.state
+            .throttleProgress(progressInterval)
             .onEach(::onImportState)
             .launchIn(scope)
     }
 
-    override fun importFile() {
-        // The coordinator holds the double-tap guard: it is the thing that knows whether a batch is
-        // already running, and it stays right whether or not this screen was rebuilt in between.
-        imports.importFiles()
-    }
+    // The coordinator holds the double-tap guard: it is the thing that knows whether a batch is
+    // already running, and it stays right whether or not this screen was rebuilt in between.
+    override fun importPhotos() = imports.importPhotos()
+
+    override fun importFiles() = imports.importFiles()
+
+    override fun cancelImport() = imports.cancel()
+
+    override fun acknowledgeImport() = imports.acknowledge()
 
     override fun dismissError() {
         _state.value = _state.value.copy(error = null)
@@ -80,17 +97,36 @@ internal class DefaultVaultGalleryComponent(
         imports.acknowledge()
     }
 
+    /**
+     * Let every state through except a flood of [ImportState.Running] updates, of which one per
+     * [interval] is enough. A batch ending — or starting, or being cancelled — is never delayed:
+     * those are the frames that must land immediately, and there are only ever a handful of them.
+     */
+    private fun Flow<ImportState>.throttleProgress(interval: Duration): Flow<ImportState> = flow {
+        var lastRunning: TimeMark? = null
+        collect { value ->
+            if (value is ImportState.Running) {
+                val previous = lastRunning
+                if (previous == null || previous.elapsedNow() >= interval) {
+                    lastRunning = TimeSource.Monotonic.markNow()
+                    emit(value)
+                }
+            } else {
+                lastRunning = null
+                emit(value)
+            }
+        }
+    }
+
     private fun onImportState(batch: ImportState) {
-        val importing = batch is ImportState.Picking || batch is ImportState.Running
-        // A batch that finished with unreadable files raises the banner once. Everything richer —
-        // the count line, the per-file bar, the summary — is the screen's to render from
-        // [VaultImports.state] directly; duplicating it into GalleryState would be two copies of the
-        // same truth, one of them always a frame behind.
+        // The batch state goes into GalleryState whole rather than being flattened into flags: the
+        // screen needs the file count, the name and the fraction, and reducing them here would mean
+        // inventing a second vocabulary for the same thing.
         val failed = (batch as? ImportState.Finished)?.failed.orEmpty()
         failed.forEach { logVaultError(IMPORT_STAGE, it.error) }
 
         _state.value = _state.value.copy(
-            importing = importing,
+            batch = batch,
             error = if (failed.isEmpty()) _state.value.error else GalleryError.ImportFailed,
         )
     }
@@ -106,5 +142,8 @@ internal class DefaultVaultGalleryComponent(
         // Stage labels for the redaction boundary: event names only, never a name, path or id.
         const val LISTING_STAGE = "vault-gallery-listing"
         const val IMPORT_STAGE = "vault-gallery-import"
+
+        /** Roughly six frames at 60 Hz: fast enough to look continuous, slow enough to be free. */
+        val PROGRESS_INTERVAL: Duration = 100.milliseconds
     }
 }

@@ -167,7 +167,7 @@ class UnlockedComponentTest {
 
         // Before the lock the scope runs: the picker is asked, cancels inline (empty list), and the
         // batch settles straight back to idle.
-        gallery.importFile()
+        gallery.importFiles()
         assertTrue(picker.calls == 1, "the intent reached the picker while unlocked")
         assertFalse(gallery.state.value.importing, "and ran to completion")
 
@@ -175,7 +175,7 @@ class UnlockedComponentTest {
 
         // After the lock the batch coroutine never starts, so the picker is never even consulted —
         // the feature scope died before the session it would have imported into.
-        gallery.importFile()
+        gallery.importFiles()
         assertTrue(picker.calls == 1, "a cancelled scope never opened a second picker, was ${picker.calls}")
         assertFailsWith<IllegalStateException> { vault.open.session.generateDek() }
     }
@@ -203,7 +203,7 @@ class UnlockedComponentTest {
         component = unlocked(vault, picker = picker)
         val gallery = (component.stack.value.active.instance as UnlockedChild.Gallery).component
 
-        gallery.importFile()
+        gallery.importFiles()
 
         // The catalog is closed with the session, so count the object blobs the vault kept.
         val objects = Path(vault.storageRoot, "objects")

@@ -14,8 +14,17 @@ import dev.ehsanfahad.darkchamber.core.model.VaultItemKind
 interface VaultGalleryComponent {
     val state: Value<GalleryState>
 
-    /** Pick a file and import it into the vault. A cancelled picker is a no-op, not an error. */
-    fun importFile()
+    /** Pick photos and videos from the system library. A cancelled picker is a no-op, not an error. */
+    fun importPhotos()
+
+    /** Pick documents. Same contract; a different platform picker (see [PhotoPicker]). */
+    fun importFiles()
+
+    /** Stop a running batch. What has already been imported stays imported. */
+    fun cancelImport()
+
+    /** Dismiss the finished-batch summary. */
+    fun acknowledgeImport()
 
     /** Clear a surfaced [GalleryError] after the user acknowledges it. */
     fun dismissError()
@@ -31,9 +40,12 @@ interface VaultGalleryComponent {
 data class GalleryState(
     val items: List<GalleryItem> = emptyList(),
     val loading: Boolean = true,
-    val importing: Boolean = false,
+    val batch: ImportState = ImportState.Idle,
     val error: GalleryError? = null,
-)
+) {
+    /** Whether a batch is between the user asking for one and it ending. */
+    val importing: Boolean get() = batch is ImportState.Picking || batch is ImportState.Running
+}
 
 /**
  * One tile. The plaintext index columns ([kind], [size], [createdAt]) always render; the name and

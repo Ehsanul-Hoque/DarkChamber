@@ -26,7 +26,10 @@ fun VaultGalleryContent(component: VaultGalleryComponent, modifier: Modifier = M
     GalleryScreen(
         state = state,
         now = now,
-        onImport = component::importFile,
+        onAddPhotos = component::importPhotos,
+        onAddFiles = component::importFiles,
+        onCancelImport = component::cancelImport,
+        onAcknowledgeImport = component::acknowledgeImport,
         onDismissError = component::dismissError,
         modifier = modifier,
     )
