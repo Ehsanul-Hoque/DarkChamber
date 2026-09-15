@@ -6,12 +6,12 @@ import com.arkivanov.decompose.value.Value
 import com.arkivanov.essenty.lifecycle.doOnDestroy
 import dev.ehsanfahad.darkchamber.core.logging.logVaultError
 import dev.ehsanfahad.darkchamber.core.model.VaultError
-import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryError
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryState
+import dev.ehsanfahad.darkchamber.feature.vault.api.ImportState
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultGalleryComponent
-import dev.ehsanfahad.darkchamber.feature.vault.domain.ImportQueue
+import dev.ehsanfahad.darkchamber.feature.vault.api.VaultImports
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveGallery
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -21,9 +21,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.launchIn
-import kotlinx.coroutines.launch
 import kotlin.coroutines.CoroutineContext
-import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * The gallery's state holder, in the session gate's presentation style
@@ -37,8 +35,7 @@ import kotlin.coroutines.cancellation.CancellationException
 internal class DefaultVaultGalleryComponent(
     componentContext: ComponentContext,
     observeGallery: ObserveGallery,
-    private val picker: FilePicker,
-    private val runImports: ImportQueue,
+    private val imports: VaultImports,
     mainContext: CoroutineContext = Dispatchers.Main,
 ) : VaultGalleryComponent, ComponentContext by componentContext {
 
@@ -63,43 +60,39 @@ internal class DefaultVaultGalleryComponent(
             }
             .onEach(::onItems)
             .launchIn(scope)
+
+        // The batch runs on the session, not here: this only watches it. The component can be
+        // destroyed and rebuilt mid-import and will simply pick the state back up.
+        imports.state
+            .onEach(::onImportState)
+            .launchIn(scope)
     }
 
     override fun importFile() {
-        // Set synchronously so a double tap cannot open two pickers — the guard has to hold before
-        // the coroutine is even scheduled.
-        if (_state.value.importing) return
-        _state.value = _state.value.copy(importing = true, error = null)
-
-        scope.launch {
-            val picked = try {
-                picker.pickFiles()
-            } catch (e: CancellationException) {
-                // The unlocked subtree was destroyed (a lock) while the picker was up. Cancellation
-                // is not an import failure and must not be swallowed into one.
-                throw e
-            } catch (e: Exception) {
-                // The picker could not even be shown — no grant was taken, nothing to close.
-                logVaultError(IMPORT_STAGE, VaultError.Unexpected(e))
-                _state.value = _state.value.copy(importing = false, error = GalleryError.ImportFailed)
-                return@launch
-            }
-
-            // An empty pick is the user backing out: the queue does nothing and reports nothing.
-            // The rows themselves arrive through the listing flow, so each import shows up in the
-            // grid as it commits.
-            val summary = runImports(picked)
-            summary.failed.forEach { logVaultError(IMPORT_STAGE, it.error) }
-
-            _state.value = _state.value.copy(
-                importing = false,
-                error = if (summary.failed.isEmpty()) _state.value.error else GalleryError.ImportFailed,
-            )
-        }
+        // The coordinator holds the double-tap guard: it is the thing that knows whether a batch is
+        // already running, and it stays right whether or not this screen was rebuilt in between.
+        imports.importFiles()
     }
 
     override fun dismissError() {
         _state.value = _state.value.copy(error = null)
+        // A summary the user has acknowledged must not come back the moment the state re-emits.
+        imports.acknowledge()
+    }
+
+    private fun onImportState(batch: ImportState) {
+        val importing = batch is ImportState.Picking || batch is ImportState.Running
+        // A batch that finished with unreadable files raises the banner once. Everything richer —
+        // the count line, the per-file bar, the summary — is the screen's to render from
+        // [VaultImports.state] directly; duplicating it into GalleryState would be two copies of the
+        // same truth, one of them always a frame behind.
+        val failed = (batch as? ImportState.Finished)?.failed.orEmpty()
+        failed.forEach { logVaultError(IMPORT_STAGE, it.error) }
+
+        _state.value = _state.value.copy(
+            importing = importing,
+            error = if (failed.isEmpty()) _state.value.error else GalleryError.ImportFailed,
+        )
     }
 
     private fun onItems(items: List<GalleryItem>) {

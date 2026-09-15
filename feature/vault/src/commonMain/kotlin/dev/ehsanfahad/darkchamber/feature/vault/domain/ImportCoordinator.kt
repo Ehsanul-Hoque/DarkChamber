@@ -4,6 +4,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportState
 import dev.ehsanfahad.darkchamber.feature.vault.api.PhotoPicker
 import dev.ehsanfahad.darkchamber.feature.vault.api.PickedFile
+import dev.ehsanfahad.darkchamber.feature.vault.api.VaultImports
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -30,9 +31,9 @@ internal class ImportCoordinator(
     private val filePicker: FilePicker,
     private val queue: ImportQueue,
     private val scope: CoroutineScope,
-) {
+) : VaultImports {
     private val _state = MutableStateFlow<ImportState>(ImportState.Idle)
-    val state: StateFlow<ImportState> = _state.asStateFlow()
+    override val state: StateFlow<ImportState> = _state.asStateFlow()
 
     private var job: Job? = null
 
@@ -44,17 +45,17 @@ internal class ImportCoordinator(
 
     val isRunning: Boolean get() = job?.isActive == true
 
-    fun importPhotos() = start { photoPicker.pickPhotos() }
+    override fun importPhotos() = start { photoPicker.pickPhotos() }
 
-    fun importFiles() = start { filePicker.pickFiles() }
+    override fun importFiles() = start { filePicker.pickFiles() }
 
     /** Stop the batch. What has already been imported stays imported. */
-    fun cancel() {
+    override fun cancel() {
         cancelled = true
     }
 
     /** Dismiss a finished summary. Anything else is left alone — a running batch is not dismissible. */
-    fun acknowledge() {
+    override fun acknowledge() {
         if (_state.value is ImportState.Finished) _state.value = ImportState.Idle
     }
 

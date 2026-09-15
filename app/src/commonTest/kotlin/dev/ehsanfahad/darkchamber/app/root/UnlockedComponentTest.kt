@@ -5,6 +5,8 @@ import com.arkivanov.essenty.lifecycle.LifecycleRegistry
 import com.arkivanov.essenty.lifecycle.resume
 import com.arkivanov.essenty.lifecycle.stop
 import dev.ehsanfahad.darkchamber.app.FakeFilePicker
+import dev.ehsanfahad.darkchamber.app.FakePhotoPicker
+import dev.ehsanfahad.darkchamber.app.FakePickedFile
 import dev.ehsanfahad.darkchamber.app.VaultBootstrap
 import dev.ehsanfahad.darkchamber.app.testSqlDriver
 import dev.ehsanfahad.darkchamber.core.crypto.CryptoEngine
@@ -16,6 +18,7 @@ import dev.ehsanfahad.darkchamber.core.db.CatalogStore
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.storage.VaultStorage
 import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
+import dev.ehsanfahad.darkchamber.feature.vault.api.PhotoPicker
 import kotlinx.io.buffered
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
@@ -30,6 +33,7 @@ import kotlin.random.Random
 import kotlin.random.nextULong
 import kotlin.test.AfterTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -50,6 +54,7 @@ class UnlockedComponentTest {
                 single<CryptoEngine> { CryptographyKotlinEngine() }
                 // Constructing the unlocked subtree constructs the gallery, which needs the picker.
                 single<FilePicker> { FakeFilePicker() }
+                single<PhotoPicker> { FakePhotoPicker() }
             },
         )
     }.koin
@@ -156,27 +161,56 @@ class UnlockedComponentTest {
     @Test
     fun locking_cancels_feature_work_before_the_session_dies() {
         val vault = openVault()
-        val component = DefaultUnlockedComponent(
-            componentContext = DefaultComponentContext(LifecycleRegistry().apply { resume() }),
-            vault = vault.open,
-            koin = koin,
-            mainContext = UnconfinedTestDispatcher(),
-            onLock = {},
-        )
+        val picker = FakeFilePicker()
+        val component = unlocked(vault, picker = picker)
         val gallery = (component.stack.value.active.instance as UnlockedChild.Gallery).component
 
-        // Before the lock the scope runs: the fake picker cancels inline, so the intent completes
-        // and clears its own flag.
+        // Before the lock the scope runs: the picker is asked, cancels inline (empty list), and the
+        // batch settles straight back to idle.
         gallery.importFile()
-        assertFalse(gallery.state.value.importing, "the intent ran to completion while unlocked")
+        assertTrue(picker.calls == 1, "the intent reached the picker while unlocked")
+        assertFalse(gallery.state.value.importing, "and ran to completion")
 
         component.lock()
 
-        // After the lock the coroutine never starts, so the flag it sets synchronously is never
-        // cleared — that stuck flag *is* the evidence the scope is dead. Harmless: locking replaces
-        // the whole subtree, so this state is discarded with the component that holds it.
+        // After the lock the batch coroutine never starts, so the picker is never even consulted —
+        // the feature scope died before the session it would have imported into.
         gallery.importFile()
-        assertTrue(gallery.state.value.importing, "a cancelled scope never ran the import body")
+        assertTrue(picker.calls == 1, "a cancelled scope never opened a second picker, was ${picker.calls}")
+        assertFailsWith<IllegalStateException> { vault.open.session.generateDek() }
+    }
+
+    /**
+     * The companion to the decision that an import outlives a screen (spec D7): it does **not**
+     * outlive the session. Locking mid-batch stops it, and everything imported before the lock is
+     * a complete, catalogued item — a batch is not a transaction, and rolling those back would
+     * destroy data the user asked for.
+     */
+    @Test
+    fun locking_mid_batch_stops_it_and_keeps_what_was_already_imported() {
+        val vault = openVault()
+        lateinit var component: DefaultUnlockedComponent
+        // The lock fires as the *second* file is opened for reading, so one import has completed and
+        // one is in flight.
+        val third = FakePickedFile(name = "third.bin")
+        val picker = FakeFilePicker(
+            listOf(
+                FakePickedFile(name = "first.bin"),
+                FakePickedFile(name = "second.bin", onOpen = { component.lock() }),
+                third,
+            ),
+        )
+        component = unlocked(vault, picker = picker)
+        val gallery = (component.stack.value.active.instance as UnlockedChild.Gallery).component
+
+        gallery.importFile()
+
+        // The catalog is closed with the session, so count the object blobs the vault kept.
+        val objects = Path(vault.storageRoot, "objects")
+        assertTrue(dchmCount(objects) == 1, "one complete object survives, found ${dchmCount(objects)}")
+        assertFalse(third.opened, "the batch stopped at the lock instead of running on")
+        assertTrue(third.closed, "and the grant it never used was released")
+        assertEquals(emptyList(), SystemFileSystem.list(Path(vault.storageRoot, "tmp")).toList(), "no scratch")
         assertFailsWith<IllegalStateException> { vault.open.session.generateDek() }
     }
 
@@ -196,6 +230,39 @@ class UnlockedComponentTest {
         component.lock() // idempotent — the guard prevents a second teardown/signal
 
         assertTrue(lockCount == 1, "teardown must run once, was $lockCount")
+    }
+
+    private fun unlocked(
+        vault: Vault,
+        picker: FakeFilePicker = FakeFilePicker(),
+        onLock: () -> Unit = {},
+    ): DefaultUnlockedComponent {
+        // A graph of its own so a test can hand in its own picker; everything else matches `koin`.
+        val graph = koinApplication {
+            modules(
+                module {
+                    single<CryptoEngine> { CryptographyKotlinEngine() }
+                    single<FilePicker> { picker }
+                    single<PhotoPicker> { FakePhotoPicker() }
+                },
+            )
+        }.koin
+        val dispatcher = UnconfinedTestDispatcher()
+        return DefaultUnlockedComponent(
+            componentContext = DefaultComponentContext(LifecycleRegistry().apply { resume() }),
+            vault = vault.open,
+            koin = graph,
+            mainContext = dispatcher,
+            // Inline, so a batch driven from a test runs to completion before the assertions.
+            ioContext = dispatcher,
+            onLock = onLock,
+        )
+    }
+
+    private fun dchmCount(root: Path): Int {
+        val md = SystemFileSystem.metadataOrNull(root) ?: return 0
+        if (!md.isDirectory) return if (root.name.endsWith(".dchm")) 1 else 0
+        return SystemFileSystem.list(root).sumOf { dchmCount(it) }
     }
 
     private class Vault(val open: VaultBootstrap.OpenVault, val storageRoot: Path)

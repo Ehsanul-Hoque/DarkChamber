@@ -10,21 +10,23 @@ import dev.ehsanfahad.darkchamber.core.vault.VaultItemSummary
 import dev.ehsanfahad.darkchamber.feature.vault.FakeFilePicker
 import dev.ehsanfahad.darkchamber.feature.vault.FakePickedFile
 import dev.ehsanfahad.darkchamber.feature.vault.FakeVaultItems
+import dev.ehsanfahad.darkchamber.feature.vault.api.FailedImport
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryError
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
+import dev.ehsanfahad.darkchamber.feature.vault.api.ImportState
+import dev.ehsanfahad.darkchamber.feature.vault.api.VaultImports
 import dev.ehsanfahad.darkchamber.feature.vault.damagedMeta
-import dev.ehsanfahad.darkchamber.feature.vault.domain.ImportFile
-import dev.ehsanfahad.darkchamber.feature.vault.domain.ImportQueue
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveGallery
 import dev.ehsanfahad.darkchamber.feature.vault.domain.VaultItems
 import dev.ehsanfahad.darkchamber.feature.vault.readableMeta
 import dev.ehsanfahad.darkchamber.feature.vault.summary
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
-import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlinx.io.RawSource
 import kotlin.test.Test
@@ -38,16 +40,15 @@ class DefaultVaultGalleryComponentTest {
 
     private val lifecycle = LifecycleRegistry().apply { resume() }
 
-    private fun component(
+    private fun TestScope.component(
         vault: VaultItems,
-        picker: FakeFilePicker = FakeFilePicker(FakePickedFile()),
+        imports: VaultImports = FakeImports(),
     ): DefaultVaultGalleryComponent {
-        val dispatcher = UnconfinedTestDispatcher()
+        val dispatcher = UnconfinedTestDispatcher(testScheduler)
         return DefaultVaultGalleryComponent(
             componentContext = DefaultComponentContext(lifecycle),
             observeGallery = ObserveGallery(vault),
-            picker = picker,
-            runImports = ImportQueue(ImportFile(vault = vault, ioContext = dispatcher)),
+            imports = imports,
             mainContext = dispatcher,
         )
     }
@@ -98,120 +99,82 @@ class DefaultVaultGalleryComponentTest {
     }
 
     @Test
-    fun importing_flags_the_state_and_clears_when_it_finishes() = runTest {
-        val vault = FakeVaultItems()
-        val component = component(vault)
+    fun the_import_intent_is_handed_to_the_batch_rather_than_run_here() = runTest {
+        val imports = FakeImports()
+        val component = component(FakeVaultItems(), imports = imports)
 
         component.importFile()
 
-        // The unconfined dispatcher runs the import to completion inline, so by here it is done.
-        assertFalse(component.state.value.importing, "the importing flag clears when the import ends")
-        assertNull(component.state.value.error)
-        assertEquals(1, vault.importCalls)
+        // The component does not pick, loop or guard against a double tap: the batch outlives it,
+        // so the batch is what knows whether one is already running.
+        assertEquals(1, imports.fileRequests)
     }
 
     @Test
-    fun a_failed_import_surfaces_an_error_that_can_be_dismissed() = runTest {
-        val vault = FakeVaultItems(importResult = Outcome.Err(VaultError.Io(RuntimeException("disk"))))
-        val component = component(vault)
+    fun a_running_batch_shows_as_importing_and_clears_when_it_ends() = runTest {
+        val imports = FakeImports()
+        val component = component(FakeVaultItems(), imports = imports)
 
-        component.importFile()
+        imports.emit(ImportState.Picking)
+        assertTrue(component.state.value.importing, "the picker being up is part of importing")
+
+        imports.emit(ImportState.Running(index = 0, total = 2, name = "a.jpg", fileFraction = 0.5f))
+        assertTrue(component.state.value.importing)
+
+        imports.emit(ImportState.Finished(imported = 2, failed = emptyList()))
+        assertFalse(component.state.value.importing, "a finished batch is not importing")
+        assertNull(component.state.value.error, "and a clean one raises no banner")
+    }
+
+    @Test
+    fun a_batch_that_could_not_read_a_file_raises_a_dismissible_banner() = runTest {
+        val imports = FakeImports()
+        val component = component(FakeVaultItems(), imports = imports)
+
+        imports.emit(
+            ImportState.Finished(
+                imported = 1,
+                failed = listOf(FailedImport("broken.jpg", VaultError.Io(RuntimeException("unreadable")))),
+            ),
+        )
 
         assertEquals(GalleryError.ImportFailed, component.state.value.error)
-        assertFalse(component.state.value.importing)
 
         component.dismissError()
+
         assertNull(component.state.value.error, "the banner clears on acknowledgement")
+        // And the summary is acknowledged at the source, so it cannot re-raise the banner the next
+        // time the state re-emits.
+        assertEquals(1, imports.acknowledged)
     }
 
     @Test
-    fun every_picked_file_is_imported_in_the_order_it_was_picked() = runTest {
-        val vault = FakeVaultItems()
-        val picked = listOf(
-            FakePickedFile(name = "one.jpg"),
-            FakePickedFile(name = "two.jpg"),
-            FakePickedFile(name = "three.jpg"),
-        )
-        val component = component(vault, picker = FakeFilePicker(picked))
+    fun a_cancelled_picker_leaves_no_error_behind() = runTest {
+        val imports = FakeImports()
+        val component = component(FakeVaultItems(), imports = imports)
 
-        component.importFile()
-
-        assertEquals(3, vault.importCalls, "a multi-select imports every file, not just the first")
-        assertEquals(listOf("one.jpg", "two.jpg", "three.jpg"), vault.importedNames, "order is preserved")
-        assertTrue(picked.all { it.closed }, "every grant is released, not only the last")
-        assertNull(component.state.value.error)
-        assertFalse(component.state.value.importing)
-    }
-
-    /** One unreadable file must not cost the user the other forty-nine. */
-    @Test
-    fun a_file_that_fails_does_not_stop_the_rest_of_the_batch() = runTest {
-        val vault = FakeVaultItems(failFor = setOf("broken.jpg"))
-        val picked = listOf(
-            FakePickedFile(name = "good.jpg"),
-            FakePickedFile(name = "broken.jpg"),
-            FakePickedFile(name = "later.jpg"),
-        )
-        val component = component(vault, picker = FakeFilePicker(picked))
-
-        component.importFile()
-
-        assertEquals(listOf("good.jpg", "broken.jpg", "later.jpg"), vault.importedNames, "the batch continues")
-        assertEquals(GalleryError.ImportFailed, component.state.value.error, "the failure is still reported")
-        assertTrue(picked.all { it.closed }, "a failure mid-batch does not leak the remaining grants")
-        assertFalse(component.state.value.importing)
-    }
-
-    @Test
-    fun cancelling_the_picker_leaves_no_error_behind() = runTest {
-        val vault = FakeVaultItems()
-        // An empty list is how the seam says "the user backed out" — not an error, not a failure.
-        val component = component(vault, picker = FakeFilePicker(emptyList()))
-
-        component.importFile()
+        imports.emit(ImportState.Picking)
+        imports.emit(ImportState.Idle) // an empty pick: the user backed out
 
         assertNull(component.state.value.error, "a cancelled picker is not a failure")
         assertFalse(component.state.value.importing)
-        assertEquals(0, vault.importCalls)
     }
 
-    /** A picker that cannot even be shown is a failure, but there is no grant to release. */
+    /**
+     * The component watches the batch; it does not own it (spec D7). A screen that is destroyed
+     * mid-import — which the albums cycle makes ordinary — must not take fifty photos down with it.
+     */
     @Test
-    fun a_picker_that_fails_to_open_is_reported_not_crashed() = runTest {
-        val vault = FakeVaultItems()
-        val component = component(vault, picker = FakeFilePicker(failure = IllegalStateException("no activity")))
+    fun destroying_the_screen_does_not_end_the_batch() = runTest {
+        val imports = FakeImports()
+        component(FakeVaultItems(), imports = imports)
 
-        component.importFile()
+        imports.emit(ImportState.Running(index = 0, total = 50, name = "a.jpg", fileFraction = 0f))
+        lifecycle.destroy()
+        imports.emit(ImportState.Running(index = 1, total = 50, name = "b.jpg", fileFraction = 0f))
 
-        assertEquals(GalleryError.ImportFailed, component.state.value.error)
-        assertFalse(component.state.value.importing, "a picker failure still clears the flag")
-        assertEquals(0, vault.importCalls)
-    }
-
-    /** Double-tapping the import button must not open two pickers or import twice. */
-    @Test
-    fun a_second_import_is_ignored_while_one_is_still_running() = runTest {
-        val vault = FakeVaultItems()
-        val picker = FakeFilePicker(FakePickedFile())
-        // Queued, not inline: the first import is still pending when the second intent arrives.
-        val dispatcher = StandardTestDispatcher(testScheduler)
-        val component = DefaultVaultGalleryComponent(
-            componentContext = DefaultComponentContext(lifecycle),
-            observeGallery = ObserveGallery(vault),
-            picker = picker,
-            runImports = ImportQueue(ImportFile(vault = vault, ioContext = dispatcher)),
-            mainContext = dispatcher,
-        )
-
-        component.importFile()
-        assertTrue(component.state.value.importing, "the flag is set immediately, not after the picker returns")
-        component.importFile()
-
-        advanceUntilIdle()
-
-        assertEquals(1, picker.calls, "the second tap does not open a second picker")
-        assertEquals(1, vault.importCalls)
-        assertFalse(component.state.value.importing)
+        assertEquals(0, imports.cancels, "destroying a screen must not cancel an import")
+        assertTrue(imports.state.value is ImportState.Running, "the batch is still going")
     }
 
     @Test
@@ -223,6 +186,41 @@ class DefaultVaultGalleryComponentTest {
         vault.summaries.value = listOf(summary(byteArrayOf(9), readableMeta()))
 
         assertEquals(emptyList(), component.state.value.items, "a destroyed component stops collecting")
+    }
+}
+
+/** A batch a test drives by hand: the component only watches this and forwards intents to it. */
+private class FakeImports : VaultImports {
+    private val _state = MutableStateFlow<ImportState>(ImportState.Idle)
+    override val state: StateFlow<ImportState> = _state
+
+    var photoRequests = 0
+        private set
+    var fileRequests = 0
+        private set
+    var cancels = 0
+        private set
+    var acknowledged = 0
+        private set
+
+    fun emit(next: ImportState) {
+        _state.value = next
+    }
+
+    override fun importPhotos() {
+        photoRequests++
+    }
+
+    override fun importFiles() {
+        fileRequests++
+    }
+
+    override fun cancel() {
+        cancels++
+    }
+
+    override fun acknowledge() {
+        acknowledged++
     }
 }
 

@@ -38,12 +38,12 @@ internal class ImportFile(
         onProgress: (Long) -> Unit = {},
     ): ImportResult {
         return try {
-            val imported = withContext(ioContext) {
+            val outcome = withContext(ioContext) {
                 vault.import(picked.name, picked.mime, onProgress, isActive, picked::openSource)
             }
-            when (imported) {
+            when (outcome) {
                 is Outcome.Ok -> ImportResult.Imported
-                is Outcome.Err -> ImportResult.Failed(imported.error)
+                is Outcome.Err -> ImportResult.Failed(outcome.error)
             }
         } catch (e: CancellationException) {
             // Same here: a lock cancels the scope mid-import. Rethrow so the caller's coroutine
