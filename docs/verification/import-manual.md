@@ -86,6 +86,10 @@ two pickers reach the same queue by different platform APIs.
       complete `.dchm` files, no catalog row lacks a blob, and `tmp/` is empty.
 - [ ] New tiles arrive **newest-first, at the top of the grid, and visibly animate in** as each
       import commits — you can tell which tile just landed without counting.
+- [ ] Turn on the OS reduced-motion setting (Android: Settings → Accessibility → Remove animations;
+      iOS: Settings → Accessibility → Motion → Reduce Motion), reopen the app and import again. New
+      tiles **fade** in and the existing tiles **do not slide** — the arrival is still visible, just
+      not moving.
 
 ### Persistence
 

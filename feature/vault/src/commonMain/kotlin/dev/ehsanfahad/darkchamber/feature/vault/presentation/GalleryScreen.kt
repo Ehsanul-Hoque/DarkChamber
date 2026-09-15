@@ -1,5 +1,6 @@
 package dev.ehsanfahad.darkchamber.feature.vault.presentation
 
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -27,8 +28,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import dev.ehsanfahad.darkchamber.core.designsystem.DarkChamberTheme
+import dev.ehsanfahad.darkchamber.core.designsystem.prefersReducedMotion
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryError
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
@@ -239,6 +242,7 @@ private fun ImportSummaryCard(batch: ImportState.Finished, onDismiss: () -> Unit
 @Composable
 private fun ItemGrid(items: List<GalleryItem>, now: Long) {
     val spacing = DarkChamberTheme.spacing
+    val arrival = tileArrival(DarkChamberTheme.motion, prefersReducedMotion())
     LazyVerticalGrid(
         columns = GridCells.Adaptive(minSize = TILE_MIN_WIDTH),
         contentPadding = PaddingValues(
@@ -252,17 +256,30 @@ private fun ItemGrid(items: List<GalleryItem>, now: Long) {
         verticalArrangement = Arrangement.spacedBy(spacing.spaceSm),
         modifier = Modifier.fillMaxSize(),
     ) {
-        items(items, key = { it.id.toHexKey() }) { item -> ItemTile(item = item, now = now) }
+        // Keyed by the object id, never by position. With newest-first ordering every existing tile
+        // shifts down on each import, so an index key would tell Compose that every row changed —
+        // animating the whole grid instead of the one tile that actually arrived.
+        items(items, key = { it.id.toHexKey() }) { item ->
+            ItemTile(
+                item = item,
+                now = now,
+                modifier = Modifier.animateItem(
+                    fadeInSpec = tween(arrival.fadeIn),
+                    placementSpec = arrival.placement?.let { tween<IntOffset>(it) },
+                    fadeOutSpec = tween(arrival.fadeOut),
+                ),
+            )
+        }
     }
 }
 
 @Composable
-private fun ItemTile(item: GalleryItem, now: Long) {
+private fun ItemTile(item: GalleryItem, now: Long, modifier: Modifier = Modifier) {
     val colors = DarkChamberTheme.colors
     val spacing = DarkChamberTheme.spacing
     val damaged = item.meta is GalleryItemMeta.Unreadable
 
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column(modifier = modifier.fillMaxWidth()) {
         // The thumbnail's future home, reserved at its final size so images drop in without
         // relayout. Until then it carries a type badge derived from the MIME family.
         Box(
