@@ -5,6 +5,7 @@ import com.arkivanov.decompose.value.MutableValue
 import com.arkivanov.decompose.value.Value
 import com.arkivanov.essenty.lifecycle.doOnDestroy
 import dev.ehsanfahad.darkchamber.app.VaultBootstrap
+import dev.ehsanfahad.darkchamber.app.system.SecretClipboard
 import dev.ehsanfahad.darkchamber.core.crypto.BiometricAuthenticator
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
@@ -51,6 +52,11 @@ data class LockState(
     val hasBiometric: Boolean = false,
     /** §3.3: after a biometric invalidation/unavailability, force the passphrase path. */
     val forcePassphrase: Boolean = false,
+    /**
+     * Whether the recovery key has been put on the clipboard, so the screen can say what really
+     * happens next. Belongs to the step that showed the key and goes away with it.
+     */
+    val recoveryKeyCopied: Boolean = false,
     val error: LockError? = null,
 )
 
@@ -65,6 +71,13 @@ interface LockedComponent {
     fun submitCreate(passphrase: ByteArray)
     fun submitPassphraseUnlock(passphrase: ByteArray)
     fun startBiometricUnlock()
+    /**
+     * Put the recovery key on the clipboard. Takes no argument on purpose: the key the user is
+     * looking at is already in [state], and routing a secret back through a UI callback would be one
+     * more place for it to be captured or logged.
+     */
+    fun copyRecoveryKey()
+
     fun confirmRecoverySaved()
     fun enableBiometric()
     fun skipBiometric()
@@ -75,6 +88,7 @@ class DefaultLockedComponent(
     componentContext: ComponentContext,
     private val bootstrap: VaultBootstrap,
     private val authenticator: BiometricAuthenticator,
+    private val clipboard: SecretClipboard,
     mainContext: CoroutineContext = Dispatchers.Main,
     /**
      * Where key derivation runs. Argon2id at the production cost (m=64 MiB, t=3, p=2) is ~1 s of
@@ -119,7 +133,17 @@ class DefaultLockedComponent(
         }
     }
 
+    override fun copyRecoveryKey() {
+        // Only from the step that is showing a key. Anywhere else there is nothing to copy, and an
+        // intent that copied "whatever was last around" is how secrets end up on clipboards by
+        // accident.
+        val step = _state.value.step as? LockStep.Recovery ?: return
+        clipboard.copySecret(step.recoveryKey)
+        _state.value = _state.value.copy(recoveryKeyCopied = true)
+    }
+
     override fun confirmRecoverySaved() {
+        // A fresh LockState, so `recoveryKeyCopied` does not follow the key off the screen.
         if (_state.value.step is LockStep.Recovery) _state.value = LockState(LockStep.EnableBiometric)
     }
 

@@ -13,6 +13,7 @@ import dev.ehsanfahad.darkchamber.app.root.DefaultLockedComponent
 import dev.ehsanfahad.darkchamber.app.root.DefaultRootComponent
 import dev.ehsanfahad.darkchamber.app.root.DefaultUnlockedComponent
 import dev.ehsanfahad.darkchamber.app.root.RootComponent
+import dev.ehsanfahad.darkchamber.app.system.SecretClipboard
 import dev.ehsanfahad.darkchamber.app.ui.RootContent
 import dev.ehsanfahad.darkchamber.core.crypto.BiometricAuthenticator
 import kotlinx.coroutines.Dispatchers
@@ -79,6 +80,7 @@ class MainActivity : FragmentActivity() {
                     componentContext = ctx,
                     bootstrap = koin.get<VaultBootstrap>(),
                     authenticator = koin.get<BiometricAuthenticator>(),
+                    clipboard = koin.get<SecretClipboard>(),
                     mainContext = Dispatchers.Main,
                     onUnlocked = onUnlocked,
                 )

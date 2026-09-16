@@ -85,6 +85,7 @@ class RootComponentTest {
         override fun submitCreate(passphrase: ByteArray) = Unit
         override fun submitPassphraseUnlock(passphrase: ByteArray) = Unit
         override fun startBiometricUnlock() = Unit
+        override fun copyRecoveryKey() = Unit
         override fun confirmRecoverySaved() = Unit
         override fun enableBiometric() = Unit
         override fun skipBiometric() = Unit

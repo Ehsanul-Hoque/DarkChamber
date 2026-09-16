@@ -81,7 +81,12 @@ private fun LockedContent(component: LockedComponent) {
     ) {
         when (step) {
             is LockStep.Create -> CreateVaultStep(state, component::submitCreate)
-            is LockStep.Recovery -> RecoveryKeyStep(step.recoveryKey, component::confirmRecoverySaved)
+            is LockStep.Recovery -> RecoveryKeyStep(
+                recoveryKey = step.recoveryKey,
+                copied = state.recoveryKeyCopied,
+                onCopy = component::copyRecoveryKey,
+                onConfirm = component::confirmRecoverySaved,
+            )
             is LockStep.EnableBiometric -> EnableBiometricStep(state, component::enableBiometric, component::skipBiometric)
             is LockStep.Unlock -> UnlockStep(state, component::submitPassphraseUnlock, component::startBiometricUnlock)
         }
@@ -121,8 +126,15 @@ private fun CreateVaultStep(state: LockState, onCreate: (ByteArray) -> Unit) {
 }
 
 @Composable
-private fun RecoveryKeyStep(recoveryKey: String, onConfirm: () -> Unit) {
+private fun RecoveryKeyStep(
+    recoveryKey: String,
+    copied: Boolean,
+    onCopy: () -> Unit,
+    onConfirm: () -> Unit,
+) {
     Text(
+        // "Write it down" leads, and stays: copying is an addition, not a replacement. A clipboard
+        // is not somewhere safe, and this key is the only way back into the vault.
         "This is the only way to reach your vault if you forget your passphrase or replace this " +
             "device. Write it down and store it somewhere safe — if you lose it, your data is gone. " +
             "We never see it and can't recover it.",
@@ -141,6 +153,22 @@ private fun RecoveryKeyStep(recoveryKey: String, onConfirm: () -> Unit) {
             modifier = Modifier.padding(DarkChamberTheme.spacing.spaceMd),
         )
     }
+
+    // Secondary, and kept visually apart from "I've saved it": copying the key is not the same act
+    // as having saved it, and the two must not be confusable.
+    TextButton(onClick = onCopy, modifier = Modifier.fillMaxWidth()) { Text("Copy") }
+
+    if (copied) {
+        Text(
+            // Exactly what happens, and nothing more (hard rule #6). Not "copied securely" — the
+            // clipboard is readable by other apps, and on Android the clear needs this app to still
+            // be running. "About a minute" is a description, not a promise.
+            "Copied. It clears from the clipboard in about a minute — paste it somewhere safe now.",
+            style = DarkChamberTheme.typography.caption,
+            color = DarkChamberTheme.colors.textSecondary,
+        )
+    }
+
     Button(onClick = onConfirm, modifier = Modifier.fillMaxWidth()) { Text("I've saved it") }
 }
 
