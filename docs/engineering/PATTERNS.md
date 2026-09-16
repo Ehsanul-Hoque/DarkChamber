@@ -47,13 +47,13 @@ dependency in feature modules, and the same shape from the session gate down thr
 ```kotlin
 interface VaultGalleryComponent {
     val state: Value<GalleryState>   // immutable UI state
-    fun importFile()                 // named intents, not onIntent(sealed Intent)
+    fun importPhotos()               // named intents, not onIntent(sealed Intent)
     fun dismissError()
 }
 
 class DefaultVaultGalleryComponent(
     componentContext: ComponentContext,
-    private val runImport: ImportFile,
+    private val imports: VaultImports,
     mainContext: CoroutineContext = Dispatchers.Main,
 ) : VaultGalleryComponent, ComponentContext by componentContext {
 
@@ -79,6 +79,49 @@ Rules that carry weight:
 Tests assert on `Value` directly. A component whose work is a `Flow` uses Turbine on that flow
 ([`TESTING.md`](./TESTING.md)); note that under `UnconfinedTestDispatcher` a coroutine started by an
 intent completes inline, so a concurrency guard needs `StandardTestDispatcher` to be exercised at all.
+The same inlining hides intermediate states: a `StateFlow` driven to completion within one call
+conflates everything but the last value, so a test that needs to observe work *while* it runs has to
+queue it.
+
+### 3.1 Work that outlives a screen but not the session
+
+Some work is longer-lived than the screen that starts it. Importing fifty files takes minutes; the
+user may well navigate away, and losing the batch because they did would be absurd. Equally, it must
+not survive a lock.
+
+The pattern: the work lives in an object owned by the **session scope**, running on the session's own
+job, and the component only watches it.
+
+```kotlin
+// In the unlocked subtree, which owns the session scope:
+private val featureWork = SupervisorJob()          // cancelled FIRST on lock
+private val imports = vaultImports(…, scope = CoroutineScope(mainContext + featureWork))
+
+// The screen takes it as a dependency and forwards intents; it does not own it.
+class DefaultVaultGalleryComponent(private val imports: VaultImports, …) {
+    init { imports.state.onEach(::onImportState).launchIn(scope) }
+    override fun importFiles() = imports.importFiles()
+}
+```
+
+What makes it safe is the **ordering on lock**: cancel the session's work, *then* zeroize the key,
+purge scratch, close the driver, dispose the scope. Work that has not yet entered a blocking call
+stops before the session it runs against dies; work already inside one is stopped by the guarded
+source it reads from, within a buffered read. Lock never *waits* — it runs on the UI thread, and
+delaying the zeroize to wait for an encrypt would be the wrong trade in both directions.
+
+Rules that come with it:
+
+- **The state is a `StateFlow` the screen observes**, so a component destroyed and rebuilt mid-work
+  picks it straight back up. Anything the screen needs to draw goes in that state whole; flattening
+  it into component flags means two copies of the same truth, one always a frame behind.
+- **Guards belong to the work, not the screen** — it is the thing that knows whether a batch is
+  already running, and it stays right across a rebuild.
+- **Nothing is persisted across a lock.** So if a lock can end the work, the user has to be told
+  *before* it starts: afterwards, the state is gone with the session and there is nobody left to
+  tell.
+- **A screen being destroyed must not cancel it.** Worth a test of its own — otherwise the next
+  person to tidy up a `doOnDestroy` reintroduces the bug the pattern exists to prevent.
 
 ## 4. Logging — local, honest, minimal
 

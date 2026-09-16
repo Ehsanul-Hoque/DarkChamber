@@ -111,6 +111,11 @@ Rules: writes are atomic (temp + rename); `tmp/` is purged on vault lock, app st
 - the key-blob store (`readKeyStore`/`writeKeyStore`, null-if-absent);
 - tmp scratch (`useTempFile`/`purgeTmp`), plus `useSpilledCopy` — copy a **one-shot** source into `tmp/` and hand the caller a re-openable view of it, deleted on return and on throw. Import needs it because the codec reads its payload twice while a provider stream may open only once; it is a fallback, never the default path.
 
+**The import path carries two callbacks and no UI vocabulary.** `core:vault`'s import reports *bytes read so far* — cumulative and monotonic across the codec's two passes, so it ends at twice the payload size — and takes a predicate it polls on every read to stop early. Neither is a percentage, a total or a cancellation token, deliberately:
+
+- the **denominator belongs to the caller**, which knows whether the platform declared a size at all. A file no picker will size gets an indeterminate indicator rather than a bar filling against a number we invented;
+- the **stop predicate is the same check a lock already uses**. The encrypt is a blocking read loop, so cancelling the coroutine around it would only take effect at the end of the current file — minutes, for a large video. One predicate means a user cancel inherits the lock's fail-closed teardown exactly: no object bytes, no catalog row, no scratch.
+
 Writes are atomic (temp sibling + `atomicMove`; **fsync-before-move is a documented v1 gap**), every op returns `Outcome`/`VaultError.Io` (no throw, nothing logged), and the module depends on `core:model` + `kotlinx-io` only — **not `core:crypto`** (`.dchm` bytes flow through as opaque sources/sinks). The Android backup-deny manifest + deny-all rule files landed here. **Resolved in the app module:** platform root-**resolution** (Android `filesDir` / iOS `Documents`) and the iOS `isExcludedFromBackup` runtime call — `VaultStorage` takes the resolved, backup-excluded root as a precondition. Seekable byte-range reads for the video/audio viewers are a Phase-1 storage primitive.
 
 ## 5. Catalog database
@@ -137,6 +142,8 @@ Tables and purpose:
 - Failures map to **`VaultError.Db`** and the caller **fails closed** (`CatalogStore.create` refuses a half-open catalog); no exception crosses the boundary.
 - Depends on **`core:model` + SQLDelight only — no `core:crypto`** (field encryption composes above it); `verifyMigrations` guards the committed v1 schema dump.
 - The **`DriverFactory` `expect/actual`** (Android `AndroidSqliteDriver` / iOS `NativeSqliteDriver`) is the production seam, compile-gated here — resolving the `Context` and the `<root>/db/catalog.db` path (dir created via `core:storage`) lives in the **app module**; unit tests inject in-memory drivers.
+- **`enc_meta` carries `(name, mime)` and nothing more for now.** Every richer field this section anticipates — dimensions, duration, capture date — needs a platform decoder to populate it, and a nullable field nothing ever sets is indistinguishable from a bug. They arrive with the decoders, in the cycle that adds thumbnails. What exists already is the part that makes adding them safe on vaults in the field: the blob is versionless CBOR, so its codec **ignores keys it does not recognise** and applies defaults for keys that are absent. A build that predates a field still reads rows written by one that has it, instead of failing perfectly intact items as unverifiable. (`.dchm` headers stay strict by contrast — an unexpected key *there* is a tampering signal.)
+- Listings are **newest-first**. The catalog feeds a gallery, and what a user just added is what they expect to see without scrolling; the `created_at` index serves either direction, so this is ordering only — no schema change and no migration. Rows created in the same millisecond come back in an unspecified order.
 
 ## 6. Private camera
 
@@ -186,6 +193,13 @@ Pipeline goal: sensor → JPEG/HEIC or MP4 bytes → encrypting sink → `object
 > reaching it stops us, and locking there would destroy the screen its result comes back to. The gate
 > defers that lock while the handoff is outstanding and arms a 2-minute watchdog for a picker the
 > user abandons; every other background locks at once (`SystemUiHandoff`, THREAT_MODEL invariants).
+> **Long work is scoped to the session, not to a screen.** An import of fifty files belongs to the
+> unlocked session and runs on the job the lock cancels *first*, so navigating away cannot abandon
+> it while locking still ends it — before the MK it encrypts against is zeroized. Lock does not
+> *wait* for work in flight: it runs on the UI thread, so awaiting a multi-second encrypt would
+> freeze the app and delay zeroizing the key. It does not need to, because the guarded source aborts
+> within a buffered read. Nothing about the work is persisted across the lock, so the user is warned
+> *before* an import rather than told afterwards.
 > Still **Phase 1**: the configurable auto-lock
 > **timeout** + **device-lock** listener (step 2 hardcodes manual + on-background), and recovery-key
 > **entry** on a fresh device (create still *displays* it). See
