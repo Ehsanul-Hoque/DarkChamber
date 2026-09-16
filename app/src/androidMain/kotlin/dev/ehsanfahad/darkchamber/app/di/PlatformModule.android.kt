@@ -8,6 +8,8 @@ import dev.ehsanfahad.darkchamber.app.auth.AndroidBiometricAuthenticator
 import dev.ehsanfahad.darkchamber.app.auth.DefaultActivityHolder
 import dev.ehsanfahad.darkchamber.app.picker.AndroidFilePicker
 import dev.ehsanfahad.darkchamber.app.picker.AndroidPhotoPicker
+import dev.ehsanfahad.darkchamber.app.system.AndroidSecretClipboard
+import dev.ehsanfahad.darkchamber.app.system.SecretClipboard
 import dev.ehsanfahad.darkchamber.core.crypto.AndroidSecureKeyStore
 import dev.ehsanfahad.darkchamber.core.crypto.BiometricAuthenticator
 import dev.ehsanfahad.darkchamber.core.crypto.SecureKeyStore
@@ -37,6 +39,8 @@ actual fun platformModule(): Module = module {
     // one shared SystemUiHandoff: each is a separate activity, so each stops ours while it is up.
     single<FilePicker> { AndroidFilePicker({ get<ActivityHolder>().activity }, get()) }
     single<PhotoPicker> { AndroidPhotoPicker({ get<ActivityHolder>().activity }, get()) }
+    // The application context, not an activity: the scheduled clear outlives the screen that copied.
+    single<SecretClipboard> { AndroidSecretClipboard(androidContext()) }
     single<CatalogProvider> {
         val context = androidContext()
         CatalogProvider { root -> openCatalog(context, root) }

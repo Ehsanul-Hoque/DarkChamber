@@ -5,6 +5,8 @@ import dev.ehsanfahad.darkchamber.app.VaultRootResolver
 import dev.ehsanfahad.darkchamber.app.auth.IosBiometricAuthenticator
 import dev.ehsanfahad.darkchamber.app.picker.IosFilePicker
 import dev.ehsanfahad.darkchamber.app.picker.IosPhotoPicker
+import dev.ehsanfahad.darkchamber.app.system.IosSecretClipboard
+import dev.ehsanfahad.darkchamber.app.system.SecretClipboard
 import dev.ehsanfahad.darkchamber.app.rootViewController
 import dev.ehsanfahad.darkchamber.core.crypto.BiometricAuthenticator
 import dev.ehsanfahad.darkchamber.core.crypto.IosSecureKeyStore
@@ -33,6 +35,8 @@ actual fun platformModule(): Module = module {
     // the way it does on Android.
     single<FilePicker> { IosFilePicker(::rootViewController) }
     single<PhotoPicker> { IosPhotoPicker(::rootViewController) }
+    // Local-only and self-expiring; see the implementation for what a plain pasteboard write costs.
+    single<SecretClipboard> { IosSecretClipboard() }
     single<CatalogProvider> { CatalogProvider { root -> openCatalog(root) } }
 }
 

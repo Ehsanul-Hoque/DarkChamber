@@ -1,5 +1,8 @@
 package dev.ehsanfahad.darkchamber.app.system
 
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
+
 /**
  * Put a secret on the system clipboard — as briefly and as locally as the platform allows.
  *
@@ -30,3 +33,13 @@ fun interface SecretClipboard {
      */
     fun copySecret(text: String)
 }
+
+/**
+ * How long a copied secret is meant to survive — one number, both platforms, so the UI's "about a
+ * minute" stays true of each.
+ *
+ * Long enough to switch to a password manager and paste; short enough that a phone left on a desk
+ * is not still holding a recovery key. iOS enforces it itself; Android has no such facility and its
+ * implementation schedules the clear.
+ */
+internal val SECRET_CLIP_LIFETIME: Duration = 60.seconds
