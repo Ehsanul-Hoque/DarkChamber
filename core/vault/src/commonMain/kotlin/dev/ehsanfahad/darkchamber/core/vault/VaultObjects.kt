@@ -118,7 +118,14 @@ class VaultObjects(
         // throw would escape a function whose contract is that no exception crosses the boundary.
         return try {
             storage
-                .useSpilledCopy(held) { spilled ->
+                // Guarded like every other read of this payload. The copy is a straight drain with
+                // no chunk loop to notice anything, so without this it is the one stretch of an
+                // import that a lock or a cancel cannot stop — and lock's teardown purges `tmp/`
+                // *before* the copy would finish, so an unguarded drain goes on writing plaintext
+                // into an already-wiped directory after the master key is gone. Aborting here throws
+                // out of the copy, and `useSpilledCopy` deletes the half-written scratch on its way
+                // out.
+                .useSpilledCopy(SessionGuardedSource(held) { session.isOpen && isActive() }) { spilled ->
                     storeObject(kind, name, mime, chunkSize, onProgress, isActive, spilled)
                 }
                 .flatMap { it }

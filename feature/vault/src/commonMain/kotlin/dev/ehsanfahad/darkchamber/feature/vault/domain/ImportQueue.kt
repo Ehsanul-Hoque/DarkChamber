@@ -94,13 +94,21 @@ internal class ImportQueue(private val importFile: ImportFile) {
     }
 
     private companion object {
-        /** Known size ⇒ we can start at zero; unknown ⇒ nothing honest to show but motion. */
+        /**
+         * Known, non-empty size ⇒ we can start at zero; otherwise ⇒ nothing honest to show but
+         * motion. See [fractionAt] for why empty is in the second group despite being known.
+         */
         fun Long?.startingFraction(): Float? = if (this != null && this > 0L) 0f else null
 
         /**
          * The container reads each payload **twice** — size and digest, then the chunk encrypt — so
          * the byte count runs to `2 × size`. The user is shown one bar filling once, not the same
          * file arriving twice.
+         *
+         * A size of zero draws the indeterminate bar, which is **not** the picker calling an empty
+         * file unknown — the picker reports zero as the fact it is. It is that a fraction of zero
+         * bytes has no value to take, and an empty file is imported faster than a bar can be seen
+         * either way.
          */
         fun Long?.fractionAt(bytes: Long): Float? {
             val size = this ?: return null

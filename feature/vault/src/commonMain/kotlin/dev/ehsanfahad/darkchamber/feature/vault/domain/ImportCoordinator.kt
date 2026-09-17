@@ -1,5 +1,6 @@
 package dev.ehsanfahad.darkchamber.feature.vault.domain
 
+import dev.ehsanfahad.darkchamber.core.logging.logVaultError
 import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportState
 import dev.ehsanfahad.darkchamber.feature.vault.api.PhotoPicker
@@ -11,6 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlin.concurrent.Volatile
 import kotlin.coroutines.cancellation.CancellationException
 
 /**
@@ -40,7 +42,13 @@ internal class ImportCoordinator(
     /**
      * Flipped by [cancel] and read on every payload read, so a cancel stops within a read instead of
      * at the end of the current file — two minutes, for a large video. Reset as each batch starts.
+     *
+     * `@Volatile` because the write and the reads are on different threads: [cancel] runs on the UI
+     * thread, while the predicate is polled from inside the blocking encrypt on the import
+     * dispatcher. Without it there is no happens-before between the two, and a cancel is free to go
+     * unnoticed for the rest of the file — the exact wait this flag exists to avoid.
      */
+    @Volatile
     private var cancelled = false
 
     val isRunning: Boolean get() = job?.isActive == true
@@ -74,7 +82,10 @@ internal class ImportCoordinator(
                 throw e
             } catch (_: Exception) {
                 // The picker could not even be shown: no grant was taken, nothing to close, and
-                // nothing imported. Idle is the honest state; the screen reports the failure.
+                // nothing imported, so Idle is the honest state. It is also a *silent* one — no
+                // banner is raised for a picker that never opened, so the affordance simply looks
+                // inert. A known gap rather than a decision; surfacing it needs a state of its own,
+                // because "the picker would not open" is not "that file could not be added".
                 _state.value = ImportState.Idle
                 return@launch
             }
@@ -99,7 +110,17 @@ internal class ImportCoordinator(
                 },
             )
 
+            // Logged here, where a batch ends exactly once, rather than where the summary is shown:
+            // a screen can be rebuilt and replay this state any number of times, and one failed file
+            // is one event however often it is rendered. Redacted either way — the stage tag and the
+            // error type, never the file's name.
+            summary.failed.forEach { logVaultError(IMPORT_STAGE, it.error) }
+
             _state.value = ImportState.Finished(imported = summary.imported, failed = summary.failed)
         }
+    }
+
+    private companion object {
+        const val IMPORT_STAGE = "vault-import-batch"
     }
 }

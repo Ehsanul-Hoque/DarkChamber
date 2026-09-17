@@ -15,6 +15,7 @@ import dev.ehsanfahad.darkchamber.core.db.CatalogStore
 import dev.ehsanfahad.darkchamber.core.db.DriverFactory
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
+import dev.ehsanfahad.darkchamber.core.model.getOrNull
 import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
 import dev.ehsanfahad.darkchamber.feature.vault.api.PhotoPicker
 import kotlinx.io.files.Path
@@ -34,7 +35,13 @@ actual fun platformModule(): Module = module {
     // a SystemUiHandoff: both present inside our own window, so the app never backgrounds mid-pick
     // the way it does on Android.
     single<FilePicker> { IosFilePicker(::rootViewController) }
-    single<PhotoPicker> { IosPhotoPicker(::rootViewController) }
+    // The photo picker needs the vault's wiped-on-lock tmp/ for the one branch where the system
+    // hands back a copy instead of the original. Resolved per pick, not at graph construction: the
+    // root is created with the vault, and the picker outlives no session anyway.
+    single<PhotoPicker> {
+        val rootResolver = get<VaultRootResolver>()
+        IosPhotoPicker(::rootViewController) { rootResolver.resolve().getOrNull()?.let { Path(it, "tmp") } }
+    }
     // Local-only and self-expiring; see the implementation for what a plain pasteboard write costs.
     single<SecretClipboard> { IosSecretClipboard() }
     single<CatalogProvider> { CatalogProvider { root -> openCatalog(root) } }

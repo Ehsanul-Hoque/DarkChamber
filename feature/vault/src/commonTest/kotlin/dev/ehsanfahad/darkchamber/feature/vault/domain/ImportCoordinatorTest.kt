@@ -172,13 +172,12 @@ class ImportCoordinatorTest {
     fun cancelling_stops_the_batch_and_reports_what_was_imported() = runTest {
         lateinit var subject: ImportCoordinator
         val vault = FakeVaultItems(onImport = { if (it == "second.jpg") subject.cancel() })
-        val files = FakeFilePicker(
-            listOf(
-                FakePickedFile(name = "first.jpg"),
-                FakePickedFile(name = "second.jpg"),
-                FakePickedFile(name = "third.jpg"),
-            ),
+        val picked = listOf(
+            FakePickedFile(name = "first.jpg"),
+            FakePickedFile(name = "second.jpg"),
+            FakePickedFile(name = "third.jpg"),
         )
+        val files = FakeFilePicker(picked)
         subject = coordinator(vault, files = files)
 
         subject.importFiles()
@@ -188,6 +187,10 @@ class ImportCoordinatorTest {
         assertEquals(1, state.imported, "what landed before the cancel is kept")
         assertEquals(emptyList(), state.failed, "an interrupted file is not a broken one")
         assertEquals(listOf("first.jpg", "second.jpg"), vault.importedNames, "the batch stopped, not ran on")
+        // The files the cancel stopped the batch short of still hold platform grants — on iOS a
+        // security-scoped resource, which leaks for the life of the process if it is not handed
+        // back. A user cancel has to release them just as a lock does.
+        assertTrue(picked.all { it.closed }, "a cancelled batch releases every grant it took")
     }
 
     @Test

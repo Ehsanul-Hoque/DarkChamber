@@ -122,8 +122,9 @@ internal class DefaultVaultGalleryComponent(
         // The batch state goes into GalleryState whole rather than being flattened into flags: the
         // screen needs the file count, the name and the fraction, and reducing them here would mean
         // inventing a second vocabulary for the same thing.
+        // Not logged here: this runs again every time the state is replayed to a rebuilt screen,
+        // and a failed file is one event. The batch logs it once, where the batch ends.
         val failed = (batch as? ImportState.Finished)?.failed.orEmpty()
-        failed.forEach { logVaultError(IMPORT_STAGE, it.error) }
 
         _state.value = _state.value.copy(
             batch = batch,
@@ -141,7 +142,6 @@ internal class DefaultVaultGalleryComponent(
     private companion object {
         // Stage labels for the redaction boundary: event names only, never a name, path or id.
         const val LISTING_STAGE = "vault-gallery-listing"
-        const val IMPORT_STAGE = "vault-gallery-import"
 
         /** Roughly six frames at 60 Hz: fast enough to look continuous, slow enough to be free. */
         val PROGRESS_INTERVAL: Duration = 100.milliseconds

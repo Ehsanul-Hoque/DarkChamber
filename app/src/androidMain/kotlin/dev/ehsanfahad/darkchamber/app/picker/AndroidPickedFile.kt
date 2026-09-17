@@ -20,11 +20,22 @@ internal class AndroidPickedFile(
     private val uri: Uri,
 ) : PickedFile {
 
-    override val name: String = resolver.queryDisplayName(uri) ?: uri.lastPathSegment ?: FALLBACK_NAME
+    /**
+     * Lazy, and queried once for both columns, because of *where* the eager version ran.
+     *
+     * The pick result is mapped on the coroutine that launched the picker, which is the main
+     * dispatcher — so a fifty-file selection meant a hundred and fifty blocking binder round-trips
+     * on the UI thread before the first byte was read, each of which a cloud provider can take its
+     * time over. A single-file pick never showed it. Deferred like this, the queries happen on the
+     * import dispatcher, as the batch reaches each file.
+     */
+    private val openable: OpenableColumnValues by lazy { resolver.queryOpenable(uri) }
 
-    override val mime: String = resolver.getType(uri) ?: FALLBACK_MIME
+    override val name: String by lazy { openable.displayName ?: uri.lastPathSegment ?: FALLBACK_NAME }
 
-    override val size: Long? = openableSizeOrNull(resolver.querySize(uri))
+    override val mime: String by lazy { resolver.getType(uri) ?: FALLBACK_MIME }
+
+    override val size: Long? by lazy { openableSizeOrNull(openable.size) }
 
     override fun openSource(): RawSource =
         resolver.openInputStream(uri)?.asSource()
@@ -42,19 +53,26 @@ internal class AndroidPickedFile(
     }
 }
 
-private fun ContentResolver.queryDisplayName(uri: Uri): String? =
-    query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
-        val column = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-        if (column >= 0 && cursor.moveToFirst()) cursor.getString(column) else null
-    }
+/** What one `OpenableColumns` lookup answered. Either field is null when the provider withheld it. */
+private class OpenableColumnValues(val displayName: String?, val size: Long?)
 
-// Null when the provider omits the column, leaves it NULL, or cannot be queried at all — each of
-// which means the same thing to us, and none of which is worth failing an import over.
-private fun ContentResolver.querySize(uri: Uri): Long? =
-    query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { cursor ->
-        val column = cursor.getColumnIndex(OpenableColumns.SIZE)
-        if (column >= 0 && cursor.moveToFirst() && !cursor.isNull(column)) cursor.getLong(column) else null
-    }
+/**
+ * Both openable columns in one cursor. A null field means the provider omitted the column, left it
+ * NULL, or could not be queried at all — each of which means the same thing to us, and none of which
+ * is worth failing an import over.
+ */
+private fun ContentResolver.queryOpenable(uri: Uri): OpenableColumnValues {
+    val projection = arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE)
+    return query(uri, projection, null, null, null)?.use { cursor ->
+        if (!cursor.moveToFirst()) return@use OpenableColumnValues(null, null)
+        val nameColumn = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+        val sizeColumn = cursor.getColumnIndex(OpenableColumns.SIZE)
+        OpenableColumnValues(
+            displayName = if (nameColumn >= 0 && !cursor.isNull(nameColumn)) cursor.getString(nameColumn) else null,
+            size = if (sizeColumn >= 0 && !cursor.isNull(sizeColumn)) cursor.getLong(sizeColumn) else null,
+        )
+    } ?: OpenableColumnValues(null, null)
+}
 
 /**
  * What a provider reported for `OpenableColumns.SIZE`, reduced to a size we will show or `null`.

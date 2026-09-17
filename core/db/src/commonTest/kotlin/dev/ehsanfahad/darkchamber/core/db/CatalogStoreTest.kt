@@ -87,6 +87,29 @@ class CatalogStoreTest {
         assertEquals(listOf(300L, 200L, 100L), ids)
     }
 
+    /**
+     * A batch import lands many files inside the same millisecond, so ties are the common case here
+     * rather than a corner. With no tiebreaker SQLite may return them in a different order each time
+     * it re-runs the query, and the gallery re-emits on every write — so tiles would reshuffle
+     * between two imports, and the arrival animation would play on items that never moved.
+     */
+    @Test
+    fun listItems_breaks_created_at_ties_the_same_way_every_time() {
+        val sameMillisecond = 500L
+        store.upsertItem(item(1, createdAt = sameMillisecond)).unwrap()
+        store.upsertItem(item(3, createdAt = sameMillisecond)).unwrap()
+        store.upsertItem(item(2, createdAt = sameMillisecond)).unwrap()
+        store.upsertItem(item(4, createdAt = 900L)).unwrap()
+
+        val order = store.listItems().unwrap().map { it.id.single() }
+        assertEquals(
+            listOf<Byte>(4, 3, 2, 1),
+            order,
+            "the newer row still leads; the tied rows fall back to a total order of their own",
+        )
+        assertEquals(order, store.listItems().unwrap().map { it.id.single() }, "and it does not drift")
+    }
+
     @Test
     fun listItems_filters_by_album() {
         val albumA = byteArrayOf(0xA1.toByte())

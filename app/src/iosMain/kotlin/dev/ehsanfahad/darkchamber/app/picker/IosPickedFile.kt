@@ -24,12 +24,17 @@ import platform.Foundation.NSURL
  */
 internal class IosPickedFile(
     private val url: NSURL,
-    private val path: String,
+    internal val path: String,
     private val scoped: Boolean,
     private val scratch: NSURL? = null,
+    displayName: String? = null,
 ) : PickedFile {
 
-    override val name: String = url.lastPathComponent ?: FALLBACK_NAME
+    /**
+     * [displayName] exists for the scratch case: that copy is deliberately given a unique file name
+     * so two picks cannot collide, and the user should still see the name their photo actually has.
+     */
+    override val name: String = displayName ?: url.lastPathComponent ?: FALLBACK_NAME
 
     // The picker deals in files, not MIME; the vault stores a type it can map to a viewer later.
     override val mime: String = mimeForExtension(url.pathExtension)

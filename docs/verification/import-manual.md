@@ -61,6 +61,15 @@ Tick each line. A failure here is a release blocker.
       UIKit, so a lost strong reference shows up as a picker that dismisses with the button stuck on
       "Importing…" — and because collection timing varies, a single successful pick does not prove
       the reference is held.
+- [ ] **Photo picker, iCloud asset not yet on the device.** Pick a photo the library shows as not
+      downloaded (turn off "Download and Keep Originals", or pick something old from a large
+      library). It completes. This is the only way to reach the branch where the system hands back a
+      *copy* rather than the original, and that copy has to land in the vault's own scratch so a lock
+      wipes it. Afterwards, with the vault locked, `<container>/Documents/vault/tmp` is empty **and**
+      the container's own `tmp` holds nothing of the photo.
+- [ ] **Lock during that same download.** Start the import of a not-yet-downloaded iCloud photo and
+      lock the vault while it is still materialising. After unlocking, both directories above are
+      still empty — a copy resolved after the batch died is released rather than abandoned.
 
 ### Batch import (both platforms)
 
@@ -78,6 +87,12 @@ two pickers reach the same queue by different platform APIs.
       the others and reports honestly how many could not be read; it does **not** stop at the failure.
 - [ ] The notice **"Keep DarkChamber open — locking the vault or leaving the app stops the import"**
       is visible for the whole import, not just at the start.
+- [ ] **Android — take your time choosing.** Open the photo picker and browse for longer than two
+      minutes before confirming a large selection. The picker is a separate activity, so the vault's
+      auto-lock is deferred rather than skipped while it is up, and that deferral has a two-minute
+      watchdog behind it. Record what happens: if the selection is discarded and the app returns to
+      the lock screen, that is the watchdog firing, and the grace period needs re-deciding for
+      multi-select rather than treating a slow chooser as a stalled one.
 - [ ] **Cancel mid-batch** while a large video is encrypting. It stops within a second or two, not
       at the end of that file; already-imported items stay in the gallery; the app-private `tmp/` is
       empty afterwards.

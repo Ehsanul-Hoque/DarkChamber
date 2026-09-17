@@ -156,6 +156,10 @@ class VaultImportSpillTest {
      * than returning, from inside the spill's block — so the failure must still arrive as an
      * `Outcome` (the function's contract is that no exception crosses the boundary), and the held
      * provider stream, an open file descriptor on Android, must still be released.
+     *
+     * The lock is timed to land as the copy finishes rather than before it starts, which is the only
+     * way to reach the block now that the copy is guarded too: a session that is already closed
+     * aborts the copy instead, and that case belongs to `VaultImportAbortTest`.
      */
     @Test
     fun a_throw_from_inside_the_spill_is_an_error_and_still_releases_the_held_source() {
@@ -168,8 +172,9 @@ class VaultImportSpillTest {
             clock = { 42L },
             random = Random(5).let { r -> { n: Int -> r.nextBytes(n) } },
         )
-        val opener = SourceOpener(ByteArray(64) { it.toByte() }, maxOpens = 1)
-        session.close() // the lock lands mid-import: the MK is gone
+        // The lock lands between the copy and the encrypt: the MK is gone by the time the container
+        // asks for a DEK.
+        val opener = SourceOpener(ByteArray(64) { it.toByte() }, maxOpens = 1, onFullyRead = session::close)
 
         val result = vo.importObject(
             kind = VaultItemKind.FILE.code,
@@ -195,7 +200,12 @@ class VaultImportSpillTest {
  * A source factory that stops opening after [maxOpens] — the shape of a provider stream that cannot
  * be re-opened (`maxOpens = 1`) or cannot be opened at all (`maxOpens = 0`).
  */
-private class SourceOpener(private val data: ByteArray, private val maxOpens: Int) {
+private class SourceOpener(
+    private val data: ByteArray,
+    private val maxOpens: Int,
+    /** Fires as a source hits end-of-stream — how a test lands a lock at a precise point. */
+    private val onFullyRead: () -> Unit = {},
+) {
     var opens = 0
         private set
     /** Sources actually handed out (an open that throws produces none). */
@@ -210,7 +220,14 @@ private class SourceOpener(private val data: ByteArray, private val maxOpens: In
         opens++
         if (opens > maxOpens) throw IOException("source cannot be opened again (attempt $opens)")
         created++
-        return CountingSource(data, onExhausted = { sourcesFullyRead++ }, onClose = { closes++ })
+        return CountingSource(
+            data,
+            onExhausted = {
+                sourcesFullyRead++
+                onFullyRead()
+            },
+            onClose = { closes++ },
+        )
     }
 }
 
