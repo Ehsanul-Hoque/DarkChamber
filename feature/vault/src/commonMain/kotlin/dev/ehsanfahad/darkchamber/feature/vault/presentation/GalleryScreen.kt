@@ -24,10 +24,18 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import dev.ehsanfahad.darkchamber.core.designsystem.DarkChamberTheme
@@ -58,6 +66,14 @@ internal fun GalleryScreen(
     modifier: Modifier = Modifier,
 ) {
     val spacing = DarkChamberTheme.spacing
+    val density = LocalDensity.current
+
+    // The bottom bar floats over the grid, so the grid has to know how tall it actually is. Measured
+    // rather than guessed at: the four batch states are very different heights (two buttons versus a
+    // progress card carrying a file name and the keep-open notice), and every one of them grows again
+    // when the OS text size is turned up. A constant that is right for one of them traps the last row
+    // under the others.
+    var barHeight by remember { mutableStateOf(0.dp) }
 
     // No insets here: the host applies them once for the whole unlocked subtree, so a screen that
     // added its own would inset twice.
@@ -70,7 +86,7 @@ internal fun GalleryScreen(
             when {
                 state.loading -> CenteredMessage("Opening the vault…", showSpinner = true)
                 state.items.isEmpty() -> EmptyVault()
-                else -> ItemGrid(items = state.items, now = now)
+                else -> ItemGrid(items = state.items, now = now, bottomInset = barHeight)
             }
         }
 
@@ -79,7 +95,12 @@ internal fun GalleryScreen(
         // second batch the coordinator would only refuse.
         Box(
             contentAlignment = Alignment.BottomEnd,
-            modifier = Modifier.align(Alignment.BottomEnd).fillMaxWidth().padding(spacing.spaceLg),
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .fillMaxWidth()
+                .onSizeChanged { barHeight = with(density) { it.height.toDp() } }
+                .bottomBarScrim()
+                .padding(spacing.spaceLg),
         ) {
             when (val batch = state.batch) {
                 is ImportState.Running -> ImportProgressCard(batch = batch, onCancel = onCancelImport)
@@ -89,6 +110,34 @@ internal fun GalleryScreen(
             }
         }
     }
+}
+
+/**
+ * Fades the screen's own background up behind the bottom bar, so whatever is scrolling underneath
+ * stops competing with the text on top of it.
+ *
+ * This exists for **"Add files"**, which is the one thing down there with no container of its own —
+ * the extended FAB and all three import cards carry their own fill, and a plain label over someone's
+ * photo thumbnail is unreadable. Giving that button a container instead would have been the obvious
+ * fix and the wrong one: two filled buttons side by side read as two equal choices, and the whole
+ * point of the pairing is that adding photos leads.
+ *
+ * Not `colors.scrim` — that role is the 60%/40% blackout behind a dialog, which would darken the
+ * bottom of the gallery as though something modal were open. This is the background colour arriving
+ * gradually, which is what is actually happening: content scrolls under the bar and out of sight.
+ */
+@Composable
+private fun Modifier.bottomBarScrim(): Modifier {
+    val background = DarkChamberTheme.colors.background
+    return background(
+        Brush.verticalGradient(
+            // Weighted towards the top of the bar: a linear ramp still leaves the first third too
+            // thin to read against a bright thumbnail.
+            0f to background.copy(alpha = 0f),
+            0.45f to background.copy(alpha = 0.85f),
+            1f to background,
+        ),
+    )
 }
 
 /** "Add photos" leads, because the library is where most of what people vault already lives. */
@@ -240,7 +289,7 @@ private fun ImportSummaryCard(batch: ImportState.Finished, onDismiss: () -> Unit
 }
 
 @Composable
-private fun ItemGrid(items: List<GalleryItem>, now: Long) {
+private fun ItemGrid(items: List<GalleryItem>, now: Long, bottomInset: Dp) {
     val spacing = DarkChamberTheme.spacing
     val arrival = tileArrival(DarkChamberTheme.motion, prefersReducedMotion())
     LazyVerticalGrid(
@@ -249,8 +298,10 @@ private fun ItemGrid(items: List<GalleryItem>, now: Long) {
             start = spacing.spaceMd,
             end = spacing.spaceMd,
             top = spacing.spaceMd,
-            // Room for the FAB, so the last row is never trapped underneath it.
-            bottom = spacing.spaceXxl + spacing.spaceLg,
+            // The bottom bar's measured height, so the last row scrolls clear of it instead of
+            // parking underneath. It is a tile's *caption* that gets trapped — the name and size sit
+            // below the thumbnail — so being a few dp short still costs the row its label.
+            bottom = bottomInset + spacing.spaceMd,
         ),
         horizontalArrangement = Arrangement.spacedBy(spacing.spaceSm),
         verticalArrangement = Arrangement.spacedBy(spacing.spaceSm),
