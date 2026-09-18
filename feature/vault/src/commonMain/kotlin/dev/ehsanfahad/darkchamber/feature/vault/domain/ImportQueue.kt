@@ -66,7 +66,7 @@ internal class ImportQueue(private val importFile: ImportFile) {
                 next++
 
                 val total = file.size
-                onProgress(ImportProgress(index, files.size, file.name, total.startingFraction()))
+                onProgress(ImportProgress(index, files.size, file.name, startingFraction()))
 
                 val result = importFile(file, isActive) { bytes ->
                     onProgress(ImportProgress(index, files.size, file.name, total.fractionAt(bytes)))
@@ -95,10 +95,21 @@ internal class ImportQueue(private val importFile: ImportFile) {
 
     private companion object {
         /**
-         * Known, non-empty size ⇒ we can start at zero; otherwise ⇒ nothing honest to show but
-         * motion. See [fractionAt] for why empty is in the second group despite being known.
+         * Always indeterminate: a file that has not yet reported a single byte has no fraction to
+         * draw, and a confident `0f` claims otherwise.
+         *
+         * This is not pedantry about one frame. Between this emission and the first counted byte
+         * sits everything the platform does before we can read the file at all — and for a cloud
+         * document the provider downloads on demand, that is the *whole* download. A determinate bar
+         * pinned at 0% for minutes reads as "stuck"; an indeterminate one reads as "working", which
+         * is the only claim we can support (hard rule #6). For a local file this lasts one read and
+         * nobody sees it.
+         *
+         * The fetch still goes uncounted, so the bar has no way to move during it — this only stops
+         * it lying. Counting it means teaching the import path to report how many passes a payload
+         * will take, since only it knows whether the source spilled.
          */
-        fun Long?.startingFraction(): Float? = if (this != null && this > 0L) 0f else null
+        fun startingFraction(): Float? = null
 
         /**
          * The container reads each payload **twice** — size and digest, then the chunk encrypt — so

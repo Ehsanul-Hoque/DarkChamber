@@ -102,7 +102,29 @@ class ImportQueueTest {
         assertEquals(listOf(0, 0, 0), seen.map { it.index }, "one file, always index 0")
         assertEquals(listOf(1, 1, 1), seen.map { it.total })
         assertEquals("clip.mp4", seen.first().name)
-        assertEquals(listOf(0f, 0.5f, 1f), seen.map { it.fileFraction }, "0 → 1 across both passes")
+        assertEquals(listOf(null, 0.5f, 1f), seen.map { it.fileFraction }, "0 → 1 across both passes")
+    }
+
+    /**
+     * Before the first byte is counted there is nothing to draw a bar from, so the file starts
+     * *indeterminate* rather than at a confident zero.
+     *
+     * A file the platform has to fetch before we can read it — a cloud document the provider
+     * downloads on demand — spends that whole wait between these two emissions, reporting nothing.
+     * A bar pinned at 0% for four minutes says "stuck"; an indeterminate one says "working", which
+     * is the only thing we actually know. For a local file this state lasts one read.
+     */
+    @Test
+    fun a_file_that_has_not_started_arriving_has_no_fraction_yet() = runTest {
+        val vault = FakeVaultItems(bytesPerImport = listOf(2L))
+        val files = listOf(FakePickedFile(name = "from-the-cloud.mov", size = 4L))
+        val seen = mutableListOf<ImportProgress>()
+
+        queue(vault)(files) { seen += it }
+
+        assertEquals(null, seen.first().fileFraction, "no bytes yet means no fraction, not zero")
+        assertEquals("from-the-cloud.mov", seen.first().name, "it still says which file is running")
+        assertEquals(0.25f, seen.last().fileFraction, "and it becomes determinate once bytes arrive")
     }
 
     @Test
