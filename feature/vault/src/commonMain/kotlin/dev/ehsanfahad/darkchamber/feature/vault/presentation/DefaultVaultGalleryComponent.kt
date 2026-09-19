@@ -104,15 +104,23 @@ internal class DefaultVaultGalleryComponent(
      */
     private fun Flow<ImportState>.throttleProgress(interval: Duration): Flow<ImportState> = flow {
         var lastRunning: TimeMark? = null
+        var wasStopping = false
         collect { value ->
             if (value is ImportState.Running) {
                 val previous = lastRunning
-                if (previous == null || previous.elapsedNow() >= interval) {
+                // The window drops redundant *progress*. A batch turning into stopping is not
+                // progress — it is the user's tap arriving, and it may be the last thing this batch
+                // says for minutes if the platform is inside a blocking read. Held back, it leaves a
+                // Stop button on screen that has already been pressed.
+                val becameStopping = value.stopping != wasStopping
+                if (becameStopping || previous == null || previous.elapsedNow() >= interval) {
                     lastRunning = TimeSource.Monotonic.markNow()
+                    wasStopping = value.stopping
                     emit(value)
                 }
             } else {
                 lastRunning = null
+                wasStopping = false
                 emit(value)
             }
         }

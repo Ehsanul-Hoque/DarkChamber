@@ -60,6 +60,12 @@ internal class ImportCoordinator(
     /** Stop the batch. What has already been imported stays imported. */
     override fun cancel() {
         cancelled = true
+        // Say so immediately rather than waiting for the batch to notice. The flag is read on the
+        // next payload read, and the platform decides when that is — a file a cloud provider is
+        // still fetching can sit inside one blocking read for minutes, reporting nothing. Leaving
+        // the card untouched for that long offers a Stop button that has already been pressed.
+        val running = _state.value as? ImportState.Running ?: return
+        _state.value = running.copy(stopping = true)
     }
 
     /** Dismiss a finished summary. Anything else is left alone — a running batch is not dismissible. */
@@ -106,6 +112,10 @@ internal class ImportCoordinator(
                         total = progress.total,
                         name = progress.name,
                         fileFraction = progress.fileFraction,
+                        // Carried on every emission, not just set once by cancel(): the queue keeps
+                        // reporting progress for the file it is still finishing, and rebuilding the
+                        // state from the progress alone would clear the flag again on the next read.
+                        stopping = cancelled,
                     )
                 },
             )

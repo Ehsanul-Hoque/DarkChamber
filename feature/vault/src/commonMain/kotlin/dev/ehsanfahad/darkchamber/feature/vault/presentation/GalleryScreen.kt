@@ -215,16 +215,26 @@ private fun ImportProgressCard(batch: ImportState.Running, onCancel: () -> Unit)
         }
 
         Text(
-            text = KEEP_OPEN_NOTICE,
+            // Once stopping, the keep-open notice is the wrong warning: the batch is already ending,
+            // and what the user needs to know is that it has heard them and why it has not stopped
+            // yet. "The current file" is as specific as we can honestly be — this layer does not
+            // know whether the platform is fetching it, and claiming it is would be a guess.
+            text = if (batch.stopping) STOPPING_NOTICE else KEEP_OPEN_NOTICE,
             style = DarkChamberTheme.typography.caption,
             color = colors.textSecondary,
             modifier = Modifier.padding(top = spacing.spaceXs),
         )
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            TextButton(onClick = onCancel) {
+            TextButton(onClick = onCancel, enabled = !batch.stopping) {
                 // Says what cancelling actually costs: the files already in the vault stay there.
-                Text("Stop (keeps what's added)", style = DarkChamberTheme.typography.label, color = colors.accent)
+                Text(
+                    text = if (batch.stopping) "Stopping…" else "Stop (keeps what's added)",
+                    style = DarkChamberTheme.typography.label,
+                    // Disabled is carried by the colour too, not by the label alone: a button that
+                    // still looks live invites a second tap that does nothing.
+                    color = if (batch.stopping) colors.textSecondary else colors.accent,
+                )
             }
         }
     }
@@ -448,6 +458,18 @@ private const val HEX = "0123456789abcdef"
  */
 private const val KEEP_OPEN_NOTICE =
     "Keep DarkChamber open — locking the vault or leaving the app stops the import."
+
+/**
+ * Shown from the moment Stop is tapped until the batch actually ends.
+ *
+ * Deliberately says *finishing reading* rather than "stopping now": a stop takes effect on the next
+ * read of the payload, and a file the platform is still fetching can sit inside one read for minutes
+ * (docs/THREAT_MODEL.md's note that a stop is cooperative). Promising an instant stop would be a
+ * claim the code cannot keep (hard rule #6). The second half is the part that stops the wait feeling
+ * like a loss.
+ */
+private const val STOPPING_NOTICE =
+    "Stopping once the current file finishes reading. Everything already added stays in the vault."
 
 /** Wide enough for a name to read at two columns on a phone, narrow enough for three on a tablet. */
 private val TILE_MIN_WIDTH = 132.dp

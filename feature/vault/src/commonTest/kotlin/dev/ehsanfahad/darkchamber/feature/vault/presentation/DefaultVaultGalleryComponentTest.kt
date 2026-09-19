@@ -164,6 +164,25 @@ class DefaultVaultGalleryComponentTest {
         assertFalse(component.state.value.importing)
     }
 
+    /**
+     * The throttle exists to drop *progress*, which is redundant between frames. Tapping Stop is not
+     * progress — it is a different thing being shown, and it may be the last word the batch gets in
+     * for minutes if the platform is sat inside a blocking read. Dropping it leaves a Stop button on
+     * screen that has already been pressed.
+     */
+    @Test
+    fun the_throttle_never_swallows_a_batch_turning_into_stopping() = runTest {
+        val imports = FakeImports()
+        val component = component(FakeVaultItems(), imports = imports, progressInterval = 1.hours)
+
+        imports.emit(ImportState.Running(index = 0, total = 3, name = "a.jpg", fileFraction = 0.1f))
+        // Inside the throttle window, and the last thing this batch will say for a long time.
+        imports.emit(ImportState.Running(index = 0, total = 3, name = "a.jpg", fileFraction = 0.1f, stopping = true))
+
+        val shown = assertIs<ImportState.Running>(component.state.value.batch)
+        assertTrue(shown.stopping, "the stop has to reach the screen even mid-window")
+    }
+
     @Test
     fun a_running_batch_shows_as_importing_and_clears_when_it_ends() = runTest {
         val imports = FakeImports()

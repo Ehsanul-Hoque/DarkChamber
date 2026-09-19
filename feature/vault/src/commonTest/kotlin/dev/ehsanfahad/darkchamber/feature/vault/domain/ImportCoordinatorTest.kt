@@ -168,6 +168,50 @@ class ImportCoordinatorTest {
      * A user cancel is not a lock: the session stays open, what was already imported is kept, and
      * the file that was interrupted is **not** listed as having failed — nothing was wrong with it.
      */
+    /**
+     * Tapping Stop has to show up in the state *at once*, not whenever the batch next gets a word in.
+     *
+     * The flag alone is not enough. A stop takes effect on the next read of the payload, and the
+     * platform decides when that is: a file a cloud provider is still fetching can sit inside one
+     * blocking read for minutes, emitting nothing. If the only sign of the tap is the batch ending,
+     * the card sits there unchanged — Stop button and all — and the tap looks lost.
+     */
+    @Test
+    fun stopping_shows_in_the_state_before_the_batch_has_a_chance_to_react() = runTest {
+        lateinit var subject: ImportCoordinator
+        // Cancels from inside the import of the only file, then keeps running: exactly the case
+        // where the batch cannot report anything for a while.
+        val seen = mutableListOf<ImportState>()
+        val vault = FakeVaultItems(
+            onImport = {
+                subject.cancel()
+                seen += subject.state.value
+            },
+        )
+        subject = coordinator(vault, files = FakeFilePicker(listOf(FakePickedFile(name = "slow.mov"))))
+
+        subject.importFiles()
+
+        val duringImport = assertIs<ImportState.Running>(seen.single())
+        assertTrue(duringImport.stopping, "the tap must be visible while the batch is still running")
+        assertEquals("slow.mov", duringImport.name, "and it is still the same file it was showing")
+    }
+
+    @Test
+    fun a_running_batch_is_not_stopping_until_it_is_asked_to() = runTest {
+        val seen = mutableListOf<ImportState>()
+        lateinit var subject: ImportCoordinator
+        val vault = FakeVaultItems(onImport = { seen += subject.state.value })
+        subject = coordinator(vault, files = FakeFilePicker(listOf(FakePickedFile(name = "quick.jpg"))))
+
+        subject.importFiles()
+
+        assertFalse(
+            assertIs<ImportState.Running>(seen.single()).stopping,
+            "an untouched batch must not render as stopping",
+        )
+    }
+
     @Test
     fun cancelling_stops_the_batch_and_reports_what_was_imported() = runTest {
         lateinit var subject: ImportCoordinator

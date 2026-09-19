@@ -21,17 +21,25 @@ sealed interface ImportState {
      * [fileFraction] runs 0 → 1 across the whole of one file, or is **null** when the platform never
      * said how big the file is — draw an indeterminate indicator, never a bar against a guessed
      * total (hard rule #6).
+     *
+     * [stopping] means the user has asked the batch to stop and it has not stopped yet. It is a
+     * state of its own because the gap is real and can be long: a stop takes effect on the next read
+     * of the payload, and a file a cloud provider is still fetching can sit inside one blocking read
+     * for minutes. Without it the screen would go on offering a Stop button that has already been
+     * pressed, which reads as the tap having been missed.
      */
     data class Running(
         val index: Int,
         val total: Int,
         val name: String,
         val fileFraction: Float?,
+        val stopping: Boolean = false,
     ) : ImportState {
         // The name is decrypted vault content; the generated toString would print it into any log
         // line that renders this state (hard rule #4).
         override fun toString(): String =
-            "Running(index=$index, total=$total, name=${name.length} chars, fileFraction=$fileFraction)"
+            "Running(index=$index, total=$total, name=${name.length} chars, " +
+                "fileFraction=$fileFraction, stopping=$stopping)"
     }
 
     /**
