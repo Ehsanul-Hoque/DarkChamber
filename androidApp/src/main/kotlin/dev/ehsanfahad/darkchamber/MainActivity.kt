@@ -1,7 +1,9 @@
 package dev.ehsanfahad.darkchamber
 
+import android.graphics.Color
 import android.os.Bundle
 import android.view.WindowManager
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.fragment.app.FragmentActivity
@@ -32,7 +34,19 @@ class MainActivity : FragmentActivity() {
     private lateinit var root: RootComponent
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        enableEdgeToEdge()
+        // Both bars told explicitly that they sit on a dark background, so their icons are drawn
+        // light. The default `enableEdgeToEdge()` uses SystemBarStyle.auto, which picks that from
+        // the *device's* dark-mode setting rather than from what this app actually draws — and this
+        // app is dark whatever the device is set to. On a phone in light mode auto chose dark icons
+        // for a light background it assumed was there, leaving them invisible against ours.
+        //
+        // Pinned to dark rather than derived from the theme because there is only one theme to
+        // derive from today. When the light theme becomes reachable this has to follow it instead,
+        // or the same mismatch returns the other way up.
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
+        )
         // Unconditionally, for the whole app: screenshots and screen recording are blocked and the
         // app-switcher thumbnail is blank. Whole-app rather than per-screen on purpose — every
         // screen in the unlocked tree shows vault content, the locked tree shows the recovery key,

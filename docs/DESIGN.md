@@ -39,6 +39,12 @@ Tokens are semantic; components never reference raw hex. Both themes must hold W
 
 Neutral photographic paper, not cream; the amber deepens to hold contrast.
 
+> **Specified and built, not yet reachable.** These tokens exist as `darkChamberLightColors()` and are
+> tested, but `DarkChamberTheme` is still pinned to dark and nothing selects between the two, so the
+> app is dark-only on both platforms today. Switching themes is waiting on the settings screen that
+> the session work introduces; until then the Android system bars are pinned to light-on-dark to
+> match. Treat this table as the contract for that work, not as a description of what ships now.
+
 | Token             | Hex             | Use                                                          |
 |-------------------|-----------------|--------------------------------------------------------------|
 | `background`      | `#FAF9F7`       | app background                                               |
