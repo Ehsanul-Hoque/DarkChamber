@@ -18,10 +18,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.flow.launchIn
 import kotlin.coroutines.CoroutineContext
 import kotlin.time.Duration
@@ -49,6 +51,13 @@ internal class DefaultVaultGalleryComponent(
     // rather than in the core keeps the honest byte count intact for anything else that watches it
     // (spec §6.3). Zero in tests, where every state is worth asserting.
     private val progressInterval: Duration = PROGRESS_INTERVAL,
+    // How long a pick has to be taking before it is worth saying so. The picker covers this screen a
+    // few hundred milliseconds after it is asked for, so a notice published the instant the button
+    // is tapped is read by nobody — it is a flicker under a sheet already on its way up. Held back,
+    // it appears only when there is a wait to explain, and the wait that matters is the one *after*
+    // the user has chosen, while the system materialises the selection (on iOS, a per-asset iCloud
+    // download that can run to seconds). Zero in tests.
+    private val pickingDelay: Duration = PICKING_DELAY,
 ) : VaultGalleryComponent, ComponentContext by componentContext {
 
     // SupervisorJob so one failed intent does not kill the component's other work, but parented to
@@ -76,6 +85,7 @@ internal class DefaultVaultGalleryComponent(
         // The batch runs on the session, not here: this only watches it. The component can be
         // destroyed and rebuilt mid-import and will simply pick the state back up.
         imports.state
+            .holdBackPicking(pickingDelay)
             .throttleProgress(progressInterval)
             .onEach(::onImportState)
             .launchIn(scope)
@@ -96,6 +106,23 @@ internal class DefaultVaultGalleryComponent(
         // A summary the user has acknowledged must not come back the moment the state re-emits.
         imports.acknowledge()
     }
+
+    /**
+     * Delays [ImportState.Picking] by [after], and drops it entirely if anything supersedes it in
+     * the meantime.
+     *
+     * `transformLatest`, not `transform`: a new state has to **cancel** the pending delay, so a pick
+     * that completes quickly shows no notice at all. With a plain `transform` the delay would merely
+     * hold the flow up and the stale notice would still arrive afterwards — briefly drawn on top of
+     * a batch that has already started, which is worse than the flicker this exists to remove.
+     *
+     * Only `Picking` is delayed; a running or finished batch is never held back for any reason.
+     */
+    private fun Flow<ImportState>.holdBackPicking(after: Duration): Flow<ImportState> =
+        transformLatest { value ->
+            if (value is ImportState.Picking) delay(after)
+            emit(value)
+        }
 
     /**
      * Let every state through except a flood of [ImportState.Running] updates, of which one per
@@ -153,5 +180,13 @@ internal class DefaultVaultGalleryComponent(
 
         /** Roughly six frames at 60 Hz: fast enough to look continuous, slow enough to be free. */
         val PROGRESS_INTERVAL: Duration = 100.milliseconds
+
+        /**
+         * Longer than a picker takes to cover the screen, short enough that a real wait is explained
+         * before it is worried about. Under it, nothing is drawn at all — a notice nobody can finish
+         * reading is worse than no notice, and the same warning appears under the progress bar a
+         * moment later anyway.
+         */
+        val PICKING_DELAY: Duration = 450.milliseconds
     }
 }

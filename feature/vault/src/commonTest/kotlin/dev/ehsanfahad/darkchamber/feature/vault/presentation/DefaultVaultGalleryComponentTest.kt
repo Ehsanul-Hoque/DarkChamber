@@ -27,9 +27,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runTest
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
+import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.io.RawSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -47,6 +49,7 @@ class DefaultVaultGalleryComponentTest {
         vault: VaultItems,
         imports: VaultImports = FakeImports(),
         progressInterval: Duration = Duration.ZERO,
+        pickingDelay: Duration = Duration.ZERO,
     ): DefaultVaultGalleryComponent {
         val dispatcher = UnconfinedTestDispatcher(testScheduler)
         return DefaultVaultGalleryComponent(
@@ -56,6 +59,7 @@ class DefaultVaultGalleryComponentTest {
             mainContext = dispatcher,
             // No throttling by default: these tests are about which states arrive, not how often.
             progressInterval = progressInterval,
+            pickingDelay = pickingDelay,
         )
     }
 
@@ -181,6 +185,57 @@ class DefaultVaultGalleryComponentTest {
 
         val shown = assertIs<ImportState.Running>(component.state.value.batch)
         assertTrue(shown.stopping, "the stop has to reach the screen even mid-window")
+    }
+
+    /**
+     * The picker covers the screen a few hundred milliseconds after it is asked for, so a notice
+     * published the instant the button is tapped is read by nobody — it is a flicker under a sheet
+     * that is already on its way up.
+     *
+     * Held back, it appears only when there is actually a wait to explain: a picker slow to open, or
+     * — the case that matters — the stretch *after* the user has chosen, while the system is still
+     * materialising what they picked. On iOS that is a per-asset download and can run to seconds.
+     */
+    @Test
+    fun the_picking_notice_waits_rather_than_flashing_under_the_picker() = runTest {
+        val imports = FakeImports()
+        val component = component(FakeVaultItems(), imports = imports, pickingDelay = 400.milliseconds)
+
+        imports.emit(ImportState.Picking)
+
+        assertIs<ImportState.Idle>(
+            component.state.value.batch,
+            "nothing is shown while the picker is on its way up",
+        )
+
+        advanceTimeBy(401.milliseconds)
+        assertIs<ImportState.Picking>(
+            component.state.value.batch,
+            "a wait long enough to notice does get explained",
+        )
+    }
+
+    @Test
+    fun a_picker_that_opens_promptly_never_shows_the_notice_at_all() = runTest {
+        val imports = FakeImports()
+        val component = component(FakeVaultItems(), imports = imports, pickingDelay = 400.milliseconds)
+
+        // Every state the screen was actually asked to draw. Asserting only where it *ended up*
+        // would pass whether or not the stale notice was drawn on the way there — the batch is
+        // running either way — and the bug being guarded against is entirely in the middle.
+        val shown = mutableListOf<ImportState>()
+        component.state.subscribe { shown += it.batch }
+
+        imports.emit(ImportState.Picking)
+        // The user picked before the notice was due: the batch is already running.
+        imports.emit(ImportState.Running(index = 0, total = 1, name = "a.jpg", fileFraction = null))
+        advanceTimeBy(401.milliseconds)
+
+        assertTrue(
+            shown.none { it is ImportState.Picking },
+            "a superseded notice must be dropped, not merely delayed onto a running batch: $shown",
+        )
+        assertIs<ImportState.Running>(component.state.value.batch)
     }
 
     @Test

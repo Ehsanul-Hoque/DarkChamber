@@ -104,7 +104,13 @@ internal fun GalleryScreen(
         ) {
             when (val batch = state.batch) {
                 is ImportState.Running -> ImportProgressCard(batch = batch, onCancel = onCancelImport)
-                ImportState.Picking -> ImportNoticeCard(text = "Choose what to add…")
+                // Not "Choose what to add…" any more. This card is held back until a pick is taking
+                // long enough to be worth explaining, and by then the likeliest reason it is showing
+                // is the stretch *after* choosing, while the system materialises the selection — at
+                // which point telling the user to choose is telling them to do something they have
+                // already done. Vague on purpose: this layer cannot tell which of the two waits it
+                // is in, and naming the wrong one would be worse than naming neither.
+                ImportState.Picking -> ImportNoticeCard(text = "Getting things ready…")
                 is ImportState.Finished -> ImportSummaryCard(batch = batch, onDismiss = onAcknowledgeImport)
                 ImportState.Idle -> ImportActions(onAddPhotos = onAddPhotos, onAddFiles = onAddFiles)
             }
