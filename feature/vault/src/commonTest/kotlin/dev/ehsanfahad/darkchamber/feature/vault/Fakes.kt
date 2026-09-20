@@ -6,33 +6,62 @@ import dev.ehsanfahad.darkchamber.core.model.VaultItemKind
 import dev.ehsanfahad.darkchamber.core.vault.ObjectMeta
 import dev.ehsanfahad.darkchamber.core.vault.VaultItemSummary
 import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
+import dev.ehsanfahad.darkchamber.feature.vault.api.PhotoPicker
 import dev.ehsanfahad.darkchamber.feature.vault.api.PickedFile
 import dev.ehsanfahad.darkchamber.feature.vault.domain.VaultItems
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.io.Buffer
 import kotlinx.io.RawSource
+import kotlin.coroutines.cancellation.CancellationException
 
 /** A picker that hands back whatever the test configured, or cancels, or refuses to open. */
 internal class FakeFilePicker(
-    private val result: PickedFile? = null,
+    private val result: List<PickedFile> = emptyList(),
     private val failure: Throwable? = null,
 ) : FilePicker {
+    constructor(single: PickedFile) : this(listOf(single))
+
     var calls = 0
         private set
 
-    override suspend fun pickFile(): PickedFile? {
+    override suspend fun pickFiles(): List<PickedFile> {
         calls++
         failure?.let { throw it }
         return result
     }
 }
 
-/** A picked file that records whether its platform grant was released. */
+/**
+ * A photo picker that hands back whatever the test configured, or cancels, or refuses to open.
+ * Mirrors [FakeFilePicker] on purpose: the two seams differ in how they present, never in what they
+ * return.
+ */
+internal class FakePhotoPicker(
+    private val result: List<PickedFile> = emptyList(),
+    private val failure: Throwable? = null,
+) : PhotoPicker {
+    var calls = 0
+        private set
+
+    override suspend fun pickPhotos(): List<PickedFile> {
+        calls++
+        failure?.let { throw it }
+        return result
+    }
+}
+
+/**
+ * A picked file that records whether its platform grant was released.
+ *
+ * [size] defaults to the payload's real length — the ordinary case, where the platform knows. Pass
+ * `null` explicitly for the provider that will not say.
+ */
 internal class FakePickedFile(
     override val name: String = "photo.jpg",
     override val mime: String = "image/jpeg",
     private val data: ByteArray = byteArrayOf(1, 2, 3),
+    override val size: Long? = data.size.toLong(),
 ) : PickedFile {
     var closed = false
         private set
@@ -55,8 +84,15 @@ internal class FakePickedFile(
  */
 internal class FakeVaultItems(
     private val importResult: Outcome<ByteArray> = Outcome.Ok(byteArrayOf(7)),
+    /** Names that fail instead, so a batch can be given one bad file among good ones. */
+    private val failFor: Set<String> = emptySet(),
+    /** Cumulative byte counts to report while importing, standing in for the codec's two passes. */
+    private val bytesPerImport: List<Long> = emptyList(),
+    /** Runs as each file starts, so a test can cancel or lock partway through a batch. */
+    private val onImport: (String) -> Unit = {},
 ) : VaultItems {
     val summaries = MutableStateFlow<List<VaultItemSummary>>(emptyList())
+    val importedNames = mutableListOf<String>()
     var importCalls = 0
         private set
     var lastName: String? = null
@@ -71,12 +107,24 @@ internal class FakeVaultItems(
         return summaries
     }
 
-    override fun import(name: String, mime: String, openSource: () -> RawSource): Outcome<ByteArray> {
+    override fun import(
+        name: String,
+        mime: String,
+        onProgress: (Long) -> Unit,
+        isActive: () -> Boolean,
+        openSource: () -> RawSource,
+    ): Outcome<ByteArray> {
         importCalls++
         lastName = name
         lastMime = mime
+        importedNames += name
+        onImport(name)
         openSource() // the real implementation reads it; make sure the fake exercises the opener too
-        return importResult
+        // The real guard aborts a read once the predicate goes false; the fake checks once, which is
+        // enough to prove the caller is wired to it.
+        if (!isActive()) return Outcome.Err(VaultError.Io(RuntimeException("stopped")))
+        bytesPerImport.forEach(onProgress)
+        return if (name in failFor) Outcome.Err(VaultError.Io(RuntimeException("unreadable"))) else importResult
     }
 }
 
@@ -84,8 +132,26 @@ internal class FakeVaultItems(
 internal class ThrowingVaultItems : VaultItems {
     override fun observe(albumId: ByteArray?): Flow<List<VaultItemSummary>> = MutableStateFlow(emptyList())
 
-    override fun import(name: String, mime: String, openSource: () -> RawSource): Outcome<ByteArray> =
-        throw IllegalStateException("import exploded")
+    override fun import(
+        name: String,
+        mime: String,
+        onProgress: (Long) -> Unit,
+        isActive: () -> Boolean,
+        openSource: () -> RawSource,
+    ): Outcome<ByteArray> = throw IllegalStateException("import exploded")
+}
+
+/** A seam that behaves like an import interrupted by a lock cancelling the scope. */
+internal class CancellingVaultItems : VaultItems {
+    override fun observe(albumId: ByteArray?): Flow<List<VaultItemSummary>> = MutableStateFlow(emptyList())
+
+    override fun import(
+        name: String,
+        mime: String,
+        onProgress: (Long) -> Unit,
+        isActive: () -> Boolean,
+        openSource: () -> RawSource,
+    ): Outcome<ByteArray> = throw CancellationException("the session was torn down mid-import")
 }
 
 internal fun summary(

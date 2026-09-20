@@ -27,6 +27,10 @@
 4. **Screenshot capture on iOS.** iOS does not allow apps to block screenshots; we can only detect and warn. Android blocking via `FLAG_SECURE` is best-effort against OS-level capture.
 5. **Traffic analysis of backups (Phase 3).** Upload timing and ciphertext sizes are observable to the network and the storage provider. Padding/obfuscation may be considered later but is not promised.
 6. **Weak user secrets.** A 4-digit PIN protected only by Argon2id (i.e., if hardware key protections are somehow bypassed) is brute-forceable. Onboarding nudges users toward 6+ digits or a passphrase; rate limiting and hardware gating are the practical defenses.
+7. **The system clipboard, once the recovery key is copied to it.** The recovery-key screen offers a Copy action, because transcribing twenty-six characters by hand is itself a way to lose a vault. The clipboard is a shared surface and we do not control it. What we do set is narrow, and worth stating exactly:
+   - **iOS** — the pasteboard write is marked *local only*, so Universal Clipboard does not broadcast the key over iCloud to every device signed into the same account, and carries an *expiration date* (about a minute) that the system honours by itself.
+   - **Android** — the clip is flagged *sensitive* (API 33+), so the system shows no preview of it on screen and keyboards that honour the flag keep it out of clipboard history. The flag is a hint the system passes on, not a restriction it enforces: the stock keyboard respects it, another keyboard need not. Android offers no expiry, so the app schedules the clear itself; **if the process dies first, the clip stays**. The clear also leaves the clipboard alone if the user has copied something else since, rather than deleting their work.
+   - **Neither platform makes the clipboard private.** Any app the user runs can read it, and on Android before 13 a foreground app can read it silently. The user may also paste the key somewhere that syncs or is backed up. In-app copy therefore says only that the key clears in about a minute and to paste it somewhere safe now — never that copying is secure.
 
 ## Security invariants (enforced in code review)
 
@@ -41,6 +45,12 @@
   the length of the pick, a watchdog locks the vault if the picker is abandoned (2 minutes), and the
   app-switcher card stays blank throughout. Nothing else — the home button, another app, the screen
   locking — is exempt.
+- **A lock always wins over work in flight.** An import runs for as long as its files take, and it
+  belongs to the unlocked session rather than to a screen, so leaving the gallery does not abandon
+  it. Locking still ends it: the session's work is cancelled *before* the MasterKey is zeroized, the
+  encrypt notices within a buffered read, and the interrupted file leaves no object, no catalog row
+  and no scratch. Nothing about a running import is persisted across a lock, which is why the app
+  warns before an import rather than explaining afterwards.
 - A violation of any invariant is a P0 security bug, regardless of user impact observed.
 
 ## Reporting

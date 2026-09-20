@@ -4,9 +4,11 @@ import com.arkivanov.decompose.DefaultComponentContext
 import com.arkivanov.essenty.lifecycle.LifecycleRegistry
 import dev.ehsanfahad.darkchamber.app.DirectoryVaultRootResolver
 import dev.ehsanfahad.darkchamber.app.FakeBiometricAuthenticator
+import dev.ehsanfahad.darkchamber.app.FakeSecretClipboard
 import dev.ehsanfahad.darkchamber.app.FakeSecureKeyStore
 import dev.ehsanfahad.darkchamber.app.VaultBootstrap
 import dev.ehsanfahad.darkchamber.app.di.CatalogProvider
+import dev.ehsanfahad.darkchamber.app.system.SecretClipboard
 import dev.ehsanfahad.darkchamber.app.testSqlDriver
 import dev.ehsanfahad.darkchamber.core.crypto.BiometricAuthenticator
 import dev.ehsanfahad.darkchamber.core.crypto.CryptographyKotlinEngine
@@ -26,6 +28,7 @@ import kotlin.random.nextULong
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
@@ -55,12 +58,14 @@ class LockedComponentTest {
         authenticator: BiometricAuthenticator = FakeBiometricAuthenticator(),
         mainContext: CoroutineContext = UnconfinedTestDispatcher(),
         workContext: CoroutineContext = UnconfinedTestDispatcher(),
+        clipboard: SecretClipboard = FakeSecretClipboard(),
         onUnlocked: (VaultBootstrap.OpenVault) -> Unit = {},
     ): DefaultLockedComponent =
         DefaultLockedComponent(
             componentContext = DefaultComponentContext(LifecycleRegistry()),
             bootstrap = bootstrap(),
             authenticator = authenticator,
+            clipboard = clipboard,
             mainContext = mainContext,
             workContext = workContext,
             onUnlocked = onUnlocked,
@@ -71,6 +76,57 @@ class LockedComponentTest {
     @Test
     fun fresh_root_starts_in_create() {
         assertEquals(LockStep.Create, component().state.value.step)
+    }
+
+    @Test
+    fun copying_the_recovery_key_puts_exactly_the_shown_key_on_the_clipboard() = runTest {
+        val clipboard = FakeSecretClipboard()
+        val c = component(clipboard = clipboard)
+
+        c.submitCreate(pw())
+        val recovery = assertIs<LockStep.Recovery>(c.state.value.step)
+
+        c.copyRecoveryKey()
+
+        // Character for character: a key the user pastes must be the key they were shown, or they
+        // will find out the difference only when they need it most.
+        assertEquals(recovery.recoveryKey, clipboard.lastCopied)
+        assertTrue(c.state.value.recoveryKeyCopied, "the screen needs to know it happened")
+        // Cycle 1's F1: the gate's spinner follows `busy`, and nothing is running here. Copying is
+        // synchronous, so routing it through the busy guard would put a progress indicator on a
+        // screen with no work to report — the exact bug that shipped last cycle.
+        assertFalse(c.state.value.busy, "copying is not work to report progress for")
+    }
+
+    /**
+     * Copying is an addition, not a shortcut past the step. The key is the only way back into a
+     * vault whose passphrase is forgotten, so "I've saved it" stays a deliberate act.
+     */
+    @Test
+    fun copying_does_not_advance_the_step_or_count_as_saving_it() = runTest {
+        val clipboard = FakeSecretClipboard()
+        val c = component(clipboard = clipboard)
+
+        c.submitCreate(pw())
+        c.copyRecoveryKey()
+
+        assertIs<LockStep.Recovery>(c.state.value.step, "copying must not move the flow along")
+
+        c.confirmRecoverySaved()
+        assertEquals(LockStep.EnableBiometric, c.state.value.step)
+        assertFalse(c.state.value.recoveryKeyCopied, "the flag belongs to the step that showed the key")
+    }
+
+    @Test
+    fun there_is_nothing_to_copy_outside_the_recovery_step() = runTest {
+        val clipboard = FakeSecretClipboard()
+        val c = component(clipboard = clipboard)
+
+        // On the create step there is no key yet; the intent must be inert rather than copying
+        // whatever happens to be lying around.
+        c.copyRecoveryKey()
+
+        assertEquals(emptyList(), clipboard.copied)
     }
 
     @Test

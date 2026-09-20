@@ -17,8 +17,16 @@ data class ObjectMeta(val name: String, val mime: String)
 // One CBOR instance for enc_meta framing — the same serialization idiom as the .dchm header and the
 // KeyStore. enc_meta bytes are non-normative (no committed format vector): they never leave this
 // module's own seal/open, so the config need not match the container's byte-for-byte.
+//
+// `internal` rather than private only so the forward-compatibility test can decode the same
+// configuration into a wider shape; everything else goes through encodeMeta/decodeMeta.
+//
+// `ignoreUnknownKeys` is what makes the metadata model extensible on vaults that already exist: a
+// later cycle adds a field, and a build that predates it still reads those rows instead of failing
+// them as unverifiable. It is safe here and only here — enc_meta is a display record, not an
+// authenticity claim. The .dchm header stays strict, because an unexpected key there is tampering.
 @OptIn(ExperimentalSerializationApi::class)
-private val metaCbor: Cbor = Cbor { }
+internal val metaCbor: Cbor = Cbor { ignoreUnknownKeys = true }
 
 @OptIn(ExperimentalSerializationApi::class)
 internal fun encodeMeta(meta: ObjectMeta): ByteArray = metaCbor.encodeToByteArray(meta)

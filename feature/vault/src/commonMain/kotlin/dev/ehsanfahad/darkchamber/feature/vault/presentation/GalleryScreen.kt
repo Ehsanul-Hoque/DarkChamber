@@ -1,5 +1,6 @@
 package dev.ehsanfahad.darkchamber.feature.vault.presentation
 
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -19,19 +20,31 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import dev.ehsanfahad.darkchamber.core.designsystem.DarkChamberTheme
+import dev.ehsanfahad.darkchamber.core.designsystem.prefersReducedMotion
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryError
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryState
+import dev.ehsanfahad.darkchamber.feature.vault.api.ImportState
 
 /**
  * The vault gallery (docs/DESIGN.md). Reads theme **roles** only — no raw hex, no hardcoded colors —
@@ -45,11 +58,22 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryState
 internal fun GalleryScreen(
     state: GalleryState,
     now: Long,
-    onImport: () -> Unit,
+    onAddPhotos: () -> Unit,
+    onAddFiles: () -> Unit,
+    onCancelImport: () -> Unit,
+    onAcknowledgeImport: () -> Unit,
     onDismissError: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spacing = DarkChamberTheme.spacing
+    val density = LocalDensity.current
+
+    // The bottom bar floats over the grid, so the grid has to know how tall it actually is. Measured
+    // rather than guessed at: the four batch states are very different heights (two buttons versus a
+    // progress card carrying a file name and the keep-open notice), and every one of them grows again
+    // when the OS text size is turned up. A constant that is right for one of them traps the last row
+    // under the others.
+    var barHeight by remember { mutableStateOf(0.dp) }
 
     // No insets here: the host applies them once for the whole unlocked subtree, so a screen that
     // added its own would inset twice.
@@ -62,62 +86,267 @@ internal fun GalleryScreen(
             when {
                 state.loading -> CenteredMessage("Opening the vault…", showSpinner = true)
                 state.items.isEmpty() -> EmptyVault()
-                else -> ItemGrid(items = state.items, now = now)
+                else -> ItemGrid(items = state.items, now = now, bottomInset = barHeight)
             }
         }
 
+        // Bottom of the screen: the import affordances, or — while a batch runs — what it is
+        // doing and how to stop it. One at a time: offering "Add photos" mid-import would invite a
+        // second batch the coordinator would only refuse.
+        Box(
+            contentAlignment = Alignment.BottomEnd,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .fillMaxWidth()
+                .onSizeChanged { barHeight = with(density) { it.height.toDp() } }
+                .bottomBarScrim()
+                .padding(spacing.spaceLg),
+        ) {
+            when (val batch = state.batch) {
+                is ImportState.Running -> ImportProgressCard(batch = batch, onCancel = onCancelImport)
+                // Not "Choose what to add…" any more. This card is held back until a pick is taking
+                // long enough to be worth explaining, and by then the likeliest reason it is showing
+                // is the stretch *after* choosing, while the system materialises the selection — at
+                // which point telling the user to choose is telling them to do something they have
+                // already done. Vague on purpose: this layer cannot tell which of the two waits it
+                // is in, and naming the wrong one would be worse than naming neither.
+                ImportState.Picking -> ImportNoticeCard(text = "Getting things ready…")
+                is ImportState.Finished -> ImportSummaryCard(batch = batch, onDismiss = onAcknowledgeImport)
+                ImportState.Idle -> ImportActions(onAddPhotos = onAddPhotos, onAddFiles = onAddFiles)
+            }
+        }
+    }
+}
+
+/**
+ * Fades the screen's own background up behind the bottom bar, so whatever is scrolling underneath
+ * stops competing with the text on top of it.
+ *
+ * This exists for **"Add files"**, which is the one thing down there with no container of its own —
+ * the extended FAB and all three import cards carry their own fill, and a plain label over someone's
+ * photo thumbnail is unreadable. Giving that button a container instead would have been the obvious
+ * fix and the wrong one: two filled buttons side by side read as two equal choices, and the whole
+ * point of the pairing is that adding photos leads.
+ *
+ * Not `colors.scrim` — that role is the 60%/40% blackout behind a dialog, which would darken the
+ * bottom of the gallery as though something modal were open. This is the background colour arriving
+ * gradually, which is what is actually happening: content scrolls under the bar and out of sight.
+ */
+@Composable
+private fun Modifier.bottomBarScrim(): Modifier {
+    val background = DarkChamberTheme.colors.background
+    return background(
+        Brush.verticalGradient(
+            // Weighted towards the top of the bar: a linear ramp still leaves the first third too
+            // thin to read against a bright thumbnail.
+            0f to background.copy(alpha = 0f),
+            0.45f to background.copy(alpha = 0.85f),
+            1f to background,
+        ),
+    )
+}
+
+/** "Add photos" leads, because the library is where most of what people vault already lives. */
+@Composable
+private fun ImportActions(onAddPhotos: () -> Unit, onAddFiles: () -> Unit) {
+    val spacing = DarkChamberTheme.spacing
+
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        TextButton(onClick = onAddFiles) {
+            Text(
+                text = "Add files",
+                style = DarkChamberTheme.typography.label,
+                color = DarkChamberTheme.colors.accent,
+            )
+        }
+        Spacer(Modifier.width(spacing.spaceXs))
         ExtendedFloatingActionButton(
-            onClick = onImport,
+            onClick = onAddPhotos,
             containerColor = DarkChamberTheme.colors.accent,
             contentColor = DarkChamberTheme.colors.onAccent,
             // Rounded, never a circle: the full-circle radius belongs to the aperture (DESIGN.md §7).
             shape = DarkChamberTheme.shapes.large,
-            modifier = Modifier.align(Alignment.BottomEnd).padding(spacing.spaceLg),
         ) {
-            if (state.importing) {
-                // Indeterminate on purpose: the import reports no byte count yet, and a bar that
-                // invented one would be a lie (hard rule #6). What this does promise is only that
-                // work is still running — which a static label cannot, and a multi-minute import
-                // from a cloud provider otherwise reads as frozen.
-                CircularProgressIndicator(
-                    color = DarkChamberTheme.colors.onAccent,
-                    strokeWidth = 2.dp,
-                    modifier = Modifier.size(spacing.spaceMd),
+            Text(text = "Add photos", style = DarkChamberTheme.typography.label)
+        }
+    }
+}
+
+/**
+ * A running batch: which file of how many, how far into it, the notice, and a way out.
+ *
+ * The per-file indicator is **determinate only when the platform gave a size**; otherwise it is
+ * indeterminate, because a bar filling against an invented total misreports progress (hard rule #6).
+ * The file count is always shown, so there is something truthful to watch either way.
+ */
+@Composable
+private fun ImportProgressCard(batch: ImportState.Running, onCancel: () -> Unit) {
+    val colors = DarkChamberTheme.colors
+    val spacing = DarkChamberTheme.spacing
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(color = colors.surfaceRaised, shape = DarkChamberTheme.shapes.large)
+            .padding(spacing.spaceMd),
+    ) {
+        Text(
+            text = "Importing ${batch.index + 1} of ${batch.total}",
+            style = DarkChamberTheme.typography.body,
+            color = colors.textPrimary,
+        )
+        Text(
+            text = batch.name,
+            style = DarkChamberTheme.typography.caption,
+            color = colors.textSecondary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = spacing.spaceXs),
+        )
+
+        val fraction = batch.fileFraction
+        if (fraction == null) {
+            LinearProgressIndicator(
+                color = colors.accent,
+                trackColor = colors.surface,
+                modifier = Modifier.fillMaxWidth().padding(top = spacing.spaceXs),
+            )
+        } else {
+            LinearProgressIndicator(
+                progress = { fraction },
+                color = colors.accent,
+                trackColor = colors.surface,
+                modifier = Modifier.fillMaxWidth().padding(top = spacing.spaceXs),
+            )
+        }
+
+        Text(
+            // Once stopping, the keep-open notice is the wrong warning: the batch is already ending,
+            // and what the user needs to know is that it has heard them and why it has not stopped
+            // yet. "The current file" is as specific as we can honestly be — this layer does not
+            // know whether the platform is fetching it, and claiming it is would be a guess.
+            text = if (batch.stopping) STOPPING_NOTICE else KEEP_OPEN_NOTICE,
+            style = DarkChamberTheme.typography.caption,
+            color = colors.textSecondary,
+            modifier = Modifier.padding(top = spacing.spaceXs),
+        )
+
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = onCancel, enabled = !batch.stopping) {
+                // Says what cancelling actually costs: the files already in the vault stay there.
+                Text(
+                    text = if (batch.stopping) "Stopping…" else "Stop (keeps what's added)",
+                    style = DarkChamberTheme.typography.label,
+                    // Disabled is carried by the colour too, not by the label alone: a button that
+                    // still looks live invites a second tap that does nothing.
+                    color = if (batch.stopping) colors.textSecondary else colors.accent,
                 )
-                Spacer(Modifier.width(spacing.spaceXs))
             }
-            Text(text = if (state.importing) "Importing…" else "Add file", style = DarkChamberTheme.typography.label)
+        }
+    }
+}
+
+/** The gap between tapping and the picker appearing, where the notice already applies. */
+@Composable
+private fun ImportNoticeCard(text: String) {
+    val colors = DarkChamberTheme.colors
+    val spacing = DarkChamberTheme.spacing
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(color = colors.surfaceRaised, shape = DarkChamberTheme.shapes.large)
+            .padding(spacing.spaceMd),
+    ) {
+        Text(text = text, style = DarkChamberTheme.typography.body, color = colors.textPrimary)
+        Text(
+            text = KEEP_OPEN_NOTICE,
+            style = DarkChamberTheme.typography.caption,
+            color = colors.textSecondary,
+            modifier = Modifier.padding(top = spacing.spaceXs),
+        )
+    }
+}
+
+/**
+ * What a finished batch amounts to. Says how many could not be read rather than implying everything
+ * worked, and never claims a reason it does not have (hard rule #6).
+ */
+@Composable
+private fun ImportSummaryCard(batch: ImportState.Finished, onDismiss: () -> Unit) {
+    val colors = DarkChamberTheme.colors
+    val spacing = DarkChamberTheme.spacing
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(color = colors.sealedContainer, shape = DarkChamberTheme.shapes.large)
+            .padding(start = spacing.spaceMd),
+    ) {
+        Column(modifier = Modifier.weight(1f).padding(vertical = spacing.spaceXs)) {
+            Text(
+                text = GalleryFormat.importedCount(batch.imported),
+                style = DarkChamberTheme.typography.body,
+                color = colors.textPrimary,
+            )
+            if (batch.failed.isNotEmpty()) {
+                Text(
+                    text = GalleryFormat.failedCount(batch.failed.size),
+                    style = DarkChamberTheme.typography.caption,
+                    color = colors.danger,
+                )
+            }
+        }
+        TextButton(onClick = onDismiss) {
+            Text("Done", style = DarkChamberTheme.typography.label, color = colors.accent)
         }
     }
 }
 
 @Composable
-private fun ItemGrid(items: List<GalleryItem>, now: Long) {
+private fun ItemGrid(items: List<GalleryItem>, now: Long, bottomInset: Dp) {
     val spacing = DarkChamberTheme.spacing
+    val arrival = tileArrival(DarkChamberTheme.motion, prefersReducedMotion())
     LazyVerticalGrid(
         columns = GridCells.Adaptive(minSize = TILE_MIN_WIDTH),
         contentPadding = PaddingValues(
             start = spacing.spaceMd,
             end = spacing.spaceMd,
             top = spacing.spaceMd,
-            // Room for the FAB, so the last row is never trapped underneath it.
-            bottom = spacing.spaceXxl + spacing.spaceLg,
+            // The bottom bar's measured height, so the last row scrolls clear of it instead of
+            // parking underneath. It is a tile's *caption* that gets trapped — the name and size sit
+            // below the thumbnail — so being a few dp short still costs the row its label.
+            bottom = bottomInset + spacing.spaceMd,
         ),
         horizontalArrangement = Arrangement.spacedBy(spacing.spaceSm),
         verticalArrangement = Arrangement.spacedBy(spacing.spaceSm),
         modifier = Modifier.fillMaxSize(),
     ) {
-        items(items, key = { it.id.toHexKey() }) { item -> ItemTile(item = item, now = now) }
+        // Keyed by the object id, never by position. With newest-first ordering every existing tile
+        // shifts down on each import, so an index key would tell Compose that every row changed —
+        // animating the whole grid instead of the one tile that actually arrived.
+        items(items, key = { it.id.toHexKey() }) { item ->
+            ItemTile(
+                item = item,
+                now = now,
+                modifier = Modifier.animateItem(
+                    fadeInSpec = tween(arrival.fadeIn),
+                    placementSpec = arrival.placement?.let { tween<IntOffset>(it) },
+                    fadeOutSpec = tween(arrival.fadeOut),
+                ),
+            )
+        }
     }
 }
 
 @Composable
-private fun ItemTile(item: GalleryItem, now: Long) {
+private fun ItemTile(item: GalleryItem, now: Long, modifier: Modifier = Modifier) {
     val colors = DarkChamberTheme.colors
     val spacing = DarkChamberTheme.spacing
     val damaged = item.meta is GalleryItemMeta.Unreadable
 
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column(modifier = modifier.fillMaxWidth()) {
         // The thumbnail's future home, reserved at its final size so images drop in without
         // relayout. Until then it carries a type badge derived from the MIME family.
         Box(
@@ -227,6 +456,26 @@ private fun ByteArray.toHexKey(): String = joinToString("") { byte ->
 }
 
 private const val HEX = "0123456789abcdef"
+
+/**
+ * The load-bearing sentence of this screen (spec §4.4). A lock or a background ends a batch, and
+ * afterwards there is nobody left to tell — the state died with the session. Warning beforehand is
+ * the only chance there is, so it stays visible for the whole import, not just at the start.
+ */
+private const val KEEP_OPEN_NOTICE =
+    "Keep DarkChamber open — locking the vault or leaving the app stops the import."
+
+/**
+ * Shown from the moment Stop is tapped until the batch actually ends.
+ *
+ * Deliberately says *finishing reading* rather than "stopping now": a stop takes effect on the next
+ * read of the payload, and a file the platform is still fetching can sit inside one read for minutes
+ * (docs/THREAT_MODEL.md's note that a stop is cooperative). Promising an instant stop would be a
+ * claim the code cannot keep (hard rule #6). The second half is the part that stops the wait feeling
+ * like a loss.
+ */
+private const val STOPPING_NOTICE =
+    "Stopping once the current file finishes reading. Everything already added stays in the vault."
 
 /** Wide enough for a name to read at two columns on a phone, narrow enough for three on a tablet. */
 private val TILE_MIN_WIDTH = 132.dp

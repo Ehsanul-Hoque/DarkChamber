@@ -9,20 +9,27 @@ import dev.ehsanfahad.darkchamber.core.model.VaultError
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryError
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryState
+import dev.ehsanfahad.darkchamber.feature.vault.api.ImportState
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultGalleryComponent
-import dev.ehsanfahad.darkchamber.feature.vault.domain.ImportFile
-import dev.ehsanfahad.darkchamber.feature.vault.domain.ImportResult
+import dev.ehsanfahad.darkchamber.feature.vault.api.VaultImports
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveGallery
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.flow.launchIn
-import kotlinx.coroutines.launch
 import kotlin.coroutines.CoroutineContext
+import kotlin.time.Duration
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * The gallery's state holder, in the session gate's presentation style
@@ -36,8 +43,21 @@ import kotlin.coroutines.CoroutineContext
 internal class DefaultVaultGalleryComponent(
     componentContext: ComponentContext,
     observeGallery: ObserveGallery,
-    private val runImport: ImportFile,
+    private val imports: VaultImports,
     mainContext: CoroutineContext = Dispatchers.Main,
+    // How often a *running* batch is allowed to redraw. The batch reports every buffered read —
+    // kilobytes apart — which is far finer than a screen can show or a user can perceive, and
+    // recomposing the grid at that rate would cost more than the encrypt does. Throttling here
+    // rather than in the core keeps the honest byte count intact for anything else that watches it
+    // (spec §6.3). Zero in tests, where every state is worth asserting.
+    private val progressInterval: Duration = PROGRESS_INTERVAL,
+    // How long a pick has to be taking before it is worth saying so. The picker covers this screen a
+    // few hundred milliseconds after it is asked for, so a notice published the instant the button
+    // is tapped is read by nobody — it is a flicker under a sheet already on its way up. Held back,
+    // it appears only when there is a wait to explain, and the wait that matters is the one *after*
+    // the user has chosen, while the system materialises the selection (on iOS, a per-asset iCloud
+    // download that can run to seconds). Zero in tests.
+    private val pickingDelay: Duration = PICKING_DELAY,
 ) : VaultGalleryComponent, ComponentContext by componentContext {
 
     // SupervisorJob so one failed intent does not kill the component's other work, but parented to
@@ -61,30 +81,90 @@ internal class DefaultVaultGalleryComponent(
             }
             .onEach(::onItems)
             .launchIn(scope)
+
+        // The batch runs on the session, not here: this only watches it. The component can be
+        // destroyed and rebuilt mid-import and will simply pick the state back up.
+        imports.state
+            .holdBackPicking(pickingDelay)
+            .throttleProgress(progressInterval)
+            .onEach(::onImportState)
+            .launchIn(scope)
     }
 
-    override fun importFile() {
-        // Set synchronously so a double tap cannot open two pickers — the guard has to hold before
-        // the coroutine is even scheduled.
-        if (_state.value.importing) return
-        _state.value = _state.value.copy(importing = true, error = null)
+    // The coordinator holds the double-tap guard: it is the thing that knows whether a batch is
+    // already running, and it stays right whether or not this screen was rebuilt in between.
+    override fun importPhotos() = imports.importPhotos()
 
-        scope.launch {
-            val result = runImport()
-            _state.value = when (result) {
-                // The new row arrives through the listing flow; nothing to insert by hand.
-                is ImportResult.Imported -> _state.value.copy(importing = false)
-                is ImportResult.Cancelled -> _state.value.copy(importing = false)
-                is ImportResult.Failed -> {
-                    logVaultError(IMPORT_STAGE, result.error)
-                    _state.value.copy(importing = false, error = GalleryError.ImportFailed)
+    override fun importFiles() = imports.importFiles()
+
+    override fun cancelImport() = imports.cancel()
+
+    override fun acknowledgeImport() = imports.acknowledge()
+
+    override fun dismissError() {
+        _state.value = _state.value.copy(error = null)
+        // A summary the user has acknowledged must not come back the moment the state re-emits.
+        imports.acknowledge()
+    }
+
+    /**
+     * Delays [ImportState.Picking] by [after], and drops it entirely if anything supersedes it in
+     * the meantime.
+     *
+     * `transformLatest`, not `transform`: a new state has to **cancel** the pending delay, so a pick
+     * that completes quickly shows no notice at all. With a plain `transform` the delay would merely
+     * hold the flow up and the stale notice would still arrive afterwards — briefly drawn on top of
+     * a batch that has already started, which is worse than the flicker this exists to remove.
+     *
+     * Only `Picking` is delayed; a running or finished batch is never held back for any reason.
+     */
+    private fun Flow<ImportState>.holdBackPicking(after: Duration): Flow<ImportState> =
+        transformLatest { value ->
+            if (value is ImportState.Picking) delay(after)
+            emit(value)
+        }
+
+    /**
+     * Let every state through except a flood of [ImportState.Running] updates, of which one per
+     * [interval] is enough. A batch ending — or starting, or being cancelled — is never delayed:
+     * those are the frames that must land immediately, and there are only ever a handful of them.
+     */
+    private fun Flow<ImportState>.throttleProgress(interval: Duration): Flow<ImportState> = flow {
+        var lastRunning: TimeMark? = null
+        var wasStopping = false
+        collect { value ->
+            if (value is ImportState.Running) {
+                val previous = lastRunning
+                // The window drops redundant *progress*. A batch turning into stopping is not
+                // progress — it is the user's tap arriving, and it may be the last thing this batch
+                // says for minutes if the platform is inside a blocking read. Held back, it leaves a
+                // Stop button on screen that has already been pressed.
+                val becameStopping = value.stopping != wasStopping
+                if (becameStopping || previous == null || previous.elapsedNow() >= interval) {
+                    lastRunning = TimeSource.Monotonic.markNow()
+                    wasStopping = value.stopping
+                    emit(value)
                 }
+            } else {
+                lastRunning = null
+                wasStopping = false
+                emit(value)
             }
         }
     }
 
-    override fun dismissError() {
-        _state.value = _state.value.copy(error = null)
+    private fun onImportState(batch: ImportState) {
+        // The batch state goes into GalleryState whole rather than being flattened into flags: the
+        // screen needs the file count, the name and the fraction, and reducing them here would mean
+        // inventing a second vocabulary for the same thing.
+        // Not logged here: this runs again every time the state is replayed to a rebuilt screen,
+        // and a failed file is one event. The batch logs it once, where the batch ends.
+        val failed = (batch as? ImportState.Finished)?.failed.orEmpty()
+
+        _state.value = _state.value.copy(
+            batch = batch,
+            error = if (failed.isEmpty()) _state.value.error else GalleryError.ImportFailed,
+        )
     }
 
     private fun onItems(items: List<GalleryItem>) {
@@ -97,6 +177,16 @@ internal class DefaultVaultGalleryComponent(
     private companion object {
         // Stage labels for the redaction boundary: event names only, never a name, path or id.
         const val LISTING_STAGE = "vault-gallery-listing"
-        const val IMPORT_STAGE = "vault-gallery-import"
+
+        /** Roughly six frames at 60 Hz: fast enough to look continuous, slow enough to be free. */
+        val PROGRESS_INTERVAL: Duration = 100.milliseconds
+
+        /**
+         * Longer than a picker takes to cover the screen, short enough that a real wait is explained
+         * before it is worried about. Under it, nothing is drawn at all — a notice nobody can finish
+         * reading is worse than no notice, and the same warning appears under the progress bar a
+         * moment later anyway.
+         */
+        val PICKING_DELAY: Duration = 450.milliseconds
     }
 }

@@ -10,6 +10,7 @@ import dev.ehsanfahad.darkchamber.app.root.DefaultLockedComponent
 import dev.ehsanfahad.darkchamber.app.root.DefaultRootComponent
 import dev.ehsanfahad.darkchamber.app.root.DefaultUnlockedComponent
 import dev.ehsanfahad.darkchamber.app.root.RootComponent
+import dev.ehsanfahad.darkchamber.app.system.SecretClipboard
 import dev.ehsanfahad.darkchamber.app.ui.RootContent
 import dev.ehsanfahad.darkchamber.core.crypto.BiometricAuthenticator
 import dev.ehsanfahad.darkchamber.core.logging.initLogging
@@ -51,6 +52,7 @@ fun MainViewController(): UIViewController {
                 componentContext = ctx,
                 bootstrap = koin.get(),
                 authenticator = koin.get<BiometricAuthenticator>(),
+                clipboard = koin.get<SecretClipboard>(),
                 mainContext = Dispatchers.Main,
                 onUnlocked = onUnlocked,
             )

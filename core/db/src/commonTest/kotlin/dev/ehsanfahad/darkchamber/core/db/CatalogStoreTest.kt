@@ -76,13 +76,38 @@ class CatalogStoreTest {
     }
 
     @Test
-    fun listItems_all_is_ordered_by_created_at() {
+    fun listItems_all_is_newest_first() {
         store.upsertItem(item(1, createdAt = 300L)).unwrap()
         store.upsertItem(item(2, createdAt = 100L)).unwrap()
         store.upsertItem(item(3, createdAt = 200L)).unwrap()
 
+        // Newest first: the catalog feeds a gallery, and what a user just added is what they expect
+        // to see without scrolling. Oldest-first buries every import at the bottom of the grid.
         val ids = store.listItems().unwrap().map { it.created_at }
-        assertEquals(listOf(100L, 200L, 300L), ids)
+        assertEquals(listOf(300L, 200L, 100L), ids)
+    }
+
+    /**
+     * A batch import lands many files inside the same millisecond, so ties are the common case here
+     * rather than a corner. With no tiebreaker SQLite may return them in a different order each time
+     * it re-runs the query, and the gallery re-emits on every write — so tiles would reshuffle
+     * between two imports, and the arrival animation would play on items that never moved.
+     */
+    @Test
+    fun listItems_breaks_created_at_ties_the_same_way_every_time() {
+        val sameMillisecond = 500L
+        store.upsertItem(item(1, createdAt = sameMillisecond)).unwrap()
+        store.upsertItem(item(3, createdAt = sameMillisecond)).unwrap()
+        store.upsertItem(item(2, createdAt = sameMillisecond)).unwrap()
+        store.upsertItem(item(4, createdAt = 900L)).unwrap()
+
+        val order = store.listItems().unwrap().map { it.id.single() }
+        assertEquals(
+            listOf<Byte>(4, 3, 2, 1),
+            order,
+            "the newer row still leads; the tied rows fall back to a total order of their own",
+        )
+        assertEquals(order, store.listItems().unwrap().map { it.id.single() }, "and it does not drift")
     }
 
     @Test
@@ -95,7 +120,8 @@ class CatalogStoreTest {
 
         val inA = store.listItems(albumA).unwrap()
         assertEquals(2, inA.size)
-        assertEquals(listOf(100L, 300L), inA.map { it.created_at })
+        // Same order as the unfiltered listing — an album must not sort differently from the vault.
+        assertEquals(listOf(300L, 100L), inA.map { it.created_at })
     }
 
     @Test
@@ -174,7 +200,7 @@ class CatalogStoreTest {
             assertEquals(listOf(100L), awaitItem().map { it.created_at }, "re-emits after insert")
 
             obsStore.upsertItem(item(2, createdAt = 50L)).unwrap()
-            assertEquals(listOf(50L, 100L), awaitItem().map { it.created_at }, "ordered by created_at")
+            assertEquals(listOf(100L, 50L), awaitItem().map { it.created_at }, "newest first")
 
             obsStore.deleteItem(byteArrayOf(1)).unwrap()
             assertEquals(listOf(50L), awaitItem().map { it.created_at }, "re-emits after delete")

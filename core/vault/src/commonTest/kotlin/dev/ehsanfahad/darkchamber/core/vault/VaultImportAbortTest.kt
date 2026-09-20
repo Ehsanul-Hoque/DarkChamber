@@ -10,6 +10,7 @@ import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultItemKind
 import dev.ehsanfahad.darkchamber.core.storage.VaultStorage
 import kotlinx.io.Buffer
+import kotlinx.io.IOException
 import kotlinx.io.RawSource
 import kotlinx.io.readByteArray
 import kotlinx.io.files.Path
@@ -67,7 +68,7 @@ class VaultImportAbortTest {
         // of times. A payload small enough to fit one refill would make this test pass either way.
         val chunkSize = 8192
         val data = ByteArray(512 * 1024) { (it % 251).toByte() }
-        val opener = LockingSourceOpener(data, lockAfterReads = 3) { session.close() }
+        val opener = TrippingSourceOpener(data, tripAfterReads = 3) { session.close() }
 
         val result = vo.importObject(
             kind = VaultItemKind.FILE.code,
@@ -97,6 +98,58 @@ class VaultImportAbortTest {
     }
 
     @Test
+    fun a_caller_can_abort_an_import_without_locking_the_vault() {
+        SystemFileSystem.createDirectories(testDir)
+        val storage = VaultStorage(testDir)
+        val catalog = (CatalogStore.create(testSqlDriver()) as Outcome.Ok).value
+        val session = newSession()
+        val vo = objects(session, storage, catalog)
+
+        // A user cancel, not a lock: the session stays open throughout, and must still be usable
+        // afterwards — cancelling one file in a batch cannot cost the user the rest of the batch.
+        var cancelled = false
+        val data = ByteArray(512 * 1024) { (it % 251).toByte() }
+        val opener = TrippingSourceOpener(data, tripAfterReads = 3) { cancelled = true }
+
+        val result = vo.importObject(
+            kind = VaultItemKind.FILE.code,
+            name = "abandoned.bin",
+            mime = "application/octet-stream",
+            chunkSize = 8192,
+            isActive = { !cancelled },
+            openSource = opener::open,
+        )
+
+        assertIs<Outcome.Err>(result, "a cancelled import must not report success")
+        assertTrue(session.isOpen, "a cancel is not a lock: the session stays open")
+
+        // Coroutine cancellation cannot interrupt a blocking read, so without the predicate this
+        // would run to the end of the file — two minutes for a large video.
+        assertTrue(
+            opener.reads <= 5,
+            "the import must abort within a read of the cancel, but read ${opener.reads} times",
+        )
+
+        // Same fail-closed cleanup a lock gets: a cancel is not a licence to leave scratch behind.
+        assertEquals(0L, (catalog.countItems() as Outcome.Ok).value, "no row for a cancelled import")
+        assertEquals(emptyList(), SystemFileSystem.list(Path(testDir, "tmp")).toList(), "no scratch")
+        assertFalse(
+            SystemFileSystem.list(Path(testDir, "objects")).any { hasFiles(it) },
+            "a cancelled import must leave no object bytes behind",
+        )
+
+        // The vault still works: the next file in the batch imports normally.
+        val next = vo.importObject(
+            kind = VaultItemKind.FILE.code,
+            name = "next.bin",
+            mime = "application/octet-stream",
+            openSource = { Buffer().apply { write(ByteArray(64) { it.toByte() }) } },
+        )
+        assertIs<Outcome.Ok<ByteArray>>(next, "a cancel must not poison the session for later files")
+        catalog.close()
+    }
+
+    @Test
     fun an_open_session_reads_the_whole_payload() {
         SystemFileSystem.createDirectories(testDir)
         val storage = VaultStorage(testDir)
@@ -106,7 +159,7 @@ class VaultImportAbortTest {
 
         val chunkSize = 64
         val data = ByteArray(chunkSize * 40) { (it % 251).toByte() }
-        val opener = LockingSourceOpener(data, lockAfterReads = Int.MAX_VALUE) { }
+        val opener = TrippingSourceOpener(data, tripAfterReads = Int.MAX_VALUE) { }
 
         val result = vo.importObject(
             kind = VaultItemKind.FILE.code,
@@ -126,27 +179,89 @@ class VaultImportAbortTest {
         catalog.close()
     }
 
+    /**
+     * The same abort, but down the **spill** path — the branch a one-shot provider stream takes.
+     *
+     * The copy into `tmp/` is a straight drain of the whole payload with no chunk loop to notice
+     * anything, so it is the one stretch of an import where a stop can go unheard. That matters more
+     * than the delay: lock's teardown runs `purgeTmp()` *first*, so an unguarded copy would go on
+     * writing plaintext into a directory that has already been wiped, after the master key is gone.
+     */
+    @Test
+    fun a_cancel_during_the_spill_copy_stops_it_and_leaves_no_scratch() {
+        SystemFileSystem.createDirectories(testDir)
+        val storage = VaultStorage(testDir)
+        val catalog = (CatalogStore.create(testSqlDriver()) as Outcome.Ok).value
+        val session = newSession()
+        val vo = objects(session, storage, catalog)
+
+        var cancelled = false
+        val data = ByteArray(512 * 1024) { (it % 251).toByte() }
+        val opener = TrippingSourceOpener(data, tripAfterReads = 3, maxOpens = 1) { cancelled = true }
+
+        val result = vo.importObject(
+            kind = VaultItemKind.FILE.code,
+            name = "abandoned-one-shot.bin",
+            mime = "application/octet-stream",
+            chunkSize = 8192,
+            isActive = { !cancelled },
+            openSource = opener::open,
+        )
+
+        assertIs<Outcome.Err>(result, "a cancelled spill must not report success")
+        assertTrue(session.isOpen, "a cancel is not a lock")
+        assertTrue(
+            opener.reads <= 5,
+            "the copy must stop within a read of the cancel, but read ${opener.reads} times",
+        )
+        assertEquals(0L, (catalog.countItems() as Outcome.Ok).value, "no row for a cancelled spill")
+        assertEquals(
+            emptyList(),
+            SystemFileSystem.list(Path(testDir, "tmp")).toList(),
+            "the half-written copy must be deleted, not left in tmp/",
+        )
+        assertFalse(
+            SystemFileSystem.list(Path(testDir, "objects")).any { hasFiles(it) },
+            "a cancelled spill must leave no object bytes behind",
+        )
+        catalog.close()
+    }
+
     private fun hasFiles(path: Path): Boolean {
         val md = SystemFileSystem.metadataOrNull(path) ?: return false
         return if (md.isDirectory) SystemFileSystem.list(path).any { hasFiles(it) } else true
     }
 }
 
-/** Opens sources that trip [onLock] once [lockAfterReads] reads have happened across all of them. */
-private class LockingSourceOpener(
+/**
+ * Opens sources that fire [onTrip] once [tripAfterReads] reads have happened across all of them.
+ *
+ * [maxOpens] models a provider stream that cannot be re-opened, which sends the import down the
+ * spill path instead of streaming straight through.
+ */
+private class TrippingSourceOpener(
     private val data: ByteArray,
-    private val lockAfterReads: Int,
-    private val onLock: () -> Unit,
+    private val tripAfterReads: Int,
+    private val maxOpens: Int = Int.MAX_VALUE,
+    private val onTrip: () -> Unit,
 ) {
     var reads = 0
         private set
 
-    fun open(): RawSource = object : RawSource {
+    private var opens = 0
+
+    fun open(): RawSource {
+        opens++
+        if (opens > maxOpens) throw IOException("source cannot be opened again (attempt $opens)")
+        return newSource()
+    }
+
+    private fun newSource(): RawSource = object : RawSource {
         private val buffer = Buffer().apply { write(data) }
 
         override fun readAtMostTo(sink: Buffer, byteCount: Long): Long {
             reads++
-            if (reads == lockAfterReads) onLock()
+            if (reads == tripAfterReads) onTrip()
             return buffer.readAtMostTo(sink, byteCount)
         }
 

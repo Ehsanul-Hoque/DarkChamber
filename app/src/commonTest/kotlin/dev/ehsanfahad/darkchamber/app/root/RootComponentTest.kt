@@ -5,8 +5,10 @@ import com.arkivanov.decompose.value.MutableValue
 import com.arkivanov.decompose.value.Value
 import com.arkivanov.essenty.lifecycle.LifecycleRegistry
 import dev.ehsanfahad.darkchamber.app.FakeFilePicker
+import dev.ehsanfahad.darkchamber.app.FakePhotoPicker
 import dev.ehsanfahad.darkchamber.app.system.SystemUiHandoff
 import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
+import dev.ehsanfahad.darkchamber.feature.vault.api.PhotoPicker
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -54,6 +56,7 @@ class RootComponentTest {
                 single<CryptoEngine> { CryptographyKotlinEngine() }
                 // The unlocked subtree builds the gallery, which needs the picker seam.
                 single<FilePicker> { FakeFilePicker() }
+                single<PhotoPicker> { FakePhotoPicker() }
             },
         )
     }.koin
@@ -82,6 +85,7 @@ class RootComponentTest {
         override fun submitCreate(passphrase: ByteArray) = Unit
         override fun submitPassphraseUnlock(passphrase: ByteArray) = Unit
         override fun startBiometricUnlock() = Unit
+        override fun copyRecoveryKey() = Unit
         override fun confirmRecoverySaved() = Unit
         override fun enableBiometric() = Unit
         override fun skipBiometric() = Unit

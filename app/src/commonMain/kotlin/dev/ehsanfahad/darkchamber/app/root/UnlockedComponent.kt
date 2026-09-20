@@ -8,7 +8,9 @@ import com.arkivanov.decompose.value.Value
 import com.arkivanov.essenty.lifecycle.doOnDestroy
 import com.arkivanov.essenty.lifecycle.doOnStop
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultGalleryComponent
+import dev.ehsanfahad.darkchamber.feature.vault.api.VaultImports
 import dev.ehsanfahad.darkchamber.feature.vault.vaultGalleryComponent
+import dev.ehsanfahad.darkchamber.feature.vault.vaultImports
 import dev.ehsanfahad.darkchamber.app.VaultBootstrap
 import dev.ehsanfahad.darkchamber.app.nowEpochMillis
 import dev.ehsanfahad.darkchamber.core.crypto.CryptoEngine
@@ -18,6 +20,7 @@ import dev.ehsanfahad.darkchamber.core.vault.VaultObjects
 import org.koin.core.Koin
 import org.koin.core.qualifier.named
 import org.koin.core.scope.Scope
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -57,6 +60,9 @@ class DefaultUnlockedComponent(
     private val koin: Koin,
     // Handed to the feature components so host tests can drive them without a platform main looper.
     private val mainContext: CoroutineContext = Dispatchers.Main,
+    // Where an import's encrypt runs. Never the main thread (cycle 1's device run found key
+    // derivation there and the UI froze); injected for the same reason as [mainContext].
+    private val ioContext: CoroutineContext = Dispatchers.Default,
     private val onLock: () -> Unit,
 ) : UnlockedComponent, ComponentContext by componentContext {
 
@@ -92,6 +98,22 @@ class DefaultUnlockedComponent(
      * closed session within a buffered read and aborts, leaving no object, row or scratch behind.
      */
     private val featureWork = SupervisorJob()
+
+    /**
+     * The import batch, owned by the **session** rather than by the gallery (spec D7): navigating
+     * away from a screen must not abandon fifty photos half-imported, while locking must stop them.
+     * Parented to [featureWork], which lock cancels first, so a lock ends an import before the MK it
+     * is encrypting against is zeroized. It holds no session reference of its own beyond the
+     * `VaultObjects` in this scope, so closing the scope leaves nothing behind (hard rule #5).
+     */
+    private val imports: VaultImports =
+        vaultImports(
+            vaultObjects = scope.get(),
+            photoPicker = koin.get(),
+            filePicker = koin.get(),
+            scope = CoroutineScope(mainContext + featureWork),
+            ioContext = ioContext,
+        ).also { scope.declare(it) }
 
     private val navigation = StackNavigation<Config>()
 
@@ -139,11 +161,11 @@ class DefaultUnlockedComponent(
         when (config) {
             Config.Gallery -> UnlockedChild.Gallery(
                 // VaultObjects comes from the session scope, so the gallery cannot outlive the
-                // session; the picker is a platform seam from the root graph.
+                // session; the import batch is the session's, and the gallery only watches it.
                 vaultGalleryComponent(
                     componentContext = context,
                     vaultObjects = scope.get(),
-                    picker = koin.get(),
+                    imports = imports,
                     mainContext = mainContext + featureWork,
                 ),
             )

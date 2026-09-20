@@ -50,6 +50,20 @@ internal object GalleryFormat {
         }
     }
 
+    /** How a finished batch reads. Plural-aware, because "1 files" is the sort of thing users notice. */
+    fun importedCount(imported: Int): String = when (imported) {
+        0 -> "Nothing was added."
+        1 -> "1 file added to the vault."
+        else -> "$imported files added to the vault."
+    }
+
+    /**
+     * How many could not be read. Says only that — not why, and not that they were skipped "safely"
+     * or anything else we cannot stand behind (hard rule #6).
+     */
+    fun failedCount(failed: Int): String =
+        if (failed == 1) "1 file couldn't be read." else "$failed files couldn't be read."
+
     private fun oneDecimal(value: Double): String {
         val scaled = (value * 10).toLong()
         return "${scaled / 10}.${scaled % 10}"

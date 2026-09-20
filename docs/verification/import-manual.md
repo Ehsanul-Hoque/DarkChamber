@@ -61,6 +61,50 @@ Tick each line. A failure here is a release blocker.
       UIKit, so a lost strong reference shows up as a picker that dismisses with the button stuck on
       "Importing…" — and because collection timing varies, a single successful pick does not prove
       the reference is held.
+- [ ] **Photo picker, iCloud asset not yet on the device.** Pick a photo the library shows as not
+      downloaded (turn off "Download and Keep Originals", or pick something old from a large
+      library). It completes. This is the only way to reach the branch where the system hands back a
+      *copy* rather than the original, and that copy has to land in the vault's own scratch so a lock
+      wipes it. Afterwards, with the vault locked, `<container>/Documents/vault/tmp` is empty **and**
+      the container's own `tmp` holds nothing of the photo.
+- [ ] **Lock during that same download.** Start the import of a not-yet-downloaded iCloud photo and
+      lock the vault while it is still materialising. After unlocking, both directories above are
+      still empty — a copy resolved after the batch died is released rather than abandoned.
+
+### Batch import (both platforms)
+
+Run these against the **photo picker** and then repeat the first two against **Add files**, since the
+two pickers reach the same queue by different platform APIs.
+
+- [ ] Select **20 photos in one gesture**. All 20 import, the count shown matches what you picked,
+      and the gallery holds 20 more tiles when it finishes.
+- [ ] The progress reports **both levels**: a file count that advances ("12 of 20"), and for each
+      file either a bar that fills once or an indeterminate indicator — never a bar that fills,
+      resets and fills again (the container reads each file twice; the UI must not show that twice).
+- [ ] Include **one file from a cloud provider** (Drive / iCloud Drive) in a batch. It completes —
+      this is the one-shot source that exercises the spill path, now inside a batch.
+- [ ] Include a file you have **no permission to read** if you can arrange one. The batch finishes
+      the others and reports honestly how many could not be read; it does **not** stop at the failure.
+- [ ] The notice **"Keep DarkChamber open — locking the vault or leaving the app stops the import"**
+      is visible for the whole import, not just at the start.
+- [ ] **Android — take your time choosing.** Open the photo picker and browse for longer than two
+      minutes before confirming a large selection. The picker is a separate activity, so the vault's
+      auto-lock is deferred rather than skipped while it is up, and that deferral has a two-minute
+      watchdog behind it. Record what happens: if the selection is discarded and the app returns to
+      the lock screen, that is the watchdog firing, and the grace period needs re-deciding for
+      multi-select rather than treating a slow chooser as a stalled one.
+- [ ] **Cancel mid-batch** while a large video is encrypting. It stops within a second or two, not
+      at the end of that file; already-imported items stay in the gallery; the app-private `tmp/` is
+      empty afterwards.
+- [ ] **Lock mid-batch** (tap Lock, or background the app). After unlocking, every item imported
+      before the lock is present and intact, and there is no half-written item: `objects/` holds only
+      complete `.dchm` files, no catalog row lacks a blob, and `tmp/` is empty.
+- [ ] New tiles arrive **newest-first, at the top of the grid, and visibly animate in** as each
+      import commits — you can tell which tile just landed without counting.
+- [ ] Turn on the OS reduced-motion setting (Android: Settings → Accessibility → Remove animations;
+      iOS: Settings → Accessibility → Motion → Reduce Motion), reopen the app and import again. New
+      tiles **fade** in and the existing tiles **do not slide** — the arrival is still visible, just
+      not moving.
 
 ### Persistence
 

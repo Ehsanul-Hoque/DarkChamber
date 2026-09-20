@@ -3,7 +3,7 @@ package dev.ehsanfahad.darkchamber.feature.vault.api
 import kotlinx.io.RawSource
 
 /**
- * The platform seam for choosing a file to import — Android's Storage Access Framework, iOS's
+ * The platform seam for choosing files to import — Android's Storage Access Framework, iOS's
  * document picker. The implementations live in the app module, which owns the platform host, the
  * same way the biometric authenticator's do; this module only states the contract.
  *
@@ -14,10 +14,14 @@ interface FilePicker {
     /**
      * Present the picker and suspend until the user chooses or cancels.
      *
-     * Returns `null` when the user cancels — a cancellation is an ordinary outcome, not an error,
-     * and must not surface as a failure banner. Throws only if the picker itself cannot be shown.
+     * Returns the files in the order the platform reported them, or an **empty list** when the user
+     * cancels — a cancellation is an ordinary outcome, not an error, and must not surface as a
+     * failure banner. Throws only if the picker itself cannot be shown.
+     *
+     * Every returned file holds a platform grant, so the caller must close **all** of them, not
+     * only the ones it manages to import.
      */
-    suspend fun pickFile(): PickedFile?
+    suspend fun pickFiles(): List<PickedFile>
 }
 
 /**
@@ -33,6 +37,20 @@ interface PickedFile : AutoCloseable {
 
     /** The MIME type reported by the platform, used to choose a viewer later. */
     val mime: String
+
+    /**
+     * The file's byte size **if the platform will say**, and `null` if it will not.
+     *
+     * Progress needs a denominator before the encrypt begins, and the codec only learns the true
+     * size during its first pass — too late to draw anything with. The picker knows it earlier, so
+     * it is carried here.
+     *
+     * `null` means unknown, never zero and never a number to guess at: a cloud provider routinely
+     * declines to size a file it has not downloaded. A bar drawn against an invented total is a UI
+     * that lies about progress (hard rule #6) — show an indeterminate indicator instead. It is a
+     * hint for display only; nothing about the import depends on it being present or correct.
+     */
+    val size: Long?
 
     /**
      * Open a fresh, independent source over the file's bytes.

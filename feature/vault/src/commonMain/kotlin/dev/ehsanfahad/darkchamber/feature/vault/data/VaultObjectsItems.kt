@@ -22,11 +22,19 @@ internal class VaultObjectsItems(private val objects: VaultObjects) : VaultItems
     override fun observe(albumId: ByteArray?): Flow<List<VaultItemSummary>> =
         objects.observeItems(albumId)
 
-    override fun import(name: String, mime: String, openSource: () -> RawSource): Outcome<ByteArray> =
+    override fun import(
+        name: String,
+        mime: String,
+        onProgress: (Long) -> Unit,
+        isActive: () -> Boolean,
+        openSource: () -> RawSource,
+    ): Outcome<ByteArray> =
         objects.importObject(
             kind = VaultItemKind.FILE.code,
             name = name,
             mime = mime,
+            onProgress = onProgress,
+            isActive = isActive,
             openSource = openSource,
         )
 }

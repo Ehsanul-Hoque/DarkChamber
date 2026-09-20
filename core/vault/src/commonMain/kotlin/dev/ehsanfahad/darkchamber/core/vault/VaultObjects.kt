@@ -52,12 +52,28 @@ class VaultObjects(
      * `tmp/` and imported from there (see the re-openability probe below). **Fail-closed:** if the
      * row insert fails after the object is written, the object is deleted so no orphan ciphertext is
      * left behind.
+     *
+     * [onProgress] receives the **cumulative** count of payload bytes read so far — one monotonic
+     * run from 0 to `2 × size`, because both of the codec's passes are counted. The two-pass read is
+     * the container's business, not the user's, so this module reports bytes and nothing else: the
+     * caller owns the denominator, the percentage and the decision of what to draw when no size is
+     * known. A spilled one-shot source is copied to `tmp/` before any of this, and that copy is not
+     * counted — the end point must not depend on whether the source could be re-opened.
+     *
+     * [isActive] lets a caller abandon an import that is still running. It is polled on every read,
+     * alongside the session's own state, and returning `false` aborts within a read or two — the
+     * encrypt is blocking, so cancelling the coroutine around it would not stop it, and a caller
+     * that waited for the loop to notice would wait out the rest of the file. The abort takes the
+     * same fail-closed path a lock does (no object bytes, no row, no scratch) and leaves the session
+     * open and usable, so cancelling one file costs only that file.
      */
     fun importObject(
         kind: Int,
         name: String,
         mime: String,
         chunkSize: Int = DchmFormat.DEFAULT_CHUNK_SIZE,
+        onProgress: (Long) -> Unit = {},
+        isActive: () -> Boolean = { true },
         openSource: () -> RawSource,
     ): Outcome<ByteArray> {
         // Probe re-openability BEFORE reading anything. The check cannot be done after a failure:
@@ -90,7 +106,7 @@ class VaultObjects(
             // Wrapped for the same reason as the spill path below: a lock can zeroize the session
             // mid-import, and a throw must not escape a function that promises an Outcome.
             return try {
-                storeObject(kind, name, mime, chunkSize, openSource)
+                storeObject(kind, name, mime, chunkSize, onProgress, isActive, openSource)
             } catch (e: Exception) {
                 Outcome.Err(VaultError.Unexpected(e))
             }
@@ -102,7 +118,16 @@ class VaultObjects(
         // throw would escape a function whose contract is that no exception crosses the boundary.
         return try {
             storage
-                .useSpilledCopy(held) { spilled -> storeObject(kind, name, mime, chunkSize, spilled) }
+                // Guarded like every other read of this payload. The copy is a straight drain with
+                // no chunk loop to notice anything, so without this it is the one stretch of an
+                // import that a lock or a cancel cannot stop — and lock's teardown purges `tmp/`
+                // *before* the copy would finish, so an unguarded drain goes on writing plaintext
+                // into an already-wiped directory after the master key is gone. Aborting here throws
+                // out of the copy, and `useSpilledCopy` deletes the half-written scratch on its way
+                // out.
+                .useSpilledCopy(SessionGuardedSource(held) { session.isOpen && isActive() }) { spilled ->
+                    storeObject(kind, name, mime, chunkSize, onProgress, isActive, spilled)
+                }
                 .flatMap { it }
         } catch (e: Exception) {
             try {
@@ -116,15 +141,30 @@ class VaultObjects(
 
     // Encrypt + record, given a source that can be opened as many times as the codec needs. Every
     // source handed to the codec is guarded, so a lock during a long import stops it within a chunk
-    // rather than encrypting the rest of the file against a session the user already closed.
+    // rather than encrypting the rest of the file against a session the user already closed. The
+    // caller's own reason to stop rides the same check: one predicate, one abort path, and a cancel
+    // cleans up exactly the way a lock already does.
     private fun storeObject(
         kind: Int,
         name: String,
         mime: String,
         chunkSize: Int,
+        onProgress: (Long) -> Unit,
+        isActive: () -> Boolean,
         openSource: () -> RawSource,
-    ): Outcome<ByteArray> = storeGuarded(kind, name, mime, chunkSize) {
-        SessionGuardedSource(openSource()) { session.isOpen }
+    ): Outcome<ByteArray> {
+        // One counter for the whole import, declared here rather than inside the opener: the codec
+        // opens a fresh source per pass, so a per-source counter would restart halfway and the
+        // caller would watch the same bytes arrive twice.
+        var processed = 0L
+        return storeGuarded(kind, name, mime, chunkSize) {
+            SessionGuardedSource(
+                ProgressSource(openSource()) { n ->
+                    processed += n
+                    onProgress(processed)
+                },
+            ) { session.isOpen && isActive() }
+        }
     }
 
     private fun storeGuarded(

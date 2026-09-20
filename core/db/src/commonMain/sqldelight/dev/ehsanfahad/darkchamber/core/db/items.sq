@@ -21,11 +21,20 @@ VALUES (?, ?, ?, ?, ?, ?, ?);
 selectItemById:
 SELECT * FROM items WHERE id = ?;
 
+-- Newest first, both listings: these feed a gallery, and an import the user just made belongs at
+-- the top of the grid rather than off the bottom of it. items_created serves either direction, so
+-- this is an ORDER BY change only — no schema change, no migration.
+--
+-- id breaks the tie. A batch import writes many rows inside one millisecond, so equal created_at is
+-- the ordinary case, and without a total order SQLite may return those rows differently each time
+-- the query re-runs. The gallery re-emits on every write, keys its tiles by id and animates the
+-- ones that arrive — so an unstable tie order would reshuffle the grid and play the arrival
+-- animation on items that never moved.
 selectItemsByAlbum:
-SELECT * FROM items WHERE album_id = ? ORDER BY created_at;
+SELECT * FROM items WHERE album_id = ? ORDER BY created_at DESC, id DESC;
 
 selectAllItems:
-SELECT * FROM items ORDER BY created_at;
+SELECT * FROM items ORDER BY created_at DESC, id DESC;
 
 deleteItemById:
 DELETE FROM items WHERE id = ?;

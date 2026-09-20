@@ -18,6 +18,21 @@ internal interface VaultItems {
     /** The live listing, re-emitting on every catalog change. `null` album = the whole vault. */
     fun observe(albumId: ByteArray?): Flow<List<VaultItemSummary>>
 
-    /** Stream-encrypt a payload into the vault, returning the new object's id. */
-    fun import(name: String, mime: String, openSource: () -> RawSource): Outcome<ByteArray>
+    /**
+     * Stream-encrypt a payload into the vault, returning the new object's id.
+     *
+     * [onProgress] receives payload bytes read so far, cumulatively across the container's two
+     * passes — so it runs to `2 × size`, and turning that into anything a user sees is the caller's
+     * job (`core:vault` owns no notion of a total or a percentage).
+     *
+     * [isActive] going false aborts within a read rather than at the end of the file: the encrypt is
+     * blocking, so a caller that waited for the loop to notice would wait out the rest of a video.
+     */
+    fun import(
+        name: String,
+        mime: String,
+        onProgress: (Long) -> Unit = {},
+        isActive: () -> Boolean = { true },
+        openSource: () -> RawSource,
+    ): Outcome<ByteArray>
 }
