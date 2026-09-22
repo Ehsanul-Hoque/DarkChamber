@@ -3,6 +3,17 @@ package dev.ehsanfahad.darkchamber.core.vault
 import kotlinx.io.RawSource
 
 /**
+ * The longest edge, in pixels, of a generated thumbnail.
+ *
+ * The gallery is a three-column contact sheet of square-cropped tiles (DESIGN §6), so a tile is
+ * roughly a third of the screen's width: ~360 px on a 1080 px phone and ~480 px on a 1440 px one.
+ * 512 covers both without a visibly soft tile, and costs about 1% of the payload it previews — on a
+ * vault of photos, thumbnails are rounding error against the originals. Smaller would be cheaper
+ * and visibly worse on the densest screens; larger buys nothing a 3-column grid can show.
+ */
+internal const val THUMBNAIL_MAX_EDGE_PX: Int = 512
+
+/**
  * The decode-and-downscale seam: plaintext bytes in, a small encoded preview out.
  *
  * A plain interface rather than `expect`/`actual`, for the same reason as `SecureKeyStore` and the
@@ -47,4 +58,17 @@ interface ThumbnailEncoder {
      * needs to know what it is looking at before it starts reading.
      */
     fun encode(mime: String, maxEdgePx: Int, openSource: () -> RawSource): ByteArray?
+}
+
+/**
+ * The encoder used when none is injected: no thumbnails, for every type. It never opens the source,
+ * so an import costs exactly what it did before thumbnails existed.
+ *
+ * This is the honest default rather than a convenience. `:app` binds the platform encoders; every
+ * other caller — a test harness, a future headless tool — gets a vault whose items simply render
+ * their type badge, which is a state the UI has to handle anyway (an unsupported type, a file the
+ * decoder declines).
+ */
+internal object NoThumbnails : ThumbnailEncoder {
+    override fun encode(mime: String, maxEdgePx: Int, openSource: () -> RawSource): ByteArray? = null
 }
