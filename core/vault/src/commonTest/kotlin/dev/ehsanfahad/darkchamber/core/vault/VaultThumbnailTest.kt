@@ -7,9 +7,11 @@ import dev.ehsanfahad.darkchamber.core.crypto.PassphraseKdfProfile
 import dev.ehsanfahad.darkchamber.core.crypto.VaultSession
 import dev.ehsanfahad.darkchamber.core.db.CatalogStore
 import dev.ehsanfahad.darkchamber.core.model.Outcome
+import dev.ehsanfahad.darkchamber.core.model.VaultError
 import dev.ehsanfahad.darkchamber.core.storage.VaultStorage
 import kotlinx.io.Buffer
 import kotlinx.io.RawSource
+import kotlinx.io.buffered
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 import kotlinx.io.files.SystemTemporaryDirectory
@@ -239,6 +241,92 @@ class VaultThumbnailTest {
         assertTrue(result is Outcome.Err, "a failing catalog must abort the import, was $result")
         assertFalse(storage.objectExists(knownId), "the object must not outlive its row")
         assertFalse(storage.thumbnailExists(knownId), "nor may its thumbnail")
+    }
+
+    @Test
+    fun a_stored_thumbnail_reads_back_byte_identical() {
+        val thumbBytes = ByteArray(300) { (it * 5).toByte() }
+        val vo = objects(FakeThumbnailEncoder(FakeThumbnailEncoder.Mode.Encode, thumbBytes))
+        val id = importJpeg(vo)
+
+        val read = vo.openThumbnail(id)
+
+        assertTrue(read is Outcome.Ok, "a stored thumbnail must read back, was $read")
+        assertContentEquals(thumbBytes, read.value)
+    }
+
+    @Test
+    fun an_item_with_no_thumbnail_reads_as_absent_not_as_an_error() {
+        val vo = objects(FakeThumbnailEncoder(FakeThumbnailEncoder.Mode.Decline))
+        val id = importJpeg(vo)
+
+        val read = vo.openThumbnail(id)
+
+        // Absent is the ordinary case for most of a vault — every non-image, every file the decoder
+        // declined, everything imported before thumbnails existed. An error here would paint all of
+        // them as damaged.
+        assertTrue(read is Outcome.Ok, "no thumbnail is not a failure, was $read")
+        assertNull(read.value)
+    }
+
+    @Test
+    fun a_tampered_thumbnail_surfaces_integrity_failure_rather_than_absent() {
+        val vo = objects(FakeThumbnailEncoder(FakeThumbnailEncoder.Mode.Encode))
+        val id = importJpeg(vo)
+
+        // Flip the final byte — the last chunk's GCM tag — and write the container back.
+        val bytes = (storage.readThumbnail(id) { it.buffered().readByteArray() } as Outcome.Ok).value
+        bytes[bytes.size - 1] = (bytes[bytes.size - 1].toInt() xor 0x01).toByte()
+        assertTrue(storage.writeThumbnail(id) { sink -> sink.buffered().apply { write(bytes); flush() } } is Outcome.Ok)
+
+        val read = vo.openThumbnail(id)
+
+        // This is the distinction the absent case is worth having: a damaged thumbnail is a
+        // tampering signal, and quietly drawing the same badge an unsupported type gets would hide
+        // it (hard rule: IntegrityFailure is never silently swallowed).
+        assertTrue(
+            read is Outcome.Err && read.error is VaultError.Crypto.IntegrityFailure,
+            "a tampered thumbnail must not read as absent, was $read",
+        )
+    }
+
+    @Test
+    fun a_thumbnail_blob_that_has_gone_missing_reads_as_absent() {
+        val vo = objects(FakeThumbnailEncoder(FakeThumbnailEncoder.Mode.Encode))
+        val id = importJpeg(vo)
+        assertTrue(storage.deleteThumbnail(id) is Outcome.Ok)
+
+        val read = vo.openThumbnail(id)
+
+        // The key still says a thumbnail existed, but a missing file proves nothing about tampering
+        // — there is no tag to fail. Rendering the badge is the graceful answer; claiming damage on
+        // an item whose bytes are perfectly intact is not.
+        assertTrue(read is Outcome.Ok, "a missing blob is absent, not damaged, was $read")
+        assertNull(read.value)
+    }
+
+    @Test
+    fun shredding_an_item_takes_its_thumbnail_with_it() {
+        val vo = objects(FakeThumbnailEncoder(FakeThumbnailEncoder.Mode.Encode))
+        val id = importJpeg(vo)
+        assertTrue(storage.thumbnailExists(id))
+
+        assertTrue(vo.shredObject(id) is Outcome.Ok)
+
+        // The shred is already effective the moment the row is gone — the thumbnail's key lived in
+        // that row's enc_meta, so the blob is unopenable either way. Deleting it stops an orphan
+        // that no listing can see, and that therefore nothing else would ever remove.
+        assertFalse(storage.thumbnailExists(id), "a shredded item must not leave its preview behind")
+    }
+
+    @Test
+    fun an_unknown_id_has_no_thumbnail_to_read() {
+        val vo = objects(FakeThumbnailEncoder(FakeThumbnailEncoder.Mode.Encode))
+
+        val read = vo.openThumbnail(ByteArray(16) { 9 })
+
+        // Same mapping as openObject/openMeta: an id with no row is Io, not a silent absence.
+        assertTrue(read is Outcome.Err && read.error is VaultError.Io, "unknown id must map to Io, was $read")
     }
 
     // The item is fully imported and simply has no preview: bytes readable, no blob, no key.

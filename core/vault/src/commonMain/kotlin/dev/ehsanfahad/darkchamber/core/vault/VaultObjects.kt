@@ -19,6 +19,7 @@ import kotlin.coroutines.CoroutineContext
 import kotlinx.io.Buffer
 import kotlinx.io.RawSink
 import kotlinx.io.RawSource
+import kotlinx.io.readByteArray
 
 /**
  * Vault-object operations — the one place `core:crypto` (session/codec), `core:storage` (objects),
@@ -355,6 +356,48 @@ class VaultObjects(
     }
 
     /**
+     * Decrypt object [id]'s thumbnail **into memory** and return its bytes, or `null` when the item
+     * has none. Whole-blob rather than streaming on purpose: a thumbnail is bounded by
+     * [THUMBNAIL_MAX_EDGE_PX] and an image loader wants a byte array, so there is nothing to stream
+     * into. The plaintext exists only in the returned array — it never reaches disk (hard rule #1).
+     *
+     * Three outcomes, and the difference between the first two is the point:
+     *
+     * - **`Ok(bytes)`** — the preview, exactly as the encoder produced it.
+     * - **`Ok(null)`** — this item has no thumbnail. The ordinary case for most of a vault: every
+     *   non-image, every file the decoder declined, everything imported before thumbnails existed,
+     *   and a blob that has gone missing underneath us. Callers draw the type badge.
+     * - **`Err`** — `Crypto.IntegrityFailure` when the stored blob fails its GCM tag, `Io` for an
+     *   unknown id (as [openObject] and [openMeta] do), and whatever `enc_meta` failed with when the
+     *   metadata itself will not open.
+     *
+     * A damaged thumbnail must **not** collapse into the absent case. Absent means "there was never
+     * a preview here"; a failed tag means the bytes on disk were altered, which is a tampering
+     * signal the project never silently swallows. A missing *file*, by contrast, proves nothing —
+     * there is no tag to fail — so it reads as absent rather than as damage to an item whose own
+     * bytes are perfectly intact.
+     */
+    fun openThumbnail(id: ByteArray): Outcome<ByteArray?> {
+        val row = when (val got = catalog.getItem(id)) {
+            is Outcome.Err -> return got
+            is Outcome.Ok -> got.value ?: return absent(id)
+        }
+        val wrappedKey = when (val meta = readMeta(row.enc_meta)) {
+            is Outcome.Err -> return meta
+            is Outcome.Ok -> meta.value.thumbnailKey ?: return Outcome.Ok(null)
+        }
+        // Checked rather than inferred from a read failure: `readThumbnail` reports a missing file
+        // as `Io`, which is indistinguishable from a disk that failed mid-read, and one of those is
+        // an ordinary state while the other is worth surfacing.
+        if (!storage.thumbnailExists(id)) return Outcome.Ok(null)
+
+        val out = Buffer()
+        return session.useDek(wrappedKey) { rawDek ->
+            storage.readThumbnail(id) { src -> codec.decryptContainer(rawDek, id, src, out) }
+        }.flatMap { it }.flatMap { it }.map { out.readByteArray() }
+    }
+
+    /**
      * The listing feeding a gallery: each catalog row joined to its decrypted [ObjectMeta], so
      * features consume [VaultItemSummary] and never a SQLDelight row type. Re-emits whenever the
      * catalog changes (an import, a shred), so callers never refresh by hand. Pass [albumId] to
@@ -415,6 +458,10 @@ class VaultObjects(
         }
         return catalog.deleteItem(id).map {
             storage.deleteObject(id) // best-effort; the DEK is already gone, so ignore any failure
+            // The thumbnail's key lived in the row's enc_meta, so deleting the row already shredded
+            // it — this only stops an unopenable blob sitting in `thumbs/` for the life of the
+            // vault, invisible to every listing and therefore to everything that would clean it up.
+            storage.deleteThumbnail(id)
             Unit
         }
     }
