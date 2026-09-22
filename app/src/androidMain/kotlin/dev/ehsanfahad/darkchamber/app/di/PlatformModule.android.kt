@@ -9,6 +9,7 @@ import dev.ehsanfahad.darkchamber.app.auth.DefaultActivityHolder
 import dev.ehsanfahad.darkchamber.app.picker.AndroidFilePicker
 import dev.ehsanfahad.darkchamber.app.picker.AndroidPhotoPicker
 import dev.ehsanfahad.darkchamber.app.system.AndroidSecretClipboard
+import dev.ehsanfahad.darkchamber.app.thumbnail.AndroidThumbnailEncoder
 import dev.ehsanfahad.darkchamber.app.system.SecretClipboard
 import dev.ehsanfahad.darkchamber.core.crypto.AndroidSecureKeyStore
 import dev.ehsanfahad.darkchamber.core.crypto.BiometricAuthenticator
@@ -17,6 +18,7 @@ import dev.ehsanfahad.darkchamber.core.db.CatalogStore
 import dev.ehsanfahad.darkchamber.core.db.DriverFactory
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
+import dev.ehsanfahad.darkchamber.core.vault.ThumbnailEncoder
 import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
 import dev.ehsanfahad.darkchamber.feature.vault.api.PhotoPicker
 import kotlinx.io.files.Path
@@ -39,6 +41,9 @@ actual fun platformModule(): Module = module {
     // one shared SystemUiHandoff: each is a separate activity, so each stops ours while it is up.
     single<FilePicker> { AndroidFilePicker({ get<ActivityHolder>().activity }, get()) }
     single<PhotoPicker> { AndroidPhotoPicker({ get<ActivityHolder>().activity }, get()) }
+    // Decodes a preview during import. Stateless and context-free — BitmapFactory works on the
+    // stream the vault hands it, so nothing platform-scoped has to be threaded in here.
+    single<ThumbnailEncoder> { AndroidThumbnailEncoder() }
     // The application context, not an activity: the scheduled clear outlives the screen that copied.
     single<SecretClipboard> { AndroidSecretClipboard(androidContext()) }
     single<CatalogProvider> {

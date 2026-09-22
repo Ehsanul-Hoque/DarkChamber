@@ -6,6 +6,7 @@ import dev.ehsanfahad.darkchamber.app.auth.IosBiometricAuthenticator
 import dev.ehsanfahad.darkchamber.app.picker.IosFilePicker
 import dev.ehsanfahad.darkchamber.app.picker.IosPhotoPicker
 import dev.ehsanfahad.darkchamber.app.system.IosSecretClipboard
+import dev.ehsanfahad.darkchamber.app.thumbnail.IosThumbnailEncoder
 import dev.ehsanfahad.darkchamber.app.system.SecretClipboard
 import dev.ehsanfahad.darkchamber.app.rootViewController
 import dev.ehsanfahad.darkchamber.core.crypto.BiometricAuthenticator
@@ -16,6 +17,7 @@ import dev.ehsanfahad.darkchamber.core.db.DriverFactory
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
 import dev.ehsanfahad.darkchamber.core.model.getOrNull
+import dev.ehsanfahad.darkchamber.core.vault.ThumbnailEncoder
 import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
 import dev.ehsanfahad.darkchamber.feature.vault.api.PhotoPicker
 import kotlinx.io.files.Path
@@ -42,6 +44,9 @@ actual fun platformModule(): Module = module {
         val rootResolver = get<VaultRootResolver>()
         IosPhotoPicker(::rootViewController) { rootResolver.resolve().getOrNull()?.let { Path(it, "tmp") } }
     }
+    // Decodes a preview during import. Stateless: ImageIO works on the bytes the vault hands it,
+    // so unlike the pickers there is no view controller to reach for.
+    single<ThumbnailEncoder> { IosThumbnailEncoder() }
     // Local-only and self-expiring; see the implementation for what a plain pasteboard write costs.
     single<SecretClipboard> { IosSecretClipboard() }
     single<CatalogProvider> { CatalogProvider { root -> openCatalog(root) } }

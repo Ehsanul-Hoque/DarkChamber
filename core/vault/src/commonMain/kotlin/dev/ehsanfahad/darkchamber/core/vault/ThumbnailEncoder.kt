@@ -69,6 +69,6 @@ interface ThumbnailEncoder {
  * their type badge, which is a state the UI has to handle anyway (an unsupported type, a file the
  * decoder declines).
  */
-internal object NoThumbnails : ThumbnailEncoder {
+object NoThumbnails : ThumbnailEncoder {
     override fun encode(mime: String, maxEdgePx: Int, openSource: () -> RawSource): ByteArray? = null
 }

@@ -16,6 +16,8 @@ import dev.ehsanfahad.darkchamber.app.nowEpochMillis
 import dev.ehsanfahad.darkchamber.core.crypto.CryptoEngine
 import dev.ehsanfahad.darkchamber.core.crypto.DchmCodec
 import dev.ehsanfahad.darkchamber.core.crypto.VaultSession
+import dev.ehsanfahad.darkchamber.core.vault.NoThumbnails
+import dev.ehsanfahad.darkchamber.core.vault.ThumbnailEncoder
 import dev.ehsanfahad.darkchamber.core.vault.VaultObjects
 import org.koin.core.Koin
 import org.koin.core.qualifier.named
@@ -82,6 +84,12 @@ class DefaultUnlockedComponent(
                     codec = DchmCodec(engine),
                     clock = ::nowEpochMillis,
                     random = engine::randomBytes,
+                    // Optional on purpose. A thumbnail is a cache: resolving the encoder strictly
+                    // would turn a platform module that forgot to bind one into a vault that
+                    // cannot be opened at all. Without it every item renders its type badge, which
+                    // is a state the gallery has to handle anyway. The platform-module tests are
+                    // what stop a missing binding going unnoticed.
+                    thumbnails = koin.getOrNull<ThumbnailEncoder>() ?: NoThumbnails,
                 ),
             )
         }
