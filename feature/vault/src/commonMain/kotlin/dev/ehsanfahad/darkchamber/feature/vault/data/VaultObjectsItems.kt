@@ -37,4 +37,6 @@ internal class VaultObjectsItems(private val objects: VaultObjects) : VaultItems
             isActive = isActive,
             openSource = openSource,
         )
+
+    override fun thumbnail(id: ByteArray): Outcome<ByteArray?> = objects.openThumbnail(id)
 }

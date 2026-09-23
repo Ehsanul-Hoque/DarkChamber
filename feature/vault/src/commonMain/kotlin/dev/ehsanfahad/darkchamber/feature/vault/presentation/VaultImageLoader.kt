@@ -3,6 +3,7 @@ package dev.ehsanfahad.darkchamber.feature.vault.presentation
 import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.request.CachePolicy
+import dev.ehsanfahad.darkchamber.feature.vault.domain.VaultItems
 
 /**
  * The gallery's image loader: **memory cache on, disk cache off, permanently.**
@@ -31,8 +32,16 @@ import coil3.request.CachePolicy
  * there is a Konsist rule over production sources rather than only a test over this function: a
  * test can only cover the loader it knows about.
  */
-fun vaultImageLoader(context: PlatformContext): ImageLoader =
+internal fun vaultImageLoader(context: PlatformContext, items: VaultItems): ImageLoader =
     ImageLoader.Builder(context)
+        .components {
+            // The only source this loader has. Everything it draws comes out of the encrypted
+            // store, through the vault's own read path — there is no network fetcher and no file
+            // fetcher in play (hard rule #3 has already removed the first; the second would be a
+            // way to read something that is not vault content).
+            add(VaultThumbnailKeyer())
+            add(VaultThumbnailFetcher.Factory(items))
+        }
         .diskCache(null)
         .diskCachePolicy(CachePolicy.DISABLED)
         .memoryCachePolicy(CachePolicy.ENABLED)

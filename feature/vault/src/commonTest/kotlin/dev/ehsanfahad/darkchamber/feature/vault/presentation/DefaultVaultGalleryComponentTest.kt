@@ -364,4 +364,6 @@ private class ExplodingVaultItems : VaultItems {
         isActive: () -> Boolean,
         openSource: () -> RawSource,
     ): Outcome<ByteArray> = Outcome.Ok(byteArrayOf(1))
+
+    override fun thumbnail(id: ByteArray): Outcome<ByteArray?> = Outcome.Ok(null)
 }

@@ -90,7 +90,11 @@ internal class FakeVaultItems(
     private val bytesPerImport: List<Long> = emptyList(),
     /** Runs as each file starts, so a test can cancel or lock partway through a batch. */
     private val onImport: (String) -> Unit = {},
+    /** Stored previews by item id (as a list, so the map keys compare by content). */
+    private val thumbnails: Map<List<Byte>, Outcome<ByteArray?>> = emptyMap(),
 ) : VaultItems {
+    var thumbnailCalls = 0
+        private set
     val summaries = MutableStateFlow<List<VaultItemSummary>>(emptyList())
     val importedNames = mutableListOf<String>()
     var importCalls = 0
@@ -126,7 +130,15 @@ internal class FakeVaultItems(
         bytesPerImport.forEach(onProgress)
         return if (name in failFor) Outcome.Err(VaultError.Io(RuntimeException("unreadable"))) else importResult
     }
+
+    override fun thumbnail(id: ByteArray): Outcome<ByteArray?> {
+        thumbnailCalls++
+        return thumbnails[id.toList()] ?: NO_THUMBNAIL
+    }
 }
+
+/** Unknown ids answer "no preview", which is what the real seam does for an item without one. */
+private val NO_THUMBNAIL: Outcome<ByteArray?> = Outcome.Ok(null)
 
 /** A seam whose import blows up rather than returning — the "should never happen" path. */
 internal class ThrowingVaultItems : VaultItems {
@@ -139,6 +151,8 @@ internal class ThrowingVaultItems : VaultItems {
         isActive: () -> Boolean,
         openSource: () -> RawSource,
     ): Outcome<ByteArray> = throw IllegalStateException("import exploded")
+
+    override fun thumbnail(id: ByteArray): Outcome<ByteArray?> = NO_THUMBNAIL
 }
 
 /** A seam that behaves like an import interrupted by a lock cancelling the scope. */
@@ -152,6 +166,8 @@ internal class CancellingVaultItems : VaultItems {
         isActive: () -> Boolean,
         openSource: () -> RawSource,
     ): Outcome<ByteArray> = throw CancellationException("the session was torn down mid-import")
+
+    override fun thumbnail(id: ByteArray): Outcome<ByteArray?> = NO_THUMBNAIL
 }
 
 internal fun summary(

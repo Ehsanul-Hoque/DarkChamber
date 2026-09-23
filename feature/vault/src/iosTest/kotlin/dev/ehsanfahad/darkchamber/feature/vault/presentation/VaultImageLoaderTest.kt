@@ -3,9 +3,11 @@ package dev.ehsanfahad.darkchamber.feature.vault.presentation
 import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.request.CachePolicy
+import dev.ehsanfahad.darkchamber.feature.vault.FakeVaultItems
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 import kotlin.test.assertNull
 
 /**
@@ -21,7 +23,7 @@ import kotlin.test.assertNull
 class VaultImageLoaderTest {
     @Test
     fun the_gallery_loader_has_no_disk_cache() {
-        val loader = vaultImageLoader(PlatformContext.INSTANCE)
+        val loader = vaultImageLoader(PlatformContext.INSTANCE, FakeVaultItems())
 
         assertNull(loader.diskCache, "a decrypted preview must never reach storage")
         assertEquals(
@@ -33,13 +35,30 @@ class VaultImageLoaderTest {
 
     @Test
     fun the_gallery_loader_keeps_its_memory_cache() {
-        val loader = vaultImageLoader(PlatformContext.INSTANCE)
+        val loader = vaultImageLoader(PlatformContext.INSTANCE, FakeVaultItems())
 
         // Without it the grid re-reads, re-decrypts and re-decodes every tile on every scroll.
         // Holding decrypted content in memory is fine while the vault is open; the session's
         // teardown is what makes it fine afterwards.
         assertNotNull(loader.memoryCache, "the grid would re-decrypt every tile on every scroll")
         assertEquals(CachePolicy.ENABLED, loader.defaults.memoryCachePolicy)
+    }
+
+    @Test
+    fun the_gallery_loader_can_only_fetch_vault_items() {
+        val loader = vaultImageLoader(PlatformContext.INSTANCE, FakeVaultItems())
+
+        // The registration is what makes a tile's request reach the encrypted store at all, and it
+        // is a single line in a builder chain — exactly the kind of line a refactor drops without
+        // any test noticing, since a loader with no fetcher for the model simply draws nothing.
+        assertTrue(
+            loader.components.fetcherFactories.any { it.first is VaultThumbnailFetcher.Factory },
+            "the vault fetcher must be registered, or every tile silently falls back to its badge",
+        )
+        assertTrue(
+            loader.components.keyers.any { it.first is VaultThumbnailKeyer },
+            "and the keyer, or the memory cache misses on every scroll",
+        )
     }
 
     @Test
