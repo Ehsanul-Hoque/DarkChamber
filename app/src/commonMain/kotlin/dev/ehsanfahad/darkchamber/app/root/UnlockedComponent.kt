@@ -112,10 +112,16 @@ class DefaultUnlockedComponent(
      * Built lazily so a graph without a `PlatformContext` — a host test — simply has no loader
      * rather than failing to construct the session. Lazy also means a vault opened and locked
      * without ever showing the gallery never builds one.
+     *
+     * Held as an explicit [Lazy] rather than a delegate so that [tearDown] can ask whether one was
+     * ever built. Reading the value there would *construct* a loader for a session that never drew
+     * a tile — allocating a cache in order to empty it.
      */
-    override val imageLoader: ImageLoader? by lazy {
+    private val lazyImageLoader: Lazy<ImageLoader?> = lazy {
         koin.getOrNull<PlatformContext>()?.let { context -> vaultImageLoader(context, scope.get()) }
     }
+
+    override val imageLoader: ImageLoader? get() = lazyImageLoader.value
 
     /**
      * Parent of every feature coroutine in this session. Cancelling it is the **first** thing lock
@@ -184,6 +190,11 @@ class DefaultUnlockedComponent(
         featureWork.cancel() // stop feature coroutines BEFORE the session they run against dies
         vault.session.close() // zeroize MK (hard rule #5)
         vault.storage.purgeTmp() // wipe decrypted scratch (hard rule #1)
+        // The same rule, one layer up: the image loader keeps decrypted previews in memory so the
+        // grid does not re-decrypt on every scroll, and they are as much vault content as the
+        // scratch just purged. Without this a locked app still holds pictures of the user's files,
+        // and nothing about it looks wrong.
+        if (lazyImageLoader.isInitialized()) lazyImageLoader.value?.memoryCache?.clear()
         vault.catalog.close() // close the SqlDriver (no leak on lock)
         scope.close() // dispose the session scope
     }
