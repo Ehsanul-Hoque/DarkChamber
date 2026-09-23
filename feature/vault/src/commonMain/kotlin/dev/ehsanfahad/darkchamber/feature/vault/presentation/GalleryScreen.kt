@@ -30,7 +30,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
@@ -38,6 +40,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import coil3.ImageLoader
+import coil3.compose.SubcomposeAsyncImage
 import dev.ehsanfahad.darkchamber.core.designsystem.DarkChamberTheme
 import dev.ehsanfahad.darkchamber.core.designsystem.prefersReducedMotion
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryError
@@ -58,6 +62,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.ImportState
 internal fun GalleryScreen(
     state: GalleryState,
     now: Long,
+    imageLoader: ImageLoader,
     onAddPhotos: () -> Unit,
     onAddFiles: () -> Unit,
     onCancelImport: () -> Unit,
@@ -86,7 +91,7 @@ internal fun GalleryScreen(
             when {
                 state.loading -> CenteredMessage("Opening the vault…", showSpinner = true)
                 state.items.isEmpty() -> EmptyVault()
-                else -> ItemGrid(items = state.items, now = now, bottomInset = barHeight)
+                else -> ItemGrid(items = state.items, now = now, imageLoader = imageLoader, bottomInset = barHeight)
             }
         }
 
@@ -305,7 +310,7 @@ private fun ImportSummaryCard(batch: ImportState.Finished, onDismiss: () -> Unit
 }
 
 @Composable
-private fun ItemGrid(items: List<GalleryItem>, now: Long, bottomInset: Dp) {
+private fun ItemGrid(items: List<GalleryItem>, now: Long, imageLoader: ImageLoader, bottomInset: Dp) {
     val spacing = DarkChamberTheme.spacing
     val arrival = tileArrival(DarkChamberTheme.motion, prefersReducedMotion())
     LazyVerticalGrid(
@@ -330,6 +335,7 @@ private fun ItemGrid(items: List<GalleryItem>, now: Long, bottomInset: Dp) {
             ItemTile(
                 item = item,
                 now = now,
+                imageLoader = imageLoader,
                 modifier = Modifier.animateItem(
                     fadeInSpec = tween(arrival.fadeIn),
                     placementSpec = arrival.placement?.let { tween<IntOffset>(it) },
@@ -341,7 +347,7 @@ private fun ItemGrid(items: List<GalleryItem>, now: Long, bottomInset: Dp) {
 }
 
 @Composable
-private fun ItemTile(item: GalleryItem, now: Long, modifier: Modifier = Modifier) {
+private fun ItemTile(item: GalleryItem, now: Long, imageLoader: ImageLoader, modifier: Modifier = Modifier) {
     val colors = DarkChamberTheme.colors
     val spacing = DarkChamberTheme.spacing
     val damaged = item.meta is GalleryItemMeta.Unreadable
@@ -364,14 +370,46 @@ private fun ItemTile(item: GalleryItem, now: Long, modifier: Modifier = Modifier
                     shape = DarkChamberTheme.shapes.medium,
                 ),
         ) {
-            Text(
-                text = when (val meta = item.meta) {
-                    is GalleryItemMeta.Readable -> GalleryFormat.typeBadge(meta.mime)
-                    GalleryItemMeta.Unreadable -> "!"
-                },
-                style = DarkChamberTheme.typography.label,
-                color = if (damaged) colors.danger else colors.textSecondary,
-            )
+            val badge: @Composable () -> Unit = {
+                Text(
+                    text = when (val meta = item.meta) {
+                        is GalleryItemMeta.Readable -> GalleryFormat.typeBadge(meta.mime)
+                        GalleryItemMeta.Unreadable -> "!"
+                    },
+                    style = DarkChamberTheme.typography.label,
+                    color = if (damaged) colors.danger else colors.textSecondary,
+                )
+            }
+
+            if (damaged) {
+                // An item whose metadata will not open is not asked for a preview at all: its key
+                // is gone with the rest of that blob, and the mark it already carries is the honest
+                // rendering. Unchanged from before thumbnails existed.
+                badge()
+            } else {
+                SubcomposeAsyncImage(
+                    // Built fresh each composition on purpose, and not `remember`ed: the key would
+                    // have to be the id, whose `equals` is identity, so a re-emitted listing would
+                    // rebuild it regardless. What actually stops the request restarting is the
+                    // model's own content-based equality — a new instance carrying the same id is
+                    // equal to the old one, so Coil keeps the image it already has.
+                    model = VaultThumbnailKey(item.id),
+                    imageLoader = imageLoader,
+                    // Decorative: the item's name is spelled out directly below this slot, and a
+                    // screen reader announcing it twice helps nobody.
+                    contentDescription = null,
+                    // Crop rather than fit, matching the contact-sheet grid: a letterboxed tile in
+                    // a dense grid reads as a gap.
+                    contentScale = ContentScale.Crop,
+                    // The badge covers everything that is not a drawn preview: an item with no
+                    // thumbnail (the ordinary case for most of a vault), one whose preview failed
+                    // to open, and the moment before a decrypt finishes. A spinner per tile would
+                    // make a scroll flicker for work that takes a few milliseconds.
+                    loading = { badge() },
+                    error = { badge() },
+                    modifier = Modifier.fillMaxSize().clip(DarkChamberTheme.shapes.medium),
+                )
+            }
         }
 
         Text(

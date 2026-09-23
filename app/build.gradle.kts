@@ -39,6 +39,10 @@ kotlin {
             // module that may depend on a feature (docs/engineering/MODULES.md §1).
             implementation(project(":feature:vault"))
             implementation(libs.koin.core)
+            // The gallery's image loader is session-scoped, so the composition root builds it and
+            // the session's teardown empties it — :app needs Coil's ImageLoader/PlatformContext
+            // types for that, not for any loading of its own.
+            implementation(libs.coil.compose)
             // The Decompose session gate (RootComponent: Locked | Unlocked) + its Compose integration
             // and the Essenty lifecycle that drives background-lock.
             implementation(libs.decompose)

@@ -1,5 +1,6 @@
 package dev.ehsanfahad.darkchamber.app.di
 
+import coil3.PlatformContext
 import dev.ehsanfahad.darkchamber.app.IosVaultRootResolver
 import dev.ehsanfahad.darkchamber.app.VaultRootResolver
 import dev.ehsanfahad.darkchamber.app.auth.IosBiometricAuthenticator
@@ -44,6 +45,8 @@ actual fun platformModule(): Module = module {
         val rootResolver = get<VaultRootResolver>()
         IosPhotoPicker(::rootViewController) { rootResolver.resolve().getOrNull()?.let { Path(it, "tmp") } }
     }
+    // Coil's context carries nothing on iOS, but the loader still asks for one.
+    single<PlatformContext> { PlatformContext.INSTANCE }
     // Decodes a preview during import. Stateless: ImageIO works on the bytes the vault hands it,
     // so unlike the pickers there is no view controller to reach for.
     single<ThumbnailEncoder> { IosThumbnailEncoder() }

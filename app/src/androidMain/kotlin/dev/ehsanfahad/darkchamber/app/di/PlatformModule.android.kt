@@ -1,6 +1,7 @@
 package dev.ehsanfahad.darkchamber.app.di
 
 import android.content.Context
+import coil3.PlatformContext
 import dev.ehsanfahad.darkchamber.app.AndroidVaultRootResolver
 import dev.ehsanfahad.darkchamber.app.VaultRootResolver
 import dev.ehsanfahad.darkchamber.app.auth.ActivityHolder
@@ -41,6 +42,8 @@ actual fun platformModule(): Module = module {
     // one shared SystemUiHandoff: each is a separate activity, so each stops ours while it is up.
     single<FilePicker> { AndroidFilePicker({ get<ActivityHolder>().activity }, get()) }
     single<PhotoPicker> { AndroidPhotoPicker({ get<ActivityHolder>().activity }, get()) }
+    // Coil's context is the Android Context; the gallery's loader is built from it per session.
+    single<PlatformContext> { androidContext() }
     // Decodes a preview during import. Stateless and context-free — BitmapFactory works on the
     // stream the vault hands it, so nothing platform-scoped has to be threaded in here.
     single<ThumbnailEncoder> { AndroidThumbnailEncoder() }

@@ -11,7 +11,10 @@ import dev.ehsanfahad.darkchamber.feature.vault.domain.ImportCoordinator
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ImportFile
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ImportQueue
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveGallery
+import coil3.ImageLoader
+import coil3.PlatformContext
 import dev.ehsanfahad.darkchamber.feature.vault.presentation.DefaultVaultGalleryComponent
+import dev.ehsanfahad.darkchamber.feature.vault.presentation.vaultImageLoader
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlin.coroutines.CoroutineContext
@@ -69,3 +72,14 @@ fun vaultGalleryComponent(
         mainContext = mainContext,
     )
 }
+
+/**
+ * Build the gallery's image loader for one unlocked session.
+ *
+ * Session-scoped like everything else here: it reads through [vaultObjects], so it can decrypt only
+ * while that session is open, and its in-memory cache holds decrypted previews that must not
+ * outlive the lock. The loader keeps **no disk cache** — see `vaultImageLoader` for why that is a
+ * hard rule and not a tuning choice.
+ */
+fun vaultImageLoader(context: PlatformContext, vaultObjects: VaultObjects): ImageLoader =
+    vaultImageLoader(context, VaultObjectsItems(vaultObjects))

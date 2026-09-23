@@ -226,7 +226,14 @@ private fun UnlockedContent(component: UnlockedComponent) {
         val stack by component.stack.subscribeAsState()
         Box(modifier = Modifier.weight(1f)) {
             when (val child = stack.active.instance) {
-                is UnlockedChild.Gallery -> VaultGalleryContent(child.component)
+                is UnlockedChild.Gallery ->
+                    // The session owns the loader (it decrypts through the session's vault and
+                    // holds previews in memory), so the screen is handed one rather than making
+                    // its own. Absent only in a graph with no platform context, which production
+                    // never is — both platform modules bind one and a test says so.
+                    component.imageLoader?.let { loader ->
+                        VaultGalleryContent(child.component, loader)
+                    }
             }
         }
     }

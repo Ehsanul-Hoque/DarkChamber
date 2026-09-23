@@ -6,10 +6,13 @@ import com.arkivanov.decompose.router.stack.StackNavigation
 import com.arkivanov.decompose.router.stack.childStack
 import com.arkivanov.decompose.value.Value
 import com.arkivanov.essenty.lifecycle.doOnDestroy
+import coil3.ImageLoader
+import coil3.PlatformContext
 import com.arkivanov.essenty.lifecycle.doOnStop
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultGalleryComponent
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultImports
 import dev.ehsanfahad.darkchamber.feature.vault.vaultGalleryComponent
+import dev.ehsanfahad.darkchamber.feature.vault.vaultImageLoader
 import dev.ehsanfahad.darkchamber.feature.vault.vaultImports
 import dev.ehsanfahad.darkchamber.app.VaultBootstrap
 import dev.ehsanfahad.darkchamber.app.nowEpochMillis
@@ -43,6 +46,17 @@ import kotlin.random.nextULong
  */
 interface UnlockedComponent {
     val session: VaultSession
+
+    /**
+     * The gallery's image loader, or `null` when the graph has no `PlatformContext` to build one
+     * from — which in practice means a host test, since both platform modules bind one and a test
+     * asserts they do.
+     *
+     * It belongs to the **session**, not to the screen that draws with it: its memory cache holds
+     * decrypted previews, and locking has to be able to empty that even while the app is in the
+     * background, where a composition may not recompose at all.
+     */
+    val imageLoader: ImageLoader?
 
     /** The feature screens living inside the unlocked subtree. */
     val stack: Value<ChildStack<*, UnlockedChild>>
@@ -93,6 +107,15 @@ class DefaultUnlockedComponent(
                 ),
             )
         }
+
+    /**
+     * Built lazily so a graph without a `PlatformContext` — a host test — simply has no loader
+     * rather than failing to construct the session. Lazy also means a vault opened and locked
+     * without ever showing the gallery never builds one.
+     */
+    override val imageLoader: ImageLoader? by lazy {
+        koin.getOrNull<PlatformContext>()?.let { context -> vaultImageLoader(context, scope.get()) }
+    }
 
     /**
      * Parent of every feature coroutine in this session. Cancelling it is the **first** thing lock
