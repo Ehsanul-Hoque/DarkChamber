@@ -64,6 +64,34 @@ class SecurityArchitectureTest {
         )
     }
 
+    @Test
+    fun `every image loader is built without a disk cache`() {
+        // An image loader in this app is only ever handed decrypted vault content, and a disk cache
+        // stores what it fetched — so one left on writes plaintext previews into the app's cache
+        // directory, where they survive a lock, the scratch purge and the process. Hard rule #1, and
+        // invisible: every tile renders correctly and no test that draws a grid would notice.
+        //
+        // Coil attaches one by default (measured — a bare builder hands back a RealDiskCache), so
+        // this is a rule about what a future loader must remember, not about the one that exists.
+        // It is a source rule rather than a unit test because a test can only cover the loader it
+        // knows about, and the hazard is precisely the loader nobody told the tests about.
+        val violations = productionFiles
+            .filter { it.text.contains(IMAGE_LOADER_BUILDER) }
+            .filterNot { file -> DISK_CACHE_OFF.any { file.text.contains(it) } }
+
+        assertTrue(
+            violations.isEmpty(),
+            buildString {
+                appendLine(
+                    "An ImageLoader is built without disabling its disk cache (hard rule #1). " +
+                        "Call vaultImageLoader, or disable it with diskCache(null) and " +
+                        "diskCachePolicy(CachePolicy.DISABLED).",
+                )
+                violations.forEach { appendLine("  ${it.projectPath}") }
+            },
+        )
+    }
+
     private fun assertNoForbiddenImports(
         rule: String,
         forbidden: (String) -> Boolean,
@@ -81,6 +109,14 @@ class SecurityArchitectureTest {
                 violations.forEach { (file, import) -> appendLine("  ${file.projectPath}: $import") }
             },
         )
+    }
+
+    private companion object {
+        const val IMAGE_LOADER_BUILDER = "ImageLoader.Builder("
+
+        // Either is sufficient on its own; the loader that exists does both, and a file doing one
+        // of them has clearly made the decision rather than inherited it.
+        val DISK_CACHE_OFF = listOf("diskCache(null)", "CachePolicy.DISABLED")
     }
 }
 
