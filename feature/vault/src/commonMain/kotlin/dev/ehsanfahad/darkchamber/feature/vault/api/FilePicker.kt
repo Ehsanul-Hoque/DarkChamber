@@ -60,4 +60,43 @@ interface PickedFile : AutoCloseable {
      * spills a one-shot source into app-private scratch rather than failing the import.
      */
     fun openSource(): RawSource
+
+    /**
+     * Whether the platform will let us ask for this original to be deleted after it is imported.
+     *
+     * **`false` is the ordinary answer, not a fault.** Cloud providers routinely decline to
+     * advertise deletion, items chosen from a photo library never support it, and on iOS it is
+     * always `false` by design. Callers must treat the absence of the capability as the normal
+     * shape of things: no offer at all, rather than a disabled control that owes the user an
+     * explanation.
+     *
+     * Resolving this may cost a platform round-trip, so read it off the import dispatcher — never
+     * while mapping a pick result on the main thread.
+     *
+     * Defaulted to `false` deliberately. Deleting someone's file is the one irreversible thing on
+     * this interface, so an implementation that says nothing declines; the failure mode of
+     * forgetting is a lost offer, never a claim we cannot honour (hard rule #6).
+     */
+    val deletable: Boolean get() = false
+
+    /**
+     * Ask the platform to delete the original, and report whether it actually went.
+     *
+     * `true` means the platform said it deleted the file. `false` means nothing was deleted —
+     * [deletable] was `false`, or the provider refused, or it failed. It never throws: a refusal is
+     * an outcome the caller shows, not an error that aborts anything, and by the time this is
+     * called the bytes are already safely in the vault.
+     *
+     * **Valid after [close], which is the surprising part.** The import closes every picked file in
+     * a `finally`, so every deletion is asked for on a closed file. That works because the grant
+     * being released by [close] belongs to the platform host — the activity that ran the picker, the
+     * security-scoped resource — and not to the stream; deleting needs the grant, not an open
+     * handle. It is a widening of the contract rather than an accident of it, so implementations
+     * must keep it true: a closed file that can still be deleted is worth stating out loud.
+     *
+     * Deleting is best-effort by nature. The system unlinks the file; flash wear-levelling may leave
+     * recoverable traces outside our control, which is why the UI that calls this says what we asked
+     * for rather than promising erasure (`docs/THREAT_MODEL.md`, hard rule #6).
+     */
+    fun deleteOriginal(): Boolean = false
 }

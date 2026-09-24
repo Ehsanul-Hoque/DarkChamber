@@ -62,15 +62,29 @@ internal class FakePickedFile(
     override val mime: String = "image/jpeg",
     private val data: ByteArray = byteArrayOf(1, 2, 3),
     override val size: Long? = data.size.toLong(),
+    /** Defaults to the common platform answer: most originals cannot be deleted. */
+    override val deletable: Boolean = false,
 ) : PickedFile {
     var closed = false
         private set
     var opens = 0
         private set
 
+    /**
+     * How often deletion was asked for. Counted rather than flagged so a test can tell "never
+     * offered" apart from "offered twice" — the second being a file deleted once per retry.
+     */
+    var deleteRequests = 0
+        private set
+
     override fun openSource(): RawSource {
         opens++
         return Buffer().apply { write(data) }
+    }
+
+    override fun deleteOriginal(): Boolean {
+        deleteRequests++
+        return deletable
     }
 
     override fun close() {
