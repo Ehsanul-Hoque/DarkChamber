@@ -5,7 +5,10 @@ import dev.ehsanfahad.darkchamber.feature.vault.CancellingVaultItems
 import dev.ehsanfahad.darkchamber.feature.vault.FakePickedFile
 import dev.ehsanfahad.darkchamber.feature.vault.FakeVaultItems
 import dev.ehsanfahad.darkchamber.feature.vault.api.FailedImport
+import dev.ehsanfahad.darkchamber.feature.vault.api.PickedFile
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.io.Buffer
+import kotlinx.io.RawSource
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlin.coroutines.cancellation.CancellationException
@@ -13,6 +16,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 /**
@@ -153,14 +157,98 @@ class ImportQueueTest {
         assertTrue(seen.last() <= 1f, "an over-reported byte count must not push the bar past full")
     }
 
+    /**
+     * Which originals the batch may afterwards offer to delete.
+     *
+     * Two conditions, and both have to hold: the file landed in the vault, and its platform will
+     * take a delete. Offering to remove an original whose import failed would destroy the only copy
+     * — the one case where being wrong costs the user their file rather than a feature.
+     */
+    @Test
+    fun only_files_that_both_imported_and_can_be_deleted_are_offered() = runTest {
+        val vault = FakeVaultItems(failFor = setOf("broken.jpg"))
+        val landed = FakePickedFile(name = "landed.jpg", deletable = true)
+        val files = listOf(
+            landed,
+            FakePickedFile(name = "read-only.jpg", deletable = false),
+            FakePickedFile(name = "broken.jpg", deletable = true),
+        )
+
+        val summary = queue(vault)(files)
+
+        assertEquals(listOf("landed.jpg"), summary.deletableOriginals.map { it.name })
+        assertSame(landed, summary.deletableOriginals.single(), "the handle itself, to delete by later")
+        assertTrue(landed.closed, "and it is offered closed — the grant outlives the stream (seam contract)")
+    }
+
+    @Test
+    fun a_batch_where_nothing_can_be_deleted_offers_nothing() = runTest {
+        val files = listOf(FakePickedFile(name = "a.jpg"), FakePickedFile(name = "b.jpg"))
+
+        val summary = queue(FakeVaultItems())(files)
+
+        // The ordinary case — every photo-library item, every iOS item, most cloud documents. It has
+        // to read as "no offer", never as an empty offer.
+        assertEquals(emptyList(), summary.deletableOriginals)
+        assertEquals(2, summary.imported, "which says nothing about whether the import worked")
+    }
+
+    /**
+     * Stopping the batch leaves the rest of the selection untouched — both the file that was being
+     * read when the user stopped and the ones never reached. Neither was imported, so deleting
+     * their originals would destroy the only copy. What landed before the stop is still offered:
+     * stopping a batch does not un-import what it already did.
+     */
+    @Test
+    fun a_stopped_batch_offers_only_what_it_managed_to_import() = runTest {
+        var active = true
+        val vault = FakeVaultItems(onImport = { name -> if (name == "interrupted.jpg") active = false })
+        val files = listOf(
+            FakePickedFile(name = "landed.jpg", deletable = true),
+            FakePickedFile(name = "interrupted.jpg", deletable = true),
+            FakePickedFile(name = "never-reached.jpg", deletable = true),
+        )
+
+        val summary = queue(vault)(files, isActive = { active })
+
+        assertEquals(listOf("landed.jpg"), summary.deletableOriginals.map { it.name })
+        assertEquals(1, summary.imported)
+        // The interrupted file is in neither list — nothing was wrong with it — and it must not be
+        // offered for deletion either, which is the rule this file is here to hold.
+        assertEquals(emptyList(), summary.failed, "a stop is not a failure")
+    }
+
     @Test
     fun a_file_name_never_reaches_a_log_line() {
         val progress = ImportProgress(index = 1, total = 4, name = "tax-return.pdf", fileFraction = 0.5f)
-        val summary = ImportSummary(imported = 1, failed = listOf(FailedImport("passport.jpg", VaultError.Crypto.IntegrityFailure)))
+        val summary = ImportSummary(
+            imported = 1,
+            failed = listOf(FailedImport("passport.jpg", VaultError.Crypto.IntegrityFailure)),
+            deletableOriginals = listOf(TalkativePickedFile("payslip.pdf")),
+        )
 
         // Both types carry decrypted vault content, so the generated data-class toString would print
-        // a file name into any log line that renders them (hard rule #4).
+        // a file name into any log line that renders them (hard rule #4). The retained handles are
+        // the newest way in, and the summary has to redact them itself: whether a PickedFile keeps
+        // its own name out of its own toString is not something this type gets to assume.
         assertFalse(progress.toString().contains("tax-return"), "got $progress")
         assertFalse(summary.toString().contains("passport"), "got $summary")
+        assertFalse(summary.toString().contains("payslip"), "got $summary")
+    }
+
+    /**
+     * A picked file that prints its name, which the seam nowhere forbids — the platform
+     * implementations simply happen not to. Using an ordinary fake here would prove nothing: its
+     * name stays out of the summary by accident rather than because the summary redacts it.
+     */
+    private class TalkativePickedFile(override val name: String) : PickedFile {
+        override val mime: String = "application/pdf"
+        override val size: Long? = null
+
+        override fun openSource(): RawSource = Buffer()
+
+        override fun close() = Unit
+
+        override fun toString(): String = "TalkativePickedFile(name=$name)"
     }
 }

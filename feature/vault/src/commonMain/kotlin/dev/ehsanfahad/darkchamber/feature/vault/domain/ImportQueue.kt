@@ -22,9 +22,31 @@ internal data class ImportProgress(
         "ImportProgress(index=$index, total=$total, name=${name.length} chars, fileFraction=$fileFraction)"
 }
 
-/** What a finished batch amounts to: how many landed, and which ones did not. */
-internal data class ImportSummary(val imported: Int, val failed: List<FailedImport>) {
-    override fun toString(): String = "ImportSummary(imported=$imported, failed=${failed.size})"
+/**
+ * What a finished batch amounts to: how many landed, which ones did not, and whose originals the
+ * user can now be offered the chance to delete.
+ *
+ * [deletableOriginals] holds only files that **both** imported and say their platform will take a
+ * delete — the two conditions fail independently and both are ordinary. Offering to remove an
+ * original whose import failed, or one a stopped batch never reached, would destroy the user's only
+ * copy, which is the single case in this cycle where being wrong costs a file rather than a feature.
+ *
+ * The handles are **closed** by the time they are here: [ImportFile] releases every grant in a
+ * `finally`. Deleting still works, because the grant belongs to the platform host rather than to any
+ * stream we opened — the seam documents that as a promise implementations have to keep.
+ *
+ * Usually empty. Photo-library items never support deletion, iOS never does, and cloud providers
+ * commonly do not, so no offer at all is the ordinary shape of a finished batch.
+ */
+internal data class ImportSummary(
+    val imported: Int,
+    val failed: List<FailedImport>,
+    val deletableOriginals: List<PickedFile> = emptyList(),
+) {
+    // A PickedFile prints its own name given the chance, so the count is all that may be rendered
+    // (hard rule #4).
+    override fun toString(): String =
+        "ImportSummary(imported=$imported, failed=${failed.size}, deletable=${deletableOriginals.size})"
 }
 
 /**
@@ -54,6 +76,7 @@ internal class ImportQueue(private val importFile: ImportFile) {
     ): ImportSummary {
         var imported = 0
         val failed = mutableListOf<FailedImport>()
+        val deletable = mutableListOf<PickedFile>()
 
         // Incremented *before* the import runs: from that point the file is ImportFile's to close,
         // so a cancellation mid-file must not close it a second time here (on iOS an unbalanced
@@ -72,7 +95,14 @@ internal class ImportQueue(private val importFile: ImportFile) {
                     onProgress(ImportProgress(index, files.size, file.name, total.fractionAt(bytes)))
                 }
                 when (result) {
-                    is ImportResult.Imported -> imported++
+                    is ImportResult.Imported -> {
+                        imported++
+                        // Asked only of a file that landed. On Android the answer comes from the
+                        // column lookup this file's name already forced, so it costs nothing here —
+                        // and asking about a file we will never offer would be a provider
+                        // round-trip spent on nothing.
+                        if (file.deletable) deletable += file
+                    }
                     // A file that stopped because the user stopped the batch is not a broken file.
                     is ImportResult.Failed -> if (isActive()) failed += FailedImport(file.name, result.error)
                 }
@@ -81,7 +111,7 @@ internal class ImportQueue(private val importFile: ImportFile) {
             for (i in next until files.size) closeQuietly(files[i])
         }
 
-        return ImportSummary(imported = imported, failed = failed)
+        return ImportSummary(imported = imported, failed = failed, deletableOriginals = deletable)
     }
 
     private fun closeQuietly(file: PickedFile) {
