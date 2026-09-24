@@ -183,7 +183,7 @@ class UnlockedComponentTest {
     }
 
     /**
-     * The companion to the decision that an import outlives a screen (spec D7): it does **not**
+     * The companion to the decision that an import outlives a screen: it does **not**
      * outlive the session. Locking mid-batch stops it, and everything imported before the lock is
      * a complete, catalogued item — a batch is not a transaction, and rolling those back would
      * destroy data the user asked for.

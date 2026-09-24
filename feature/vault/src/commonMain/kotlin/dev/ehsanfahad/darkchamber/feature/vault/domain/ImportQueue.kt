@@ -29,7 +29,7 @@ internal data class ImportProgress(
  * [deletableOriginals] holds only files that **both** imported and say their platform will take a
  * delete — the two conditions fail independently and both are ordinary. Offering to remove an
  * original whose import failed, or one a stopped batch never reached, would destroy the user's only
- * copy, which is the single case in this cycle where being wrong costs a file rather than a feature.
+ * copy — the one case in the import path where being wrong costs a file rather than a feature.
  *
  * The handles are **closed** by the time they are here: [ImportFile] releases every grant in a
  * `finally`. Deleting still works, because the grant belongs to the platform host rather than to any
@@ -52,7 +52,7 @@ internal data class ImportSummary(
 /**
  * Import a picked batch, one file at a time.
  *
- * **Sequential by construction** (spec D2). Encryption is CPU-bound, so running files in parallel
+ * **Sequential by construction.** Encryption is CPU-bound, so running files in parallel
  * buys little on a phone while multiplying the bounded-RAM guarantee that streaming exists to
  * provide.
  *

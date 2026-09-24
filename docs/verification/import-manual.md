@@ -1,10 +1,11 @@
 # Manual verification — file import, gallery, and screen protection
 
-> Scope: the vault gallery and single-file import. Verifies the two platform **file pickers**, the
-> import round-trip through a real vault, and the **screen protection** — the parts the automated
-> tests deliberately cannot reach (a real document picker, a real screenshot attempt, a real
-> app-switcher snapshot). Run at release, and whenever the pickers, the import path, or the host
-> screen-protection code change.
+> Scope: the vault gallery and import. Verifies the two platform **file pickers**, the import
+> round-trip through a real vault, the **previews** and the offer to **delete the original**, and the
+> **screen protection** — the parts the automated tests deliberately cannot reach (a real document
+> picker, a real image decoder, a real provider that will or will not delete, a real screenshot
+> attempt, a real app-switcher snapshot). Run at release, and whenever the pickers, the import path,
+> the thumbnail encoders or the host screen-protection code change.
 
 ## What is already automated (run these first)
 
@@ -19,11 +20,14 @@ Everything except platform UI and screen capture is proven by fast tests before 
   round-trip, and the one-shot-source spill: byte-identical import, no scratch left behind on
   success or failure, no spill when the source re-opens.
 - **`./gradlew :app:testAndroidHostTest :app:iosSimulatorArm64Test`** — the unlocked subtree opens on
-  the gallery and locking disposes the scope the gallery was built from.
+  the gallery, locking disposes the scope the gallery was built from and empties the decrypted image
+  cache, and each platform binds a thumbnail encoder.
 - **`./gradlew :konsist:test`** — the security invariants, including that no module imports a
-  networking API.
+  networking API and that no image loader is built with a disk cache.
 
 The `FilePicker` implementations are **compile-gated only**: a real document picker needs a device.
+The thumbnail encoders are platform decoders, so only their sizing arithmetic is unit-tested — what
+a real photo actually looks like is checked on a device below.
 
 ## Build + install
 
@@ -105,6 +109,53 @@ two pickers reach the same queue by different platform APIs.
       iOS: Settings → Accessibility → Motion → Reduce Motion), reopen the app and import again. New
       tiles **fade** in and the existing tiles **do not slide** — the arrival is still visible, just
       not moving.
+
+### Previews
+
+The encoders are real platform decoders, so what a host test can prove stops at the sizing
+arithmetic. Everything below needs a device.
+
+- [ ] **Android — import a photo.** The tile shows the **picture**, square-cropped and sharp, not a
+      type badge. Try a JPEG, a PNG with transparency, and a HEIC from the camera.
+- [ ] **iOS — the same three.** A HEIC from the camera roll matters most: it is the format the iOS
+      decoder is most likely to be handed and the one a shared implementation would get wrong.
+- [ ] **A photo shot in portrait is drawn upright**, not rotated ninety degrees. The orientation
+      lives in EXIF, and a decoder that ignores it produces a sideways tile.
+- [ ] **A PDF, a text file and an audio file each show their type badge** and look entirely ordinary
+      beside the pictures — no spinner, no broken-image frame, no error tone. Nothing here is a
+      failure.
+- [ ] **A truncated or corrupt image imports and shows its badge.** Copy a JPEG, cut it in half with
+      a text editor or `dd`, import it. The import **succeeds** — a preview that cannot be made must
+      never fail an import.
+- [ ] **Scroll a grid of 50+ photos**, then check that **no decrypted image reached disk**:
+      `adb shell run-as dev.ehsanfahad.darkchamber find files cache -type f \( -name '*.jpg' -o -name
+      '*.png' -o -name '*.webp' \)` → no output, and `find cache -type d` shows no image-cache
+      directory. On iOS, check the app container's `Library/Caches` the same way. This is the check
+      that would catch an image loader built with its defaults.
+- [ ] **Lock the vault with the grid scrolled and previews on screen**, then unlock. The tiles
+      re-render (they are decrypted again, not served from what the lock left behind).
+
+### Deleting the original
+
+Offered for documents whose provider allows it, and for nothing else. "No offer" is the ordinary
+result — make sure it looks ordinary.
+
+- [ ] **Android, a provider that supports deletion.** Put a file in **Downloads**, import it through
+      **Add files**, and the summary offers to delete the original. Take the offer: the disclosure
+      appears, and it says the vault has its own encrypted copy, that the app asks the system to
+      delete the original, and that recovery cannot be ruled out. It never says "permanently".
+- [ ] **The disclosure cannot be dismissed.** Press back, and tap outside it. It stays. Only the two
+      buttons close it.
+- [ ] **Keep them** leaves both the original and the offer in place.
+- [ ] **Delete** removes the file from Downloads (check in the Files app) and the summary reports how
+      many went.
+- [ ] **A provider that does not support deletion** — a file picked from Drive or OneDrive — offers
+      **nothing at all**: no button, no greyed-out control, no explanation.
+- [ ] **The photo picker never offers it**, on either platform, however the photo was added.
+- [ ] **iOS offers it for nothing**, including documents from iCloud Drive and Files. Confirm no copy
+      anywhere in the app implies that originals can be removed on iOS.
+- [ ] **Import 20 documents from Downloads and delete all the originals.** The app stays responsive
+      while the deletions run, and the count reported matches what actually disappeared.
 
 ### Persistence
 

@@ -25,7 +25,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /**
- * The batch as something a screen can watch but does not own (spec D7). The coordinator drives a
+ * The batch as something a screen can watch but does not own. The coordinator drives a
  * picker, then the queue, and publishes one state a UI can render without knowing any of it.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -488,7 +488,7 @@ class ImportCoordinatorTest {
         )
 
         // Both carry decrypted vault content; the generated data-class toString would print a file
-        // name into any log line that renders them (hard rule #4, cycle 1's GalleryItem precedent).
+        // name into any log line that renders them (hard rule #4, as GalleryItem already does).
         assertFalse(running.toString().contains("passport"), "got $running")
         assertFalse(finished.toString().contains("tax-return"), "got $finished")
         assertTrue(running.toString().contains("total=3"), "the useful parts still render")

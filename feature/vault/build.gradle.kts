@@ -12,9 +12,8 @@ kotlin {
             // api, not implementation: the component factory takes a VaultObjects (from the session
             // scope), so the type is part of this module's public surface.
             api(project(":core:vault"))
-            // The gallery's image loading. Pinned in the catalog since cycle 1 and unused until
-            // now; this cycle is its first consumer. The loader is built here, with its disk cache
-            // off — see VaultImageLoader for why that is not a preference.
+            // The gallery's image loading: it draws the encrypted thumbnails. The loader is built
+            // here, with its disk cache off — see VaultImageLoader for why that is not a preference.
             implementation(libs.coil.compose)
         }
     }

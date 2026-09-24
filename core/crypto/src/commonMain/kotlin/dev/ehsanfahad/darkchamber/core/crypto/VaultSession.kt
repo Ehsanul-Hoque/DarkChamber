@@ -16,7 +16,7 @@ class CreatedVault(
  * The in-memory holder of an unlocked vault's MasterKey (ARCHITECTURE §3.2 / §8). It is the only
  * place a raw MK lives; it wraps/unwraps per-object DEKs on demand and zeroizes the MK on [close].
  *
- * This cycle owns key material only — the lock **lifecycle** (auto-lock timers, `tmp/` purge, the
+ * This type owns key material only — the lock **lifecycle** (auto-lock timers, `tmp/` purge, the
  * Decompose Locked/Unlocked gate) belongs to the app/session layer. The one guarantee here is
  * that [close] best-effort-zeroizes the MK (GC-copy limits acknowledged in the threat model), and
  * that raw DEKs handed to [useDek] are zeroized after the caller is done with them.

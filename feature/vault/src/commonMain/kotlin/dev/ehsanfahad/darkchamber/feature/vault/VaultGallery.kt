@@ -22,7 +22,7 @@ import kotlin.coroutines.CoroutineContext
 /**
  * Build the import batch for one unlocked session. The feature's other construction surface, kept
  * separate from the gallery's on purpose: **a batch outlives any screen**, so it cannot be created
- * by one (spec D7).
+ * by one.
  *
  * [scope] must be the session's own feature scope — cancelling it is what makes a lock stop an
  * import, and nothing else should be able to.

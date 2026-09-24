@@ -11,7 +11,7 @@ import kotlin.test.assertTrue
 import kotlin.test.assertNull
 
 /**
- * The one assertion this cycle cannot afford to get wrong: the gallery's loader has **no disk
+ * The one assertion about previews that cannot be wrong: the gallery's loader has **no disk
  * cache**, so no decrypted preview is ever written to storage (hard rule #1).
  *
  * It lives in the iOS source set because that is where a `PlatformContext` exists without a device:

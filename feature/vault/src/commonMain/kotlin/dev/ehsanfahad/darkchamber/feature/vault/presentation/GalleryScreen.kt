@@ -58,8 +58,9 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.OriginalDelete
  * and leaves the full-circle radius to the aperture, so the import affordance is a rounded extended
  * FAB rather than a circle.
  *
- * Tiles reserve a square media slot at the size a thumbnail will occupy, so cycle 2 can drop images
- * in without relayout. Tapping a tile does nothing yet; viewers arrive with the seekable read path.
+ * Tiles draw their preview in a reserved square media slot, and the type badge in the same slot when
+ * there is no preview — the two are the same size, so a grid does not relayout as previews resolve.
+ * Tapping a tile does nothing yet; viewers arrive with the seekable read path.
  */
 @Composable
 internal fun GalleryScreen(

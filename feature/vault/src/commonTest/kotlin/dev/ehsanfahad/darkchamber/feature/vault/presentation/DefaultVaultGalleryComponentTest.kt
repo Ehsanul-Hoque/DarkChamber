@@ -289,7 +289,7 @@ class DefaultVaultGalleryComponentTest {
     }
 
     /**
-     * The component watches the batch; it does not own it (spec D7). A screen that is destroyed
+     * The component watches the batch; it does not own it. A screen that is destroyed
      * mid-import — which the albums cycle makes ordinary — must not take fifty photos down with it.
      */
     @Test

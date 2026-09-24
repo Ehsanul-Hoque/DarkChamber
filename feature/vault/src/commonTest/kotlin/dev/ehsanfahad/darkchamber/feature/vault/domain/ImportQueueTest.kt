@@ -22,7 +22,7 @@ import kotlin.test.assertTrue
 /**
  * The batch: a sequence of single-file imports, and the rules about what one bad file costs.
  *
- * Sequential by construction (spec D2) — files are encrypted one at a time, because running several
+ * Sequential by construction — files are encrypted one at a time, because running several
  * in parallel would multiply the bounded-RAM guarantee that streaming exists to provide, for very
  * little on a CPU-bound phone.
  */

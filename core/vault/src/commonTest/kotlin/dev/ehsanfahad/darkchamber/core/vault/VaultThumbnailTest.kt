@@ -185,10 +185,10 @@ class VaultThumbnailTest {
 
     @Test
     fun a_cancel_during_the_decode_stops_the_read_and_still_imports() {
-        // The encoder starts reading and the user cancels underneath it. The third read is the one
-        // stretch of an import added by this cycle, and an unguarded one would go on pulling
-        // plaintext through a decoder after the work behind it was abandoned — the same shape as
-        // the unguarded spill copy the previous cycle's review caught.
+        // The encoder starts reading and the user cancels underneath it. Encoding a preview is the
+        // import's third read of the payload, and an unguarded one would go on pulling plaintext
+        // through a decoder after the work behind it was abandoned — the same shape as the
+        // unguarded spill copy an earlier review caught.
         var cancelled = false
         val encoder = object : ThumbnailEncoder {
             override fun encode(mime: String, maxEdgePx: Int, openSource: () -> RawSource): ByteArray {

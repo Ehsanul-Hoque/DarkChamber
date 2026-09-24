@@ -74,8 +74,9 @@ class ObjectMetaCompatTest {
 
         assertEquals("holiday.jpg", decoded.name)
         assertEquals("image/jpeg", decoded.mime)
-        // Absent key ⇒ no thumbnail. This is the whole no-backfill story: every item imported before
-        // this cycle lands here and renders its type badge, rather than failing to open.
+        // Absent key ⇒ no thumbnail. This is the whole no-backfill story: every item imported by a
+        // build that predates previews lands here and renders its type badge, rather than failing
+        // to open.
         assertNull(decoded.thumbnailKey, "a pre-thumbnail blob must decode with the key absent")
     }
 

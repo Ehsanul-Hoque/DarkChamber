@@ -76,8 +76,8 @@ class DefaultUnlockedComponent(
     private val koin: Koin,
     // Handed to the feature components so host tests can drive them without a platform main looper.
     private val mainContext: CoroutineContext = Dispatchers.Main,
-    // Where an import's encrypt runs. Never the main thread (cycle 1's device run found key
-    // derivation there and the UI froze); injected for the same reason as [mainContext].
+    // Where an import's encrypt runs. Never the main thread — a device run found key derivation
+    // there and the UI froze; injected for the same reason as [mainContext].
     private val ioContext: CoroutineContext = Dispatchers.Default,
     private val onLock: () -> Unit,
 ) : UnlockedComponent, ComponentContext by componentContext {
@@ -137,7 +137,7 @@ class DefaultUnlockedComponent(
     private val featureWork = SupervisorJob()
 
     /**
-     * The import batch, owned by the **session** rather than by the gallery (spec D7): navigating
+     * The import batch, owned by the **session** rather than by the gallery: navigating
      * away from a screen must not abandon fifty photos half-imported, while locking must stop them.
      * Parented to [featureWork], which lock cancels first, so a lock ends an import before the MK it
      * is encrypting against is zeroized. It holds no session reference of its own beyond the

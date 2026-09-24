@@ -22,7 +22,7 @@ import kotlin.coroutines.cancellation.CancellationException
 /**
  * Owns the running import batch and publishes it as one [ImportState] a screen can render.
  *
- * **Bound to the session, not to a screen** (spec D7). It runs on a scope the unlocked subtree owns,
+ * **Bound to the session, not to a screen.** It runs on a scope the unlocked subtree owns,
  * so navigating away — which the albums cycle introduces — cannot cancel an import, while locking
  * still does, because locking cancels that scope. A component that owned the batch would make the
  * two indistinguishable.
@@ -65,7 +65,7 @@ internal class ImportCoordinator(
      * behind [ImportState.Finished.deletableOriginals], which is only their count.
      *
      * They live **here**, on the session-scoped batch, rather than on the screen that draws the
-     * offer (spec D7). Navigating away therefore keeps the offer, and locking ends it: this object
+     * offer. Navigating away therefore keeps the offer, and locking ends it: this object
      * dies with the session, taking the handles with it. That is the correct outcome — a lock ends
      * everything about the batch, and an offer to delete someone's file is not a thing to keep
      * across one.

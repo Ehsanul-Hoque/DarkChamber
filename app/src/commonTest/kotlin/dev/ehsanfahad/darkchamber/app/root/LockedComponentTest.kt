@@ -92,9 +92,9 @@ class LockedComponentTest {
         // will find out the difference only when they need it most.
         assertEquals(recovery.recoveryKey, clipboard.lastCopied)
         assertTrue(c.state.value.recoveryKeyCopied, "the screen needs to know it happened")
-        // Cycle 1's F1: the gate's spinner follows `busy`, and nothing is running here. Copying is
-        // synchronous, so routing it through the busy guard would put a progress indicator on a
-        // screen with no work to report — the exact bug that shipped last cycle.
+        // A bug this once shipped with: the gate's spinner follows `busy`, and nothing is running
+        // here. Copying is synchronous, so routing it through the busy guard would put a progress
+        // indicator on a screen with no work to report.
         assertFalse(c.state.value.busy, "copying is not work to report progress for")
     }
 
