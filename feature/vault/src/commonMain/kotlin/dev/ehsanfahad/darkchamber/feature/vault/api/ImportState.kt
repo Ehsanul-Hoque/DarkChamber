@@ -46,9 +46,23 @@ sealed interface ImportState {
      * The batch ended — finished, or cancelled by the user. [imported] is what landed and stayed
      * landed; [failed] is the files that could not be read, which is not the same as the file a
      * cancel interrupted (nothing was wrong with that one, so it is in neither list).
+     *
+     * [deletableOriginals] is how many of the imported files came from somewhere that will take a
+     * delete, and so how many originals the user can be offered the chance to remove. **Zero is the
+     * ordinary answer** — every photo-library item, every iOS item and most cloud documents are
+     * zero — and it means no offer at all rather than an offer of nothing.
+     *
+     * A count, not the files themselves: deleting needs the picked file, and a screen must never
+     * hold one. The handles stay with the session-scoped batch, which is what makes a lock end the
+     * offer along with everything else.
      */
-    data class Finished(val imported: Int, val failed: List<FailedImport>) : ImportState {
-        override fun toString(): String = "Finished(imported=$imported, failed=${failed.size})"
+    data class Finished(
+        val imported: Int,
+        val failed: List<FailedImport>,
+        val deletableOriginals: Int = 0,
+    ) : ImportState {
+        override fun toString(): String =
+            "Finished(imported=$imported, failed=${failed.size}, deletableOriginals=$deletableOriginals)"
     }
 }
 

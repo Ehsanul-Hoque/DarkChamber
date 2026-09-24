@@ -53,6 +53,22 @@ internal class ImportCoordinator(
 
     val isRunning: Boolean get() = job?.isActive == true
 
+    /**
+     * The picked files whose originals the finished summary is offering to delete — the handles
+     * behind [ImportState.Finished.deletableOriginals], which is only their count.
+     *
+     * They live **here**, on the session-scoped batch, rather than on the screen that draws the
+     * offer (spec D7). Navigating away therefore keeps the offer, and locking ends it: this object
+     * dies with the session, taking the handles with it. That is the correct outcome — a lock ends
+     * everything about the batch, and an offer to delete someone's file is not a thing to keep
+     * across one.
+     *
+     * Closed by now, all of them, and still usable: the seam promises deletion survives `close()`,
+     * because the grant belongs to the platform host rather than to any stream we opened.
+     */
+    var deletableOriginals: List<PickedFile> = emptyList()
+        private set
+
     override fun importPhotos() = start { photoPicker.pickPhotos() }
 
     override fun importFiles() = start { filePicker.pickFiles() }
@@ -70,13 +86,20 @@ internal class ImportCoordinator(
 
     /** Dismiss a finished summary. Anything else is left alone — a running batch is not dismissible. */
     override fun acknowledge() {
-        if (_state.value is ImportState.Finished) _state.value = ImportState.Idle
+        if (_state.value !is ImportState.Finished) return
+        // The offer was part of the summary, so dismissing the summary dismisses it. Keeping the
+        // handles would leave a delete with nothing left on screen to have authorised it.
+        deletableOriginals = emptyList()
+        _state.value = ImportState.Idle
     }
 
     private fun start(pick: suspend () -> List<PickedFile>) {
         // Set before the coroutine is even scheduled, so a double tap cannot open two pickers.
         if (isRunning) return
         cancelled = false
+        // Whatever the last batch left is no longer what the screen is showing. A handle that
+        // outlived its summary would sit behind a count that no longer describes it.
+        deletableOriginals = emptyList()
         _state.value = ImportState.Picking
 
         job = scope.launch {
@@ -126,7 +149,14 @@ internal class ImportCoordinator(
             // error type, never the file's name.
             summary.failed.forEach { logVaultError(IMPORT_STAGE, it.error) }
 
-            _state.value = ImportState.Finished(imported = summary.imported, failed = summary.failed)
+            // Retained before the state that advertises them is published, so a screen can never
+            // read a count without the handles behind it already being here.
+            deletableOriginals = summary.deletableOriginals
+            _state.value = ImportState.Finished(
+                imported = summary.imported,
+                failed = summary.failed,
+                deletableOriginals = summary.deletableOriginals.size,
+            )
         }
     }
 

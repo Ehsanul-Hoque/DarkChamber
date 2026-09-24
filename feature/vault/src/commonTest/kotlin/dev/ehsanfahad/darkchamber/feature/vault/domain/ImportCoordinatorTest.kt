@@ -2,6 +2,7 @@ package dev.ehsanfahad.darkchamber.feature.vault.domain
 
 import app.cash.turbine.test
 import dev.ehsanfahad.darkchamber.core.model.VaultError
+import dev.ehsanfahad.darkchamber.feature.vault.CancellingVaultItems
 import dev.ehsanfahad.darkchamber.feature.vault.FakeFilePicker
 import dev.ehsanfahad.darkchamber.feature.vault.FakePhotoPicker
 import dev.ehsanfahad.darkchamber.feature.vault.FakePickedFile
@@ -235,6 +236,113 @@ class ImportCoordinatorTest {
         // security-scoped resource, which leaks for the life of the process if it is not handed
         // back. A user cancel has to release them just as a lock does.
         assertTrue(picked.all { it.closed }, "a cancelled batch releases every grant it took")
+    }
+
+    /**
+     * The offer to delete originals, which the summary can only make for files that landed.
+     *
+     * The count is what the screen draws; the handles behind it stay here, because deleting needs
+     * the picked file itself and a screen must never hold one — it would outlive the session that
+     * is allowed to have it.
+     */
+    @Test
+    fun a_finished_batch_says_how_many_originals_can_be_deleted() = runTest {
+        val vault = FakeVaultItems()
+        val picked = listOf(
+            FakePickedFile(name = "from-downloads.pdf", deletable = true),
+            FakePickedFile(name = "from-the-library.jpg", deletable = false),
+            FakePickedFile(name = "also-downloads.pdf", deletable = true),
+        )
+        val subject = coordinator(vault, files = FakeFilePicker(picked))
+
+        subject.importFiles()
+
+        val state = assertIs<ImportState.Finished>(subject.state.value)
+        assertEquals(3, state.imported)
+        assertEquals(2, state.deletableOriginals, "two of the three came from somewhere that deletes")
+        assertEquals(
+            listOf("from-downloads.pdf", "also-downloads.pdf"),
+            subject.deletableOriginals.map { it.name },
+            "and the handles to delete by are held here, not handed to a screen",
+        )
+    }
+
+    @Test
+    fun a_batch_with_nothing_deletable_offers_none() = runTest {
+        val subject = coordinator(FakeVaultItems(), files = FakeFilePicker(listOf(FakePickedFile())))
+
+        subject.importFiles()
+
+        // The ordinary case: every photo-library item, every iOS item, most cloud documents. Zero
+        // has to mean "no offer at all" — not an offer of nothing.
+        assertEquals(0, assertIs<ImportState.Finished>(subject.state.value).deletableOriginals)
+        assertEquals(emptyList(), subject.deletableOriginals)
+    }
+
+    @Test
+    fun acknowledging_the_summary_discards_the_retained_handles() = runTest {
+        val picked = FakePickedFile(name = "from-downloads.pdf", deletable = true)
+        val subject = coordinator(FakeVaultItems(), files = FakeFilePicker(listOf(picked)))
+        subject.importFiles()
+
+        subject.acknowledge()
+
+        // A dismissed summary is gone, so the offer it carried is gone too. Holding the handles on
+        // would leave a delete that no longer has a summary to authorise it.
+        assertEquals(emptyList(), subject.deletableOriginals)
+        assertEquals(0, picked.deleteRequests, "and dismissing deletes nothing")
+    }
+
+    @Test
+    fun a_new_batch_replaces_the_offer_the_last_one_left() = runTest {
+        lateinit var subject: ImportCoordinator
+        var heldWhileTheSecondBatchRan: Int? = null
+        // Read from inside the second batch, because that is the only window where the two
+        // behaviours differ: whichever way it is written, the new summary ends up describing the
+        // new batch. What a stale handle buys is the *gap* — a running import with the last batch's
+        // offer still sitting behind it, out of reach of the summary that authorised it.
+        val vault = FakeVaultItems(
+            onImport = { name ->
+                if (name == "from-the-library.jpg") heldWhileTheSecondBatchRan = subject.deletableOriginals.size
+            },
+        )
+        subject = coordinator(
+            vault,
+            photos = FakePhotoPicker(listOf(FakePickedFile(name = "from-downloads.pdf", deletable = true))),
+            files = FakeFilePicker(listOf(FakePickedFile(name = "from-the-library.jpg", deletable = false))),
+        )
+        subject.importPhotos()
+        assertEquals(1, subject.deletableOriginals.size, "the first batch left an offer")
+
+        subject.importFiles()
+
+        assertEquals(0, heldWhileTheSecondBatchRan, "starting a batch drops the previous offer")
+        assertEquals(emptyList(), subject.deletableOriginals)
+        assertEquals(0, assertIs<ImportState.Finished>(subject.state.value).deletableOriginals)
+    }
+
+    /**
+     * A lock cancels the scope the batch runs on, which is how a lock ends an import. The batch
+     * publishes no summary — this object is going away with the session — so no offer is left
+     * behind, and the handles it would have been made of are never retained.
+     */
+    @Test
+    fun a_batch_a_lock_interrupted_leaves_no_offer_behind() = runTest {
+        val picked = FakePickedFile(name = "from-downloads.pdf", deletable = true)
+        // Stands in for the lock: the import throws CancellationException from inside the read, the
+        // way a cancelled scope makes it.
+        val dispatcher = UnconfinedTestDispatcher(testScheduler)
+        val subject = ImportCoordinator(
+            photoPicker = FakePhotoPicker(),
+            filePicker = FakeFilePicker(listOf(picked)),
+            queue = ImportQueue(ImportFile(vault = CancellingVaultItems(), ioContext = dispatcher)),
+            scope = CoroutineScope(dispatcher),
+        )
+
+        subject.importFiles()
+
+        assertEquals(emptyList(), subject.deletableOriginals, "a locked batch leaves nothing to delete by")
+        assertFalse(subject.state.value is ImportState.Finished, "and no summary to offer it from")
     }
 
     @Test
