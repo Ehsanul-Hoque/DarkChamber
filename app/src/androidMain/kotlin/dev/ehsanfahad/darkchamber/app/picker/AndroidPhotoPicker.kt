@@ -39,6 +39,9 @@ class AndroidPhotoPicker(
             )
         }
 
-        return uris.map { AndroidPickedFile(host.contentResolver, it) }
+        // document = false: PickMultipleVisualMedia returns read-only content://media/picker URIs,
+        // which are not documents and are not MediaStore rows either, so there is nothing to hand
+        // DocumentsContract or a delete request. A platform fact — the offer simply never appears.
+        return uris.map { AndroidPickedFile(host.contentResolver, it, document = false) }
     }
 }
