@@ -9,6 +9,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.FakePickedFile
 import dev.ehsanfahad.darkchamber.feature.vault.FakeVaultItems
 import dev.ehsanfahad.darkchamber.feature.vault.api.FailedImport
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportState
+import dev.ehsanfahad.darkchamber.feature.vault.api.OriginalDelete
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -50,6 +51,9 @@ class ImportCoordinatorTest {
             filePicker = files,
             queue = ImportQueue(ImportFile(vault = vault, ioContext = dispatcher)),
             scope = CoroutineScope(dispatcher),
+            // Deleting an original is a blocking provider call, so it runs off the caller's thread
+            // like the encrypt does — and, like the encrypt, the test drives it on its own scheduler.
+            ioContext = dispatcher,
         )
     }
 
@@ -344,6 +348,136 @@ class ImportCoordinatorTest {
         assertEquals(emptyList(), subject.deletableOriginals, "a locked batch leaves nothing to delete by")
         assertFalse(subject.state.value is ImportState.Finished, "and no summary to offer it from")
     }
+
+    /**
+     * The delete offer, which is the one thing in this batch that destroys something.
+     *
+     * Every path below exists to keep one property true: an original is deleted only after the user
+     * has seen what deleting does and said yes to *that*. The disclosure is not a confirmation
+     * dialog protecting against a mis-tap — it is where the limits of the deletion get stated, so
+     * skipping it would mean deleting on a promise the user was never shown (hard rule #6).
+     */
+    @Test
+    fun asking_to_delete_opens_the_disclosure_and_deletes_nothing_yet() = runTest {
+        val picked = FakePickedFile(name = "from-downloads.pdf", deletable = true)
+        val subject = coordinator(FakeVaultItems(), files = FakeFilePicker(listOf(picked)))
+        subject.importFiles()
+
+        subject.requestOriginalDelete()
+
+        assertEquals(OriginalDelete.Confirming, finished(subject).originalDelete)
+        assertEquals(0, picked.deleteRequests, "the disclosure comes first, always")
+    }
+
+    @Test
+    fun there_is_nothing_to_ask_about_when_nothing_can_be_deleted() = runTest {
+        val picked = FakePickedFile(name = "from-the-library.jpg", deletable = false)
+        val subject = coordinator(FakeVaultItems(), files = FakeFilePicker(listOf(picked)))
+        subject.importFiles()
+
+        subject.requestOriginalDelete()
+
+        // The ordinary case. No offer means no disclosure either — not a dialog explaining that
+        // there is nothing to do.
+        assertEquals(OriginalDelete.NotAsked, finished(subject).originalDelete)
+        assertEquals(0, picked.deleteRequests)
+    }
+
+    @Test
+    fun confirming_deletes_every_offered_original_and_reports_how_many_went() = runTest {
+        val picked = listOf(
+            FakePickedFile(name = "one.pdf", deletable = true),
+            FakePickedFile(name = "two.pdf", deletable = true),
+        )
+        val subject = coordinator(FakeVaultItems(), files = FakeFilePicker(picked))
+        subject.importFiles()
+        subject.requestOriginalDelete()
+
+        subject.confirmOriginalDelete()
+
+        assertEquals(OriginalDelete.Done(deleted = 2, requested = 2), finished(subject).originalDelete)
+        assertTrue(picked.all { it.deleteRequests == 1 }, "each original asked for exactly once")
+    }
+
+    /**
+     * The flag is an advertisement, not a promise: a provider can refuse the call it said it would
+     * take. Reporting two of three is the honest outcome — claiming three would be telling someone
+     * their file is gone when it is still there.
+     */
+    @Test
+    fun a_provider_that_refuses_is_reported_as_a_partial_result() = runTest {
+        val picked = listOf(
+            FakePickedFile(name = "one.pdf", deletable = true),
+            FakePickedFile(name = "two.pdf", deletable = true, deleteRefuses = true),
+            FakePickedFile(name = "three.pdf", deletable = true),
+        )
+        val subject = coordinator(FakeVaultItems(), files = FakeFilePicker(picked))
+        subject.importFiles()
+        subject.requestOriginalDelete()
+
+        subject.confirmOriginalDelete()
+
+        assertEquals(OriginalDelete.Done(deleted = 2, requested = 3), finished(subject).originalDelete)
+    }
+
+    @Test
+    fun confirming_without_the_disclosure_deletes_nothing() = runTest {
+        val picked = FakePickedFile(name = "from-downloads.pdf", deletable = true)
+        val subject = coordinator(FakeVaultItems(), files = FakeFilePicker(listOf(picked)))
+        subject.importFiles()
+
+        subject.confirmOriginalDelete() // no requestOriginalDelete() first
+
+        assertEquals(0, picked.deleteRequests, "the disclosure is the authorisation, not a formality")
+        assertEquals(OriginalDelete.NotAsked, finished(subject).originalDelete)
+    }
+
+    @Test
+    fun keeping_the_originals_is_an_explicit_choice_that_deletes_nothing() = runTest {
+        val picked = FakePickedFile(name = "from-downloads.pdf", deletable = true)
+        val subject = coordinator(FakeVaultItems(), files = FakeFilePicker(listOf(picked)))
+        subject.importFiles()
+        subject.requestOriginalDelete()
+
+        subject.keepOriginals()
+
+        assertEquals(0, picked.deleteRequests)
+        // Back to the offer rather than gone: declining is a decision about this dialog, not a
+        // decision never to be asked again.
+        assertEquals(OriginalDelete.NotAsked, finished(subject).originalDelete)
+        assertEquals(1, subject.deletableOriginals.size, "the offer is still there to take")
+    }
+
+    @Test
+    fun confirming_twice_deletes_each_original_once() = runTest {
+        val picked = FakePickedFile(name = "from-downloads.pdf", deletable = true)
+        val subject = coordinator(FakeVaultItems(), files = FakeFilePicker(listOf(picked)))
+        subject.importFiles()
+        subject.requestOriginalDelete()
+
+        subject.confirmOriginalDelete()
+        subject.confirmOriginalDelete()
+
+        assertEquals(1, picked.deleteRequests, "a second tap must not ask the provider again")
+        assertEquals(OriginalDelete.Done(deleted = 1, requested = 1), finished(subject).originalDelete)
+    }
+
+    @Test
+    fun a_summary_whose_originals_were_deleted_is_still_dismissible() = runTest {
+        val picked = FakePickedFile(name = "from-downloads.pdf", deletable = true)
+        val subject = coordinator(FakeVaultItems(), files = FakeFilePicker(listOf(picked)))
+        subject.importFiles()
+        subject.requestOriginalDelete()
+        subject.confirmOriginalDelete()
+
+        subject.acknowledge()
+
+        assertEquals(ImportState.Idle, subject.state.value)
+        assertEquals(emptyList(), subject.deletableOriginals, "and nothing is left to delete twice")
+    }
+
+    private fun finished(subject: ImportCoordinator): ImportState.Finished =
+        assertIs(subject.state.value, "the batch should have finished")
 
     @Test
     fun a_file_name_never_reaches_a_log_line() {

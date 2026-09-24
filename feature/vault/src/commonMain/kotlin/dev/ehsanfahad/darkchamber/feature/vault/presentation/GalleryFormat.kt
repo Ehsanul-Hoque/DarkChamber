@@ -64,6 +64,46 @@ internal object GalleryFormat {
     fun failedCount(failed: Int): String =
         if (failed == 1) "1 file couldn't be read." else "$failed files couldn't be read."
 
+    /** The action on the summary. Says how many, because "Delete originals" hides the scale. */
+    fun deleteOriginals(count: Int): String =
+        if (count == 1) "Delete original" else "Delete $count originals"
+
+    /**
+     * What came of the deletion — and when a provider refused some, it says so.
+     *
+     * "2 of 3" rather than "2" or "3": the first number alone loses that anything was refused, and
+     * the second would tell someone a file is gone while it is still sitting in their Downloads.
+     */
+    fun deletedOriginals(deleted: Int, requested: Int): String = when {
+        deleted == 0 -> "No originals were deleted."
+        deleted < requested -> "$deleted of $requested originals deleted."
+        deleted == 1 -> "1 original deleted."
+        else -> "$deleted originals deleted."
+    }
+
+    /**
+     * The disclosure. Non-dismissable on screen, because this is the only place the limits of
+     * deleting are stated — a dialog someone taps past has told them nothing.
+     *
+     * Every clause is doing work, and none of it is reassurance:
+     *
+     * - The vault's copy is encrypted, which is the question anyone has at this dialog: am I about
+     *   to lose this?
+     * - We **ask** the system. Deleting an original is `DocumentsContract.deleteDocument` on a
+     *   provider that may say no — the app does not do the deleting and cannot promise the outcome.
+     * - Wear-levelling. A flash controller writes where it likes and the filesystem never addresses
+     *   the old blocks again; a deleted file's bytes can survive on the chip. Saying so is the same
+     *   discipline DESIGN §11 imposes on the shredder — "reduces the chance of recovery", never
+     *   "permanently erases" (`docs/THREAT_MODEL.md` out-of-scope item 3, hard rule #6).
+     */
+    fun deleteOriginalsDisclosure(count: Int): String {
+        val subject = if (count == 1) "this file" else "these $count files"
+        return "The vault has its own encrypted copy of $subject. " +
+            "DarkChamber will ask the system to delete the original. " +
+            "That reduces the chance of recovery, but cannot rule it out: storage hardware moves " +
+            "data around as it wears, and copies can survive where no app can reach them."
+    }
+
     private fun oneDecimal(value: Double): String {
         val scaled = (value * 10).toLong()
         return "${scaled / 10}.${scaled % 10}"

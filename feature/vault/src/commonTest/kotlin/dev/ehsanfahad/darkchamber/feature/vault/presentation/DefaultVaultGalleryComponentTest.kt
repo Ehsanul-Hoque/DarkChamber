@@ -330,6 +330,12 @@ private class FakeImports : VaultImports {
         private set
     var acknowledged = 0
         private set
+    var deleteRequests = 0
+        private set
+    var deleteConfirmations = 0
+        private set
+    var keeps = 0
+        private set
 
     fun emit(next: ImportState) {
         _state.value = next
@@ -349,6 +355,18 @@ private class FakeImports : VaultImports {
 
     override fun acknowledge() {
         acknowledged++
+    }
+
+    override fun requestOriginalDelete() {
+        deleteRequests++
+    }
+
+    override fun confirmOriginalDelete() {
+        deleteConfirmations++
+    }
+
+    override fun keepOriginals() {
+        keeps++
     }
 }
 

@@ -40,6 +40,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import coil3.ImageLoader
 import coil3.compose.SubcomposeAsyncImage
 import dev.ehsanfahad.darkchamber.core.designsystem.DarkChamberTheme
@@ -49,6 +51,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryState
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportState
+import dev.ehsanfahad.darkchamber.feature.vault.api.OriginalDelete
 
 /**
  * The vault gallery (docs/DESIGN.md). Reads theme **roles** only — no raw hex, no hardcoded colors —
@@ -67,6 +70,9 @@ internal fun GalleryScreen(
     onAddFiles: () -> Unit,
     onCancelImport: () -> Unit,
     onAcknowledgeImport: () -> Unit,
+    onRequestOriginalDelete: () -> Unit,
+    onConfirmOriginalDelete: () -> Unit,
+    onKeepOriginals: () -> Unit,
     onDismissError: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -116,8 +122,80 @@ internal fun GalleryScreen(
                 // already done. Vague on purpose: this layer cannot tell which of the two waits it
                 // is in, and naming the wrong one would be worse than naming neither.
                 ImportState.Picking -> ImportNoticeCard(text = "Getting things ready…")
-                is ImportState.Finished -> ImportSummaryCard(batch = batch, onDismiss = onAcknowledgeImport)
+                is ImportState.Finished -> ImportSummaryCard(
+                    batch = batch,
+                    onDismiss = onAcknowledgeImport,
+                    onDeleteOriginals = onRequestOriginalDelete,
+                )
                 ImportState.Idle -> ImportActions(onAddPhotos = onAddPhotos, onAddFiles = onAddFiles)
+            }
+        }
+
+        // Above everything, because it is the one thing here that destroys something. Only ever
+        // reached by taking the offer on the summary.
+        val batch = state.batch
+        if (batch is ImportState.Finished && batch.originalDelete == OriginalDelete.Confirming) {
+            DeleteOriginalsDisclosure(
+                count = batch.deletableOriginals,
+                onDelete = onConfirmOriginalDelete,
+                onKeep = onKeepOriginals,
+            )
+        }
+    }
+}
+
+/**
+ * The disclosure, which is **not dismissable** (docs/ARCHITECTURE.md): no back press, no tap
+ * outside, no dismissal of any kind — only the two buttons.
+ *
+ * That is not friction for its own sake. This dialog is the only place a user is told what deleting
+ * an original does and does not achieve, so a dialog they can tap past is a deletion carried out on
+ * a warning they never read (hard rule #6). The copy itself lives in [GalleryFormat], where it is
+ * tested against what `docs/THREAT_MODEL.md` permits.
+ *
+ * Neither button leads: deleting is not the recommended choice, and keeping the original is a
+ * perfectly good answer — so they read as two equal options rather than a default and an escape.
+ */
+@Composable
+private fun DeleteOriginalsDisclosure(count: Int, onDelete: () -> Unit, onKeep: () -> Unit) {
+    val colors = DarkChamberTheme.colors
+    val spacing = DarkChamberTheme.spacing
+
+    Dialog(
+        // Nothing to do: with both dismissals disabled this cannot fire, and treating a dismissal
+        // as "keep" would quietly accept a gesture that must not exist here.
+        onDismissRequest = {},
+        properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(color = colors.surface, shape = DarkChamberTheme.shapes.large)
+                .padding(spacing.spaceLg),
+        ) {
+            Text(
+                text = GalleryFormat.deleteOriginals(count) + "?",
+                style = DarkChamberTheme.typography.title,
+                color = colors.textPrimary,
+            )
+            Text(
+                text = GalleryFormat.deleteOriginalsDisclosure(count),
+                style = DarkChamberTheme.typography.body,
+                color = colors.textSecondary,
+                modifier = Modifier.padding(top = spacing.spaceSm),
+            )
+            Row(
+                horizontalArrangement = Arrangement.End,
+                modifier = Modifier.fillMaxWidth().padding(top = spacing.spaceMd),
+            ) {
+                TextButton(onClick = onKeep) {
+                    Text("Keep them", style = DarkChamberTheme.typography.label, color = colors.textPrimary)
+                }
+                TextButton(onClick = onDelete) {
+                    // The destructive role, so the irreversible choice does not look like the safe
+                    // one sitting next to it.
+                    Text("Delete", style = DarkChamberTheme.typography.label, color = colors.danger)
+                }
             }
         }
     }
@@ -278,33 +356,63 @@ private fun ImportNoticeCard(text: String) {
  * worked, and never claims a reason it does not have (hard rule #6).
  */
 @Composable
-private fun ImportSummaryCard(batch: ImportState.Finished, onDismiss: () -> Unit) {
+private fun ImportSummaryCard(
+    batch: ImportState.Finished,
+    onDismiss: () -> Unit,
+    onDeleteOriginals: () -> Unit,
+) {
     val colors = DarkChamberTheme.colors
     val spacing = DarkChamberTheme.spacing
 
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .background(color = colors.sealedContainer, shape = DarkChamberTheme.shapes.large)
             .padding(start = spacing.spaceMd),
     ) {
-        Column(modifier = Modifier.weight(1f).padding(vertical = spacing.spaceXs)) {
-            Text(
-                text = GalleryFormat.importedCount(batch.imported),
-                style = DarkChamberTheme.typography.body,
-                color = colors.textPrimary,
-            )
-            if (batch.failed.isNotEmpty()) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.weight(1f).padding(vertical = spacing.spaceXs)) {
                 Text(
-                    text = GalleryFormat.failedCount(batch.failed.size),
-                    style = DarkChamberTheme.typography.caption,
-                    color = colors.danger,
+                    text = GalleryFormat.importedCount(batch.imported),
+                    style = DarkChamberTheme.typography.body,
+                    color = colors.textPrimary,
                 )
+                if (batch.failed.isNotEmpty()) {
+                    Text(
+                        text = GalleryFormat.failedCount(batch.failed.size),
+                        style = DarkChamberTheme.typography.caption,
+                        color = colors.danger,
+                    )
+                }
+                // What came of a deletion, once one has happened — including the partial result,
+                // which is the whole reason this is a count and not a tick.
+                (batch.originalDelete as? OriginalDelete.Done)?.let { done ->
+                    Text(
+                        text = GalleryFormat.deletedOriginals(done.deleted, done.requested),
+                        style = DarkChamberTheme.typography.caption,
+                        color = if (done.deleted < done.requested) colors.danger else colors.textSecondary,
+                    )
+                }
+            }
+            TextButton(onClick = onDismiss) {
+                Text("Done", style = DarkChamberTheme.typography.label, color = colors.accent)
             }
         }
-        TextButton(onClick = onDismiss) {
-            Text("Done", style = DarkChamberTheme.typography.label, color = colors.accent)
+
+        // Offered only when there is something to offer, and gone once it has been answered.
+        // Nothing deletable is the ordinary case — every photo-library item, every iOS item, most
+        // cloud documents — so it has to be *absent*, not a disabled control owing an explanation.
+        if (batch.deletableOriginals > 0 && batch.originalDelete == OriginalDelete.NotAsked) {
+            TextButton(
+                onClick = onDeleteOriginals,
+                modifier = Modifier.padding(bottom = spacing.spaceXs),
+            ) {
+                Text(
+                    text = GalleryFormat.deleteOriginals(batch.deletableOriginals),
+                    style = DarkChamberTheme.typography.label,
+                    color = colors.textSecondary,
+                )
+            }
         }
     }
 }

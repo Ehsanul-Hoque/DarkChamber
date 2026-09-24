@@ -60,10 +60,43 @@ sealed interface ImportState {
         val imported: Int,
         val failed: List<FailedImport>,
         val deletableOriginals: Int = 0,
+        val originalDelete: OriginalDelete = OriginalDelete.NotAsked,
     ) : ImportState {
         override fun toString(): String =
-            "Finished(imported=$imported, failed=${failed.size}, deletableOriginals=$deletableOriginals)"
+            "Finished(imported=$imported, failed=${failed.size}, " +
+                "deletableOriginals=$deletableOriginals, originalDelete=$originalDelete)"
     }
+}
+
+/**
+ * How far the offer to delete the imported originals has got.
+ *
+ * Sealed because the three cases are different pictures — an offer, a disclosure that has to be
+ * answered, and an outcome — and because the one that destroys something must not be reachable by
+ * forgetting a flag.
+ */
+sealed interface OriginalDelete {
+    /** No one has asked. The summary may still be *offering*, if there is anything to offer. */
+    data object NotAsked : OriginalDelete
+
+    /**
+     * The disclosure is up and waiting for an explicit answer.
+     *
+     * It is not a "are you sure?" guard against a mis-tap: it is where the limits of deleting get
+     * stated, so an original deleted without passing through here would be deleted on a promise the
+     * user was never shown (hard rule #6, `docs/THREAT_MODEL.md`). There is no way out of it but
+     * choosing — the screen gives it no dismissal.
+     */
+    data object Confirming : OriginalDelete
+
+    /**
+     * What came of it: [deleted] of [requested] originals actually went.
+     *
+     * The two numbers differ whenever a provider refuses a delete it advertised — a document that
+     * moved, a grant that no longer covers it. Reporting only the intent would tell someone a file
+     * is gone while it is still sitting there.
+     */
+    data class Done(val deleted: Int, val requested: Int) : OriginalDelete
 }
 
 /** A file the batch could not import, and why. */

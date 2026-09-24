@@ -40,6 +40,9 @@ fun VaultGalleryContent(
         onAddFiles = component::importFiles,
         onCancelImport = component::cancelImport,
         onAcknowledgeImport = component::acknowledgeImport,
+        onRequestOriginalDelete = component::requestOriginalDelete,
+        onConfirmOriginalDelete = component::confirmOriginalDelete,
+        onKeepOriginals = component::keepOriginals,
         onDismissError = component::dismissError,
         modifier = modifier,
     )

@@ -26,6 +26,15 @@ interface VaultGalleryComponent {
     /** Dismiss the finished-batch summary. */
     fun acknowledgeImport()
 
+    /** Take the summary's offer to delete the imported originals. Opens the disclosure; deletes nothing. */
+    fun requestOriginalDelete()
+
+    /** Delete them, having shown the disclosure. Reports how many the platform actually took. */
+    fun confirmOriginalDelete()
+
+    /** Decline the disclosure. The only other way out of it — it cannot be dismissed. */
+    fun keepOriginals()
+
     /** Clear a surfaced [GalleryError] after the user acknowledges it. */
     fun dismissError()
 }

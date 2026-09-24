@@ -64,6 +64,11 @@ internal class FakePickedFile(
     override val size: Long? = data.size.toLong(),
     /** Defaults to the common platform answer: most originals cannot be deleted. */
     override val deletable: Boolean = false,
+    /**
+     * A provider that advertises deletion and then refuses the call — a document that moved, a
+     * grant that no longer covers it. The flag is only ever an advertisement.
+     */
+    private val deleteRefuses: Boolean = false,
 ) : PickedFile {
     var closed = false
         private set
@@ -84,7 +89,7 @@ internal class FakePickedFile(
 
     override fun deleteOriginal(): Boolean {
         deleteRequests++
-        return deletable
+        return deletable && !deleteRefuses
     }
 
     override fun close() {

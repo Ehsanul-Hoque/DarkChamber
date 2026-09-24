@@ -101,6 +101,14 @@ internal class DefaultVaultGalleryComponent(
 
     override fun acknowledgeImport() = imports.acknowledge()
 
+    // Forwarded, like every other intent: the batch owns the offer, because the handles behind it
+    // must not live on a screen that a lock does not reach.
+    override fun requestOriginalDelete() = imports.requestOriginalDelete()
+
+    override fun confirmOriginalDelete() = imports.confirmOriginalDelete()
+
+    override fun keepOriginals() = imports.keepOriginals()
+
     override fun dismissError() {
         _state.value = _state.value.copy(error = null)
         // A summary the user has acknowledged must not come back the moment the state re-emits.

@@ -42,6 +42,9 @@ fun vaultImports(
         filePicker = filePicker,
         queue = ImportQueue(ImportFile(vault = items, ioContext = ioContext)),
         scope = scope,
+        // The same reason as the encrypt: deleting an original is a blocking provider call, and a
+        // batch of them on the UI thread is a frozen app.
+        ioContext = ioContext,
     )
 }
 

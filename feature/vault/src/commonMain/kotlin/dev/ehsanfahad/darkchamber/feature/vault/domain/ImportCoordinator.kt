@@ -3,11 +3,15 @@ package dev.ehsanfahad.darkchamber.feature.vault.domain
 import dev.ehsanfahad.darkchamber.core.logging.logVaultError
 import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportState
+import dev.ehsanfahad.darkchamber.feature.vault.api.OriginalDelete
 import dev.ehsanfahad.darkchamber.feature.vault.api.PhotoPicker
 import dev.ehsanfahad.darkchamber.feature.vault.api.PickedFile
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultImports
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.withContext
+import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -33,6 +37,9 @@ internal class ImportCoordinator(
     private val filePicker: FilePicker,
     private val queue: ImportQueue,
     private val scope: CoroutineScope,
+    // Where a delete runs. Each one is a blocking call into a content provider, which on Android
+    // means a binder round-trip per file — fifty of those on the UI thread is a frozen app.
+    private val ioContext: CoroutineContext = Dispatchers.Default,
 ) : VaultImports {
     private val _state = MutableStateFlow<ImportState>(ImportState.Idle)
     override val state: StateFlow<ImportState> = _state.asStateFlow()
@@ -69,6 +76,9 @@ internal class ImportCoordinator(
     var deletableOriginals: List<PickedFile> = emptyList()
         private set
 
+    /** Guards the window between confirming and the deletes finishing, so one tap is one delete. */
+    private var deleting = false
+
     override fun importPhotos() = start { photoPicker.pickPhotos() }
 
     override fun importFiles() = start { filePicker.pickFiles() }
@@ -91,6 +101,47 @@ internal class ImportCoordinator(
         // handles would leave a delete with nothing left on screen to have authorised it.
         deletableOriginals = emptyList()
         _state.value = ImportState.Idle
+    }
+
+    override fun requestOriginalDelete() {
+        val finished = _state.value as? ImportState.Finished ?: return
+        // Nothing to offer, nothing to disclose. A dialog explaining that there is nothing to do is
+        // worse than no dialog, and this is the ordinary case rather than an edge one.
+        if (finished.deletableOriginals == 0) return
+        if (finished.originalDelete != OriginalDelete.NotAsked) return
+        _state.value = finished.copy(originalDelete = OriginalDelete.Confirming)
+    }
+
+    override fun confirmOriginalDelete() {
+        val finished = _state.value as? ImportState.Finished ?: return
+        // The disclosure *is* the authorisation. Reaching a delete without having passed through it
+        // would mean deleting someone's file on a warning they were never shown (hard rule #6).
+        if (finished.originalDelete != OriginalDelete.Confirming) return
+        if (deleting) return // a second tap must not ask the provider twice
+        deleting = true
+
+        // Taken now, so a lock — which cancels this scope before the launch below runs — finds
+        // nothing left to delete by.
+        val originals = deletableOriginals
+        scope.launch {
+            val deleted = withContext(ioContext) { originals.count { it.deleteOriginal() } }
+            deletableOriginals = emptyList() // asked for once, whatever the provider decided
+            deleting = false
+            // Re-read rather than reusing the captured state: the batch cannot have moved on, but
+            // nothing about this coroutine guarantees that, and overwriting a newer state with an
+            // older one is how a summary starts describing the wrong batch.
+            val current = _state.value as? ImportState.Finished ?: return@launch
+            _state.value = current.copy(
+                originalDelete = OriginalDelete.Done(deleted = deleted, requested = originals.size),
+            )
+        }
+    }
+
+    override fun keepOriginals() {
+        val finished = _state.value as? ImportState.Finished ?: return
+        if (finished.originalDelete != OriginalDelete.Confirming) return
+        // Back to the offer, not past it: they declined this dialog, not the idea.
+        _state.value = finished.copy(originalDelete = OriginalDelete.NotAsked)
     }
 
     private fun start(pick: suspend () -> List<PickedFile>) {
