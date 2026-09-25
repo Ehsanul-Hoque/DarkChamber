@@ -76,8 +76,6 @@ internal class ImportCoordinator(
     var deletableOriginals: List<PickedFile> = emptyList()
         private set
 
-    /** Guards the window between confirming and the deletes finishing, so one tap is one delete. */
-    private var deleting = false
 
     override fun importPhotos() = start { photoPicker.pickPhotos() }
 
@@ -96,7 +94,11 @@ internal class ImportCoordinator(
 
     /** Dismiss a finished summary. Anything else is left alone — a running batch is not dismissible. */
     override fun acknowledge() {
-        if (_state.value !is ImportState.Finished) return
+        val finished = _state.value as? ImportState.Finished ?: return
+        // Not while its deletes are running. Dismissing would not stop them — they run on a list
+        // captured before the launch — so it would only hide them, and the outcome would then be
+        // reported to nobody.
+        if (finished.originalDelete == OriginalDelete.Deleting) return
         // The offer was part of the summary, so dismissing the summary dismisses it. Keeping the
         // handles would leave a delete with nothing left on screen to have authorised it.
         deletableOriginals = emptyList()
@@ -117,16 +119,17 @@ internal class ImportCoordinator(
         // The disclosure *is* the authorisation. Reaching a delete without having passed through it
         // would mean deleting someone's file on a warning they were never shown (hard rule #6).
         if (finished.originalDelete != OriginalDelete.Confirming) return
-        if (deleting) return // a second tap must not ask the provider twice
-        deleting = true
 
         // Taken now, so a lock — which cancels this scope before the launch below runs — finds
         // nothing left to delete by.
         val originals = deletableOriginals
+        // Published *before* the launch, so there is no frame in which the answer has been given
+        // and the dialog still offers to take it back. It is also the second-tap guard: every other
+        // intent here refuses to act on a state that is already Deleting.
+        _state.value = finished.copy(originalDelete = OriginalDelete.Deleting)
         scope.launch {
             val deleted = withContext(ioContext) { originals.count { it.deleteOriginal() } }
             deletableOriginals = emptyList() // asked for once, whatever the provider decided
-            deleting = false
             // Re-read rather than reusing the captured state: the batch cannot have moved on, but
             // nothing about this coroutine guarantees that, and overwriting a newer state with an
             // older one is how a summary starts describing the wrong batch.
@@ -139,6 +142,8 @@ internal class ImportCoordinator(
 
     override fun keepOriginals() {
         val finished = _state.value as? ImportState.Finished ?: return
+        // Only from the disclosure. Once the deletes are running there is nothing left to keep —
+        // refusing here is what stops the dialog closing on a promise it can no longer honour.
         if (finished.originalDelete != OriginalDelete.Confirming) return
         // Back to the offer, not past it: they declined this dialog, not the idea.
         _state.value = finished.copy(originalDelete = OriginalDelete.NotAsked)

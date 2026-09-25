@@ -66,6 +66,10 @@ kotlin {
             implementation(libs.androidx.fragment.ktx)
             // Dispatchers.Main for the session-gate component intents on Android.
             implementation(libs.kotlinx.coroutines.android)
+            // Reads one tag: the EXIF orientation, so a portrait photo's preview is not drawn
+            // sideways. BitmapFactory ignores it, and the compressed preview carries no EXIF of its
+            // own, so unread here means lost for good.
+            implementation(libs.androidx.exifinterface)
         }
         // iOS platform module builds the native driver + opens the catalog (SqlDriver type).
         listOf("iosArm64Main", "iosSimulatorArm64Main").forEach { name ->

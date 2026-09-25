@@ -2,6 +2,8 @@ package dev.ehsanfahad.darkchamber.app.thumbnail
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import androidx.exifinterface.media.ExifInterface
 import dev.ehsanfahad.darkchamber.core.vault.ThumbnailEncoder
 import kotlinx.io.RawSource
 import kotlinx.io.asInputStream
@@ -35,25 +37,81 @@ internal class AndroidThumbnailEncoder : ThumbnailEncoder {
     override fun encode(mime: String, maxEdgePx: Int, openSource: () -> RawSource): ByteArray? {
         if (!mime.startsWith(IMAGE_MIME_PREFIX, ignoreCase = true)) return null
 
+        val transform = readTransform(mime, openSource)
+
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         openSource().buffered().asInputStream().use { BitmapFactory.decodeStream(it, null, bounds) }
-        val target = thumbnailTargetSize(bounds.outWidth, bounds.outHeight, maxEdgePx) ?: return null
+        // The target is chosen against the picture as it will be *seen*. Feeding it the sensor's own
+        // numbers for a quarter-turned photo would fit the wrong edge to the tile.
+        val target = if (transform.swapsEdges) {
+            thumbnailTargetSize(bounds.outHeight, bounds.outWidth, maxEdgePx)?.swapped()
+        } else {
+            thumbnailTargetSize(bounds.outWidth, bounds.outHeight, maxEdgePx)
+        } ?: return null
 
         val options = BitmapFactory.Options().apply {
+            // Still in the decoded bitmap's own orientation, which is what the decoder subsamples.
             inSampleSize = sampleSizeFor(bounds.outWidth, bounds.outHeight, target)
         }
         val decoded = openSource().buffered().asInputStream().use {
             BitmapFactory.decodeStream(it, null, options)
         } ?: return null
 
-        // `createScaledBitmap` returns the receiver when nothing needs scaling, so the two can be
-        // the same object — recycling it twice would be a use-after-free for the compress above.
+        // Scale first, rotate second: the rotation then runs on a bitmap already down at tile size
+        // rather than on the subsampled one, and both steps can return their own receiver, so each
+        // is compared by identity before anything is recycled — recycling twice would be a
+        // use-after-free for the compress below.
         val scaled = decoded.scaledTo(target)
+        val upright = scaled.transformedBy(transform)
         return try {
-            scaled.compressToBytes()
+            upright.compressToBytes()
         } finally {
+            if (upright !== scaled && upright !== decoded) upright.recycle()
             if (scaled !== decoded) scaled.recycle()
             decoded.recycle()
+        }
+    }
+
+    /**
+     * The orientation tag, or "nothing to do" — which is the answer for most images and for every
+     * failure to read one.
+     *
+     * A third open of the source, taken only for the formats that carry the tag. `ExifInterface`
+     * reads the header and stops, so it is the cheapest of the three reads, but for a file a cloud
+     * provider materialises on demand even a header read can be a download — hence the gate.
+     *
+     * A failure here is never an error: an unreadable tag means the preview is drawn the way the
+     * decoder produced it, which is exactly what happened before any of this existed.
+     */
+    private fun readTransform(mime: String, openSource: () -> RawSource): ThumbnailTransform {
+        if (!carriesOrientation(mime)) return UPRIGHT
+        val orientation = try {
+            openSource().buffered().asInputStream().use { stream ->
+                ExifInterface(stream).getAttributeInt(
+                    ExifInterface.TAG_ORIENTATION,
+                    ExifInterface.ORIENTATION_NORMAL,
+                )
+            }
+        } catch (_: Exception) {
+            return UPRIGHT
+        }
+        return orientationTransform(orientation)
+    }
+
+    /** Applies the rotation and flip the tag asked for; returns the receiver when there is none. */
+    private fun Bitmap.transformedBy(transform: ThumbnailTransform): Bitmap {
+        if (transform.isIdentity) return this
+        val matrix = Matrix().apply {
+            // Mirror before rotating, which is the order the tag's own vocabulary is defined in.
+            if (transform.mirrored) postScale(-1f, 1f)
+            if (transform.degrees != 0) postRotate(transform.degrees.toFloat())
+        }
+        return try {
+            Bitmap.createBitmap(this, 0, 0, width, height, matrix, true)
+        } catch (_: Exception) {
+            // Out of memory, or a bitmap the platform declined to copy. A sideways preview beats no
+            // preview, and neither is worth failing an import over.
+            this
         }
     }
 
@@ -82,6 +140,9 @@ internal class AndroidThumbnailEncoder : ThumbnailEncoder {
 
     private companion object {
         const val IMAGE_MIME_PREFIX = "image/"
+
+        /** What an image with no orientation tag needs doing to it: nothing. */
+        val UPRIGHT = ThumbnailTransform(degrees = 0, mirrored = false)
 
         // 82 is where JPEG artefacts stop being visible at tile size while the file stays small;
         // ignored for PNG, which is lossless.

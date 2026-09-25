@@ -13,6 +13,30 @@ import dev.ehsanfahad.darkchamber.core.model.VaultError
 import dev.ehsanfahad.darkchamber.feature.vault.domain.VaultItems
 import okio.Buffer
 import okio.FileSystem
+import okio.ForwardingFileSystem
+import okio.IOException
+import okio.Path
+import okio.Sink
+
+/**
+ * A filesystem that will not be written to.
+ *
+ * `ImageSource` holds one so that a decoder asking for a **path** can be served: it spills the
+ * buffer to a temp file and hands that over. The buffer here is a decrypted preview, and the spill
+ * lands in the system temp directory — app-private, but not the vault's `tmp/`, so the purge on lock
+ * never reaches it (hard rule #1, which says *never*, not *briefly*).
+ *
+ * No decoder this loader is built with asks: the Android path uses `fileOrNull()`, the Skia one
+ * reads the buffered source. So this costs nothing today, and turns the day someone adds a decoder
+ * that does ask from a silent plaintext write into a preview that fails to load.
+ */
+private val NoSpill = object : ForwardingFileSystem(FileSystem.SYSTEM) {
+    override fun sink(file: Path, mustCreate: Boolean): Sink =
+        throw IOException("a decrypted preview may not be written to disk")
+
+    override fun appendingSink(file: Path, mustExist: Boolean): Sink =
+        throw IOException("a decrypted preview may not be written to disk")
+}
 
 /**
  * What the gallery asks the image loader for: one vault item's preview, identified by its id.
@@ -70,8 +94,9 @@ internal class VaultThumbnailFetcher(
             is Outcome.Ok -> outcome.value?.let { bytes ->
                 SourceFetchResult(
                     // An in-memory buffer, never a file: ImageSource also accepts a path, and that
-                    // overload would write the user's decrypted preview to disk.
-                    source = ImageSource(Buffer().apply { write(bytes) }, FileSystem.SYSTEM),
+                    // overload would write the user's decrypted preview to disk. [NoSpill] closes
+                    // the other route to the same place.
+                    source = ImageSource(Buffer().apply { write(bytes) }, NoSpill),
                     // Unknown on purpose — the encoders pick JPEG or PNG per image, and Coil sniffs
                     // the bytes anyway. Claiming a type we did not record would be a guess.
                     mimeType = null,
@@ -85,6 +110,20 @@ internal class VaultThumbnailFetcher(
             VaultThumbnailFetcher(data, items)
     }
 }
+
+/**
+ * Whether a preview that failed to load failed because its **bytes did not verify**.
+ *
+ * The loader's error slot fires for anything: an unsupported image, a decoder that gave up, a
+ * preview whose GCM tag did not match. Only the last is a tampering signal, and the error-handling
+ * rule is explicit that an integrity failure is never quietly rendered as something else — while
+ * marking an intact item damaged because a decoder disliked its bytes would be the opposite lie.
+ *
+ * So the discrimination is exact: this cycle's fetcher is the only thing that throws
+ * [VaultThumbnailException], and only for an `Err` the vault itself reported.
+ */
+internal fun previewFailedIntegrity(cause: Throwable?): Boolean =
+    (cause as? VaultThumbnailException)?.error is VaultError.Crypto.IntegrityFailure
 
 /** Keys the memory cache by item id, so a re-emitted listing hits instead of re-decrypting. */
 internal class VaultThumbnailKeyer : Keyer<VaultThumbnailKey> {

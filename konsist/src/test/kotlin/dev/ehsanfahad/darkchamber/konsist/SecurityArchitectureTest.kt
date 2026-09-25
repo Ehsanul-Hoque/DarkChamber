@@ -76,7 +76,7 @@ class SecurityArchitectureTest {
         // It is a source rule rather than a unit test because a test can only cover the loader it
         // knows about, and the hazard is precisely the loader nobody told the tests about.
         val violations = productionFiles
-            .filter { it.text.contains(IMAGE_LOADER_BUILDER) }
+            .filter { BUILDS_AN_IMAGE_LOADER.containsMatchIn(it.text) }
             .filterNot { file -> DISK_CACHE_OFF.any { file.text.contains(it) } }
 
         assertTrue(
@@ -112,7 +112,15 @@ class SecurityArchitectureTest {
     }
 
     private companion object {
-        const val IMAGE_LOADER_BUILDER = "ImageLoader.Builder("
+        /**
+         * Both ways Coil hands back a loader: the builder, and the one-argument factory
+         * `ImageLoader(context)` — which is `ImageLoader.Builder(context).build()`, defaults and
+         * all, so it reintroduces the disk cache in a single line that mentions no builder.
+         *
+         * The leading boundary is what keeps `vaultImageLoader(…)` — whose name ends in the same
+         * characters — from matching every call site of the one loader that is already safe.
+         */
+        val BUILDS_AN_IMAGE_LOADER = Regex("""(?<![A-Za-z0-9_])ImageLoader(\.Builder)?\(""")
 
         // Either is sufficient on its own; the loader that exists does both, and a file doing one
         // of them has clearly made the decision rather than inherited it.

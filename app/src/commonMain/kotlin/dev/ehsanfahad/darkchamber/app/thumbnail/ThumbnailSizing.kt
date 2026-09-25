@@ -4,7 +4,16 @@ import kotlin.math.max
 import kotlin.math.roundToInt
 
 /** The pixel dimensions a thumbnail should end up at. */
-internal data class ThumbnailSize(val width: Int, val height: Int)
+internal data class ThumbnailSize(val width: Int, val height: Int) {
+    /**
+     * The same size with its edges exchanged.
+     *
+     * For a quarter-turned photo the target is worked out in the orientation the picture will be
+     * *seen* in, while the decoder subsamples and scales in the orientation the bytes are *stored*
+     * in. This converts between the two.
+     */
+    fun swapped(): ThumbnailSize = ThumbnailSize(width = height, height = width)
+}
 
 /**
  * The size a thumbnail of a [sourceWidth] × [sourceHeight] image should be: aspect ratio preserved,

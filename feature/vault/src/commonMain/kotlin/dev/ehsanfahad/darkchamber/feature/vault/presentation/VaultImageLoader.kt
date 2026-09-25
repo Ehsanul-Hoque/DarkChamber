@@ -3,6 +3,7 @@ package dev.ehsanfahad.darkchamber.feature.vault.presentation
 import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.request.CachePolicy
+import coil3.serviceLoaderEnabled
 import dev.ehsanfahad.darkchamber.feature.vault.domain.VaultItems
 
 /**
@@ -42,6 +43,12 @@ internal fun vaultImageLoader(context: PlatformContext, items: VaultItems): Imag
             add(VaultThumbnailKeyer())
             add(VaultThumbnailFetcher.Factory(items))
         }
+        // Nothing this loader can draw may come from anywhere but the block above. Coil's service
+        // loader is on by default and registers whatever components it finds on the classpath, so a
+        // `coil-network-*` artifact arriving as somebody's transitive dependency would add a network
+        // fetcher that no file in this repository imports — and therefore that the architecture rule
+        // against networking APIs has nothing to see (ADR-004, hard rule #3).
+        .serviceLoaderEnabled(false)
         .diskCache(null)
         .diskCachePolicy(CachePolicy.DISABLED)
         .memoryCachePolicy(CachePolicy.ENABLED)

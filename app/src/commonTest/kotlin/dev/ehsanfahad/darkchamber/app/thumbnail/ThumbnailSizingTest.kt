@@ -91,6 +91,19 @@ class ThumbnailSizingTest {
         assertEquals(1, sampleSizeFor(100, 80, ThumbnailSize(100, 80)))
     }
 
+    /**
+     * A quarter-turned photo is sized in the orientation it will be *seen* in, then converted back
+     * to the orientation its bytes are *stored* in for the decoder to subsample against.
+     */
+    @Test
+    fun swapping_a_target_exchanges_its_edges() {
+        val seen = thumbnailTargetSize(sourceWidth = 3000, sourceHeight = 4000, maxEdgePx = 512)
+
+        assertEquals(ThumbnailSize(384, 512), seen)
+        assertEquals(ThumbnailSize(512, 384), seen?.swapped())
+        assertEquals(seen, seen?.swapped()?.swapped(), "and swapping twice is where it started")
+    }
+
     @Test
     fun every_sample_size_is_a_power_of_two() {
         // BitmapFactory rounds a non-power-of-two down to one anyway, so a value that is not one is

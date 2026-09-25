@@ -45,6 +45,10 @@ class ImportCoordinatorTest {
         photos: FakePhotoPicker = FakePhotoPicker(),
         files: FakeFilePicker = FakeFilePicker(),
         dispatcher: TestDispatcher = UnconfinedTestDispatcher(testScheduler),
+        // Separated only by the tests that need to catch a delete *mid-flight*: a queueing
+        // dispatcher here leaves the deletes pending until the test advances the scheduler, which is
+        // the window where the disclosure is still on screen.
+        deleteDispatcher: TestDispatcher = dispatcher,
     ): ImportCoordinator {
         return ImportCoordinator(
             photoPicker = photos,
@@ -53,7 +57,7 @@ class ImportCoordinatorTest {
             scope = CoroutineScope(dispatcher),
             // Deleting an original is a blocking provider call, so it runs off the caller's thread
             // like the encrypt does — and, like the encrypt, the test drives it on its own scheduler.
-            ioContext = dispatcher,
+            ioContext = deleteDispatcher,
         )
     }
 
@@ -474,6 +478,80 @@ class ImportCoordinatorTest {
 
         assertEquals(ImportState.Idle, subject.state.value)
         assertEquals(emptyList(), subject.deletableOriginals, "and nothing is left to delete twice")
+    }
+
+    /**
+     * While the deletes are actually running, the dialog is still on screen — and it must not be
+     * answerable a second time.
+     *
+     * The window is the length of a batch of provider calls, which for twenty documents is seconds
+     * rather than frames. Leaving the buttons live through it meant tapping **Keep them** closed the
+     * disclosure while the deletes carried on: the user chose to keep and the files went anyway,
+     * which is the plainest kind of lie a control can tell (hard rule #6).
+     */
+    @Test
+    fun keeping_them_while_the_delete_runs_cannot_take_the_choice_back() = runTest {
+        val picked = FakePickedFile(name = "from-downloads.pdf", deletable = true)
+        val subject = coordinator(
+            FakeVaultItems(),
+            files = FakeFilePicker(listOf(picked)),
+            deleteDispatcher = StandardTestDispatcher(testScheduler),
+        )
+        subject.importFiles()
+        subject.requestOriginalDelete()
+        subject.confirmOriginalDelete() // launched, not yet run
+
+        assertEquals(OriginalDelete.Deleting, finished(subject).originalDelete)
+
+        subject.keepOriginals()
+
+        // The state has to *say* it is deleting, not merely refuse the tap. A dialog whose buttons
+        // still look live while they do nothing is the thing the running-import card already goes
+        // out of its way to avoid.
+        assertEquals(OriginalDelete.Deleting, finished(subject).originalDelete, "still deleting")
+        advanceUntilIdle()
+        assertEquals(OriginalDelete.Done(deleted = 1, requested = 1), finished(subject).originalDelete)
+        assertEquals(1, picked.deleteRequests)
+    }
+
+    @Test
+    fun a_summary_cannot_be_dismissed_out_from_under_a_running_delete() = runTest {
+        val picked = FakePickedFile(name = "from-downloads.pdf", deletable = true)
+        val subject = coordinator(
+            FakeVaultItems(),
+            files = FakeFilePicker(listOf(picked)),
+            deleteDispatcher = StandardTestDispatcher(testScheduler),
+        )
+        subject.importFiles()
+        subject.requestOriginalDelete()
+        subject.confirmOriginalDelete()
+
+        subject.acknowledge()
+
+        // Dismissing would not stop the deletes — they run on a captured list — so it would only
+        // hide them, and the outcome would be reported to nobody.
+        assertEquals(OriginalDelete.Deleting, finished(subject).originalDelete)
+        advanceUntilIdle()
+        assertEquals(OriginalDelete.Done(deleted = 1, requested = 1), finished(subject).originalDelete)
+    }
+
+    @Test
+    fun the_offer_cannot_be_reopened_while_its_delete_runs() = runTest {
+        val picked = FakePickedFile(name = "from-downloads.pdf", deletable = true)
+        val subject = coordinator(
+            FakeVaultItems(),
+            files = FakeFilePicker(listOf(picked)),
+            deleteDispatcher = StandardTestDispatcher(testScheduler),
+        )
+        subject.importFiles()
+        subject.requestOriginalDelete()
+        subject.confirmOriginalDelete()
+
+        subject.requestOriginalDelete()
+
+        assertEquals(OriginalDelete.Deleting, finished(subject).originalDelete)
+        advanceUntilIdle()
+        assertEquals(1, picked.deleteRequests, "and nothing was asked for twice")
     }
 
     private fun finished(subject: ImportCoordinator): ImportState.Finished =

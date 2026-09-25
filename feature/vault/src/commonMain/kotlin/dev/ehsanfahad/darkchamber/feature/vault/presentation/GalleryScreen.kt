@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil3.ImageLoader
+import coil3.compose.AsyncImagePainter
 import coil3.compose.SubcomposeAsyncImage
 import dev.ehsanfahad.darkchamber.core.designsystem.DarkChamberTheme
 import dev.ehsanfahad.darkchamber.core.designsystem.prefersReducedMotion
@@ -135,9 +136,14 @@ internal fun GalleryScreen(
         // Above everything, because it is the one thing here that destroys something. Only ever
         // reached by taking the offer on the summary.
         val batch = state.batch
-        if (batch is ImportState.Finished && batch.originalDelete == OriginalDelete.Confirming) {
+        val deleteState = (batch as? ImportState.Finished)?.originalDelete
+        if (deleteState == OriginalDelete.Confirming || deleteState == OriginalDelete.Deleting) {
             DeleteOriginalsDisclosure(
-                count = batch.deletableOriginals,
+                count = (batch as ImportState.Finished).deletableOriginals,
+                // The dialog stays up while the deletes run, with both buttons spent. The coordinator
+                // refuses either intent in that state anyway; disabling them is so the dialog stops
+                // *offering* a choice that has already been made and cannot be taken back.
+                answered = deleteState == OriginalDelete.Deleting,
                 onDelete = onConfirmOriginalDelete,
                 onKeep = onKeepOriginals,
             )
@@ -158,7 +164,12 @@ internal fun GalleryScreen(
  * perfectly good answer — so they read as two equal options rather than a default and an escape.
  */
 @Composable
-private fun DeleteOriginalsDisclosure(count: Int, onDelete: () -> Unit, onKeep: () -> Unit) {
+private fun DeleteOriginalsDisclosure(
+    count: Int,
+    answered: Boolean,
+    onDelete: () -> Unit,
+    onKeep: () -> Unit,
+) {
     val colors = DarkChamberTheme.colors
     val spacing = DarkChamberTheme.spacing
 
@@ -189,13 +200,22 @@ private fun DeleteOriginalsDisclosure(count: Int, onDelete: () -> Unit, onKeep: 
                 horizontalArrangement = Arrangement.End,
                 modifier = Modifier.fillMaxWidth().padding(top = spacing.spaceMd),
             ) {
-                TextButton(onClick = onKeep) {
-                    Text("Keep them", style = DarkChamberTheme.typography.label, color = colors.textPrimary)
+                TextButton(onClick = onKeep, enabled = !answered) {
+                    Text(
+                        text = "Keep them",
+                        style = DarkChamberTheme.typography.label,
+                        color = if (answered) colors.textSecondary else colors.textPrimary,
+                    )
                 }
-                TextButton(onClick = onDelete) {
+                TextButton(onClick = onDelete, enabled = !answered) {
                     // The destructive role, so the irreversible choice does not look like the safe
-                    // one sitting next to it.
-                    Text("Delete", style = DarkChamberTheme.typography.label, color = colors.danger)
+                    // one sitting next to it — and its own past tense once it has been taken, which
+                    // is the only thing on screen saying why the buttons stopped responding.
+                    Text(
+                        text = if (answered) "Deleting…" else "Delete",
+                        style = DarkChamberTheme.typography.label,
+                        color = if (answered) colors.textSecondary else colors.danger,
+                    )
                 }
             }
         }
@@ -479,14 +499,19 @@ private fun ItemTile(item: GalleryItem, now: Long, imageLoader: ImageLoader, mod
                     shape = DarkChamberTheme.shapes.medium,
                 ),
         ) {
-            val badge: @Composable () -> Unit = {
+            // `unverified` marks a preview whose bytes did not pass their integrity tag, which is
+            // not the same as the item being damaged: the item's own bytes and metadata are intact
+            // and it still opens. The mark says the preview could not be vouched for, and nothing
+            // more than that (hard rule #6).
+            val badge: @Composable (unverified: Boolean) -> Unit = { unverified ->
                 Text(
                     text = when (val meta = item.meta) {
-                        is GalleryItemMeta.Readable -> GalleryFormat.typeBadge(meta.mime)
+                        is GalleryItemMeta.Readable ->
+                            if (unverified) "!" else GalleryFormat.typeBadge(meta.mime)
                         GalleryItemMeta.Unreadable -> "!"
                     },
                     style = DarkChamberTheme.typography.label,
-                    color = if (damaged) colors.danger else colors.textSecondary,
+                    color = if (damaged || unverified) colors.danger else colors.textSecondary,
                 )
             }
 
@@ -494,7 +519,7 @@ private fun ItemTile(item: GalleryItem, now: Long, imageLoader: ImageLoader, mod
                 // An item whose metadata will not open is not asked for a preview at all: its key
                 // is gone with the rest of that blob, and the mark it already carries is the honest
                 // rendering. Unchanged from before thumbnails existed.
-                badge()
+                badge(false)
             } else {
                 SubcomposeAsyncImage(
                     // Built fresh each composition on purpose, and not `remember`ed: the key would
@@ -514,8 +539,16 @@ private fun ItemTile(item: GalleryItem, now: Long, imageLoader: ImageLoader, mod
                     // thumbnail (the ordinary case for most of a vault), one whose preview failed
                     // to open, and the moment before a decrypt finishes. A spinner per tile would
                     // make a scroll flicker for work that takes a few milliseconds.
-                    loading = { badge() },
-                    error = { badge() },
+                    loading = { badge(false) },
+                    error = {
+                        // One failure among them is not ordinary. A preview whose bytes failed
+                        // their integrity tag is a tampering signal, and drawing it as the same
+                        // badge an audio file gets would be the silent rendering the error-handling
+                        // rule forbids. Everything else here — an image Coil could not decode, a
+                        // preview that would not read — leaves the tile exactly as it was.
+                        val cause = (painter.state as? AsyncImagePainter.State.Error)?.result?.throwable
+                        badge(previewFailedIntegrity(cause))
+                    },
                     modifier = Modifier.fillMaxSize().clip(DarkChamberTheme.shapes.medium),
                 )
             }

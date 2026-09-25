@@ -5,6 +5,7 @@ import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
 import dev.ehsanfahad.darkchamber.feature.vault.FakeVaultItems
 import kotlinx.coroutines.test.runTest
+import okio.IOException
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -89,6 +90,58 @@ class VaultThumbnailFetcherTest {
 
         assertTrue(text.contains(VaultThumbnailKey(id).cacheKey))
         assertFalse(text.contains("["), "no raw array, which would also be unstable")
+    }
+
+    /**
+     * A decoder that asks the fetched source for a **file path** must not get one.
+     *
+     * Coil's `ImageSource` spills its buffer to a temp file the moment something calls `file()`, and
+     * that buffer is a decrypted preview. The temp file lands in the system temp directory, not the
+     * vault's own `tmp/`, so the purge on lock never reaches it. No decoder in this loader's
+     * component set asks today — which is exactly the kind of guarantee that lasts until someone
+     * adds a decoder, so the filesystem handed to the source refuses to be written to at all.
+     */
+    @Test
+    fun a_decoder_that_asks_for_a_file_is_refused_rather_than_handed_plaintext() = runTest {
+        val items = FakeVaultItems(thumbnails = mapOf(id.toList() to Outcome.Ok(thumbnail)))
+
+        val source = assertIs<SourceFetchResult>(fetcher(items).fetch()).source
+
+        assertFailsWith<IOException> { source.file() }
+        // And the bytes are still readable the way the decoders actually read them.
+        assertContentEquals(thumbnail, source.source().readByteArray())
+    }
+
+    /**
+     * Which failures are a tampering signal, and which are just a picture that would not load.
+     *
+     * The tile has one slot for every kind of failure, so without this the distinction the fetcher
+     * takes such care to preserve dies one layer above it: a preview whose tag did not match draws
+     * the same ordinary badge as a file type with no preview. The error-handling rule says an
+     * integrity failure is never rendered as something else — and the inverse matters just as much,
+     * since marking an intact item damaged because a decoder disliked its bytes is the worse lie of
+     * the two.
+     */
+    @Test
+    fun only_a_failed_integrity_tag_counts_as_tampering() {
+        assertTrue(previewFailedIntegrity(VaultThumbnailException(id, VaultError.Crypto.IntegrityFailure)))
+    }
+
+    @Test
+    fun an_ordinary_decode_failure_is_not_tampering() {
+        // What Coil throws when it cannot make sense of perfectly authentic bytes. The item is
+        // intact; only the preview is unusable.
+        assertFalse(previewFailedIntegrity(IllegalStateException("unsupported image format")))
+        assertFalse(previewFailedIntegrity(null), "and a slot with no throwable claims nothing")
+    }
+
+    @Test
+    fun a_vault_failure_that_is_not_an_integrity_failure_is_not_tampering() {
+        // A preview that could not be read off storage says nothing about whether anyone touched
+        // it. Reporting a disk error as tampering would train the user to ignore the mark.
+        val io = VaultThumbnailException(id, VaultError.Io(RuntimeException("unreadable")))
+
+        assertFalse(previewFailedIntegrity(io))
     }
 
     private fun fetcher(items: FakeVaultItems) =

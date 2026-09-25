@@ -90,6 +90,20 @@ sealed interface OriginalDelete {
     data object Confirming : OriginalDelete
 
     /**
+     * The answer was yes and the deletes are running.
+     *
+     * A state of its own rather than a flag, for the same reason a stopping import has one: the gap
+     * is real — a batch of provider calls takes seconds for twenty documents — and the disclosure is
+     * still on screen throughout it. Without this, both of its buttons stay live over a decision
+     * that has already been acted on, and **Keep them** would close a dialog while the files it
+     * promised to keep were already going.
+     *
+     * Deliberately carries no progress. There is nothing honest to count: the platform decides when
+     * each delete returns, and a bar against a file count would move in lurches that mean nothing.
+     */
+    data object Deleting : OriginalDelete
+
+    /**
      * What came of it: [deleted] of [requested] originals actually went.
      *
      * The two numbers differ whenever a provider refuses a delete it advertised — a document that
