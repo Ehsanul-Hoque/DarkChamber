@@ -38,4 +38,24 @@ internal object ProjectSources {
     /** True when the file lives in the given Gradle module directory, e.g. `core/crypto`. */
     fun KoFileDeclaration.inModule(moduleDir: String): Boolean =
         projectPath.startsWith("/$moduleDir/")
+
+    /**
+     * The file's text with comment lines dropped, for rules that match on source *text*.
+     *
+     * Without this a rule fires on the comment explaining why the thing it forbids is forbidden —
+     * which is exactly what happened to the first rule written this way, and would push anyone
+     * hitting it towards deleting the explanation rather than keeping it.
+     *
+     * Line-accurate rather than a real parse: a `/* … */` block whose opening line carries code
+     * before it is still read, and that is the conservative direction — a rule that keeps looking
+     * beats one that stops.
+     */
+    fun codeOf(file: KoFileDeclaration): String =
+        file.text
+            .lineSequence()
+            .map { it.trim() }
+            .filterNot { line ->
+                line.startsWith("//") || line.startsWith("*") || line.startsWith("/*")
+            }
+            .joinToString("\n")
 }

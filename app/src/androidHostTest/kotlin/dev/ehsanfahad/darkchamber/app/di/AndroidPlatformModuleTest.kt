@@ -14,10 +14,15 @@ import kotlin.test.assertIs
  * never stop a vault opening, and the price of that choice is that nothing else would complain.
  *
  * Only the encoder is resolved — the rest of the module wants a real `Context`, and those bindings
- * are proven by the instrumented tests. The image loader's `PlatformContext` is one of them: on
- * Android that type *is* the `Context`, so resolving it here is not merely unavailable but fails
- * without a clean error (Koin recurses into a `StackOverflowError`). Its iOS counterpart is
- * asserted, since there a platform context can simply be asked for.
+ * are proven by the instrumented tests.
+ *
+ * **There is no `PlatformContext` binding on Android to assert**, and this comment used to say the
+ * opposite. When there was one, resolving it here recursed into a `StackOverflowError`, which was
+ * written off as a limitation of host testing; it was the graph reporting that the definition
+ * resolved to itself, and a fresh install crashed on launch for exactly that reason. The type is an
+ * alias for `Context`, so `androidContext(app)` already provides it and nothing else should.
+ * A source rule now fails the build if one comes back; the iOS counterpart is asserted, because
+ * there the type is Coil's own and can simply be asked for.
  */
 class AndroidPlatformModuleTest {
     @Test

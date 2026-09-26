@@ -49,8 +49,9 @@ interface UnlockedComponent {
 
     /**
      * The gallery's image loader, or `null` when the graph has no `PlatformContext` to build one
-     * from — which in practice means a host test, since both platform modules bind one and a test
-     * asserts they do.
+     * from — which in practice means a host test. On iOS the platform module binds one; on Android
+     * the type *is* `android.content.Context`, so the application context registered at startup is
+     * already one and the module must not declare a second (it would resolve to itself).
      *
      * It belongs to the **session**, not to the screen that draws with it: its memory cache holds
      * decrypted previews, and locking has to be able to empty that even while the app is in the

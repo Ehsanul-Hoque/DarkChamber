@@ -1,7 +1,6 @@
 package dev.ehsanfahad.darkchamber.app.di
 
 import android.content.Context
-import coil3.PlatformContext
 import dev.ehsanfahad.darkchamber.app.AndroidVaultRootResolver
 import dev.ehsanfahad.darkchamber.app.VaultRootResolver
 import dev.ehsanfahad.darkchamber.app.auth.ActivityHolder
@@ -42,8 +41,24 @@ actual fun platformModule(): Module = module {
     // one shared SystemUiHandoff: each is a separate activity, so each stops ours while it is up.
     single<FilePicker> { AndroidFilePicker({ get<ActivityHolder>().activity }, get()) }
     single<PhotoPicker> { AndroidPhotoPicker({ get<ActivityHolder>().activity }, get()) }
-    // Coil's context is the Android Context; the gallery's loader is built from it per session.
-    single<PlatformContext> { androidContext() }
+
+    // ---------------------------------------------------------------------------------------------
+    // No `PlatformContext` binding here, deliberately — this note stands in for the line that used
+    // to be, because the line looked entirely reasonable.
+    //
+    // On Android `coil3.PlatformContext` is an alias for `android.content.Context`, so
+    // `single<PlatformContext> { androidContext() }` declares a definition keyed on `Context` whose
+    // body asks Koin for a `Context` — itself. It also overrides the application context that
+    // `androidContext(app)` registered at startup, so the first resolution needing a context recurses
+    // until the stack ends: a fresh install crashed on launch, before the gate drew anything, because
+    // the vault root resolver asks for one.
+    //
+    // Nothing is needed in its place. `androidContext(app)` already registers the application as a
+    // `Context`, and that *is* a `PlatformContext`, so the session's `getOrNull<PlatformContext>()`
+    // resolves it. Only iOS needs a binding, because there the type is Coil's own. A Konsist rule
+    // fails the build if one reappears in this source set.
+    // ---------------------------------------------------------------------------------------------
+
     // Decodes a preview during import. Stateless and context-free — BitmapFactory works on the
     // stream the vault hands it, so nothing platform-scoped has to be threaded in here.
     single<ThumbnailEncoder> { AndroidThumbnailEncoder() }
