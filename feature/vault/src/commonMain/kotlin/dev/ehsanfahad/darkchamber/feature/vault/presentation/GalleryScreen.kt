@@ -504,15 +504,23 @@ private fun ItemTile(item: GalleryItem, now: Long, imageLoader: ImageLoader, mod
             // and it still opens. The mark says the preview could not be vouched for, and nothing
             // more than that (hard rule #6).
             val badge: @Composable (unverified: Boolean) -> Unit = { unverified ->
-                Text(
-                    text = when (val meta = item.meta) {
-                        is GalleryItemMeta.Readable ->
-                            if (unverified) "!" else GalleryFormat.typeBadge(meta.mime)
-                        GalleryItemMeta.Unreadable -> "!"
-                    },
-                    style = DarkChamberTheme.typography.label,
-                    color = if (damaged || unverified) colors.danger else colors.textSecondary,
-                )
+                // Centred by a Box of its own rather than by the slot it sits in. Coil's subcompose
+                // slots lay their content out with `propagateMinConstraints = true`, so a bare Text
+                // is stretched to the full tile and then draws its glyphs at the top-left of those
+                // bounds — the alignment of the enclosing box never gets a say. This one fills the
+                // slot deliberately and centres inside itself, which holds in both places the badge
+                // is drawn.
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                    Text(
+                        text = when (val meta = item.meta) {
+                            is GalleryItemMeta.Readable ->
+                                if (unverified) "!" else GalleryFormat.typeBadge(meta.mime)
+                            GalleryItemMeta.Unreadable -> "!"
+                        },
+                        style = DarkChamberTheme.typography.label,
+                        color = if (damaged || unverified) colors.danger else colors.textSecondary,
+                    )
+                }
             }
 
             if (damaged) {
