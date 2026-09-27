@@ -385,55 +385,64 @@ private fun ImportSummaryCard(
     val colors = DarkChamberTheme.colors
     val spacing = DarkChamberTheme.spacing
 
-    Column(
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
             .background(color = colors.sealedContainer, shape = DarkChamberTheme.shapes.large)
             .padding(start = spacing.spaceMd),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.weight(1f).padding(vertical = spacing.spaceXs)) {
+        // The vertical padding only shows once the message wraps: on one line the row is already
+        // taller than the text, because the buttons carry a 48 dp touch target. A two-line message
+        // outgrows that, and at 8 dp it sat against the card's edge — so the message keeps a
+        // comfortable inset of its own rather than inheriting the button's.
+        Column(modifier = Modifier.weight(1f).padding(vertical = spacing.spaceSm)) {
+            Text(
+                text = GalleryFormat.importedCount(batch.imported),
+                style = DarkChamberTheme.typography.body,
+                color = colors.textPrimary,
+            )
+            if (batch.failed.isNotEmpty()) {
                 Text(
-                    text = GalleryFormat.importedCount(batch.imported),
-                    style = DarkChamberTheme.typography.body,
-                    color = colors.textPrimary,
+                    text = GalleryFormat.failedCount(batch.failed.size),
+                    style = DarkChamberTheme.typography.caption,
+                    color = colors.danger,
                 )
-                if (batch.failed.isNotEmpty()) {
-                    Text(
-                        text = GalleryFormat.failedCount(batch.failed.size),
-                        style = DarkChamberTheme.typography.caption,
-                        color = colors.danger,
-                    )
-                }
-                // What came of a deletion, once one has happened — including the partial result,
-                // which is the whole reason this is a count and not a tick.
-                (batch.originalDelete as? OriginalDelete.Done)?.let { done ->
-                    Text(
-                        text = GalleryFormat.deletedOriginals(done.deleted, done.requested),
-                        style = DarkChamberTheme.typography.caption,
-                        color = if (done.deleted < done.requested) colors.danger else colors.textSecondary,
-                    )
-                }
             }
-            TextButton(onClick = onDismiss) {
-                Text("Done", style = DarkChamberTheme.typography.label, color = colors.accent)
+            // What came of a deletion, once one has happened — including the partial result, which
+            // is the whole reason this is a count and not a tick.
+            (batch.originalDelete as? OriginalDelete.Done)?.let { done ->
+                Text(
+                    text = GalleryFormat.deletedOriginals(done.deleted, done.requested),
+                    style = DarkChamberTheme.typography.caption,
+                    color = if (done.deleted < done.requested) colors.danger else colors.textSecondary,
+                )
             }
         }
 
-        // Offered only when there is something to offer, and gone once it has been answered.
-        // Nothing deletable is the ordinary case — every photo-library item, every iOS item, most
-        // cloud documents — so it has to be *absent*, not a disabled control owing an explanation.
+        // Beside Done rather than under the summary text, where it read as a stray line of the
+        // message. Offered only when there is something to offer, and gone once it has been
+        // answered: nothing deletable is the ordinary case — every photo-library item, every iOS
+        // item, most cloud documents — so it has to be *absent*, not a disabled control owing an
+        // explanation. The common case is therefore the message and Done alone, the shape this card
+        // has always had.
         if (batch.deletableOriginals > 0 && batch.originalDelete == OriginalDelete.NotAsked) {
-            TextButton(
-                onClick = onDeleteOriginals,
-                modifier = Modifier.padding(bottom = spacing.spaceXs),
-            ) {
+            TextButton(onClick = onDeleteOriginals) {
+                // Muted, and left of the dismissal: this only opens the disclosure, so it is not
+                // the destructive step and must not dress like one — but it still must not be
+                // mistaken for Done, which keeps the accent.
                 Text(
                     text = GalleryFormat.deleteOriginals(batch.deletableOriginals),
                     style = DarkChamberTheme.typography.label,
                     color = colors.textSecondary,
                 )
             }
+            // A gap, so the two are not one continuous strip of tappable text.
+            Spacer(modifier = Modifier.width(spacing.spaceSm))
+        }
+
+        TextButton(onClick = onDismiss) {
+            Text("Done", style = DarkChamberTheme.typography.label, color = colors.accent)
         }
     }
 }
