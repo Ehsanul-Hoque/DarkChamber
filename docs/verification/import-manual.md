@@ -53,7 +53,7 @@ Tick each line. A failure here is a release blocker.
 - [ ] Import a file from a cloud provider (Drive / OneDrive) if one is installed. It completes —
       this is the path that exercises the one-shot-source spill.
 - [ ] After each import, the app-private `tmp/` directory is empty:
-      `adb shell run-as dev.ehsanfahad.darkchamber ls files/vault/tmp` → no output.
+      `adb shell "run-as dev.ehsanfahad.darkchamber ls files/vault/tmp"` → no output.
 
 ### Import — iOS
 
@@ -127,11 +127,20 @@ arithmetic. Everything below needs a device.
 - [ ] **A truncated or corrupt image imports and shows its badge.** Copy a JPEG, cut it in half with
       a text editor or `dd`, import it. The import **succeeds** — a preview that cannot be made must
       never fail an import.
-- [ ] **Scroll a grid of 50+ photos**, then check that **no decrypted image reached disk**:
-      `adb shell run-as dev.ehsanfahad.darkchamber find files cache -type f \( -name '*.jpg' -o -name
-      '*.png' -o -name '*.webp' \)` → no output, and `find cache -type d` shows no image-cache
-      directory. On iOS, check the app container's `Library/Caches` the same way. This is the check
-      that would catch an image loader built with its defaults.
+- [ ] **Scroll a grid of 50+ photos**, then check that **no decrypted image reached disk** — the
+      check that would catch an image loader built with its defaults:
+
+      ```
+      adb shell "run-as dev.ehsanfahad.darkchamber find . -type f \
+        \( -name '*.jpg' -o -name '*.jpeg' -o -name '*.png' -o -name '*.webp' -o -name '*.heic' \)"
+      ```
+
+      No output is a pass. **Quote the whole remote command**: without the double quotes the local
+      shell eats the parentheses before `adb` sees them and the device reports
+      `/system/bin/sh: syntax error: unexpected '('`. Searching `.` — the app's whole data directory
+      — rather than naming `files` and `cache` covers any image written anywhere app-private,
+      including a directory a future cache picks for itself. On iOS, check the app container's
+      `Library/Caches` the same way.
 - [ ] **Lock the vault with the grid scrolled and previews on screen**, then unlock. The tiles
       re-render (they are decrypted again, not served from what the lock left behind).
 
@@ -166,7 +175,7 @@ result — make sure it looks ordinary.
 ### Plaintext never lands (Android)
 
 - [ ] After importing, the object store holds only `.dchm` files:
-      `adb shell run-as dev.ehsanfahad.darkchamber find files/vault/objects -type f` — every path
+      `adb shell "run-as dev.ehsanfahad.darkchamber find files/vault/objects -type f"` — every path
       ends in `.dchm`.
 - [ ] Dump one and confirm it is not the original: `... cat <one .dchm> | head -c 16 | xxd` starts
       with the `DCHM` magic, and the file is **not** byte-identical to the imported original.
