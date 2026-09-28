@@ -43,6 +43,31 @@ internal class IosPickedFile(
 
     override fun openSource(): RawSource = SystemFileSystem.source(Path(path))
 
+    /**
+     * Always `false` on iOS — a deliberate product decision, not a missing implementation.
+     *
+     * Deleting an asset from the photo library takes a `PHPhotoLibrary` change request, which needs
+     * `NSPhotoLibraryUsageDescription` and the user's library authorization.
+     * `PHPickerViewController` was chosen *because* it is permission-less: it shows the user their
+     * library without our ever being granted it, and `config/permissions-allowlist.txt` stays
+     * untouched (hard rule #7). Asking for full library access so we can offer to tidy up afterwards
+     * would be a bad trade, and the picker does not even hand back an asset identifier to delete by.
+     *
+     * The document picker has no route either: a security-scoped URL grants reading, not unlinking
+     * someone's file.
+     *
+     * So the offer never appears on iOS. That is the honest outcome rather than a control that
+     * explains itself away (hard rule #6) — and it is what the import's own copy already assumes,
+     * since the vault never claims the original is gone.
+     */
+    override val deletable: Boolean = false
+
+    /**
+     * Nothing to delete by, so nothing happens and it says so. Stated explicitly rather than
+     * inherited so the reason above is next to the answer.
+     */
+    override fun deleteOriginal(): Boolean = false
+
     @OptIn(ExperimentalForeignApi::class)
     override fun close() {
         if (scoped) url.stopAccessingSecurityScopedResource()

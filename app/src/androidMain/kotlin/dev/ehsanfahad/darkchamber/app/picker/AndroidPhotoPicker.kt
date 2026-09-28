@@ -28,8 +28,8 @@ class AndroidPhotoPicker(
 
         // Like SAF, the photo picker is a separate activity: launching it *stops* ours, and without
         // the handoff the on-background auto-lock tears the session down mid-pick and the result
-        // comes back to nothing (the cycle-1 device finding that made this exemption exist). It
-        // covers the round-trip only, and is released on every path.
+        // comes back to nothing — the device finding that made this exemption exist. It covers the
+        // round-trip only, and is released on every path.
         val uris = handoff.during {
             // An empty list on cancel, which is already the seam's "the user backed out".
             host.awaitActivityResult(
@@ -39,6 +39,9 @@ class AndroidPhotoPicker(
             )
         }
 
-        return uris.map { AndroidPickedFile(host.contentResolver, it) }
+        // document = false: PickMultipleVisualMedia returns read-only content://media/picker URIs,
+        // which are not documents and are not MediaStore rows either, so there is nothing to hand
+        // DocumentsContract or a delete request. A platform fact — the offer simply never appears.
+        return uris.map { AndroidPickedFile(host.contentResolver, it, document = false) }
     }
 }

@@ -24,10 +24,11 @@
 1. **A compromised or rooted OS with malware running at runtime.** Malware with root/system privileges can read process memory while the vault is unlocked and capture decrypted content in that window. No application on either platform can defend against a hostile OS; we do not claim to.
 2. **Coerced unlock.** If a user is forced to authenticate, the vault opens. Duress features (decoy PIN, panic wipe) provide partial, best-effort mitigation only, and we describe them as such.
 3. **Recovery of pre-import originals from flash storage.** When a user imports an existing file and deletes the original, flash wear-leveling and garbage collection may retain recoverable copies outside our control. We crypto-shred what we control and disclose this limit at the point of deletion. (See the shredder design in `ARCHITECTURE.md` §10.)
-4. **Screenshot capture on iOS.** iOS does not allow apps to block screenshots; we can only detect and warn. Android blocking via `FLAG_SECURE` is best-effort against OS-level capture.
-5. **Traffic analysis of backups (Phase 3).** Upload timing and ciphertext sizes are observable to the network and the storage provider. Padding/obfuscation may be considered later but is not promised.
-6. **Weak user secrets.** A 4-digit PIN protected only by Argon2id (i.e., if hardware key protections are somehow bypassed) is brute-forceable. Onboarding nudges users toward 6+ digits or a passphrase; rate limiting and hardware gating are the practical defenses.
-7. **The system clipboard, once the recovery key is copied to it.** The recovery-key screen offers a Copy action, because transcribing twenty-six characters by hand is itself a way to lose a vault. The clipboard is a shared surface and we do not control it. What we do set is narrow, and worth stating exactly:
+4. **Metadata inside an imported file.** An import encrypts the bytes the user chose, exactly as they are: nothing is parsed, rewritten or stripped on the way in. A photo's EXIF — GPS coordinates, camera serial, capture time — therefore survives inside the encrypted object, which is the honest trade. Rewriting someone's file on import would mean re-encoding it, silently changing what they asked us to keep, and getting it wrong on a format we did not anticipate; and while the item stays in the vault that metadata is encrypted like the rest of it. It matters when the file **leaves**: scrubbing happens on export and in the standalone tool (`ARCHITECTURE.md` §9), which is where the user can see what is being removed. Generating a preview does not change this either — the preview is decoded from the bytes and re-encoded as a new image, so it carries none of the original's metadata.
+5. **Screenshot capture on iOS.** iOS does not allow apps to block screenshots; we can only detect and warn. Android blocking via `FLAG_SECURE` is best-effort against OS-level capture.
+6. **Traffic analysis of backups (Phase 3).** Upload timing and ciphertext sizes are observable to the network and the storage provider. Padding/obfuscation may be considered later but is not promised.
+7. **Weak user secrets.** A 4-digit PIN protected only by Argon2id (i.e., if hardware key protections are somehow bypassed) is brute-forceable. Onboarding nudges users toward 6+ digits or a passphrase; rate limiting and hardware gating are the practical defenses.
+8. **The system clipboard, once the recovery key is copied to it.** The recovery-key screen offers a Copy action, because transcribing twenty-six characters by hand is itself a way to lose a vault. The clipboard is a shared surface and we do not control it. What we do set is narrow, and worth stating exactly:
    - **iOS** — the pasteboard write is marked *local only*, so Universal Clipboard does not broadcast the key over iCloud to every device signed into the same account, and carries an *expiration date* (about a minute) that the system honours by itself.
    - **Android** — the clip is flagged *sensitive* (API 33+), so the system shows no preview of it on screen and keyboards that honour the flag keep it out of clipboard history. The flag is a hint the system passes on, not a restriction it enforces: the stock keyboard respects it, another keyboard need not. Android offers no expiry, so the app schedules the clear itself; **if the process dies first, the clip stays**. The clear also leaves the clipboard alone if the user has copied something else since, rather than deleting their work.
    - **Neither platform makes the clipboard private.** Any app the user runs can read it, and on Android before 13 a foreground app can read it silently. The user may also paste the key somewhere that syncs or is backed up. In-app copy therefore says only that the key clears in about a minute and to paste it somewhere safe now — never that copying is secure.
@@ -36,7 +37,14 @@
 
 - Plaintext exists only in memory or in app-private `tmp/`, never in shared storage.
 - Any plaintext temp file is deleted immediately after use and on vault lock.
-- No plaintext thumbnails outside the encrypted thumbnail store.
+- No plaintext thumbnails outside the encrypted thumbnail store. A preview is generated in memory,
+  sealed under its own key and written only there; no image cache on disk, at any layer, ever holds
+  what it decrypted.
+- **Decrypted previews do not survive a lock.** A gallery keeps decrypted images in memory so that
+  scrolling does not decrypt the same tile repeatedly, and that cache is vault content like any
+  other: it is emptied as part of the same teardown that zeroizes the MasterKey and purges the
+  scratch directory. A locked app that still holds pictures of the user's files looks exactly like a
+  locked app, so nothing but this invariant would catch it.
 - Raw MK/DEKs are zeroized best-effort after use (GC-copy limits acknowledged).
 - The vault locks when the app goes to the background. **One exemption:** a file picker the app
   launched itself is a separate activity on Android, so reaching it backgrounds us — locking there

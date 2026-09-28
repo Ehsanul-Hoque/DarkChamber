@@ -46,10 +46,71 @@ sealed interface ImportState {
      * The batch ended — finished, or cancelled by the user. [imported] is what landed and stayed
      * landed; [failed] is the files that could not be read, which is not the same as the file a
      * cancel interrupted (nothing was wrong with that one, so it is in neither list).
+     *
+     * [deletableOriginals] is how many of the imported files came from somewhere that will take a
+     * delete, and so how many originals the user can be offered the chance to remove. **Zero is the
+     * ordinary answer** — every photo-library item, every iOS item and most cloud documents are
+     * zero — and it means no offer at all rather than an offer of nothing.
+     *
+     * A count, not the files themselves: deleting needs the picked file, and a screen must never
+     * hold one. The handles stay with the session-scoped batch, which is what makes a lock end the
+     * offer along with everything else.
      */
-    data class Finished(val imported: Int, val failed: List<FailedImport>) : ImportState {
-        override fun toString(): String = "Finished(imported=$imported, failed=${failed.size})"
+    data class Finished(
+        val imported: Int,
+        val failed: List<FailedImport>,
+        val deletableOriginals: Int = 0,
+        val originalDelete: OriginalDelete = OriginalDelete.NotAsked,
+    ) : ImportState {
+        override fun toString(): String =
+            "Finished(imported=$imported, failed=${failed.size}, " +
+                "deletableOriginals=$deletableOriginals, originalDelete=$originalDelete)"
     }
+}
+
+/**
+ * How far the offer to delete the imported originals has got.
+ *
+ * Sealed because the three cases are different pictures — an offer, a disclosure that has to be
+ * answered, and an outcome — and because the one that destroys something must not be reachable by
+ * forgetting a flag.
+ */
+sealed interface OriginalDelete {
+    /** No one has asked. The summary may still be *offering*, if there is anything to offer. */
+    data object NotAsked : OriginalDelete
+
+    /**
+     * The disclosure is up and waiting for an explicit answer.
+     *
+     * It is not a "are you sure?" guard against a mis-tap: it is where the limits of deleting get
+     * stated, so an original deleted without passing through here would be deleted on a promise the
+     * user was never shown (hard rule #6, `docs/THREAT_MODEL.md`). There is no way out of it but
+     * choosing — the screen gives it no dismissal.
+     */
+    data object Confirming : OriginalDelete
+
+    /**
+     * The answer was yes and the deletes are running.
+     *
+     * A state of its own rather than a flag, for the same reason a stopping import has one: the gap
+     * is real — a batch of provider calls takes seconds for twenty documents — and the disclosure is
+     * still on screen throughout it. Without this, both of its buttons stay live over a decision
+     * that has already been acted on, and **Keep them** would close a dialog while the files it
+     * promised to keep were already going.
+     *
+     * Deliberately carries no progress. There is nothing honest to count: the platform decides when
+     * each delete returns, and a bar against a file count would move in lurches that mean nothing.
+     */
+    data object Deleting : OriginalDelete
+
+    /**
+     * What came of it: [deleted] of [requested] originals actually went.
+     *
+     * The two numbers differ whenever a provider refuses a delete it advertised — a document that
+     * moved, a grant that no longer covers it. Reporting only the intent would tell someone a file
+     * is gone while it is still sitting there.
+     */
+    data class Done(val deleted: Int, val requested: Int) : OriginalDelete
 }
 
 /** A file the batch could not import, and why. */

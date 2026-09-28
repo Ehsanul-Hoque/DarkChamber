@@ -35,7 +35,9 @@ class AndroidFilePicker(
             )
         }
 
-        return uris.map { AndroidPickedFile(host.contentResolver, it) }
+        // document = true: OpenMultipleDocuments is ACTION_OPEN_DOCUMENT, so these are document
+        // URIs. It is what lets a provider that supports deletion offer to remove the original.
+        return uris.map { AndroidPickedFile(host.contentResolver, it, document = true) }
     }
 
     private companion object {

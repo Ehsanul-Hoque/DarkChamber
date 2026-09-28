@@ -17,9 +17,11 @@ import dev.ehsanfahad.darkchamber.core.crypto.VaultSession
 import dev.ehsanfahad.darkchamber.core.db.CatalogStore
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.storage.VaultStorage
+import dev.ehsanfahad.darkchamber.core.vault.ThumbnailEncoder
 import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
 import dev.ehsanfahad.darkchamber.feature.vault.api.PhotoPicker
 import kotlinx.io.buffered
+import kotlinx.io.readByteArray
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 import kotlinx.io.files.SystemTemporaryDirectory
@@ -181,7 +183,7 @@ class UnlockedComponentTest {
     }
 
     /**
-     * The companion to the decision that an import outlives a screen (spec D7): it does **not**
+     * The companion to the decision that an import outlives a screen: it does **not**
      * outlive the session. Locking mid-batch stops it, and everything imported before the lock is
      * a complete, catalogued item — a batch is not a transaction, and rolling those back would
      * destroy data the user asked for.
@@ -232,9 +234,60 @@ class UnlockedComponentTest {
         assertTrue(lockCount == 1, "teardown must run once, was $lockCount")
     }
 
+    @Test
+    fun a_bound_thumbnail_encoder_reaches_the_import() {
+        val vault = openVault()
+        val encoder = RecordingThumbnailEncoder(ByteArray(16) { 3 })
+        val component = unlocked(vault, picker = FakeFilePicker(listOf(FakePickedFile(name = "a.jpg"))), encoder = encoder)
+        val gallery = (component.stack.value.active.instance as UnlockedChild.Gallery).component
+
+        gallery.importFiles()
+
+        // End to end, rather than asserting the binding resolves: the encoder only matters if the
+        // instance Koin hands out is the one the session's VaultObjects actually calls.
+        assertEquals(1, encoder.calls, "the session's vault must use the bound encoder")
+        assertTrue(
+            SystemFileSystem.list(Path(vault.storageRoot, "thumbs")).any { it.name.endsWith(".tdchm") },
+            "the encoded preview must be sealed into the thumbnail store",
+        )
+    }
+
+    @Test
+    fun a_graph_with_no_thumbnail_encoder_still_unlocks_and_imports() {
+        val vault = openVault()
+        // No ThumbnailEncoder bound at all. A thumbnail is a cache, so its absence must cost the
+        // preview and nothing else — resolving it strictly would turn a missing binding into a
+        // vault the user cannot open.
+        val component = unlocked(vault, picker = FakeFilePicker(listOf(FakePickedFile(name = "a.jpg"))), encoder = null)
+        val gallery = (component.stack.value.active.instance as UnlockedChild.Gallery).component
+
+        gallery.importFiles()
+
+        assertEquals(1, dchmCount(Path(vault.storageRoot, "objects")), "the file itself must import")
+        // The store's directory is created up front by VaultStorage, so emptiness is the assertion,
+        // not absence.
+        assertEquals(
+            emptyList(),
+            SystemFileSystem.list(Path(vault.storageRoot, "thumbs")).toList(),
+            "with no encoder there is nothing to store",
+        )
+    }
+
+    private class RecordingThumbnailEncoder(private val bytes: ByteArray?) : ThumbnailEncoder {
+        var calls = 0
+            private set
+
+        override fun encode(mime: String, maxEdgePx: Int, openSource: () -> kotlinx.io.RawSource): ByteArray? {
+            calls++
+            openSource().buffered().use { it.readByteArray() }
+            return bytes
+        }
+    }
+
     private fun unlocked(
         vault: Vault,
         picker: FakeFilePicker = FakeFilePicker(),
+        encoder: ThumbnailEncoder? = null,
         onLock: () -> Unit = {},
     ): DefaultUnlockedComponent {
         // A graph of its own so a test can hand in its own picker; everything else matches `koin`.
@@ -244,6 +297,7 @@ class UnlockedComponentTest {
                     single<CryptoEngine> { CryptographyKotlinEngine() }
                     single<FilePicker> { picker }
                     single<PhotoPicker> { FakePhotoPicker() }
+                    encoder?.let { bound -> single<ThumbnailEncoder> { bound } }
                 },
             )
         }.koin

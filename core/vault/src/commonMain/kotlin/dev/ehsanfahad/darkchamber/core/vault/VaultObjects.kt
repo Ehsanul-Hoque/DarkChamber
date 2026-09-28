@@ -16,8 +16,10 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlin.coroutines.CoroutineContext
+import kotlinx.io.Buffer
 import kotlinx.io.RawSink
 import kotlinx.io.RawSource
+import kotlinx.io.readByteArray
 
 /**
  * Vault-object operations — the one place `core:crypto` (session/codec), `core:storage` (objects),
@@ -39,6 +41,9 @@ class VaultObjects(
     // Where the listing's per-row metadata decrypt runs. Injected so tests stay deterministic; the
     // default keeps that crypto off whatever thread a caller collects on.
     private val mapContext: CoroutineContext = Dispatchers.Default,
+    // Decodes and downscales a preview during import. Injected from `:app` with the platform
+    // encoder; the default produces none, so an import behaves exactly as it did before thumbnails.
+    private val thumbnails: ThumbnailEncoder = NoThumbnails,
 ) {
     /**
      * Stream-encrypt the plaintext from [openSource] into the vault: a fresh per-object DEK (wrapped
@@ -157,14 +162,28 @@ class VaultObjects(
         // opens a fresh source per pass, so a per-source counter would restart halfway and the
         // caller would watch the same bytes arrive twice.
         var processed = 0L
-        return storeGuarded(kind, name, mime, chunkSize) {
-            SessionGuardedSource(
-                ProgressSource(openSource()) { n ->
-                    processed += n
-                    onProgress(processed)
-                },
-            ) { session.isOpen && isActive() }
-        }
+        val stillWanted = { session.isOpen && isActive() }
+        return storeGuarded(
+            kind,
+            name,
+            mime,
+            chunkSize,
+            openSource = {
+                SessionGuardedSource(
+                    ProgressSource(openSource()) { n ->
+                        processed += n
+                        onProgress(processed)
+                    },
+                    stillWanted,
+                )
+            },
+            // Guarded like every other read — a lock must stop a decode mid-file — but deliberately
+            // **not** counted. The reported total is `2 × size` because the codec reads twice; a
+            // third counted pass would push an image's bar past its own denominator. The known cost
+            // is the opposite rounding: an image's bar reaches full a moment before its import
+            // finishes, which the cycle that generalises the contract to a pass count will fix.
+            openForThumbnail = { SessionGuardedSource(openSource(), stillWanted) },
+        )
     }
 
     private fun storeGuarded(
@@ -173,6 +192,7 @@ class VaultObjects(
         mime: String,
         chunkSize: Int,
         openSource: () -> RawSource,
+        openForThumbnail: () -> RawSource,
     ): Outcome<ByteArray> {
         val fileId = random(FILE_ID_SIZE)
         val noncePrefix = random(DchmFormat.NONCE_PREFIX_SIZE)
@@ -189,14 +209,22 @@ class VaultObjects(
             is Outcome.Ok -> streamed.value
         }
 
-        // 2. Seal the metadata and persist the row. Fail-closed: a row failure removes the object.
+        // 2. Generate the preview from the plaintext, before the row is written, so the row is
+        //    written **once** with its final metadata. Reading it back from the stored object
+        //    instead would mean decrypting the whole file: the random-access seek primitive does
+        //    not exist yet. Returns null — and leaves nothing behind — for everything that is not
+        //    an image the platform decoder accepts, which is the ordinary case for most of a vault.
+        val thumbnailKey = makeThumbnail(fileId, mime, createdAt, chunkSize, openForThumbnail)
+
+        // 3. Seal the metadata and persist the row. Fail-closed: a row failure removes the object.
         //    Sealing can also *throw* rather than return — a lock zeroizing the MK between the write
         //    and this line is the real case — and object bytes with no row and no DEK are
         //    unrecoverable garbage that would otherwise accumulate, so clean up before rethrowing.
         val encMeta = try {
-            session.sealMeta(encodeMeta(ObjectMeta(name, mime)))
+            session.sealMeta(encodeMeta(ObjectMeta(name, mime, thumbnailKey)))
         } catch (e: Exception) {
             storage.deleteObject(fileId) // best-effort; no orphan ciphertext without a row
+            storage.deleteThumbnail(fileId) // and no preview of an object that no longer exists
             throw e
         }
         val row = Items(
@@ -212,8 +240,86 @@ class VaultObjects(
             is Outcome.Ok -> Outcome.Ok(fileId)
             is Outcome.Err -> {
                 storage.deleteObject(fileId) // best-effort; no orphan object without a row
+                storage.deleteThumbnail(fileId) // the key lived in the row that never landed
                 upsert
             }
+        }
+    }
+
+    /**
+     * Encode a preview of the payload and seal it into `thumbs/<id>.tdchm` under a **fresh** DEK,
+     * returning that DEK wrapped under MK for the row's metadata — or `null` when there is no
+     * thumbnail to store.
+     *
+     * **Nothing in here can fail an import.** A thumbnail is a cache: an unsupported type, a corrupt
+     * file, a decoder that throws, a disk error writing the blob — every one of them leaves the item
+     * imported and simply without a preview. That is why this returns a nullable rather than an
+     * `Outcome`: there is no failure for a caller to act on, and an error surfaced here would
+     * eventually be rendered as though the user's file were damaged.
+     *
+     * The DEK is **wrapped**, not raw, even though `enc_meta` is itself sealed under MK. The listing
+     * decodes `enc_meta` for every row it shows, so a raw key would put one plaintext DEK per item
+     * into the gallery's state — reachable in memory long after a lock zeroized the master key.
+     * Wrapped, the key is inert without an open session (hard rule #5), and it costs one unwrap at
+     * the moment a tile is actually drawn.
+     */
+    private fun makeThumbnail(
+        fileId: ByteArray,
+        mime: String,
+        createdAt: Long,
+        chunkSize: Int,
+        openForThumbnail: () -> RawSource,
+    ): ByteArray? =
+        try {
+            val preview = thumbnails.encode(mime, THUMBNAIL_MAX_EDGE_PX, openForThumbnail)
+            // Empty is treated as "no thumbnail", not as a zero-byte thumbnail: an encoder that
+            // claims success while producing nothing would otherwise be sealed into a perfectly
+            // valid container that opens and draws nothing, which reads as a corrupt image rather
+            // than an item that never had a preview.
+            if (preview == null || preview.isEmpty()) {
+                null
+            } else {
+                sealThumbnail(fileId, createdAt, chunkSize, preview)
+            }
+        } catch (_: Exception) {
+            // Includes the stop path: a lock or a cancel during the decode throws out of the guarded
+            // source. The import that follows will fail on its own at the seal — this must not be
+            // the thing that decides that.
+            storage.deleteThumbnail(fileId) // best-effort; never leave a blob no row points at
+            null
+        }
+
+    // Writes the preview as its own .dchm container — a fresh DEK and a fresh nonce_prefix, because
+    // FORMAT.md §2 makes a per-object DEK mandatory and this is a second object in every sense the
+    // format cares about. The header carries no name (the object's name is already in enc_meta;
+    // copying decrypted content into a second container is a second place it can leak) and no MIME
+    // (the encoder does not declare what it produced, and the image loader sniffs the bytes).
+    private fun sealThumbnail(fileId: ByteArray, createdAt: Long, chunkSize: Int, preview: ByteArray): ByteArray? {
+        val dekWrapped = session.generateDek()
+        val noncePrefix = random(DchmFormat.NONCE_PREFIX_SIZE)
+        val sealed = session.useDek(dekWrapped) { rawDek ->
+            var enc: Outcome<Long>? = null
+            val write = storage.writeThumbnail(fileId) { sink ->
+                enc = codec.encryptContainer(
+                    rawDek,
+                    noncePrefix,
+                    createdAt,
+                    fileId,
+                    originalName = "",
+                    mime = "",
+                    chunkSize = chunkSize,
+                    openSource = { Buffer().apply { write(preview) } },
+                    sink = sink,
+                )
+                if (enc is Outcome.Err) throw AbortWrite // abort the atomic move; storage deletes the temp
+            }
+            write is Outcome.Ok && enc is Outcome.Ok
+        }
+        return if (sealed is Outcome.Ok && sealed.value) {
+            dekWrapped
+        } else {
+            storage.deleteThumbnail(fileId) // best-effort; a half-written preview is no preview
+            null
         }
     }
 
@@ -247,6 +353,48 @@ class VaultObjects(
             is Outcome.Ok -> got.value ?: return absent(id)
         }
         return readMeta(row.enc_meta)
+    }
+
+    /**
+     * Decrypt object [id]'s thumbnail **into memory** and return its bytes, or `null` when the item
+     * has none. Whole-blob rather than streaming on purpose: a thumbnail is bounded by
+     * [THUMBNAIL_MAX_EDGE_PX] and an image loader wants a byte array, so there is nothing to stream
+     * into. The plaintext exists only in the returned array — it never reaches disk (hard rule #1).
+     *
+     * Three outcomes, and the difference between the first two is the point:
+     *
+     * - **`Ok(bytes)`** — the preview, exactly as the encoder produced it.
+     * - **`Ok(null)`** — this item has no thumbnail. The ordinary case for most of a vault: every
+     *   non-image, every file the decoder declined, everything imported before thumbnails existed,
+     *   and a blob that has gone missing underneath us. Callers draw the type badge.
+     * - **`Err`** — `Crypto.IntegrityFailure` when the stored blob fails its GCM tag, `Io` for an
+     *   unknown id (as [openObject] and [openMeta] do), and whatever `enc_meta` failed with when the
+     *   metadata itself will not open.
+     *
+     * A damaged thumbnail must **not** collapse into the absent case. Absent means "there was never
+     * a preview here"; a failed tag means the bytes on disk were altered, which is a tampering
+     * signal the project never silently swallows. A missing *file*, by contrast, proves nothing —
+     * there is no tag to fail — so it reads as absent rather than as damage to an item whose own
+     * bytes are perfectly intact.
+     */
+    fun openThumbnail(id: ByteArray): Outcome<ByteArray?> {
+        val row = when (val got = catalog.getItem(id)) {
+            is Outcome.Err -> return got
+            is Outcome.Ok -> got.value ?: return absent(id)
+        }
+        val wrappedKey = when (val meta = readMeta(row.enc_meta)) {
+            is Outcome.Err -> return meta
+            is Outcome.Ok -> meta.value.thumbnailKey ?: return Outcome.Ok(null)
+        }
+        // Checked rather than inferred from a read failure: `readThumbnail` reports a missing file
+        // as `Io`, which is indistinguishable from a disk that failed mid-read, and one of those is
+        // an ordinary state while the other is worth surfacing.
+        if (!storage.thumbnailExists(id)) return Outcome.Ok(null)
+
+        val out = Buffer()
+        return session.useDek(wrappedKey) { rawDek ->
+            storage.readThumbnail(id) { src -> codec.decryptContainer(rawDek, id, src, out) }
+        }.flatMap { it }.flatMap { it }.map { out.readByteArray() }
     }
 
     /**
@@ -310,6 +458,10 @@ class VaultObjects(
         }
         return catalog.deleteItem(id).map {
             storage.deleteObject(id) // best-effort; the DEK is already gone, so ignore any failure
+            // The thumbnail's key lived in the row's enc_meta, so deleting the row already shredded
+            // it — this only stops an unopenable blob sitting in `thumbs/` for the life of the
+            // vault, invisible to every listing and therefore to everything that would clean it up.
+            storage.deleteThumbnail(id)
             Unit
         }
     }

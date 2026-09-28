@@ -62,15 +62,34 @@ internal class FakePickedFile(
     override val mime: String = "image/jpeg",
     private val data: ByteArray = byteArrayOf(1, 2, 3),
     override val size: Long? = data.size.toLong(),
+    /** Defaults to the common platform answer: most originals cannot be deleted. */
+    override val deletable: Boolean = false,
+    /**
+     * A provider that advertises deletion and then refuses the call — a document that moved, a
+     * grant that no longer covers it. The flag is only ever an advertisement.
+     */
+    private val deleteRefuses: Boolean = false,
 ) : PickedFile {
     var closed = false
         private set
     var opens = 0
         private set
 
+    /**
+     * How often deletion was asked for. Counted rather than flagged so a test can tell "never
+     * offered" apart from "offered twice" — the second being a file deleted once per retry.
+     */
+    var deleteRequests = 0
+        private set
+
     override fun openSource(): RawSource {
         opens++
         return Buffer().apply { write(data) }
+    }
+
+    override fun deleteOriginal(): Boolean {
+        deleteRequests++
+        return deletable && !deleteRefuses
     }
 
     override fun close() {
@@ -90,7 +109,11 @@ internal class FakeVaultItems(
     private val bytesPerImport: List<Long> = emptyList(),
     /** Runs as each file starts, so a test can cancel or lock partway through a batch. */
     private val onImport: (String) -> Unit = {},
+    /** Stored previews by item id (as a list, so the map keys compare by content). */
+    private val thumbnails: Map<List<Byte>, Outcome<ByteArray?>> = emptyMap(),
 ) : VaultItems {
+    var thumbnailCalls = 0
+        private set
     val summaries = MutableStateFlow<List<VaultItemSummary>>(emptyList())
     val importedNames = mutableListOf<String>()
     var importCalls = 0
@@ -126,7 +149,15 @@ internal class FakeVaultItems(
         bytesPerImport.forEach(onProgress)
         return if (name in failFor) Outcome.Err(VaultError.Io(RuntimeException("unreadable"))) else importResult
     }
+
+    override fun thumbnail(id: ByteArray): Outcome<ByteArray?> {
+        thumbnailCalls++
+        return thumbnails[id.toList()] ?: NO_THUMBNAIL
+    }
 }
+
+/** Unknown ids answer "no preview", which is what the real seam does for an item without one. */
+private val NO_THUMBNAIL: Outcome<ByteArray?> = Outcome.Ok(null)
 
 /** A seam whose import blows up rather than returning — the "should never happen" path. */
 internal class ThrowingVaultItems : VaultItems {
@@ -139,6 +170,8 @@ internal class ThrowingVaultItems : VaultItems {
         isActive: () -> Boolean,
         openSource: () -> RawSource,
     ): Outcome<ByteArray> = throw IllegalStateException("import exploded")
+
+    override fun thumbnail(id: ByteArray): Outcome<ByteArray?> = NO_THUMBNAIL
 }
 
 /** A seam that behaves like an import interrupted by a lock cancelling the scope. */
@@ -152,6 +185,8 @@ internal class CancellingVaultItems : VaultItems {
         isActive: () -> Boolean,
         openSource: () -> RawSource,
     ): Outcome<ByteArray> = throw CancellationException("the session was torn down mid-import")
+
+    override fun thumbnail(id: ByteArray): Outcome<ByteArray?> = NO_THUMBNAIL
 }
 
 internal fun summary(

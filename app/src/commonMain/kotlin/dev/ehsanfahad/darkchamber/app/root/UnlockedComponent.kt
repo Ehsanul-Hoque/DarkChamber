@@ -6,16 +6,21 @@ import com.arkivanov.decompose.router.stack.StackNavigation
 import com.arkivanov.decompose.router.stack.childStack
 import com.arkivanov.decompose.value.Value
 import com.arkivanov.essenty.lifecycle.doOnDestroy
+import coil3.ImageLoader
+import coil3.PlatformContext
 import com.arkivanov.essenty.lifecycle.doOnStop
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultGalleryComponent
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultImports
 import dev.ehsanfahad.darkchamber.feature.vault.vaultGalleryComponent
+import dev.ehsanfahad.darkchamber.feature.vault.vaultImageLoader
 import dev.ehsanfahad.darkchamber.feature.vault.vaultImports
 import dev.ehsanfahad.darkchamber.app.VaultBootstrap
 import dev.ehsanfahad.darkchamber.app.nowEpochMillis
 import dev.ehsanfahad.darkchamber.core.crypto.CryptoEngine
 import dev.ehsanfahad.darkchamber.core.crypto.DchmCodec
 import dev.ehsanfahad.darkchamber.core.crypto.VaultSession
+import dev.ehsanfahad.darkchamber.core.vault.NoThumbnails
+import dev.ehsanfahad.darkchamber.core.vault.ThumbnailEncoder
 import dev.ehsanfahad.darkchamber.core.vault.VaultObjects
 import org.koin.core.Koin
 import org.koin.core.qualifier.named
@@ -42,6 +47,18 @@ import kotlin.random.nextULong
 interface UnlockedComponent {
     val session: VaultSession
 
+    /**
+     * The gallery's image loader, or `null` when the graph has no `PlatformContext` to build one
+     * from — which in practice means a host test. On iOS the platform module binds one; on Android
+     * the type *is* `android.content.Context`, so the application context registered at startup is
+     * already one and the module must not declare a second (it would resolve to itself).
+     *
+     * It belongs to the **session**, not to the screen that draws with it: its memory cache holds
+     * decrypted previews, and locking has to be able to empty that even while the app is in the
+     * background, where a composition may not recompose at all.
+     */
+    val imageLoader: ImageLoader?
+
     /** The feature screens living inside the unlocked subtree. */
     val stack: Value<ChildStack<*, UnlockedChild>>
 
@@ -60,8 +77,8 @@ class DefaultUnlockedComponent(
     private val koin: Koin,
     // Handed to the feature components so host tests can drive them without a platform main looper.
     private val mainContext: CoroutineContext = Dispatchers.Main,
-    // Where an import's encrypt runs. Never the main thread (cycle 1's device run found key
-    // derivation there and the UI froze); injected for the same reason as [mainContext].
+    // Where an import's encrypt runs. Never the main thread — a device run found key derivation
+    // there and the UI froze; injected for the same reason as [mainContext].
     private val ioContext: CoroutineContext = Dispatchers.Default,
     private val onLock: () -> Unit,
 ) : UnlockedComponent, ComponentContext by componentContext {
@@ -82,9 +99,30 @@ class DefaultUnlockedComponent(
                     codec = DchmCodec(engine),
                     clock = ::nowEpochMillis,
                     random = engine::randomBytes,
+                    // Optional on purpose. A thumbnail is a cache: resolving the encoder strictly
+                    // would turn a platform module that forgot to bind one into a vault that
+                    // cannot be opened at all. Without it every item renders its type badge, which
+                    // is a state the gallery has to handle anyway. The platform-module tests are
+                    // what stop a missing binding going unnoticed.
+                    thumbnails = koin.getOrNull<ThumbnailEncoder>() ?: NoThumbnails,
                 ),
             )
         }
+
+    /**
+     * Built lazily so a graph without a `PlatformContext` — a host test — simply has no loader
+     * rather than failing to construct the session. Lazy also means a vault opened and locked
+     * without ever showing the gallery never builds one.
+     *
+     * Held as an explicit [Lazy] rather than a delegate so that [tearDown] can ask whether one was
+     * ever built. Reading the value there would *construct* a loader for a session that never drew
+     * a tile — allocating a cache in order to empty it.
+     */
+    private val lazyImageLoader: Lazy<ImageLoader?> = lazy {
+        koin.getOrNull<PlatformContext>()?.let { context -> vaultImageLoader(context, scope.get()) }
+    }
+
+    override val imageLoader: ImageLoader? get() = lazyImageLoader.value
 
     /**
      * Parent of every feature coroutine in this session. Cancelling it is the **first** thing lock
@@ -100,7 +138,7 @@ class DefaultUnlockedComponent(
     private val featureWork = SupervisorJob()
 
     /**
-     * The import batch, owned by the **session** rather than by the gallery (spec D7): navigating
+     * The import batch, owned by the **session** rather than by the gallery: navigating
      * away from a screen must not abandon fifty photos half-imported, while locking must stop them.
      * Parented to [featureWork], which lock cancels first, so a lock ends an import before the MK it
      * is encrypting against is zeroized. It holds no session reference of its own beyond the
@@ -153,6 +191,11 @@ class DefaultUnlockedComponent(
         featureWork.cancel() // stop feature coroutines BEFORE the session they run against dies
         vault.session.close() // zeroize MK (hard rule #5)
         vault.storage.purgeTmp() // wipe decrypted scratch (hard rule #1)
+        // The same rule, one layer up: the image loader keeps decrypted previews in memory so the
+        // grid does not re-decrypt on every scroll, and they are as much vault content as the
+        // scratch just purged. Without this a locked app still holds pictures of the user's files,
+        // and nothing about it looks wrong.
+        if (lazyImageLoader.isInitialized()) lazyImageLoader.value?.memoryCache?.clear()
         vault.catalog.close() // close the SqlDriver (no leak on lock)
         scope.close() // dispose the session scope
     }

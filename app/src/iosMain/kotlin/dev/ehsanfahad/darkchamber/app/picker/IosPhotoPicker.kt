@@ -43,7 +43,7 @@ class IosPhotoPicker(
 
     /**
      * Strong references to the delegates of presentations still in flight — the same weak-delegate
-     * hazard cycle 1 hit with the document picker: `PHPickerViewController.delegate` does not retain
+     * hazard the document picker hit first: `PHPickerViewController.delegate` does not retain
      * our bridge object, and a collected delegate means no callback ever fires and `pickPhotos()`
      * suspends forever.
      */
@@ -54,7 +54,7 @@ class IosPhotoPicker(
 
         val results = suspendCancellableCoroutine { continuation ->
             val configuration = PHPickerConfiguration().apply {
-                // 0 means "as many as the user likes" — the point of this cycle.
+                // 0 means "as many as the user likes", which is the point of a batch import.
                 setSelectionLimit(0)
             }
             val controller = PHPickerViewController(configuration = configuration)

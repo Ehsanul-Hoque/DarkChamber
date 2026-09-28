@@ -2,6 +2,8 @@ package dev.ehsanfahad.darkchamber.feature.vault.presentation
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class GalleryFormatTest {
 
@@ -60,5 +62,47 @@ class GalleryFormatTest {
     fun unreadable_files_are_counted_without_claiming_why() {
         assertEquals("1 file couldn't be read.", GalleryFormat.failedCount(1))
         assertEquals("2 files couldn't be read.", GalleryFormat.failedCount(2))
+    }
+
+    @Test
+    fun the_delete_offer_says_how_many_originals_it_means() {
+        assertEquals("Delete original", GalleryFormat.deleteOriginals(1))
+        assertEquals("Delete 12 originals", GalleryFormat.deleteOriginals(12))
+    }
+
+    @Test
+    fun a_partial_deletion_is_reported_as_a_partial_deletion() {
+        assertEquals("3 originals deleted.", GalleryFormat.deletedOriginals(deleted = 3, requested = 3))
+        assertEquals("1 original deleted.", GalleryFormat.deletedOriginals(deleted = 1, requested = 1))
+        // The honest shape of a provider that took some and refused the rest. Rounding this up to
+        // "3 deleted" would tell someone a file is gone while it is still sitting there.
+        assertEquals("2 of 3 originals deleted.", GalleryFormat.deletedOriginals(deleted = 2, requested = 3))
+        assertEquals("No originals were deleted.", GalleryFormat.deletedOriginals(deleted = 0, requested = 3))
+    }
+
+    /**
+     * The disclosure's copy, checked against what `docs/THREAT_MODEL.md` actually permits.
+     *
+     * DESIGN §11 is explicit for the shredder — "reduces the chance of recovery", never "permanently
+     * erases" — and deletion here is weaker still: the app asks the system, and the system decides.
+     * Wear-levelling can leave copies of the data in flash the filesystem never addresses again.
+     * This test is the guard on the wording, because nothing else would notice it drifting.
+     */
+    @Test
+    fun the_disclosure_claims_only_what_we_can_stand_behind() {
+        val copy = GalleryFormat.deleteOriginalsDisclosure(3).lowercase()
+
+        assertTrue("reduce" in copy, "it must say the claim it can make, got: $copy")
+        assertTrue("wear" in copy || "flash" in copy, "the limitation has to be stated, got: $copy")
+        for (overclaim in listOf("permanent", "erase", "unrecoverable", "securely", "forever", "wipe")) {
+            assertFalse(overclaim in copy, "the copy promises more than the threat model allows: $overclaim")
+        }
+    }
+
+    @Test
+    fun the_disclosure_says_the_vault_keeps_its_own_copy() {
+        // Because the question a user actually has at that dialog is "am I about to lose this?"
+        val copy = GalleryFormat.deleteOriginalsDisclosure(1).lowercase()
+        assertTrue("vault" in copy && "encrypted" in copy, "got: $copy")
     }
 }

@@ -35,4 +35,15 @@ internal interface VaultItems {
         isActive: () -> Boolean = { true },
         openSource: () -> RawSource,
     ): Outcome<ByteArray>
+
+    /**
+     * The stored preview for [id], decrypted into memory — or `Ok(null)` when the item has none,
+     * which is the ordinary state for every non-image and everything imported before previews
+     * existed.
+     *
+     * Absence is **not** an error, and an error is not absence: a preview whose bytes fail their
+     * integrity tag comes back as `Err`, because that is a tampering signal and drawing the same
+     * fallback badge an unsupported type gets would hide it.
+     */
+    fun thumbnail(id: ByteArray): Outcome<ByteArray?>
 }

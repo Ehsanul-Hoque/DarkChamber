@@ -42,6 +42,8 @@ class FakePickedFile(
     override val mime: String = "application/octet-stream",
     private val data: ByteArray = ByteArray(64) { it.toByte() },
     override val size: Long? = data.size.toLong(),
+    /** Defaults to the common platform answer: most originals cannot be deleted. */
+    override val deletable: Boolean = false,
     private val onOpen: () -> Unit = {},
 ) : PickedFile {
     var closed = false
@@ -51,10 +53,19 @@ class FakePickedFile(
     var opened = false
         private set
 
+    /** How often deletion was asked for, so a gate test can assert a lock ended the offer. */
+    var deleteRequests = 0
+        private set
+
     override fun openSource(): RawSource {
         opened = true
         onOpen()
         return Buffer().apply { write(data) }
+    }
+
+    override fun deleteOriginal(): Boolean {
+        deleteRequests++
+        return deletable
     }
 
     override fun close() {

@@ -39,6 +39,10 @@ kotlin {
             // module that may depend on a feature (docs/engineering/MODULES.md §1).
             implementation(project(":feature:vault"))
             implementation(libs.koin.core)
+            // The gallery's image loader is session-scoped, so the composition root builds it and
+            // the session's teardown empties it — :app needs Coil's ImageLoader/PlatformContext
+            // types for that, not for any loading of its own.
+            implementation(libs.coil.compose)
             // The Decompose session gate (RootComponent: Locked | Unlocked) + its Compose integration
             // and the Essenty lifecycle that drives background-lock.
             implementation(libs.decompose)
@@ -62,6 +66,10 @@ kotlin {
             implementation(libs.androidx.fragment.ktx)
             // Dispatchers.Main for the session-gate component intents on Android.
             implementation(libs.kotlinx.coroutines.android)
+            // Reads one tag: the EXIF orientation, so a portrait photo's preview is not drawn
+            // sideways. BitmapFactory ignores it, and the compressed preview carries no EXIF of its
+            // own, so unread here means lost for good.
+            implementation(libs.androidx.exifinterface)
         }
         // iOS platform module builds the native driver + opens the catalog (SqlDriver type).
         listOf("iosArm64Main", "iosSimulatorArm64Main").forEach { name ->

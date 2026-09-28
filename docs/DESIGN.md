@@ -149,6 +149,7 @@ Standard decelerate easing; **lock is never animated slower than `motionBase`** 
 - **Secure-screen scaffold:** every screen inside `UnlockedComponent` uses the design system's `SecureSurface` wrapper (applies `FLAG_SECURE`/snapshot obscuring — see ARCHITECTURE.md §7); the design system owns this so no feature forgets it.
 - **Exposure moments** (export, open-in, share): amber banner + explicit verb ("Decrypt and share") — never a generic "OK".
 - **Empty states:** an invitation to act ("Take your first photo" / "Import files"), display type, quiet illustration at most.
+- **Vault tiles without a preview:** a tile showing only its type badge is an **ordinary tile, not a broken one**. Only images get a preview; a PDF, a note, an audio file and an image the platform's decoder declines all look the same, and they are all fine. So the badge carries no warning colour, no placeholder frame and no retry — it is simply what that item looks like. (The one tile that *does* say something is wrong is the unverifiable one, whose metadata would not open; that is a separate state and reads as such.)
 - **Recovery-key screen:** `monoKey` groups on `surfaceRaised`, one screen, no competing actions; the copy states plainly that loss is unrecoverable.
 
 ## 11. Voice

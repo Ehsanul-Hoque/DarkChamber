@@ -2,12 +2,14 @@ package dev.ehsanfahad.darkchamber.feature.vault.domain
 
 import app.cash.turbine.test
 import dev.ehsanfahad.darkchamber.core.model.VaultError
+import dev.ehsanfahad.darkchamber.feature.vault.CancellingVaultItems
 import dev.ehsanfahad.darkchamber.feature.vault.FakeFilePicker
 import dev.ehsanfahad.darkchamber.feature.vault.FakePhotoPicker
 import dev.ehsanfahad.darkchamber.feature.vault.FakePickedFile
 import dev.ehsanfahad.darkchamber.feature.vault.FakeVaultItems
 import dev.ehsanfahad.darkchamber.feature.vault.api.FailedImport
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportState
+import dev.ehsanfahad.darkchamber.feature.vault.api.OriginalDelete
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -23,7 +25,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /**
- * The batch as something a screen can watch but does not own (spec D7). The coordinator drives a
+ * The batch as something a screen can watch but does not own. The coordinator drives a
  * picker, then the queue, and publishes one state a UI can render without knowing any of it.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -43,12 +45,19 @@ class ImportCoordinatorTest {
         photos: FakePhotoPicker = FakePhotoPicker(),
         files: FakeFilePicker = FakeFilePicker(),
         dispatcher: TestDispatcher = UnconfinedTestDispatcher(testScheduler),
+        // Separated only by the tests that need to catch a delete *mid-flight*: a queueing
+        // dispatcher here leaves the deletes pending until the test advances the scheduler, which is
+        // the window where the disclosure is still on screen.
+        deleteDispatcher: TestDispatcher = dispatcher,
     ): ImportCoordinator {
         return ImportCoordinator(
             photoPicker = photos,
             filePicker = files,
             queue = ImportQueue(ImportFile(vault = vault, ioContext = dispatcher)),
             scope = CoroutineScope(dispatcher),
+            // Deleting an original is a blocking provider call, so it runs off the caller's thread
+            // like the encrypt does — and, like the encrypt, the test drives it on its own scheduler.
+            ioContext = deleteDispatcher,
         )
     }
 
@@ -237,6 +246,317 @@ class ImportCoordinatorTest {
         assertTrue(picked.all { it.closed }, "a cancelled batch releases every grant it took")
     }
 
+    /**
+     * The offer to delete originals, which the summary can only make for files that landed.
+     *
+     * The count is what the screen draws; the handles behind it stay here, because deleting needs
+     * the picked file itself and a screen must never hold one — it would outlive the session that
+     * is allowed to have it.
+     */
+    @Test
+    fun a_finished_batch_says_how_many_originals_can_be_deleted() = runTest {
+        val vault = FakeVaultItems()
+        val picked = listOf(
+            FakePickedFile(name = "from-downloads.pdf", deletable = true),
+            FakePickedFile(name = "from-the-library.jpg", deletable = false),
+            FakePickedFile(name = "also-downloads.pdf", deletable = true),
+        )
+        val subject = coordinator(vault, files = FakeFilePicker(picked))
+
+        subject.importFiles()
+
+        val state = assertIs<ImportState.Finished>(subject.state.value)
+        assertEquals(3, state.imported)
+        assertEquals(2, state.deletableOriginals, "two of the three came from somewhere that deletes")
+        assertEquals(
+            listOf("from-downloads.pdf", "also-downloads.pdf"),
+            subject.deletableOriginals.map { it.name },
+            "and the handles to delete by are held here, not handed to a screen",
+        )
+    }
+
+    @Test
+    fun a_batch_with_nothing_deletable_offers_none() = runTest {
+        val subject = coordinator(FakeVaultItems(), files = FakeFilePicker(listOf(FakePickedFile())))
+
+        subject.importFiles()
+
+        // The ordinary case: every photo-library item, every iOS item, most cloud documents. Zero
+        // has to mean "no offer at all" — not an offer of nothing.
+        assertEquals(0, assertIs<ImportState.Finished>(subject.state.value).deletableOriginals)
+        assertEquals(emptyList(), subject.deletableOriginals)
+    }
+
+    @Test
+    fun acknowledging_the_summary_discards_the_retained_handles() = runTest {
+        val picked = FakePickedFile(name = "from-downloads.pdf", deletable = true)
+        val subject = coordinator(FakeVaultItems(), files = FakeFilePicker(listOf(picked)))
+        subject.importFiles()
+
+        subject.acknowledge()
+
+        // A dismissed summary is gone, so the offer it carried is gone too. Holding the handles on
+        // would leave a delete that no longer has a summary to authorise it.
+        assertEquals(emptyList(), subject.deletableOriginals)
+        assertEquals(0, picked.deleteRequests, "and dismissing deletes nothing")
+    }
+
+    @Test
+    fun a_new_batch_replaces_the_offer_the_last_one_left() = runTest {
+        lateinit var subject: ImportCoordinator
+        var heldWhileTheSecondBatchRan: Int? = null
+        // Read from inside the second batch, because that is the only window where the two
+        // behaviours differ: whichever way it is written, the new summary ends up describing the
+        // new batch. What a stale handle buys is the *gap* — a running import with the last batch's
+        // offer still sitting behind it, out of reach of the summary that authorised it.
+        val vault = FakeVaultItems(
+            onImport = { name ->
+                if (name == "from-the-library.jpg") heldWhileTheSecondBatchRan = subject.deletableOriginals.size
+            },
+        )
+        subject = coordinator(
+            vault,
+            photos = FakePhotoPicker(listOf(FakePickedFile(name = "from-downloads.pdf", deletable = true))),
+            files = FakeFilePicker(listOf(FakePickedFile(name = "from-the-library.jpg", deletable = false))),
+        )
+        subject.importPhotos()
+        assertEquals(1, subject.deletableOriginals.size, "the first batch left an offer")
+
+        subject.importFiles()
+
+        assertEquals(0, heldWhileTheSecondBatchRan, "starting a batch drops the previous offer")
+        assertEquals(emptyList(), subject.deletableOriginals)
+        assertEquals(0, assertIs<ImportState.Finished>(subject.state.value).deletableOriginals)
+    }
+
+    /**
+     * A lock cancels the scope the batch runs on, which is how a lock ends an import. The batch
+     * publishes no summary — this object is going away with the session — so no offer is left
+     * behind, and the handles it would have been made of are never retained.
+     */
+    @Test
+    fun a_batch_a_lock_interrupted_leaves_no_offer_behind() = runTest {
+        val picked = FakePickedFile(name = "from-downloads.pdf", deletable = true)
+        // Stands in for the lock: the import throws CancellationException from inside the read, the
+        // way a cancelled scope makes it.
+        val dispatcher = UnconfinedTestDispatcher(testScheduler)
+        val subject = ImportCoordinator(
+            photoPicker = FakePhotoPicker(),
+            filePicker = FakeFilePicker(listOf(picked)),
+            queue = ImportQueue(ImportFile(vault = CancellingVaultItems(), ioContext = dispatcher)),
+            scope = CoroutineScope(dispatcher),
+        )
+
+        subject.importFiles()
+
+        assertEquals(emptyList(), subject.deletableOriginals, "a locked batch leaves nothing to delete by")
+        assertFalse(subject.state.value is ImportState.Finished, "and no summary to offer it from")
+    }
+
+    /**
+     * The delete offer, which is the one thing in this batch that destroys something.
+     *
+     * Every path below exists to keep one property true: an original is deleted only after the user
+     * has seen what deleting does and said yes to *that*. The disclosure is not a confirmation
+     * dialog protecting against a mis-tap — it is where the limits of the deletion get stated, so
+     * skipping it would mean deleting on a promise the user was never shown (hard rule #6).
+     */
+    @Test
+    fun asking_to_delete_opens_the_disclosure_and_deletes_nothing_yet() = runTest {
+        val picked = FakePickedFile(name = "from-downloads.pdf", deletable = true)
+        val subject = coordinator(FakeVaultItems(), files = FakeFilePicker(listOf(picked)))
+        subject.importFiles()
+
+        subject.requestOriginalDelete()
+
+        assertEquals(OriginalDelete.Confirming, finished(subject).originalDelete)
+        assertEquals(0, picked.deleteRequests, "the disclosure comes first, always")
+    }
+
+    @Test
+    fun there_is_nothing_to_ask_about_when_nothing_can_be_deleted() = runTest {
+        val picked = FakePickedFile(name = "from-the-library.jpg", deletable = false)
+        val subject = coordinator(FakeVaultItems(), files = FakeFilePicker(listOf(picked)))
+        subject.importFiles()
+
+        subject.requestOriginalDelete()
+
+        // The ordinary case. No offer means no disclosure either — not a dialog explaining that
+        // there is nothing to do.
+        assertEquals(OriginalDelete.NotAsked, finished(subject).originalDelete)
+        assertEquals(0, picked.deleteRequests)
+    }
+
+    @Test
+    fun confirming_deletes_every_offered_original_and_reports_how_many_went() = runTest {
+        val picked = listOf(
+            FakePickedFile(name = "one.pdf", deletable = true),
+            FakePickedFile(name = "two.pdf", deletable = true),
+        )
+        val subject = coordinator(FakeVaultItems(), files = FakeFilePicker(picked))
+        subject.importFiles()
+        subject.requestOriginalDelete()
+
+        subject.confirmOriginalDelete()
+
+        assertEquals(OriginalDelete.Done(deleted = 2, requested = 2), finished(subject).originalDelete)
+        assertTrue(picked.all { it.deleteRequests == 1 }, "each original asked for exactly once")
+    }
+
+    /**
+     * The flag is an advertisement, not a promise: a provider can refuse the call it said it would
+     * take. Reporting two of three is the honest outcome — claiming three would be telling someone
+     * their file is gone when it is still there.
+     */
+    @Test
+    fun a_provider_that_refuses_is_reported_as_a_partial_result() = runTest {
+        val picked = listOf(
+            FakePickedFile(name = "one.pdf", deletable = true),
+            FakePickedFile(name = "two.pdf", deletable = true, deleteRefuses = true),
+            FakePickedFile(name = "three.pdf", deletable = true),
+        )
+        val subject = coordinator(FakeVaultItems(), files = FakeFilePicker(picked))
+        subject.importFiles()
+        subject.requestOriginalDelete()
+
+        subject.confirmOriginalDelete()
+
+        assertEquals(OriginalDelete.Done(deleted = 2, requested = 3), finished(subject).originalDelete)
+    }
+
+    @Test
+    fun confirming_without_the_disclosure_deletes_nothing() = runTest {
+        val picked = FakePickedFile(name = "from-downloads.pdf", deletable = true)
+        val subject = coordinator(FakeVaultItems(), files = FakeFilePicker(listOf(picked)))
+        subject.importFiles()
+
+        subject.confirmOriginalDelete() // no requestOriginalDelete() first
+
+        assertEquals(0, picked.deleteRequests, "the disclosure is the authorisation, not a formality")
+        assertEquals(OriginalDelete.NotAsked, finished(subject).originalDelete)
+    }
+
+    @Test
+    fun keeping_the_originals_is_an_explicit_choice_that_deletes_nothing() = runTest {
+        val picked = FakePickedFile(name = "from-downloads.pdf", deletable = true)
+        val subject = coordinator(FakeVaultItems(), files = FakeFilePicker(listOf(picked)))
+        subject.importFiles()
+        subject.requestOriginalDelete()
+
+        subject.keepOriginals()
+
+        assertEquals(0, picked.deleteRequests)
+        // Back to the offer rather than gone: declining is a decision about this dialog, not a
+        // decision never to be asked again.
+        assertEquals(OriginalDelete.NotAsked, finished(subject).originalDelete)
+        assertEquals(1, subject.deletableOriginals.size, "the offer is still there to take")
+    }
+
+    @Test
+    fun confirming_twice_deletes_each_original_once() = runTest {
+        val picked = FakePickedFile(name = "from-downloads.pdf", deletable = true)
+        val subject = coordinator(FakeVaultItems(), files = FakeFilePicker(listOf(picked)))
+        subject.importFiles()
+        subject.requestOriginalDelete()
+
+        subject.confirmOriginalDelete()
+        subject.confirmOriginalDelete()
+
+        assertEquals(1, picked.deleteRequests, "a second tap must not ask the provider again")
+        assertEquals(OriginalDelete.Done(deleted = 1, requested = 1), finished(subject).originalDelete)
+    }
+
+    @Test
+    fun a_summary_whose_originals_were_deleted_is_still_dismissible() = runTest {
+        val picked = FakePickedFile(name = "from-downloads.pdf", deletable = true)
+        val subject = coordinator(FakeVaultItems(), files = FakeFilePicker(listOf(picked)))
+        subject.importFiles()
+        subject.requestOriginalDelete()
+        subject.confirmOriginalDelete()
+
+        subject.acknowledge()
+
+        assertEquals(ImportState.Idle, subject.state.value)
+        assertEquals(emptyList(), subject.deletableOriginals, "and nothing is left to delete twice")
+    }
+
+    /**
+     * While the deletes are actually running, the dialog is still on screen — and it must not be
+     * answerable a second time.
+     *
+     * The window is the length of a batch of provider calls, which for twenty documents is seconds
+     * rather than frames. Leaving the buttons live through it meant tapping **Keep them** closed the
+     * disclosure while the deletes carried on: the user chose to keep and the files went anyway,
+     * which is the plainest kind of lie a control can tell (hard rule #6).
+     */
+    @Test
+    fun keeping_them_while_the_delete_runs_cannot_take_the_choice_back() = runTest {
+        val picked = FakePickedFile(name = "from-downloads.pdf", deletable = true)
+        val subject = coordinator(
+            FakeVaultItems(),
+            files = FakeFilePicker(listOf(picked)),
+            deleteDispatcher = StandardTestDispatcher(testScheduler),
+        )
+        subject.importFiles()
+        subject.requestOriginalDelete()
+        subject.confirmOriginalDelete() // launched, not yet run
+
+        assertEquals(OriginalDelete.Deleting, finished(subject).originalDelete)
+
+        subject.keepOriginals()
+
+        // The state has to *say* it is deleting, not merely refuse the tap. A dialog whose buttons
+        // still look live while they do nothing is the thing the running-import card already goes
+        // out of its way to avoid.
+        assertEquals(OriginalDelete.Deleting, finished(subject).originalDelete, "still deleting")
+        advanceUntilIdle()
+        assertEquals(OriginalDelete.Done(deleted = 1, requested = 1), finished(subject).originalDelete)
+        assertEquals(1, picked.deleteRequests)
+    }
+
+    @Test
+    fun a_summary_cannot_be_dismissed_out_from_under_a_running_delete() = runTest {
+        val picked = FakePickedFile(name = "from-downloads.pdf", deletable = true)
+        val subject = coordinator(
+            FakeVaultItems(),
+            files = FakeFilePicker(listOf(picked)),
+            deleteDispatcher = StandardTestDispatcher(testScheduler),
+        )
+        subject.importFiles()
+        subject.requestOriginalDelete()
+        subject.confirmOriginalDelete()
+
+        subject.acknowledge()
+
+        // Dismissing would not stop the deletes — they run on a captured list — so it would only
+        // hide them, and the outcome would be reported to nobody.
+        assertEquals(OriginalDelete.Deleting, finished(subject).originalDelete)
+        advanceUntilIdle()
+        assertEquals(OriginalDelete.Done(deleted = 1, requested = 1), finished(subject).originalDelete)
+    }
+
+    @Test
+    fun the_offer_cannot_be_reopened_while_its_delete_runs() = runTest {
+        val picked = FakePickedFile(name = "from-downloads.pdf", deletable = true)
+        val subject = coordinator(
+            FakeVaultItems(),
+            files = FakeFilePicker(listOf(picked)),
+            deleteDispatcher = StandardTestDispatcher(testScheduler),
+        )
+        subject.importFiles()
+        subject.requestOriginalDelete()
+        subject.confirmOriginalDelete()
+
+        subject.requestOriginalDelete()
+
+        assertEquals(OriginalDelete.Deleting, finished(subject).originalDelete)
+        advanceUntilIdle()
+        assertEquals(1, picked.deleteRequests, "and nothing was asked for twice")
+    }
+
+    private fun finished(subject: ImportCoordinator): ImportState.Finished =
+        assertIs(subject.state.value, "the batch should have finished")
+
     @Test
     fun a_file_name_never_reaches_a_log_line() {
         val running = ImportState.Running(index = 0, total = 3, name = "passport.jpg", fileFraction = 0.25f)
@@ -246,7 +566,7 @@ class ImportCoordinatorTest {
         )
 
         // Both carry decrypted vault content; the generated data-class toString would print a file
-        // name into any log line that renders them (hard rule #4, cycle 1's GalleryItem precedent).
+        // name into any log line that renders them (hard rule #4, as GalleryItem already does).
         assertFalse(running.toString().contains("passport"), "got $running")
         assertFalse(finished.toString().contains("tax-return"), "got $finished")
         assertTrue(running.toString().contains("total=3"), "the useful parts still render")

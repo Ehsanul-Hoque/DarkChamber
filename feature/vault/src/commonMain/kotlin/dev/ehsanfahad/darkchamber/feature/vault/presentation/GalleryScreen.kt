@@ -30,7 +30,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
@@ -38,6 +40,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import coil3.ImageLoader
+import coil3.compose.AsyncImagePainter
+import coil3.compose.SubcomposeAsyncImage
 import dev.ehsanfahad.darkchamber.core.designsystem.DarkChamberTheme
 import dev.ehsanfahad.darkchamber.core.designsystem.prefersReducedMotion
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryError
@@ -45,23 +52,29 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryState
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportState
+import dev.ehsanfahad.darkchamber.feature.vault.api.OriginalDelete
 
 /**
  * The vault gallery (docs/DESIGN.md). Reads theme **roles** only — no raw hex, no hardcoded colors —
  * and leaves the full-circle radius to the aperture, so the import affordance is a rounded extended
  * FAB rather than a circle.
  *
- * Tiles reserve a square media slot at the size a thumbnail will occupy, so cycle 2 can drop images
- * in without relayout. Tapping a tile does nothing yet; viewers arrive with the seekable read path.
+ * Tiles draw their preview in a reserved square media slot, and the type badge in the same slot when
+ * there is no preview — the two are the same size, so a grid does not relayout as previews resolve.
+ * Tapping a tile does nothing yet; viewers arrive with the seekable read path.
  */
 @Composable
 internal fun GalleryScreen(
     state: GalleryState,
     now: Long,
+    imageLoader: ImageLoader,
     onAddPhotos: () -> Unit,
     onAddFiles: () -> Unit,
     onCancelImport: () -> Unit,
     onAcknowledgeImport: () -> Unit,
+    onRequestOriginalDelete: () -> Unit,
+    onConfirmOriginalDelete: () -> Unit,
+    onKeepOriginals: () -> Unit,
     onDismissError: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -86,7 +99,7 @@ internal fun GalleryScreen(
             when {
                 state.loading -> CenteredMessage("Opening the vault…", showSpinner = true)
                 state.items.isEmpty() -> EmptyVault()
-                else -> ItemGrid(items = state.items, now = now, bottomInset = barHeight)
+                else -> ItemGrid(items = state.items, now = now, imageLoader = imageLoader, bottomInset = barHeight)
             }
         }
 
@@ -111,8 +124,99 @@ internal fun GalleryScreen(
                 // already done. Vague on purpose: this layer cannot tell which of the two waits it
                 // is in, and naming the wrong one would be worse than naming neither.
                 ImportState.Picking -> ImportNoticeCard(text = "Getting things ready…")
-                is ImportState.Finished -> ImportSummaryCard(batch = batch, onDismiss = onAcknowledgeImport)
+                is ImportState.Finished -> ImportSummaryCard(
+                    batch = batch,
+                    onDismiss = onAcknowledgeImport,
+                    onDeleteOriginals = onRequestOriginalDelete,
+                )
                 ImportState.Idle -> ImportActions(onAddPhotos = onAddPhotos, onAddFiles = onAddFiles)
+            }
+        }
+
+        // Above everything, because it is the one thing here that destroys something. Only ever
+        // reached by taking the offer on the summary.
+        val batch = state.batch
+        val deleteState = (batch as? ImportState.Finished)?.originalDelete
+        if (deleteState == OriginalDelete.Confirming || deleteState == OriginalDelete.Deleting) {
+            DeleteOriginalsDisclosure(
+                count = (batch as ImportState.Finished).deletableOriginals,
+                // The dialog stays up while the deletes run, with both buttons spent. The coordinator
+                // refuses either intent in that state anyway; disabling them is so the dialog stops
+                // *offering* a choice that has already been made and cannot be taken back.
+                answered = deleteState == OriginalDelete.Deleting,
+                onDelete = onConfirmOriginalDelete,
+                onKeep = onKeepOriginals,
+            )
+        }
+    }
+}
+
+/**
+ * The disclosure, which is **not dismissable** (docs/ARCHITECTURE.md): no back press, no tap
+ * outside, no dismissal of any kind — only the two buttons.
+ *
+ * That is not friction for its own sake. This dialog is the only place a user is told what deleting
+ * an original does and does not achieve, so a dialog they can tap past is a deletion carried out on
+ * a warning they never read (hard rule #6). The copy itself lives in [GalleryFormat], where it is
+ * tested against what `docs/THREAT_MODEL.md` permits.
+ *
+ * Neither button leads: deleting is not the recommended choice, and keeping the original is a
+ * perfectly good answer — so they read as two equal options rather than a default and an escape.
+ */
+@Composable
+private fun DeleteOriginalsDisclosure(
+    count: Int,
+    answered: Boolean,
+    onDelete: () -> Unit,
+    onKeep: () -> Unit,
+) {
+    val colors = DarkChamberTheme.colors
+    val spacing = DarkChamberTheme.spacing
+
+    Dialog(
+        // Nothing to do: with both dismissals disabled this cannot fire, and treating a dismissal
+        // as "keep" would quietly accept a gesture that must not exist here.
+        onDismissRequest = {},
+        properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(color = colors.surface, shape = DarkChamberTheme.shapes.large)
+                .padding(spacing.spaceLg),
+        ) {
+            Text(
+                text = GalleryFormat.deleteOriginals(count) + "?",
+                style = DarkChamberTheme.typography.title,
+                color = colors.textPrimary,
+            )
+            Text(
+                text = GalleryFormat.deleteOriginalsDisclosure(count),
+                style = DarkChamberTheme.typography.body,
+                color = colors.textSecondary,
+                modifier = Modifier.padding(top = spacing.spaceSm),
+            )
+            Row(
+                horizontalArrangement = Arrangement.End,
+                modifier = Modifier.fillMaxWidth().padding(top = spacing.spaceMd),
+            ) {
+                TextButton(onClick = onKeep, enabled = !answered) {
+                    Text(
+                        text = "Keep them",
+                        style = DarkChamberTheme.typography.label,
+                        color = if (answered) colors.textSecondary else colors.textPrimary,
+                    )
+                }
+                TextButton(onClick = onDelete, enabled = !answered) {
+                    // The destructive role, so the irreversible choice does not look like the safe
+                    // one sitting next to it — and its own past tense once it has been taken, which
+                    // is the only thing on screen saying why the buttons stopped responding.
+                    Text(
+                        text = if (answered) "Deleting…" else "Delete",
+                        style = DarkChamberTheme.typography.label,
+                        color = if (answered) colors.textSecondary else colors.danger,
+                    )
+                }
             }
         }
     }
@@ -273,7 +377,11 @@ private fun ImportNoticeCard(text: String) {
  * worked, and never claims a reason it does not have (hard rule #6).
  */
 @Composable
-private fun ImportSummaryCard(batch: ImportState.Finished, onDismiss: () -> Unit) {
+private fun ImportSummaryCard(
+    batch: ImportState.Finished,
+    onDismiss: () -> Unit,
+    onDeleteOriginals: () -> Unit,
+) {
     val colors = DarkChamberTheme.colors
     val spacing = DarkChamberTheme.spacing
 
@@ -284,7 +392,11 @@ private fun ImportSummaryCard(batch: ImportState.Finished, onDismiss: () -> Unit
             .background(color = colors.sealedContainer, shape = DarkChamberTheme.shapes.large)
             .padding(start = spacing.spaceMd),
     ) {
-        Column(modifier = Modifier.weight(1f).padding(vertical = spacing.spaceXs)) {
+        // The vertical padding only shows once the message wraps: on one line the row is already
+        // taller than the text, because the buttons carry a 48 dp touch target. A two-line message
+        // outgrows that, and at 8 dp it sat against the card's edge — so the message keeps a
+        // comfortable inset of its own rather than inheriting the button's.
+        Column(modifier = Modifier.weight(1f).padding(vertical = spacing.spaceSm)) {
             Text(
                 text = GalleryFormat.importedCount(batch.imported),
                 style = DarkChamberTheme.typography.body,
@@ -297,7 +409,38 @@ private fun ImportSummaryCard(batch: ImportState.Finished, onDismiss: () -> Unit
                     color = colors.danger,
                 )
             }
+            // What came of a deletion, once one has happened — including the partial result, which
+            // is the whole reason this is a count and not a tick.
+            (batch.originalDelete as? OriginalDelete.Done)?.let { done ->
+                Text(
+                    text = GalleryFormat.deletedOriginals(done.deleted, done.requested),
+                    style = DarkChamberTheme.typography.caption,
+                    color = if (done.deleted < done.requested) colors.danger else colors.textSecondary,
+                )
+            }
         }
+
+        // Beside Done rather than under the summary text, where it read as a stray line of the
+        // message. Offered only when there is something to offer, and gone once it has been
+        // answered: nothing deletable is the ordinary case — every photo-library item, every iOS
+        // item, most cloud documents — so it has to be *absent*, not a disabled control owing an
+        // explanation. The common case is therefore the message and Done alone, the shape this card
+        // has always had.
+        if (batch.deletableOriginals > 0 && batch.originalDelete == OriginalDelete.NotAsked) {
+            TextButton(onClick = onDeleteOriginals) {
+                // Muted, and left of the dismissal: this only opens the disclosure, so it is not
+                // the destructive step and must not dress like one — but it still must not be
+                // mistaken for Done, which keeps the accent.
+                Text(
+                    text = GalleryFormat.deleteOriginals(batch.deletableOriginals),
+                    style = DarkChamberTheme.typography.label,
+                    color = colors.textSecondary,
+                )
+            }
+            // A gap, so the two are not one continuous strip of tappable text.
+            Spacer(modifier = Modifier.width(spacing.spaceSm))
+        }
+
         TextButton(onClick = onDismiss) {
             Text("Done", style = DarkChamberTheme.typography.label, color = colors.accent)
         }
@@ -305,7 +448,7 @@ private fun ImportSummaryCard(batch: ImportState.Finished, onDismiss: () -> Unit
 }
 
 @Composable
-private fun ItemGrid(items: List<GalleryItem>, now: Long, bottomInset: Dp) {
+private fun ItemGrid(items: List<GalleryItem>, now: Long, imageLoader: ImageLoader, bottomInset: Dp) {
     val spacing = DarkChamberTheme.spacing
     val arrival = tileArrival(DarkChamberTheme.motion, prefersReducedMotion())
     LazyVerticalGrid(
@@ -330,6 +473,7 @@ private fun ItemGrid(items: List<GalleryItem>, now: Long, bottomInset: Dp) {
             ItemTile(
                 item = item,
                 now = now,
+                imageLoader = imageLoader,
                 modifier = Modifier.animateItem(
                     fadeInSpec = tween(arrival.fadeIn),
                     placementSpec = arrival.placement?.let { tween<IntOffset>(it) },
@@ -341,7 +485,7 @@ private fun ItemGrid(items: List<GalleryItem>, now: Long, bottomInset: Dp) {
 }
 
 @Composable
-private fun ItemTile(item: GalleryItem, now: Long, modifier: Modifier = Modifier) {
+private fun ItemTile(item: GalleryItem, now: Long, imageLoader: ImageLoader, modifier: Modifier = Modifier) {
     val colors = DarkChamberTheme.colors
     val spacing = DarkChamberTheme.spacing
     val damaged = item.meta is GalleryItemMeta.Unreadable
@@ -364,14 +508,67 @@ private fun ItemTile(item: GalleryItem, now: Long, modifier: Modifier = Modifier
                     shape = DarkChamberTheme.shapes.medium,
                 ),
         ) {
-            Text(
-                text = when (val meta = item.meta) {
-                    is GalleryItemMeta.Readable -> GalleryFormat.typeBadge(meta.mime)
-                    GalleryItemMeta.Unreadable -> "!"
-                },
-                style = DarkChamberTheme.typography.label,
-                color = if (damaged) colors.danger else colors.textSecondary,
-            )
+            // `unverified` marks a preview whose bytes did not pass their integrity tag, which is
+            // not the same as the item being damaged: the item's own bytes and metadata are intact
+            // and it still opens. The mark says the preview could not be vouched for, and nothing
+            // more than that (hard rule #6).
+            val badge: @Composable (unverified: Boolean) -> Unit = { unverified ->
+                // Centred by a Box of its own rather than by the slot it sits in. Coil's subcompose
+                // slots lay their content out with `propagateMinConstraints = true`, so a bare Text
+                // is stretched to the full tile and then draws its glyphs at the top-left of those
+                // bounds — the alignment of the enclosing box never gets a say. This one fills the
+                // slot deliberately and centres inside itself, which holds in both places the badge
+                // is drawn.
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                    Text(
+                        text = when (val meta = item.meta) {
+                            is GalleryItemMeta.Readable ->
+                                if (unverified) "!" else GalleryFormat.typeBadge(meta.mime)
+                            GalleryItemMeta.Unreadable -> "!"
+                        },
+                        style = DarkChamberTheme.typography.label,
+                        color = if (damaged || unverified) colors.danger else colors.textSecondary,
+                    )
+                }
+            }
+
+            if (damaged) {
+                // An item whose metadata will not open is not asked for a preview at all: its key
+                // is gone with the rest of that blob, and the mark it already carries is the honest
+                // rendering. Unchanged from before thumbnails existed.
+                badge(false)
+            } else {
+                SubcomposeAsyncImage(
+                    // Built fresh each composition on purpose, and not `remember`ed: the key would
+                    // have to be the id, whose `equals` is identity, so a re-emitted listing would
+                    // rebuild it regardless. What actually stops the request restarting is the
+                    // model's own content-based equality — a new instance carrying the same id is
+                    // equal to the old one, so Coil keeps the image it already has.
+                    model = VaultThumbnailKey(item.id),
+                    imageLoader = imageLoader,
+                    // Decorative: the item's name is spelled out directly below this slot, and a
+                    // screen reader announcing it twice helps nobody.
+                    contentDescription = null,
+                    // Crop rather than fit, matching the contact-sheet grid: a letterboxed tile in
+                    // a dense grid reads as a gap.
+                    contentScale = ContentScale.Crop,
+                    // The badge covers everything that is not a drawn preview: an item with no
+                    // thumbnail (the ordinary case for most of a vault), one whose preview failed
+                    // to open, and the moment before a decrypt finishes. A spinner per tile would
+                    // make a scroll flicker for work that takes a few milliseconds.
+                    loading = { badge(false) },
+                    error = {
+                        // One failure among them is not ordinary. A preview whose bytes failed
+                        // their integrity tag is a tampering signal, and drawing it as the same
+                        // badge an audio file gets would be the silent rendering the error-handling
+                        // rule forbids. Everything else here — an image Coil could not decode, a
+                        // preview that would not read — leaves the tile exactly as it was.
+                        val cause = (painter.state as? AsyncImagePainter.State.Error)?.result?.throwable
+                        badge(previewFailedIntegrity(cause))
+                    },
+                    modifier = Modifier.fillMaxSize().clip(DarkChamberTheme.shapes.medium),
+                )
+            }
         }
 
         Text(

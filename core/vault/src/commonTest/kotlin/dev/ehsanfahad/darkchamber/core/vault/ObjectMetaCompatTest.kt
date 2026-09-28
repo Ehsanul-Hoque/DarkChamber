@@ -5,6 +5,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromByteArray
 import kotlinx.serialization.encodeToByteArray
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
@@ -15,6 +16,14 @@ import kotlin.test.assertNull
  */
 @Serializable
 private data class ExtendedMeta(val name: String, val mime: String, val width: Int? = null)
+
+/**
+ * `ObjectMeta` as it was **before** the thumbnail key existed — the exact shape every vault created
+ * up to now has its metadata sealed in. Stored bytes are the one thing a later build cannot change,
+ * so this is what "old vaults always open" means concretely.
+ */
+@Serializable
+private data class PreThumbnailMeta(val name: String, val mime: String)
 
 /**
  * The `enc_meta` blob is **versionless** — unlike `.dchm` it has no prelude, no format vector and
@@ -54,5 +63,42 @@ class ObjectMetaCompatTest {
         val decoded = decodeMeta(newer)
 
         assertEquals(ObjectMeta("clip.mp4", "video/mp4"), decoded)
+    }
+
+    @Test
+    fun metadata_sealed_before_thumbnails_existed_opens_with_no_thumbnail_key() {
+        // Bytes as a pre-thumbnail build wrote them: two fields, nothing else.
+        val sealedBefore = metaCbor.encodeToByteArray(PreThumbnailMeta("holiday.jpg", "image/jpeg"))
+
+        val decoded = decodeMeta(sealedBefore)
+
+        assertEquals("holiday.jpg", decoded.name)
+        assertEquals("image/jpeg", decoded.mime)
+        // Absent key ⇒ no thumbnail. This is the whole no-backfill story: every item imported by a
+        // build that predates previews lands here and renders its type badge, rather than failing
+        // to open.
+        assertNull(decoded.thumbnailKey, "a pre-thumbnail blob must decode with the key absent")
+    }
+
+    @Test
+    fun metadata_carrying_a_thumbnail_key_round_trips_it_by_content() {
+        val key = ByteArray(32) { it.toByte() }
+
+        val decoded = decodeMeta(encodeMeta(ObjectMeta("holiday.jpg", "image/jpeg", key)))
+
+        // contentEquals, not identity: the decoded array is necessarily a different object, and a
+        // key that came back altered would decrypt nothing.
+        assertContentEquals(key, decoded.thumbnailKey)
+    }
+
+    @Test
+    fun a_build_predating_the_thumbnail_key_still_reads_metadata_that_carries_one() {
+        // The downgrade direction, now with a field that actually exists rather than a stand-in:
+        // a second device one version behind must still list the item, not fail it as unreadable.
+        val newer = encodeMeta(ObjectMeta("holiday.jpg", "image/jpeg", ByteArray(32) { 7 }))
+
+        val decodedByOlderShape = metaCbor.decodeFromByteArray<PreThumbnailMeta>(newer)
+
+        assertEquals(PreThumbnailMeta("holiday.jpg", "image/jpeg"), decodedByOlderShape)
     }
 }

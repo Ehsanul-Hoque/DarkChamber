@@ -289,7 +289,7 @@ class DefaultVaultGalleryComponentTest {
     }
 
     /**
-     * The component watches the batch; it does not own it (spec D7). A screen that is destroyed
+     * The component watches the batch; it does not own it. A screen that is destroyed
      * mid-import — which the albums cycle makes ordinary — must not take fifty photos down with it.
      */
     @Test
@@ -330,6 +330,12 @@ private class FakeImports : VaultImports {
         private set
     var acknowledged = 0
         private set
+    var deleteRequests = 0
+        private set
+    var deleteConfirmations = 0
+        private set
+    var keeps = 0
+        private set
 
     fun emit(next: ImportState) {
         _state.value = next
@@ -350,6 +356,18 @@ private class FakeImports : VaultImports {
     override fun acknowledge() {
         acknowledged++
     }
+
+    override fun requestOriginalDelete() {
+        deleteRequests++
+    }
+
+    override fun confirmOriginalDelete() {
+        deleteConfirmations++
+    }
+
+    override fun keepOriginals() {
+        keeps++
+    }
 }
 
 /** A listing that fails the way a broken catalog does: by throwing inside the flow. */
@@ -364,4 +382,6 @@ private class ExplodingVaultItems : VaultItems {
         isActive: () -> Boolean,
         openSource: () -> RawSource,
     ): Outcome<ByteArray> = Outcome.Ok(byteArrayOf(1))
+
+    override fun thumbnail(id: ByteArray): Outcome<ByteArray?> = Outcome.Ok(null)
 }
