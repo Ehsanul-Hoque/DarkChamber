@@ -69,13 +69,18 @@ class ThumbnailOrientationTest {
         assertTrue(vertical.mirrored)
         assertEquals(180, vertical.degrees, "a vertical flip is a mirror plus a half turn")
 
+        // The pairing these two get wrong if you go by the names: **transpose is the 270° one** and
+        // transverse is the 90° one. The first version of this test asserted the opposite, which is
+        // also what the code did, so the two agreed and both were wrong — a device run drew tags 5
+        // and 7 upside down. The values below are the EXIF table's, checked against real files
+        // whose rasters are transposed so that an honoured tag renders every variant identically.
         val transpose = orientationTransform(ExifInterface.ORIENTATION_TRANSPOSE)
         assertTrue(transpose.mirrored)
-        assertEquals(90, transpose.degrees)
+        assertEquals(270, transpose.degrees)
 
         val transverse = orientationTransform(ExifInterface.ORIENTATION_TRANSVERSE)
         assertTrue(transverse.mirrored)
-        assertEquals(270, transverse.degrees)
+        assertEquals(90, transverse.degrees)
     }
 
     @Test

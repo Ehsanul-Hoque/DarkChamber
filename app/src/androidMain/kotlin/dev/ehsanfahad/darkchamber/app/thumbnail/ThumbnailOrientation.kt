@@ -36,8 +36,12 @@ internal fun orientationTransform(orientation: Int): ThumbnailTransform = when (
     // A vertical flip is a horizontal one turned through half a circle; expressing it that way
     // means the matrix below only ever needs one kind of flip.
     ExifInterface.ORIENTATION_FLIP_VERTICAL -> ThumbnailTransform(180, mirrored = true)
-    ExifInterface.ORIENTATION_TRANSPOSE -> ThumbnailTransform(90, mirrored = true)
-    ExifInterface.ORIENTATION_TRANSVERSE -> ThumbnailTransform(270, mirrored = true)
+    // Transpose is a mirror plus **three** quarter turns and transverse is a mirror plus one — not
+    // the other way round, which is what this said until a device run drew both of them upside
+    // down. The pairing is easy to get backwards because the names suggest the diagonals rather
+    // than the rotations, and a unit test written from the same misreading agreed with it.
+    ExifInterface.ORIENTATION_TRANSPOSE -> ThumbnailTransform(270, mirrored = true)
+    ExifInterface.ORIENTATION_TRANSVERSE -> ThumbnailTransform(90, mirrored = true)
     else -> ThumbnailTransform(0, mirrored = false)
 }
 
