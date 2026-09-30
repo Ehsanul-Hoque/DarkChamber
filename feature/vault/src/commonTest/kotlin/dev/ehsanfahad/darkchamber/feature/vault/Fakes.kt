@@ -10,7 +10,9 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
 import dev.ehsanfahad.darkchamber.feature.vault.api.PhotoPicker
 import dev.ehsanfahad.darkchamber.feature.vault.api.PickedFile
 import dev.ehsanfahad.darkchamber.feature.vault.domain.VaultItems
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Runnable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,6 +21,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.io.Buffer
 import kotlinx.io.RawSource
 import kotlin.concurrent.Volatile
+import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.cancellation.CancellationException
 
 /** A picker that hands back whatever the test configured, or cancels, or refuses to open. */
@@ -137,6 +140,108 @@ internal class BlockingPickedFile(
 
     override fun close() {
         closed = true
+    }
+}
+
+/**
+ * A picked file that records when its details were read.
+ *
+ * On Android reading any of these is a cursor query into the provider, so *where* they are read
+ * matters as much as what they say — and nothing about the value reveals which thread asked.
+ */
+internal class RecordingPickedFile(
+    private val declaredName: String = "photo.jpg",
+    private val declaredMime: String = "image/jpeg",
+    private val declaredSize: Long? = 3L,
+    private val declaredDeletable: Boolean = true,
+    /**
+     * Consulted on **every** read, so a test can assert where each one happened rather than only
+     * whether one happened yet. Sampling a count at one moment covers the reads before that moment
+     * and says nothing about the rest.
+     */
+    private val onImportDispatcher: () -> Boolean = { true },
+) : PickedFile {
+    @Volatile
+    var columnReads: Int = 0
+        private set
+
+    /** Reads that happened anywhere but the import dispatcher — each one a provider query on the UI thread. */
+    @Volatile
+    var columnReadsElsewhere: Int = 0
+        private set
+
+    var closed = false
+        private set
+
+    private fun record() {
+        columnReads++
+        if (!onImportDispatcher()) columnReadsElsewhere++
+    }
+
+    override val name: String
+        get() {
+            record()
+            return declaredName
+        }
+
+    override val mime: String
+        get() {
+            record()
+            return declaredMime
+        }
+
+    override val size: Long?
+        get() {
+            record()
+            return declaredSize
+        }
+
+    override val deletable: Boolean
+        get() {
+            record()
+            return declaredDeletable
+        }
+
+    override fun openSource(): RawSource = Buffer().apply { write(byteArrayOf(1, 2, 3)) }
+
+    override fun deleteOriginal(): Boolean = declaredDeletable
+
+    override fun close() {
+        closed = true
+    }
+}
+
+/**
+ * A dispatcher that queues everything and runs it only when the test says so.
+ *
+ * `runTest`'s own dispatchers all share one scheduler, so advancing the test clock would run work
+ * posted to any of them — which cannot distinguish "this ran somewhere else" from "this ran here".
+ * Holding the queue by hand is what makes the distinction observable.
+ */
+internal class ManualDispatcher : CoroutineDispatcher() {
+    private val queued = mutableListOf<Runnable>()
+
+    /** True only while this dispatcher is actually executing something. */
+    @Volatile
+    var isRunning: Boolean = false
+        private set
+
+    override fun dispatch(context: CoroutineContext, block: Runnable) {
+        queued += block
+    }
+
+    /** Runs everything queued so far, including whatever those blocks queue in turn. */
+    fun drain() {
+        isRunning = true
+        try {
+            while (queued.isNotEmpty()) {
+                val batch = queued.toList()
+                queued.clear()
+                batch.forEach { it.run() }
+            }
+        } finally {
+            isRunning = false
+        }
     }
 }
 

@@ -53,7 +53,12 @@ class ImportCoordinatorTest {
         return ImportCoordinator(
             photoPicker = photos,
             filePicker = files,
-            queue = ImportQueue(ImportFile(vault = vault, ioContext = dispatcher)),
+            // Both the encrypt and the picked-file column reads happen off the caller's thread, and
+            // the test drives both on its own scheduler.
+            queue = ImportQueue(
+                importFile = ImportFile(vault = vault, ioContext = dispatcher),
+                ioContext = dispatcher,
+            ),
             scope = CoroutineScope(dispatcher),
             // Deleting an original is a blocking provider call, so it runs off the caller's thread
             // like the encrypt does — and, like the encrypt, the test drives it on its own scheduler.

@@ -65,6 +65,13 @@ internal class ImportFile(
 ) {
     suspend operator fun invoke(
         picked: PickedFile,
+        /**
+         * What the platform already told the caller about this file, read once and off the main
+         * thread. Defaulted to asking the file, which is what a caller with no snapshot of its own
+         * would do — but a batch resolves it up front, because on Android every one of these is a
+         * cursor query into the provider.
+         */
+        facts: PickedFileFacts = PickedFileFacts(picked.name, picked.mime, picked.size),
         isActive: () -> Boolean = { true },
         onProgress: (ImportPhase, Long) -> Unit = { _, _ -> },
     ): ImportResult {
@@ -84,8 +91,8 @@ internal class ImportFile(
                 // Named, not positional: the seam grew a parameter between `isActive` and the opener,
                 // and a positional call would have passed the opener as the already-open source.
                 vault.import(
-                    name = picked.name,
-                    mime = picked.mime,
+                    name = facts.name,
+                    mime = facts.mime,
                     onProgress = onProgress,
                     isActive = isActive,
                     first = first,

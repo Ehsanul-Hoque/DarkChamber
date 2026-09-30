@@ -40,7 +40,12 @@ fun vaultImports(
     return ImportCoordinator(
         photoPicker = photoPicker,
         filePicker = filePicker,
-        queue = ImportQueue(ImportFile(vault = items, ioContext = ioContext)),
+        queue = ImportQueue(
+            importFile = ImportFile(vault = items, ioContext = ioContext),
+            // The same context: reading a picked file's details is a provider round-trip, so it
+            // belongs wherever the encrypt already runs rather than on the thread driving the batch.
+            ioContext = ioContext,
+        ),
         scope = scope,
         // The same reason as the encrypt: deleting an original is a blocking provider call, and a
         // batch of them on the UI thread is a frozen app.

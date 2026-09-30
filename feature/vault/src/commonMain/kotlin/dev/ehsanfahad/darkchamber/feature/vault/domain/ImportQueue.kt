@@ -4,6 +4,9 @@ import dev.ehsanfahad.darkchamber.core.vault.ImportPhase
 import dev.ehsanfahad.darkchamber.feature.vault.api.FailedImport
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportStage
 import dev.ehsanfahad.darkchamber.feature.vault.api.PickedFile
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlin.coroutines.CoroutineContext
 
 /**
  * How far a batch has got: which file, which stage of it, and how far into that stage.
@@ -56,6 +59,19 @@ internal data class ImportSummary(
 }
 
 /**
+ * What a picked file says about itself, read once.
+ *
+ * A snapshot rather than repeated property access, because on Android each of these is a query into
+ * the provider that owns the file. Reading them twice is a second round-trip for an answer that
+ * cannot have changed, and reading them on the wrong thread is what this type exists to stop.
+ *
+ * The name is decrypted vault content, so it must not reach a log line (hard rule #4).
+ */
+internal data class PickedFileFacts(val name: String, val mime: String, val size: Long?) {
+    override fun toString(): String = "PickedFileFacts(name=${name.length} chars, mime=$mime, size=$size)"
+}
+
+/**
  * Import a picked batch, one file at a time.
  *
  * **Sequential by construction.** Encryption is CPU-bound, so running files in parallel
@@ -73,7 +89,19 @@ internal data class ImportSummary(
  * Every [PickedFile] holds a platform grant. [ImportFile] closes the one it is handed, on every
  * path; the ones a stopped batch never reached are closed here.
  */
-internal class ImportQueue(private val importFile: ImportFile) {
+internal class ImportQueue(
+    private val importFile: ImportFile,
+    /**
+     * Where a picked file's details are read from the platform.
+     *
+     * On Android a name, a size and a deletable flag are a cursor query into the provider that owns
+     * the file — a blocking binder round-trip, and a cloud provider may take its time over one. This
+     * loop runs on whatever context the caller drives it from, which is the main thread, so a
+     * fifty-file pick was a hundred and fifty of those round-trips on the thread that draws the
+     * screen before the first byte was read. A single-file pick never showed it.
+     */
+    private val ioContext: CoroutineContext = Dispatchers.Default,
+) {
 
     suspend operator fun invoke(
         files: List<PickedFile>,
@@ -94,26 +122,34 @@ internal class ImportQueue(private val importFile: ImportFile) {
                 val index = next
                 next++
 
-                val total = file.size
+                // Resolved once, off this thread, before anything is reported about the file. Every
+                // later use is this snapshot rather than another look at the provider.
+                val facts = withContext(ioContext) { PickedFileFacts(file.name, file.mime, file.size) }
+
                 // Before the first report the file has not been handed over yet, which is the fetch
                 // stage by definition — there is nothing to measure because nothing exists to
                 // measure. For a local file it lasts one read and nobody sees it.
-                onProgress(ImportProgress(index, files.size, file.name, ImportStage.FETCHING, null))
+                onProgress(ImportProgress(index, files.size, facts.name, ImportStage.FETCHING, null))
 
-                val result = importFile(file, isActive) { phase, bytes ->
+                // The snapshot goes with the file rather than being re-read downstream: nothing in
+                // the seam promises these are cached, and an implementation that queries on every
+                // access would otherwise pay for one per progress frame.
+                val result = importFile(file, facts, isActive) { phase, bytes ->
                     val stage = phase.toStage()
-                    onProgress(ImportProgress(index, files.size, file.name, stage, total.fractionAt(stage, bytes)))
+                    onProgress(
+                        ImportProgress(index, files.size, facts.name, stage, facts.size.fractionAt(stage, bytes)),
+                    )
                 }
                 when (result) {
                     is ImportResult.Imported -> {
                         imported++
-                        // Asked only of a file that landed. On Android the answer comes from the
-                        // column lookup this file's name already forced, so it costs nothing here —
-                        // and asking about a file we will never offer would be a provider
-                        // round-trip spent on nothing.
-                        if (file.deletable) deletable += file
+                        // Asked only of a file that landed, and asked off this thread like the rest:
+                        // on Android it is another provider round-trip, even when the answer is
+                        // already cached behind the name lookup. Asking about a file we will never
+                        // offer would be one spent on nothing.
+                        if (withContext(ioContext) { file.deletable }) deletable += file
                     }
-                    is ImportResult.Failed -> failed += FailedImport(file.name, result.error)
+                    is ImportResult.Failed -> failed += FailedImport(facts.name, result.error)
                     // Neither list. Nothing was wrong with this file — the batch was stopped while it
                     // was being fetched or encrypted — and telling the user it failed would blame a
                     // file for their own decision. Which of the two it was is settled upstream,
