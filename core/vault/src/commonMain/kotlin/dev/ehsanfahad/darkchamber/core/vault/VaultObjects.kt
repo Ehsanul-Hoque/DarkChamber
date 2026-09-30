@@ -119,6 +119,11 @@ class VaultObjects(
             }
         }
 
+        // The copy's own counter, separate from the encrypt's by construction rather than by being
+        // reset. One counter shared across the two would open the encrypt phase at the payload size,
+        // and a caller dividing by `2 × size` would draw a bar that begins half full.
+        var copied = 0L
+
         // useSpilledCopy owns `held` once it starts copying — but it can throw before it gets there
         // (its scratch-name collision loop touches the filesystem first), and storeObject can throw
         // if the session dies mid-import. Either way the provider stream would be leaked and the
@@ -132,7 +137,19 @@ class VaultObjects(
                 // into an already-wiped directory after the master key is gone. Aborting here throws
                 // out of the copy, and `useSpilledCopy` deletes the half-written scratch on its way
                 // out.
-                .useSpilledCopy(SessionGuardedSource(held) { session.isOpen && isActive() }) { spilled ->
+                //
+                // Counted, and only on this path: a re-openable source is never copied, so reporting
+                // the phase for it would put a label on work that is not happening. For a provider
+                // that streams, this drain *is* the transfer — the guard is nested inside so a stopped
+                // copy reports nothing further, the same ordering the encrypt phase uses.
+                .useSpilledCopy(
+                    SessionGuardedSource(
+                        ProgressSource(held) { n ->
+                            copied += n
+                            onProgress(ImportPhase.COPYING, copied)
+                        },
+                    ) { session.isOpen && isActive() },
+                ) { spilled ->
                     storeObject(kind, name, mime, chunkSize, onProgress, isActive, spilled)
                 }
                 .flatMap { it }
@@ -160,9 +177,11 @@ class VaultObjects(
         isActive: () -> Boolean,
         openSource: () -> RawSource,
     ): Outcome<ByteArray> {
-        // One counter for the whole import, declared here rather than inside the opener: the codec
-        // opens a fresh source per pass, so a per-source counter would restart halfway and the
-        // caller would watch the same bytes arrive twice.
+        // One counter for this phase, declared here rather than inside the opener: the codec opens a
+        // fresh source per pass, so a per-source counter would restart halfway and the caller would
+        // watch the same bytes arrive twice. It starts at zero even when a copy preceded it — the
+        // phases divide by different numbers, so a count carried across the boundary would open this
+        // one at the payload size.
         var processed = 0L
         val stillWanted = { session.isOpen && isActive() }
         return storeGuarded(

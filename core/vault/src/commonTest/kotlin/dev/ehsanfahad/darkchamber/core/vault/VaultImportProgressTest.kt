@@ -10,6 +10,7 @@ import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultItemKind
 import dev.ehsanfahad.darkchamber.core.storage.VaultStorage
 import kotlinx.io.Buffer
+import kotlinx.io.IOException
 import kotlinx.io.RawSource
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
@@ -114,6 +115,93 @@ class VaultImportProgressTest {
         catalog.close()
     }
 
+    /**
+     * The spill copy is the whole of a streaming provider's transfer, and it is the one stretch of
+     * such an import where real bytes with a real total exist. Left uncounted it would be a long
+     * indeterminate wait in the middle of a bar that otherwise moves.
+     *
+     * The second half of this test is the part that matters: the encrypt phase must start again from
+     * zero. A single counter carried across the boundary would open the encrypt phase at the payload
+     * size, and a caller dividing by `2 × size` would draw a bar that begins half full.
+     */
+    @Test
+    fun a_spilled_payload_is_counted_as_its_own_phase_and_the_encrypt_starts_over() {
+        SystemFileSystem.createDirectories(testDir)
+        val storage = VaultStorage(testDir)
+        val catalog = (CatalogStore.create(testSqlDriver()) as Outcome.Ok).value
+        val session = newSession()
+        val vo = objects(session, storage, catalog)
+
+        val size = 512L * 1024
+        val data = ByteArray(size.toInt()) { (it % 251).toByte() }
+        val reports = mutableListOf<Pair<ImportPhase, Long>>()
+
+        // maxOpens = 1: the re-openability probe fails, so the payload takes the spill path.
+        val opener = OneShotOpener(data)
+        val result = vo.importObject(
+            kind = VaultItemKind.FILE.code,
+            name = "one-shot.bin",
+            mime = "application/octet-stream",
+            chunkSize = 8192,
+            onProgress = { phase, bytes -> reports += phase to bytes },
+            openSource = opener::open,
+        )
+
+        assertIs<Outcome.Ok<ByteArray>>(result)
+
+        val copying = reports.filter { it.first == ImportPhase.COPYING }.map { it.second }
+        val encrypting = reports.filter { it.first == ImportPhase.ENCRYPTING }.map { it.second }
+
+        assertTrue(copying.size > 20, "the copy must report as it drains, got ${copying.size} reports")
+        assertEquals(size, copying.last(), "the copy phase must end at exactly the payload size")
+        copying.zipWithNext { a, b -> assertTrue(b >= a, "the copy went backwards: $a then $b") }
+
+        // The boundary. Not "roughly zero" — the first encrypt report is one buffer refill, which is
+        // far below the payload size, and a shared counter would make it exactly `size` plus one.
+        assertTrue(
+            encrypting.first() in 1..<size,
+            "the encrypt phase must start over, not continue the copy's count: got ${encrypting.first()}",
+        )
+        assertEquals(2 * size, encrypting.last(), "the encrypt phase still ends at twice the payload")
+
+        // Phases do not interleave: everything copied before anything was encrypted.
+        val phases = reports.map { it.first }
+        assertEquals(
+            listOf(ImportPhase.COPYING, ImportPhase.ENCRYPTING),
+            phases.distinct(),
+            "the copy must finish before the encrypt begins",
+        )
+        catalog.close()
+    }
+
+    @Test
+    fun a_reopenable_payload_reports_no_copy_phase() {
+        SystemFileSystem.createDirectories(testDir)
+        val storage = VaultStorage(testDir)
+        val catalog = (CatalogStore.create(testSqlDriver()) as Outcome.Ok).value
+        val session = newSession()
+        val vo = objects(session, storage, catalog)
+
+        val phases = mutableListOf<ImportPhase>()
+        val result = vo.importObject(
+            kind = VaultItemKind.FILE.code,
+            name = "streamed.bin",
+            mime = "application/octet-stream",
+            chunkSize = 8192,
+            onProgress = { phase, _ -> phases += phase },
+            openSource = { ReplayingSource(ByteArray(64 * 1024) { it.toByte() }) },
+        )
+
+        assertIs<Outcome.Ok<ByteArray>>(result)
+        // Nothing was copied, so nothing may be reported as copying. A phase reported for work that
+        // did not happen is a label on a bar that cannot move.
+        assertTrue(
+            ImportPhase.COPYING !in phases,
+            "a payload that streamed in place must report no copy phase",
+        )
+        catalog.close()
+    }
+
     @Test
     fun an_import_with_no_progress_callback_still_completes() {
         SystemFileSystem.createDirectories(testDir)
@@ -157,6 +245,22 @@ class VaultImportProgressTest {
         // have to tell apart from a real one.
         assertTrue(reports.all { it == 0L }, "an empty payload must not report bytes it never read")
         catalog.close()
+    }
+}
+
+/**
+ * Opens once and refuses thereafter — the shape of a provider stream that has to be spilled.
+ *
+ * The re-openability probe asks for a second source before reading anything, so a factory that
+ * allows exactly one open is what drives an import down the spill path.
+ */
+private class OneShotOpener(private val data: ByteArray) {
+    private var opens = 0
+
+    fun open(): RawSource {
+        opens++
+        if (opens > 1) throw IOException("this source opens only once")
+        return ReplayingSource(data)
     }
 }
 
