@@ -23,14 +23,18 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /**
- * Import progress is reported as **cumulative bytes across both codec passes**.
+ * Import progress is reported as a **phase plus cumulative bytes within that phase**.
  *
- * The `.dchm` write reads its payload twice — size + digest, then the chunk encrypt — which is an
- * implementation detail of the container, not something a user should ever see. A counter that
- * restarts at pass 2 draws a bar that fills, empties and fills again; one that reports only pass 2
- * leaves the first half of a long import looking frozen. So the contract is a single monotonic
- * count running 0 → `2 × size`, and the denominator stays with the feature layer that draws it
- * (this module owns no percentages, no totals and no idea what a bar is).
+ * The encrypt phase covers both of the codec's passes — size + digest, then the chunk encrypt —
+ * which is an implementation detail of the container, not something a user should ever see. A
+ * counter that restarts at pass 2 draws a bar that fills, empties and fills again; one that reports
+ * only pass 2 leaves the first half of a long import looking frozen. So within the phase the count
+ * is a single monotonic run 0 → `2 × size`.
+ *
+ * The phase is there because the denominator differs between them, and only this module knows which
+ * one applies — the payload's route through the import is its business, not the caller's. What has
+ * *not* changed is who owns the denominator: this module still reports no percentage, no total and
+ * no idea what a bar is.
  */
 class VaultImportProgressTest {
     private val testDir = Path(SystemTemporaryDirectory, "vprog-${Random.nextULong()}")
@@ -67,6 +71,7 @@ class VaultImportProgressTest {
         // whatever the implementation did — the vacuous version of this test.
         val size = 512L * 1024
         val data = ByteArray(size.toInt()) { (it % 251).toByte() }
+        val phases = mutableListOf<ImportPhase>()
         val reports = mutableListOf<Long>()
 
         val result = vo.importObject(
@@ -74,12 +79,22 @@ class VaultImportProgressTest {
             name = "big.bin",
             mime = "application/octet-stream",
             chunkSize = 8192,
-            onProgress = { reports += it },
+            onProgress = { phase, bytes ->
+                phases += phase
+                reports += bytes
+            },
             openSource = { ReplayingSource(data) },
         )
 
         assertIs<Outcome.Ok<ByteArray>>(result)
         assertTrue(reports.size > 20, "expected progress across many reads, got ${reports.size} reports")
+
+        // Every payload read of a re-openable source is the encrypt phase. Nothing was spilled, so
+        // there is no copy to report; this file is not an image, so there is no preview attempt.
+        assertTrue(
+            phases.all { it == ImportPhase.ENCRYPTING },
+            "payload reads must report the encrypt phase, got ${phases.distinct()}",
+        )
 
         // Monotonic: a count that restarted for pass 2 — or reported per-pass — shows up here as a
         // step backwards, which is the bar visibly emptying.
@@ -133,7 +148,7 @@ class VaultImportProgressTest {
             kind = VaultItemKind.FILE.code,
             name = "empty.bin",
             mime = "application/octet-stream",
-            onProgress = { reports += it },
+            onProgress = { _, bytes -> reports += bytes },
             openSource = { ReplayingSource(ByteArray(0)) },
         )
 

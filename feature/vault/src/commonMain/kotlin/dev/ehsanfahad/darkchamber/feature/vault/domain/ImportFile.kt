@@ -2,6 +2,7 @@ package dev.ehsanfahad.darkchamber.feature.vault.domain
 
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
+import dev.ehsanfahad.darkchamber.core.vault.ImportPhase
 import dev.ehsanfahad.darkchamber.feature.vault.api.PickedFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -35,7 +36,7 @@ internal class ImportFile(
     suspend operator fun invoke(
         picked: PickedFile,
         isActive: () -> Boolean = { true },
-        onProgress: (Long) -> Unit = {},
+        onProgress: (ImportPhase, Long) -> Unit = { _, _ -> },
     ): ImportResult {
         return try {
             val outcome = withContext(ioContext) {

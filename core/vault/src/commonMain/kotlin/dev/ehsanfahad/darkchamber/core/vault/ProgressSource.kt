@@ -11,6 +11,12 @@ import kotlinx.io.RawSource
  * sources. A counter owned by the source would restart on the second open, and the progress the
  * user sees would fill, empty and fill again.
  *
+ * The scope that must not restart is **one [ImportPhase]**, not one import. Across the codec's two
+ * passes the count runs on, because those two passes are one bar filling once. Across a phase
+ * boundary it starts again, because the next phase divides by a different number — a count carried
+ * over would put the encrypt phase at the payload size before it had encrypted anything. So the
+ * owner of a counter is whichever phase opened the source, and two phases never share one.
+ *
  * Counting the source rather than the codec keeps `core:crypto` free of progress concepts and puts
  * the count at the finest granularity available — one buffered refill, well below the chunk size —
  * so a long file moves continuously rather than a chunk at a time.

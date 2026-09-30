@@ -58,12 +58,14 @@ class VaultObjects(
      * row insert fails after the object is written, the object is deleted so no orphan ciphertext is
      * left behind.
      *
-     * [onProgress] receives the **cumulative** count of payload bytes read so far — one monotonic
-     * run from 0 to `2 × size`, because both of the codec's passes are counted. The two-pass read is
-     * the container's business, not the user's, so this module reports bytes and nothing else: the
-     * caller owns the denominator, the percentage and the decision of what to draw when no size is
-     * known. A spilled one-shot source is copied to `tmp/` before any of this, and that copy is not
-     * counted — the end point must not depend on whether the source could be re-opened.
+     * [onProgress] receives an [ImportPhase] and the **cumulative** count of bytes read within that
+     * phase. [ImportPhase.ENCRYPTING] covers both of the codec's passes as one monotonic run from 0
+     * to `2 × size`, because the two-pass read is the container's business and not the user's.
+     *
+     * The phase is reported because the denominator differs between them and only this module knows
+     * which one applies — whether the source had to be spilled is decided in here. The caller still
+     * owns the denominator, the percentage, and the decision of what to draw when no size is known:
+     * [ImportPhase] says which arithmetic to do, never what to show.
      *
      * [isActive] lets a caller abandon an import that is still running. It is polled on every read,
      * alongside the session's own state, and returning `false` aborts within a read or two — the
@@ -77,7 +79,7 @@ class VaultObjects(
         name: String,
         mime: String,
         chunkSize: Int = DchmFormat.DEFAULT_CHUNK_SIZE,
-        onProgress: (Long) -> Unit = {},
+        onProgress: (ImportPhase, Long) -> Unit = { _, _ -> },
         isActive: () -> Boolean = { true },
         openSource: () -> RawSource,
     ): Outcome<ByteArray> {
@@ -154,7 +156,7 @@ class VaultObjects(
         name: String,
         mime: String,
         chunkSize: Int,
-        onProgress: (Long) -> Unit,
+        onProgress: (ImportPhase, Long) -> Unit,
         isActive: () -> Boolean,
         openSource: () -> RawSource,
     ): Outcome<ByteArray> {
@@ -172,7 +174,7 @@ class VaultObjects(
                 SessionGuardedSource(
                     ProgressSource(openSource()) { n ->
                         processed += n
-                        onProgress(processed)
+                        onProgress(ImportPhase.ENCRYPTING, processed)
                     },
                     stillWanted,
                 )

@@ -91,7 +91,9 @@ internal class ImportQueue(private val importFile: ImportFile) {
                 val total = file.size
                 onProgress(ImportProgress(index, files.size, file.name, startingFraction()))
 
-                val result = importFile(file, isActive) { bytes ->
+                // The phase is not read yet — the state that renders it arrives with the per-phase
+                // denominators, and dividing by the wrong one would be worse than not knowing.
+                val result = importFile(file, isActive) { _, bytes ->
                     onProgress(ImportProgress(index, files.size, file.name, total.fractionAt(bytes)))
                 }
                 when (result) {

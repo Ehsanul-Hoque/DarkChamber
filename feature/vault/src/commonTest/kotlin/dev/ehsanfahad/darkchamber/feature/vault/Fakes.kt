@@ -3,6 +3,7 @@ package dev.ehsanfahad.darkchamber.feature.vault
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
 import dev.ehsanfahad.darkchamber.core.model.VaultItemKind
+import dev.ehsanfahad.darkchamber.core.vault.ImportPhase
 import dev.ehsanfahad.darkchamber.core.vault.ObjectMeta
 import dev.ehsanfahad.darkchamber.core.vault.VaultItemSummary
 import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
@@ -133,7 +134,7 @@ internal class FakeVaultItems(
     override fun import(
         name: String,
         mime: String,
-        onProgress: (Long) -> Unit,
+        onProgress: (ImportPhase, Long) -> Unit,
         isActive: () -> Boolean,
         openSource: () -> RawSource,
     ): Outcome<ByteArray> {
@@ -146,7 +147,9 @@ internal class FakeVaultItems(
         // The real guard aborts a read once the predicate goes false; the fake checks once, which is
         // enough to prove the caller is wired to it.
         if (!isActive()) return Outcome.Err(VaultError.Io(RuntimeException("stopped")))
-        bytesPerImport.forEach(onProgress)
+        // Every configured report is an encrypt-phase read: that is the phase a payload read belongs
+        // to unless the source spilled, which the fake never does.
+        bytesPerImport.forEach { onProgress(ImportPhase.ENCRYPTING, it) }
         return if (name in failFor) Outcome.Err(VaultError.Io(RuntimeException("unreadable"))) else importResult
     }
 
@@ -166,7 +169,7 @@ internal class ThrowingVaultItems : VaultItems {
     override fun import(
         name: String,
         mime: String,
-        onProgress: (Long) -> Unit,
+        onProgress: (ImportPhase, Long) -> Unit,
         isActive: () -> Boolean,
         openSource: () -> RawSource,
     ): Outcome<ByteArray> = throw IllegalStateException("import exploded")
@@ -181,7 +184,7 @@ internal class CancellingVaultItems : VaultItems {
     override fun import(
         name: String,
         mime: String,
-        onProgress: (Long) -> Unit,
+        onProgress: (ImportPhase, Long) -> Unit,
         isActive: () -> Boolean,
         openSource: () -> RawSource,
     ): Outcome<ByteArray> = throw CancellationException("the session was torn down mid-import")

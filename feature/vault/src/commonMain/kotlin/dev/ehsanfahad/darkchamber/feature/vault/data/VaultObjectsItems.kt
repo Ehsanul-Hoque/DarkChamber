@@ -2,6 +2,7 @@ package dev.ehsanfahad.darkchamber.feature.vault.data
 
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultItemKind
+import dev.ehsanfahad.darkchamber.core.vault.ImportPhase
 import dev.ehsanfahad.darkchamber.core.vault.VaultItemSummary
 import dev.ehsanfahad.darkchamber.core.vault.VaultObjects
 import dev.ehsanfahad.darkchamber.feature.vault.domain.VaultItems
@@ -25,7 +26,7 @@ internal class VaultObjectsItems(private val objects: VaultObjects) : VaultItems
     override fun import(
         name: String,
         mime: String,
-        onProgress: (Long) -> Unit,
+        onProgress: (ImportPhase, Long) -> Unit,
         isActive: () -> Boolean,
         openSource: () -> RawSource,
     ): Outcome<ByteArray> =

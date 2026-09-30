@@ -6,6 +6,7 @@ import com.arkivanov.essenty.lifecycle.destroy
 import com.arkivanov.essenty.lifecycle.resume
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
+import dev.ehsanfahad.darkchamber.core.vault.ImportPhase
 import dev.ehsanfahad.darkchamber.core.vault.VaultItemSummary
 import dev.ehsanfahad.darkchamber.feature.vault.FakeFilePicker
 import dev.ehsanfahad.darkchamber.feature.vault.FakePickedFile
@@ -378,7 +379,7 @@ private class ExplodingVaultItems : VaultItems {
     override fun import(
         name: String,
         mime: String,
-        onProgress: (Long) -> Unit,
+        onProgress: (ImportPhase, Long) -> Unit,
         isActive: () -> Boolean,
         openSource: () -> RawSource,
     ): Outcome<ByteArray> = Outcome.Ok(byteArrayOf(1))
