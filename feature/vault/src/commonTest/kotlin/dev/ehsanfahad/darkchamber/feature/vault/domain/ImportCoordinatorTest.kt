@@ -129,8 +129,15 @@ class ImportCoordinatorTest {
         assertEquals(listOf("broken.jpg"), state.failed.map { it.name })
     }
 
+    /**
+     * A picker that cannot be shown used to leave the batch at idle, silently, so the button that
+     * had just been tapped simply looked inert.
+     *
+     * It gets a state of its own rather than a failed-file entry: no file was chosen and no file
+     * failed, so borrowing the failure banner would name a victim that does not exist (hard rule #6).
+     */
     @Test
-    fun a_picker_that_cannot_be_shown_leaves_no_batch_running() = runTest {
+    fun a_picker_that_cannot_be_shown_says_so() = runTest {
         val vault = FakeVaultItems()
         val subject = coordinator(
             vault,
@@ -139,8 +146,53 @@ class ImportCoordinatorTest {
 
         subject.importPhotos()
 
-        assertEquals(ImportState.Idle, subject.state.value, "a picker that never opened imported nothing")
-        assertFalse(subject.isRunning, "and left nothing running")
+        assertEquals(ImportState.PickerUnavailable, subject.state.value, "the tap must not vanish")
+        assertFalse(subject.isRunning, "and it left nothing running")
+        assertEquals(0, vault.importCalls, "a picker that never opened imported nothing")
+    }
+
+    @Test
+    fun the_picker_failure_notice_is_dismissible() = runTest {
+        val subject = coordinator(
+            FakeVaultItems(),
+            files = FakeFilePicker(failure = IllegalStateException("no activity")),
+        )
+
+        subject.importFiles()
+        assertEquals(ImportState.PickerUnavailable, subject.state.value)
+
+        subject.acknowledge()
+
+        assertEquals(ImportState.Idle, subject.state.value, "the notice is dismissible, not sticky")
+    }
+
+    @Test
+    fun retrying_after_a_picker_failure_works() = runTest {
+        val vault = FakeVaultItems()
+        val photos = FakePhotoPicker(failure = IllegalStateException("no view controller"))
+        val subject = coordinator(vault, photos = photos)
+
+        subject.importPhotos()
+        assertEquals(ImportState.PickerUnavailable, subject.state.value)
+
+        // The notice is not a running batch, so it must not block the next attempt — a picker that
+        // failed once is the kind of thing a second tap fixes.
+        subject.importPhotos()
+
+        assertEquals(2, photos.calls, "the failure notice must not latch the affordance shut")
+    }
+
+    /**
+     * Backing out of a picker is not a failure and must raise nothing. The two are told apart by
+     * *how* the picker returned: an empty list is a choice, a throw is the picker never opening.
+     */
+    @Test
+    fun a_cancelled_pick_still_goes_quietly_to_idle() = runTest {
+        val subject = coordinator(FakeVaultItems(), photos = FakePhotoPicker(emptyList()))
+
+        subject.importPhotos()
+
+        assertEquals(ImportState.Idle, subject.state.value, "changing your mind is not a failure")
     }
 
     @Test

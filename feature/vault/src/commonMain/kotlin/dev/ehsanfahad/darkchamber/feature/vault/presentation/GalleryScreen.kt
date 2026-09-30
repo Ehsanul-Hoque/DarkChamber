@@ -130,6 +130,14 @@ internal fun GalleryScreen(
                     onDeleteOriginals = onRequestOriginalDelete,
                 )
                 ImportState.Idle -> ImportActions(onAddPhotos = onAddPhotos, onAddFiles = onAddFiles)
+                // Not the failed-file banner: nothing was chosen, so there is no file to blame
+                // (hard rule 6). It sits above the actions rather than replacing them, because the
+                // fix for a picker that would not open is usually to tap again.
+                ImportState.PickerUnavailable -> PickerUnavailableCard(
+                    onDismiss = onAcknowledgeImport,
+                    onAddPhotos = onAddPhotos,
+                    onAddFiles = onAddFiles,
+                )
             }
         }
 
@@ -347,6 +355,47 @@ private fun ImportProgressCard(batch: ImportState.Running, onCancel: () -> Unit)
                 )
             }
         }
+    }
+}
+
+/**
+ * Shown when the platform would not present a picker at all.
+ *
+ * Says what happened and no more. We do not know *why* — no activity to host the intent, no view
+ * controller to present from, a provider that fell over — and guessing would be worse than the plain
+ * fact (hard rule 6). It deliberately does **not** reuse the failed-file banner: no file was chosen,
+ * so naming one would invent a victim.
+ *
+ * The add actions stay underneath it, because a picker that failed once is usually fixed by tapping
+ * again, and a notice that took the buttons away would leave the screen with nothing to do.
+ */
+@Composable
+private fun PickerUnavailableCard(onDismiss: () -> Unit, onAddPhotos: () -> Unit, onAddFiles: () -> Unit) {
+    val colors = DarkChamberTheme.colors
+    val spacing = DarkChamberTheme.spacing
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = spacing.spaceSm)
+                .background(color = colors.surfaceRaised, shape = DarkChamberTheme.shapes.large)
+                .padding(start = spacing.spaceMd, end = spacing.spaceSm),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "That picker wouldn't open. Nothing was added.",
+                style = DarkChamberTheme.typography.body,
+                color = colors.textPrimary,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(vertical = spacing.spaceSm),
+            )
+            TextButton(onClick = onDismiss) {
+                Text("OK", style = DarkChamberTheme.typography.label, color = colors.accent)
+            }
+        }
+        ImportActions(onAddPhotos = onAddPhotos, onAddFiles = onAddFiles)
     }
 }
 

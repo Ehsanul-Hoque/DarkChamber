@@ -16,6 +16,23 @@ sealed interface ImportState {
     data object Picking : ImportState
 
     /**
+     * The picker could not be shown at all, so nothing was chosen and nothing was imported.
+     *
+     * A state of its own rather than a [FailedImport] entry. Nothing failed to be *added* — there is
+     * no file to name, and the failure banner would name a victim that does not exist (hard rule #6).
+     * Without it the batch went straight back to [Idle] and the button the user had just tapped
+     * simply looked inert.
+     *
+     * Rare, and not the same as the user backing out: a cancelled pick returns an empty list and goes
+     * quietly to [Idle]. This is the platform refusing — no activity to host the intent, no view
+     * controller to present from.
+     *
+     * Dismissible, and it must not latch the affordance shut: a picker that failed once is the kind
+     * of thing a second tap fixes.
+     */
+    data object PickerUnavailable : ImportState
+
+    /**
      * A file is being imported. [index] is zero-based, so a screen shows `index + 1` of [total].
      *
      * [stage] is which part of that a screen may name — waiting for the file, copying it in,
