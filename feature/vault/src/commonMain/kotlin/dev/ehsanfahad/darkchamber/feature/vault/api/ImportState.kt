@@ -23,6 +23,12 @@ sealed interface ImportState {
      * used to look like nothing was happening, one before any byte existed and one after the bar had
      * reached its own end.
      *
+     * **`null` means there is nothing worth naming yet.** The batch always knows which stage it is
+     * in; what it does not know is whether that stage has lasted long enough to be worth saying out
+     * loud. A local file passes through the two unmeasurable stages in less time than a frame, so
+     * presentation holds their names back until they have lasted and publishes `null` until then —
+     * which is exactly the card as it looked before stages existed.
+     *
      * [fileFraction] runs 0 → 1 across the current [stage], not across the whole file: the stages
      * divide by different numbers, and two of them divide by nothing. It is **null** whenever there
      * is nothing honest to divide by — an unmeasurable stage, or a platform that never said how big
@@ -42,7 +48,7 @@ sealed interface ImportState {
         val fileFraction: Float?,
         // Defaulted to the ordinary case, the same way `stopping` is: most of every import is the
         // encrypt, and a test about something else should not have to name a stage to say so.
-        val stage: ImportStage = ImportStage.ENCRYPTING,
+        val stage: ImportStage? = ImportStage.ENCRYPTING,
         val stopping: Boolean = false,
     ) : ImportState {
         // The name is decrypted vault content; the generated toString would print it into any log

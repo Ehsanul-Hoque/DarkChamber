@@ -51,4 +51,14 @@ enum class ImportStage {
      * is possible is something only the encoder knows.
      */
     FINISHING,
+    ;
+
+    /**
+     * Whether this stage has a total to divide by.
+     *
+     * The two that do not are exactly the two a screen has to **name**, because a bar that cannot
+     * move explains nothing on its own. They are also the two that must not be named too eagerly: a
+     * local file passes through both in less time than a frame, so a batch of them would strobe.
+     */
+    val measurable: Boolean get() = this == COPYING || this == ENCRYPTING
 }

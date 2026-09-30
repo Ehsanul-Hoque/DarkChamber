@@ -58,6 +58,10 @@ internal class DefaultVaultGalleryComponent(
     // the user has chosen, while the system materialises the selection (on iOS, a per-asset iCloud
     // download that can run to seconds). Zero in tests.
     private val pickingDelay: Duration = PICKING_DELAY,
+    // How long a stage that cannot be measured has to last before it is worth naming. Short enough
+    // that a real wait is explained almost at once, long enough that a local file — which passes
+    // through both unmeasurable stages in microseconds — never names either. Zero in tests.
+    private val stageGrace: Duration = STAGE_GRACE,
 ) : VaultGalleryComponent, ComponentContext by componentContext {
 
     // SupervisorJob so one failed intent does not kill the component's other work, but parented to
@@ -87,6 +91,10 @@ internal class DefaultVaultGalleryComponent(
         imports.state
             .holdBackPicking(pickingDelay)
             .throttleProgress(progressInterval)
+            // After the throttle, not before: the announcement it makes later is a single frame the
+            // throttle would be entitled to drop, having just let the silent version of the same
+            // state through.
+            .holdBackUnmeasurableStages(stageGrace)
             .onEach(::onImportState)
             .launchIn(scope)
     }
@@ -130,6 +138,34 @@ internal class DefaultVaultGalleryComponent(
         transformLatest { value ->
             if (value is ImportState.Picking) delay(after)
             emit(value)
+        }
+
+    /**
+     * Hold back the *name* of a stage that cannot be measured until it has lasted [after].
+     *
+     * One rule, not two special cases: **a stage with no fraction to draw is announced only once it
+     * has lasted; a stage with a denominator is announced at once**, because a moving bar is its own
+     * evidence that something is happening.
+     *
+     * Both unmeasurable stages need it. Waiting for a local file takes microseconds, and every import
+     * ends with a preview attempt whether or not a preview is possible — so without this, a batch of
+     * twenty-five local photos would flash two labels per file, fifty in a few seconds.
+     *
+     * `transformLatest`, for the same reason as [holdBackPicking]: a new state must **cancel** the
+     * pending announcement, so a stage that did not last is never named at all. The silent version
+     * goes out immediately, so the card keeps its file, its count and its indeterminate bar
+     * throughout — exactly as it looked before stages existed.
+     */
+    private fun Flow<ImportState>.holdBackUnmeasurableStages(after: Duration): Flow<ImportState> =
+        transformLatest { value ->
+            val stage = (value as? ImportState.Running)?.stage
+            if (stage != null && !stage.measurable) {
+                emit(value.copy(stage = null))
+                delay(after)
+                emit(value)
+            } else {
+                emit(value)
+            }
         }
 
     /**
@@ -196,5 +232,16 @@ internal class DefaultVaultGalleryComponent(
          * moment later anyway.
          */
         val PICKING_DELAY: Duration = 450.milliseconds
+
+        /**
+         * A wait worth naming is one that lasted.
+         *
+         * Below this, an import is not waiting on anything a person would notice: a local file is
+         * handed over and previewed in microseconds, and naming either stage would put two labels on
+         * screen per file — fifty of them across a batch of twenty-five photos, none legible. Above
+         * it, something really is holding the import up, and saying which of the two it is turns a
+         * bar that cannot move into an explanation.
+         */
+        val STAGE_GRACE: Duration = 400.milliseconds
     }
 }
