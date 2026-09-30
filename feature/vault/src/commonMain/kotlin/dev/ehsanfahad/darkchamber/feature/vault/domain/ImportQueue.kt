@@ -1,25 +1,31 @@
 package dev.ehsanfahad.darkchamber.feature.vault.domain
 
+import dev.ehsanfahad.darkchamber.core.vault.ImportPhase
 import dev.ehsanfahad.darkchamber.feature.vault.api.FailedImport
+import dev.ehsanfahad.darkchamber.feature.vault.api.ImportStage
 import dev.ehsanfahad.darkchamber.feature.vault.api.PickedFile
 
 /**
- * How far a batch has got: which file, and how far into it.
+ * How far a batch has got: which file, which stage of it, and how far into that stage.
  *
- * [fileFraction] runs 0 → 1 across the whole of one file, or is **null** when the platform never
- * said how big the file is — rendered as an indeterminate indicator rather than a bar against a
+ * [fileFraction] runs 0 → 1 across the current [stage] — not across the whole file, because the
+ * stages divide by different numbers and two of them divide by nothing at all. It is **null**
+ * whenever there is nothing honest to divide by: an unmeasurable stage, or a platform that never
+ * said how big the file is. Rendered as an indeterminate indicator rather than a bar against a
  * guessed total (hard rule #6).
  */
 internal data class ImportProgress(
     val index: Int,
     val total: Int,
     val name: String,
+    val stage: ImportStage,
     val fileFraction: Float?,
 ) {
     // The name is decrypted vault content, so the generated toString would put a file name in any
     // log line that renders this (hard rule #4).
     override fun toString(): String =
-        "ImportProgress(index=$index, total=$total, name=${name.length} chars, fileFraction=$fileFraction)"
+        "ImportProgress(index=$index, total=$total, name=${name.length} chars, " +
+            "stage=$stage, fileFraction=$fileFraction)"
 }
 
 /**
@@ -89,12 +95,14 @@ internal class ImportQueue(private val importFile: ImportFile) {
                 next++
 
                 val total = file.size
-                onProgress(ImportProgress(index, files.size, file.name, startingFraction()))
+                // Before the first report the file has not been handed over yet, which is the fetch
+                // stage by definition — there is nothing to measure because nothing exists to
+                // measure. For a local file it lasts one read and nobody sees it.
+                onProgress(ImportProgress(index, files.size, file.name, ImportStage.FETCHING, null))
 
-                // The phase is not read yet — the state that renders it arrives with the per-phase
-                // denominators, and dividing by the wrong one would be worse than not knowing.
-                val result = importFile(file, isActive) { _, bytes ->
-                    onProgress(ImportProgress(index, files.size, file.name, total.fractionAt(bytes)))
+                val result = importFile(file, isActive) { phase, bytes ->
+                    val stage = phase.toStage()
+                    onProgress(ImportProgress(index, files.size, file.name, stage, total.fractionAt(stage, bytes)))
                 }
                 when (result) {
                     is ImportResult.Imported -> {
@@ -127,36 +135,43 @@ internal class ImportQueue(private val importFile: ImportFile) {
 
     private companion object {
         /**
-         * Always indeterminate: a file that has not yet reported a single byte has no fraction to
-         * draw, and a confident `0f` claims otherwise.
+         * The vault's phase in the words a screen uses.
          *
-         * This is not pedantry about one frame. Between this emission and the first counted byte
-         * sits everything the platform does before we can read the file at all — and for a cloud
-         * document the provider downloads on demand, that is the *whole* download. A determinate bar
-         * pinned at 0% for minutes reads as "stuck"; an indeterminate one reads as "working", which
-         * is the only claim we can support (hard rule #6). For a local file this lasts one read and
-         * nobody sees it.
-         *
-         * The fetch still goes uncounted, so the bar has no way to move during it — this only stops
-         * it lying. Counting it means teaching the import path to report how many passes a payload
-         * will take, since only it knows whether the source spilled.
+         * Only the last one is renamed: the vault says it is generating a preview, which is true and
+         * is not what a user is waiting to hear. What they are told is that the file is nearly in —
+         * the bytes are already sealed by this point, and everything after it is a convenience.
          */
-        fun startingFraction(): Float? = null
+        fun ImportPhase.toStage(): ImportStage = when (this) {
+            ImportPhase.COPYING -> ImportStage.COPYING
+            ImportPhase.ENCRYPTING -> ImportStage.ENCRYPTING
+            ImportPhase.PREVIEWING -> ImportStage.FINISHING
+        }
 
         /**
-         * The container reads each payload **twice** — size and digest, then the chunk encrypt — so
-         * the byte count runs to `2 × size`. The user is shown one bar filling once, not the same
-         * file arriving twice.
+         * The fraction of the **current stage**, or null when there is nothing honest to divide by.
+         *
+         * The denominators differ because the work does. A copy is one pass over the payload. The
+         * container reads it **twice** — size and digest, then the chunk encrypt — so that count runs
+         * to `2 × size`, and the user is shown one bar filling once rather than the same file
+         * arriving twice. The other two stages have no total at all: nothing has been read yet, or
+         * what is being read is the preview encoder's own business.
          *
          * A size of zero draws the indeterminate bar, which is **not** the picker calling an empty
          * file unknown — the picker reports zero as the fact it is. It is that a fraction of zero
          * bytes has no value to take, and an empty file is imported faster than a bar can be seen
          * either way.
          */
-        fun Long?.fractionAt(bytes: Long): Float? {
+        fun Long?.fractionAt(stage: ImportStage, bytes: Long): Float? {
             val size = this ?: return null
             if (size <= 0L) return null
-            return (bytes.toFloat() / (2f * size)).coerceIn(0f, 1f)
+            val passes = when (stage) {
+                ImportStage.COPYING -> 1f
+                ImportStage.ENCRYPTING -> 2f
+                // Nothing to measure: no byte exists yet, or the reads being made have no declared
+                // total. A bar drawn here would be invented (hard rule #6).
+                ImportStage.FETCHING, ImportStage.FINISHING -> return null
+            }
+            return (bytes.toFloat() / (passes * size)).coerceIn(0f, 1f)
         }
     }
 }

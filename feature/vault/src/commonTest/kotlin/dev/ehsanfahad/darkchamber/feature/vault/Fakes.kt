@@ -108,6 +108,11 @@ internal class FakeVaultItems(
     private val failFor: Set<String> = emptySet(),
     /** Cumulative byte counts to report while importing, standing in for the codec's two passes. */
     private val bytesPerImport: List<Long> = emptyList(),
+    /**
+     * Phase-and-bytes reports to make instead of [bytesPerImport], for a test that cares which
+     * phase a count belongs to — a spilled payload, or the preview attempt at the end.
+     */
+    private val phaseReports: List<Pair<ImportPhase, Long>> = emptyList(),
     /** Runs as each file starts, so a test can cancel or lock partway through a batch. */
     private val onImport: (String) -> Unit = {},
     /** Stored previews by item id (as a list, so the map keys compare by content). */
@@ -156,9 +161,13 @@ internal class FakeVaultItems(
         // The real guard aborts a read once the predicate goes false; the fake checks once, which is
         // enough to prove the caller is wired to it.
         if (!isActive()) return Outcome.Err(VaultError.Io(RuntimeException("stopped")))
-        // Every configured report is an encrypt-phase read: that is the phase a payload read belongs
-        // to unless the source spilled, which the fake never does.
-        bytesPerImport.forEach { onProgress(ImportPhase.ENCRYPTING, it) }
+        if (phaseReports.isNotEmpty()) {
+            phaseReports.forEach { (phase, bytes) -> onProgress(phase, bytes) }
+        } else {
+            // A plain byte list is an encrypt-phase read: that is the phase a payload read belongs
+            // to unless the source spilled, which this shorthand never does.
+            bytesPerImport.forEach { onProgress(ImportPhase.ENCRYPTING, it) }
+        }
         return if (name in failFor) Outcome.Err(VaultError.Io(RuntimeException("unreadable"))) else importResult
     }
 

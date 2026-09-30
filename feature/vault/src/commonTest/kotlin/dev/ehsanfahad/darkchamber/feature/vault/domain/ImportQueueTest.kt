@@ -1,10 +1,12 @@
 package dev.ehsanfahad.darkchamber.feature.vault.domain
 
 import dev.ehsanfahad.darkchamber.core.model.VaultError
+import dev.ehsanfahad.darkchamber.core.vault.ImportPhase
 import dev.ehsanfahad.darkchamber.feature.vault.CancellingVaultItems
 import dev.ehsanfahad.darkchamber.feature.vault.FakePickedFile
 import dev.ehsanfahad.darkchamber.feature.vault.FakeVaultItems
 import dev.ehsanfahad.darkchamber.feature.vault.api.FailedImport
+import dev.ehsanfahad.darkchamber.feature.vault.api.ImportStage
 import dev.ehsanfahad.darkchamber.feature.vault.api.PickedFile
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.io.Buffer
@@ -131,16 +133,100 @@ class ImportQueueTest {
         assertEquals(0.25f, seen.last().fileFraction, "and it becomes determinate once bytes arrive")
     }
 
+    /**
+     * The stage a file starts in is the fetch, and it is the feature's own: the vault never reports
+     * it, because the wait it names happens before the vault is called at all.
+     */
+    @Test
+    fun a_file_starts_in_the_fetch_stage_with_nothing_to_measure() = runTest {
+        val vault = FakeVaultItems(bytesPerImport = listOf(2L))
+        val files = listOf(FakePickedFile(name = "from-the-cloud.mov", size = 4L))
+        val seen = mutableListOf<ImportProgress>()
+
+        queue(vault)(files) { seen += it }
+
+        assertEquals(ImportStage.FETCHING, seen.first().stage, "a file begins by waiting for itself")
+        assertEquals(null, seen.first().fileFraction, "nothing has been read, so there is nothing to divide")
+        assertEquals(ImportStage.ENCRYPTING, seen.last().stage, "and the payload reads are the encrypt")
+    }
+
+    /**
+     * The two measurable stages divide by different numbers, which is the entire reason the stage is
+     * carried at all. A copy is one pass over the payload; the container reads it twice.
+     */
+    @Test
+    fun a_copy_divides_by_the_payload_size_and_the_encrypt_by_twice_it() = runTest {
+        val vault = FakeVaultItems(
+            phaseReports = listOf(
+                ImportPhase.COPYING to 2L,
+                ImportPhase.COPYING to 4L,
+                ImportPhase.ENCRYPTING to 4L,
+                ImportPhase.ENCRYPTING to 8L,
+            ),
+        )
+        val files = listOf(FakePickedFile(name = "one-shot.bin", size = 4L))
+        val seen = mutableListOf<ImportProgress>()
+
+        queue(vault)(files) { seen += it }
+
+        assertEquals(
+            listOf(ImportStage.FETCHING, ImportStage.COPYING, ImportStage.COPYING, ImportStage.ENCRYPTING, ImportStage.ENCRYPTING),
+            seen.map { it.stage },
+        )
+        // Half the copy, all of the copy, half the encrypt, all of the encrypt. Dividing both by the
+        // same number would report the copy as finishing at 50% or the encrypt as finishing at 200%.
+        assertEquals(listOf(null, 0.5f, 1f, 0.5f, 1f), seen.map { it.fileFraction })
+    }
+
+    /** The preview cannot be measured, so the bar goes indeterminate rather than sitting full. */
+    @Test
+    fun the_finishing_stage_carries_no_fraction_even_when_the_size_is_known() = runTest {
+        val vault = FakeVaultItems(
+            phaseReports = listOf(ImportPhase.ENCRYPTING to 8L, ImportPhase.PREVIEWING to 0L),
+        )
+        val files = listOf(FakePickedFile(name = "photo.jpg", size = 4L))
+        val seen = mutableListOf<ImportProgress>()
+
+        queue(vault)(files) { seen += it }
+
+        assertEquals(ImportStage.FINISHING, seen.last().stage, "the vault's preview phase is the finish")
+        assertEquals(null, seen.last().fileFraction, "there is no denominator for the encoder's reads")
+        // And the stage before it did reach full, so the bar completes and then goes indeterminate
+        // rather than appearing to lose progress.
+        assertEquals(1f, seen[seen.size - 2].fileFraction)
+    }
+
+    @Test
+    fun an_empty_file_has_no_fraction_in_any_stage() = runTest {
+        val vault = FakeVaultItems(
+            phaseReports = listOf(ImportPhase.COPYING to 0L, ImportPhase.ENCRYPTING to 0L),
+        )
+        // Zero is the size the platform reported, not a refusal to say — and a fraction of nothing
+        // has no value to take.
+        val files = listOf(FakePickedFile(name = "empty.txt", size = 0L))
+        val seen = mutableListOf<ImportProgress>()
+
+        queue(vault)(files) { seen += it }
+
+        assertTrue(seen.all { it.fileFraction == null }, "an empty file has no fraction, got $seen")
+    }
+
     @Test
     fun progress_reports_no_fraction_when_the_platform_gave_no_size() = runTest {
-        val vault = FakeVaultItems(bytesPerImport = listOf(4L))
+        val vault = FakeVaultItems(
+            phaseReports = listOf(
+                ImportPhase.COPYING to 4L,
+                ImportPhase.ENCRYPTING to 8L,
+                ImportPhase.PREVIEWING to 0L,
+            ),
+        )
         val files = listOf(FakePickedFile(name = "remote.mov", size = null))
         val seen = mutableListOf<ImportProgress>()
 
         queue(vault)(files) { seen += it }
 
-        // Null, never a guessed denominator: a bar that moves against an invented total misreports
-        // progress (hard rule #6). The caller renders this indeterminate.
+        // Null in every stage, never a guessed denominator: a bar that moves against an invented
+        // total misreports progress (hard rule #6). The caller renders this indeterminate.
         assertTrue(seen.all { it.fileFraction == null }, "an unsized file has no fraction, got $seen")
         assertTrue(seen.isNotEmpty(), "it still reports which file is running")
     }
@@ -220,7 +306,13 @@ class ImportQueueTest {
 
     @Test
     fun a_file_name_never_reaches_a_log_line() {
-        val progress = ImportProgress(index = 1, total = 4, name = "tax-return.pdf", fileFraction = 0.5f)
+        val progress = ImportProgress(
+            index = 1,
+            total = 4,
+            name = "tax-return.pdf",
+            stage = ImportStage.ENCRYPTING,
+            fileFraction = 0.5f,
+        )
         val summary = ImportSummary(
             imported = 1,
             failed = listOf(FailedImport("passport.jpg", VaultError.Crypto.IntegrityFailure)),

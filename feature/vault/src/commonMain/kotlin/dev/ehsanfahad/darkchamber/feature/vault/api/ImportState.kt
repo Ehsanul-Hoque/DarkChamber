@@ -16,11 +16,18 @@ sealed interface ImportState {
     data object Picking : ImportState
 
     /**
-     * A file is being encrypted. [index] is zero-based, so a screen shows `index + 1` of [total].
+     * A file is being imported. [index] is zero-based, so a screen shows `index + 1` of [total].
      *
-     * [fileFraction] runs 0 → 1 across the whole of one file, or is **null** when the platform never
-     * said how big the file is — draw an indeterminate indicator, never a bar against a guessed
-     * total (hard rule #6).
+     * [stage] is which part of that a screen may name — waiting for the file, copying it in,
+     * encrypting, finishing. It exists because the two unmeasurable stages are exactly the two that
+     * used to look like nothing was happening, one before any byte existed and one after the bar had
+     * reached its own end.
+     *
+     * [fileFraction] runs 0 → 1 across the current [stage], not across the whole file: the stages
+     * divide by different numbers, and two of them divide by nothing. It is **null** whenever there
+     * is nothing honest to divide by — an unmeasurable stage, or a platform that never said how big
+     * the file is. Draw an indeterminate indicator, never a bar against a guessed total
+     * (hard rule #6).
      *
      * [stopping] means the user has asked the batch to stop and it has not stopped yet. It is a
      * state of its own because the gap is real and can be long: a stop takes effect on the next read
@@ -33,13 +40,16 @@ sealed interface ImportState {
         val total: Int,
         val name: String,
         val fileFraction: Float?,
+        // Defaulted to the ordinary case, the same way `stopping` is: most of every import is the
+        // encrypt, and a test about something else should not have to name a stage to say so.
+        val stage: ImportStage = ImportStage.ENCRYPTING,
         val stopping: Boolean = false,
     ) : ImportState {
         // The name is decrypted vault content; the generated toString would print it into any log
         // line that renders this state (hard rule #4).
         override fun toString(): String =
             "Running(index=$index, total=$total, name=${name.length} chars, " +
-                "fileFraction=$fileFraction, stopping=$stopping)"
+                "stage=$stage, fileFraction=$fileFraction, stopping=$stopping)"
     }
 
     /**

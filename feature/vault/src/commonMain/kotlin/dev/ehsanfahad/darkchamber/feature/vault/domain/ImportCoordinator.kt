@@ -190,6 +190,7 @@ internal class ImportCoordinator(
                         index = progress.index,
                         total = progress.total,
                         name = progress.name,
+                        stage = progress.stage,
                         fileFraction = progress.fileFraction,
                         // Carried on every emission, not just set once by cancel(): the queue keeps
                         // reporting progress for the file it is still finishing, and rebuilding the
