@@ -199,11 +199,14 @@ class VaultObjects(
                 )
             },
             // Guarded like every other read — a lock must stop a decode mid-file — but deliberately
-            // **not** counted. The reported total is `2 × size` because the codec reads twice; a
-            // third counted pass would push an image's bar past its own denominator. The known cost
-            // is the opposite rounding: an image's bar reaches full a moment before its import
-            // finishes, which the cycle that generalises the contract to a pass count will fix.
+            // **not** counted. How many times the encoder passes over the payload is its own
+            // business, so there is no denominator these bytes could be drawn against, and counting
+            // them would push the encrypt phase past `2 × size`.
             openForThumbnail = { SessionGuardedSource(openSource(), stillWanted) },
+            // What is reported instead is that the attempt is happening, once, with no bytes. It
+            // replaces the bar sitting full while the encoder works — the reported total is reached
+            // when the payload is sealed, and everything after it used to be silent.
+            onPreviewAttempt = { onProgress(ImportPhase.PREVIEWING, 0L) },
         )
     }
 
@@ -214,6 +217,10 @@ class VaultObjects(
         chunkSize: Int,
         openSource: () -> RawSource,
         openForThumbnail: () -> RawSource,
+        // Called once, immediately before the encoder is asked. A lambda rather than a phase value
+        // so this function keeps knowing nothing about progress vocabulary: it says *when*, and the
+        // caller decides what that is worth reporting.
+        onPreviewAttempt: () -> Unit = {},
     ): Outcome<ByteArray> {
         val fileId = random(FILE_ID_SIZE)
         val noncePrefix = random(DchmFormat.NONCE_PREFIX_SIZE)
@@ -235,6 +242,7 @@ class VaultObjects(
         //    instead would mean decrypting the whole file: the random-access seek primitive does
         //    not exist yet. Returns null — and leaves nothing behind — for everything that is not
         //    an image the platform decoder accepts, which is the ordinary case for most of a vault.
+        onPreviewAttempt()
         val thumbnailKey = makeThumbnail(fileId, mime, createdAt, chunkSize, openForThumbnail)
 
         // 3. Seal the metadata and persist the row. Fail-closed: a row failure removes the object.

@@ -49,15 +49,20 @@ class VaultImportProgressTest {
     private fun newSession(): VaultSession =
         VaultSession.createVault(engine, kdf, "correct horse battery".encodeToByteArray(), cheapKdf).session
 
-    private fun objects(session: VaultSession, storage: VaultStorage, catalog: CatalogStore) =
-        VaultObjects(
-            session = session,
-            storage = storage,
-            catalog = catalog,
-            codec = DchmCodec(engine),
-            clock = { 42L },
-            random = Random(9).let { r -> { n: Int -> r.nextBytes(n) } },
-        )
+    private fun objects(
+        session: VaultSession,
+        storage: VaultStorage,
+        catalog: CatalogStore,
+        thumbnails: ThumbnailEncoder = NoThumbnails,
+    ) = VaultObjects(
+        session = session,
+        storage = storage,
+        catalog = catalog,
+        codec = DchmCodec(engine),
+        clock = { 42L },
+        random = Random(9).let { r -> { n: Int -> r.nextBytes(n) } },
+        thumbnails = thumbnails,
+    )
 
     @Test
     fun progress_runs_once_from_zero_to_twice_the_payload() {
@@ -90,26 +95,35 @@ class VaultImportProgressTest {
         assertIs<Outcome.Ok<ByteArray>>(result)
         assertTrue(reports.size > 20, "expected progress across many reads, got ${reports.size} reports")
 
-        // Every payload read of a re-openable source is the encrypt phase. Nothing was spilled, so
-        // there is no copy to report; this file is not an image, so there is no preview attempt.
+        // Every counted read of a re-openable source is the encrypt phase. Nothing was spilled, so
+        // there is no copy to report. The preview attempt is announced whatever the file is — the
+        // import asks about everything and the encoder declines what it cannot handle — but it
+        // carries no bytes, so it cannot appear among the counted reads.
+        val counted = reports.indices.filter { reports[it] > 0L }.map { phases[it] }
         assertTrue(
-            phases.all { it == ImportPhase.ENCRYPTING },
-            "payload reads must report the encrypt phase, got ${phases.distinct()}",
+            counted.all { it == ImportPhase.ENCRYPTING },
+            "counted reads must report the encrypt phase, got ${counted.distinct()}",
+        )
+        assertTrue(
+            ImportPhase.COPYING !in phases,
+            "a payload that streamed in place must report no copy phase",
         )
 
-        // Monotonic: a count that restarted for pass 2 — or reported per-pass — shows up here as a
-        // step backwards, which is the bar visibly emptying.
-        reports.zipWithNext { a, b ->
+        // Monotonic **within the phase**: a count that restarted for pass 2 — or reported per-pass —
+        // shows up here as a step backwards, which is the bar visibly emptying. Across a phase
+        // boundary a reset is correct, so the check is scoped to the one phase that carries a count.
+        val encrypting = reports.indices.filter { phases[it] == ImportPhase.ENCRYPTING }.map { reports[it] }
+        encrypting.zipWithNext { a, b ->
             assertTrue(b >= a, "progress went backwards: $a then $b")
         }
 
         // Both passes counted, exactly once each. size would mean only one pass reported.
-        assertEquals(2 * size, reports.last(), "progress must end at twice the payload size")
-        assertTrue(reports.first() in 1..size, "the first report must be a real read, not 0 or a total")
+        assertEquals(2 * size, encrypting.last(), "progress must end at twice the payload size")
+        assertTrue(encrypting.first() in 1..size, "the first report must be a real read, not 0 or a total")
 
         // The first pass is genuinely visible, not a jump from 0 to the halfway mark once it ends.
         assertTrue(
-            reports.count { it < size } > 10,
+            encrypting.count { it < size } > 10,
             "the size+digest pass must report as it goes, not once at the end",
         )
         catalog.close()
@@ -164,13 +178,120 @@ class VaultImportProgressTest {
         )
         assertEquals(2 * size, encrypting.last(), "the encrypt phase still ends at twice the payload")
 
-        // Phases do not interleave: everything copied before anything was encrypted.
+        // Phases do not interleave: everything copied before anything was encrypted, and the preview
+        // attempt comes after both.
         val phases = reports.map { it.first }
         assertEquals(
-            listOf(ImportPhase.COPYING, ImportPhase.ENCRYPTING),
+            listOf(ImportPhase.COPYING, ImportPhase.ENCRYPTING, ImportPhase.PREVIEWING),
             phases.distinct(),
             "the copy must finish before the encrypt begins",
         )
+        catalog.close()
+    }
+
+    /**
+     * The preview phase exists to stop the bar sitting full while work continues: the encrypt phase
+     * ends at `2 × size` and the encoder then reads the payload again, which used to happen with
+     * nothing reported at all.
+     *
+     * It reports **no bytes**, deliberately. The encoder may pass over the payload as many times as
+     * it needs — subsample the header, read an orientation tag, decode — and that count is its own
+     * business, so there is nothing to divide by. Counting those reads would also push the encrypt
+     * phase past its own denominator, which is the defect this replaces rather than repeats.
+     */
+    @Test
+    fun a_preview_attempt_is_announced_once_with_no_bytes_and_its_reads_go_uncounted() {
+        SystemFileSystem.createDirectories(testDir)
+        val storage = VaultStorage(testDir)
+        val catalog = (CatalogStore.create(testSqlDriver()) as Outcome.Ok).value
+        val session = newSession()
+        val encoder = FakeThumbnailEncoder(FakeThumbnailEncoder.Mode.Encode)
+        val vo = objects(session, storage, catalog, encoder)
+
+        val size = 64L * 1024
+        val reports = mutableListOf<Pair<ImportPhase, Long>>()
+        val result = vo.importObject(
+            kind = VaultItemKind.FILE.code,
+            name = "photo.jpg",
+            mime = "image/jpeg",
+            chunkSize = 4096,
+            onProgress = { phase, bytes -> reports += phase to bytes },
+            openSource = { ReplayingSource(ByteArray(size.toInt()) { it.toByte() }) },
+        )
+
+        assertIs<Outcome.Ok<ByteArray>>(result)
+        assertEquals(1, encoder.encodeCount, "the encoder must have been asked exactly once")
+
+        val previewing = reports.filter { it.first == ImportPhase.PREVIEWING }
+        assertEquals(1, previewing.size, "the attempt is one announcement, not a stream of them")
+        assertEquals(0L, previewing.single().second, "the preview phase has no bytes to report")
+
+        // The encoder read the payload again; none of it was counted. A count that included those
+        // reads would run past the encrypt phase's own denominator.
+        val encrypting = reports.filter { it.first == ImportPhase.ENCRYPTING }.map { it.second }
+        assertEquals(2 * size, encrypting.max(), "the preview's reads must not be counted")
+
+        // And it comes last: the phase describes work that starts once the payload is sealed.
+        assertEquals(
+            listOf(ImportPhase.ENCRYPTING, ImportPhase.PREVIEWING),
+            reports.map { it.first }.distinct(),
+            "the preview attempt follows the encrypt",
+        )
+        catalog.close()
+    }
+
+    /**
+     * The phase reports the **attempt**, not its outcome.
+     *
+     * Whether a file can have a preview is something only the encoder knows — the import asks about
+     * everything and the encoder declines what it does not handle. Testing the MIME here instead
+     * would copy the encoder's knowledge into the caller and go stale the day another kind gains
+     * previews, so a file that gets no preview passes through this phase too.
+     */
+    @Test
+    fun a_file_that_gets_no_preview_still_announces_the_attempt() {
+        SystemFileSystem.createDirectories(testDir)
+        val storage = VaultStorage(testDir)
+        val catalog = (CatalogStore.create(testSqlDriver()) as Outcome.Ok).value
+        val session = newSession()
+        val vo = objects(session, storage, catalog, FakeThumbnailEncoder(FakeThumbnailEncoder.Mode.Decline))
+
+        val phases = mutableListOf<ImportPhase>()
+        val result = vo.importObject(
+            kind = VaultItemKind.FILE.code,
+            name = "clip.mp4",
+            mime = "video/mp4",
+            chunkSize = 4096,
+            onProgress = { phase, _ -> phases += phase },
+            openSource = { ReplayingSource(ByteArray(8192) { it.toByte() }) },
+        )
+
+        assertIs<Outcome.Ok<ByteArray>>(result)
+        assertEquals(1, phases.count { it == ImportPhase.PREVIEWING }, "the attempt is announced either way")
+        catalog.close()
+    }
+
+    /** A decoder that blows up has still been attempted, and the import still succeeds without one. */
+    @Test
+    fun an_encoder_that_throws_has_still_announced_its_attempt() {
+        SystemFileSystem.createDirectories(testDir)
+        val storage = VaultStorage(testDir)
+        val catalog = (CatalogStore.create(testSqlDriver()) as Outcome.Ok).value
+        val session = newSession()
+        val vo = objects(session, storage, catalog, FakeThumbnailEncoder(FakeThumbnailEncoder.Mode.Throw))
+
+        val phases = mutableListOf<ImportPhase>()
+        val result = vo.importObject(
+            kind = VaultItemKind.FILE.code,
+            name = "corrupt.jpg",
+            mime = "image/jpeg",
+            chunkSize = 4096,
+            onProgress = { phase, _ -> phases += phase },
+            openSource = { ReplayingSource(ByteArray(8192) { it.toByte() }) },
+        )
+
+        assertIs<Outcome.Ok<ByteArray>>(result, "a thumbnail is a cache; losing one cannot fail an import")
+        assertEquals(1, phases.count { it == ImportPhase.PREVIEWING }, "the attempt happened, so it is reported")
         catalog.close()
     }
 
