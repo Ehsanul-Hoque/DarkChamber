@@ -10,10 +10,15 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
 import dev.ehsanfahad.darkchamber.feature.vault.api.PhotoPicker
 import dev.ehsanfahad.darkchamber.feature.vault.api.PickedFile
 import dev.ehsanfahad.darkchamber.feature.vault.domain.VaultItems
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.io.Buffer
 import kotlinx.io.RawSource
+import kotlin.concurrent.Volatile
 import kotlin.coroutines.cancellation.CancellationException
 
 /** A picker that hands back whatever the test configured, or cancels, or refuses to open. */
@@ -95,6 +100,71 @@ internal class FakePickedFile(
 
     override fun close() {
         closed = true
+    }
+}
+
+/**
+ * A picked file whose open **blocks** until it is released — the shape of a cloud document whose
+ * provider downloads the whole file before returning a descriptor.
+ *
+ * It spins rather than sleeping because there is no sleep in common code, and it has to occupy a
+ * real thread: the behaviour under test is a wait that cannot be interrupted from inside, so a fake
+ * that merely suspended would not reproduce it.
+ */
+internal class BlockingPickedFile(
+    override val name: String = "from-the-cloud.mov",
+    override val mime: String = "video/quicktime",
+    override val size: Long? = 3L,
+    /** Set when the "download" finishes and the open is allowed to return. */
+    @Volatile var released: Boolean = false,
+) : PickedFile {
+    var closed = false
+        private set
+
+    /** The source the blocked open eventually produced, if it ever got that far. */
+    @Volatile
+    var delivered: TrackedRawSource? = null
+        private set
+
+    override fun openSource(): RawSource {
+        @Suppress("ControlFlowWithEmptyBody")
+        while (!released) {
+            // Busy-waiting on purpose: the point is that this call holds its thread and answers to
+            // nothing, which is what makes the open unstoppable from the coroutine that wants it.
+        }
+        return TrackedRawSource().also { delivered = it }
+    }
+
+    override fun close() {
+        closed = true
+    }
+}
+
+/** A source that records whether anyone closed it. */
+internal class TrackedRawSource : RawSource {
+    @Volatile
+    var closed: Boolean = false
+        private set
+
+    override fun readAtMostTo(sink: Buffer, byteCount: Long): Long = -1L
+
+    override fun close() {
+        closed = true
+    }
+}
+
+/**
+ * Wait, in real time, for something another thread is expected to do.
+ *
+ * `runTest`'s clock is virtual, so a `delay` on the test dispatcher would not give a background
+ * coroutine any wall-clock time to run in. This hops onto a real dispatcher to do the waiting, and
+ * fails loudly rather than hanging if the thing never happens.
+ */
+internal suspend fun awaitTrue(what: String, timeoutMillis: Long = 5_000, condition: () -> Boolean) {
+    withContext(Dispatchers.Default) {
+        withTimeoutOrNull(timeoutMillis) {
+            while (!condition()) delay(5)
+        } ?: error("timed out after ${timeoutMillis}ms waiting for: $what")
     }
 }
 

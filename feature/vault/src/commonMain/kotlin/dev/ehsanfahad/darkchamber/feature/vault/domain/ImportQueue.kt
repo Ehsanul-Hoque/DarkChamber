@@ -113,8 +113,12 @@ internal class ImportQueue(private val importFile: ImportFile) {
                         // round-trip spent on nothing.
                         if (file.deletable) deletable += file
                     }
-                    // A file that stopped because the user stopped the batch is not a broken file.
-                    is ImportResult.Failed -> if (isActive()) failed += FailedImport(file.name, result.error)
+                    is ImportResult.Failed -> failed += FailedImport(file.name, result.error)
+                    // Neither list. Nothing was wrong with this file — the batch was stopped while it
+                    // was being fetched or encrypted — and telling the user it failed would blame a
+                    // file for their own decision. Which of the two it was is settled upstream,
+                    // where the stop flag lives.
+                    ImportResult.Stopped -> Unit
                 }
             }
         } finally {
