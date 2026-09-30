@@ -381,6 +381,7 @@ private class ExplodingVaultItems : VaultItems {
         mime: String,
         onProgress: (ImportPhase, Long) -> Unit,
         isActive: () -> Boolean,
+        first: RawSource?,
         openSource: () -> RawSource,
     ): Outcome<ByteArray> = Outcome.Ok(byteArrayOf(1))
 

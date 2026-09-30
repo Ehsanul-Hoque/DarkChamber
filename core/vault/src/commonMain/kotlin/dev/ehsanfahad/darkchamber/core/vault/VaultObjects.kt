@@ -67,6 +67,21 @@ class VaultObjects(
      * owns the denominator, the percentage, and the decision of what to draw when no size is known:
      * [ImportPhase] says which arithmetic to do, never what to show.
      *
+     * [first] is an **already-open** source over the same payload, which stands in for the first
+     * open this function would otherwise perform. It exists because a provider may block for minutes
+     * inside that open — Drive downloads the whole file there — and abandoning a blocked call needs
+     * a second thread, which this module does not have: it is synchronous and `Outcome`-returning by
+     * design. The caller, which is coroutine-aware, opens it and can give up waiting.
+     *
+     * Only the first open needs it. A caching provider serves every later open from its cache, and a
+     * streaming provider returns from the open at once, so the remaining opens are not where a wait
+     * lands.
+     *
+     * **Ownership passes here.** Once handed over the source belongs to this function, which closes
+     * it on every path — used or unread, imported or failed. A caller that closes it too would be
+     * closing a descriptor twice. Passing `null` keeps the old behaviour and opens the payload here,
+     * which is what every caller that has nothing to abandon should do.
+     *
      * [isActive] lets a caller abandon an import that is still running. It is polled on every read,
      * alongside the session's own state, and returning `false` aborts within a read or two — the
      * encrypt is blocking, so cancelling the coroutine around it would not stop it, and a caller
@@ -81,6 +96,7 @@ class VaultObjects(
         chunkSize: Int = DchmFormat.DEFAULT_CHUNK_SIZE,
         onProgress: (ImportPhase, Long) -> Unit = { _, _ -> },
         isActive: () -> Boolean = { true },
+        first: RawSource? = null,
         openSource: () -> RawSource,
     ): Outcome<ByteArray> {
         // Probe re-openability BEFORE reading anything. The check cannot be done after a failure:
@@ -92,7 +108,7 @@ class VaultObjects(
         // that a re-openable source streams straight into the container and its plaintext never
         // touches disk at all (hard rule #1). A provider that refuses two *concurrent* opens is
         // spilled unnecessarily — slower, still correct.
-        val held = try {
+        val held = first ?: try {
             openSource()
         } catch (e: Exception) {
             return Outcome.Err(VaultError.Io(e)) // never opened: nothing to spill, nothing to retry

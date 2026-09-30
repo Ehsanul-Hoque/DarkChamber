@@ -126,6 +126,10 @@ internal class FakeVaultItems(
     var observedAlbum: ByteArray? = null
         private set
 
+    /** The already-open source of the most recent call, or `null` when the caller handed none. */
+    var handedFirst: RawSource? = null
+        private set
+
     override fun observe(albumId: ByteArray?): Flow<List<VaultItemSummary>> {
         observedAlbum = albumId
         return summaries
@@ -136,9 +140,14 @@ internal class FakeVaultItems(
         mime: String,
         onProgress: (ImportPhase, Long) -> Unit,
         isActive: () -> Boolean,
+        first: RawSource?,
         openSource: () -> RawSource,
     ): Outcome<ByteArray> {
         importCalls++
+        handedFirst = first
+        // The real vault owns a handed source and closes it on every path. The fake keeps that
+        // promise, so a caller that leaks one is not covered for by the test double.
+        first?.close()
         lastName = name
         lastMime = mime
         importedNames += name
@@ -171,6 +180,7 @@ internal class ThrowingVaultItems : VaultItems {
         mime: String,
         onProgress: (ImportPhase, Long) -> Unit,
         isActive: () -> Boolean,
+        first: RawSource?,
         openSource: () -> RawSource,
     ): Outcome<ByteArray> = throw IllegalStateException("import exploded")
 
@@ -186,6 +196,7 @@ internal class CancellingVaultItems : VaultItems {
         mime: String,
         onProgress: (ImportPhase, Long) -> Unit,
         isActive: () -> Boolean,
+        first: RawSource?,
         openSource: () -> RawSource,
     ): Outcome<ByteArray> = throw CancellationException("the session was torn down mid-import")
 

@@ -30,12 +30,20 @@ internal interface VaultItems {
      *
      * [isActive] going false aborts within a read rather than at the end of the file: the encrypt is
      * blocking, so a caller that waited for the loop to notice would wait out the rest of a video.
+     *
+     * [first] is an already-open source over the same payload, standing in for the first open the
+     * vault would otherwise perform. It is how a caller keeps a provider's blocking open somewhere it
+     * can be abandoned: the vault is synchronous, so a wait inside it cannot be given up on.
+     * **Ownership passes with it** — the vault closes it on every path, so a caller must not. `null`
+     * leaves the vault to open the payload itself, which is right for a caller with nothing to
+     * abandon.
      */
     fun import(
         name: String,
         mime: String,
         onProgress: (ImportPhase, Long) -> Unit = { _, _ -> },
         isActive: () -> Boolean = { true },
+        first: RawSource? = null,
         openSource: () -> RawSource,
     ): Outcome<ByteArray>
 

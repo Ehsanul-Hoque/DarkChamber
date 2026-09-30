@@ -40,7 +40,15 @@ internal class ImportFile(
     ): ImportResult {
         return try {
             val outcome = withContext(ioContext) {
-                vault.import(picked.name, picked.mime, onProgress, isActive, picked::openSource)
+                // Named, not positional: the seam grew a parameter between `isActive` and the opener,
+                // and a positional call would have passed the opener as the already-open source.
+                vault.import(
+                    name = picked.name,
+                    mime = picked.mime,
+                    onProgress = onProgress,
+                    isActive = isActive,
+                    openSource = picked::openSource,
+                )
             }
             when (outcome) {
                 is Outcome.Ok -> ImportResult.Imported
