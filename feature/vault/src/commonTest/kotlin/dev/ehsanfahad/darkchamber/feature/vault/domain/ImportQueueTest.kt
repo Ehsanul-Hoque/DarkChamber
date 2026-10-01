@@ -145,10 +145,6 @@ class ImportQueueTest {
     }
 
     /**
-     * The stage a file starts in is the fetch, and it is the feature's own: the vault never reports
-     * it, because the wait it names happens before the vault is called at all.
-     */
-    /**
      * A picked file's name, size and deletable flag are, on Android, cursor queries into the provider
      * that owns it — blocking binder round-trips, and a cloud provider may take its time over one.
      * This loop is driven from the main thread, so a fifty-file pick meant a hundred and fifty of
@@ -204,6 +200,10 @@ class ImportQueueTest {
         assertEquals(4, file.columnReads, "the details are a snapshot, not a property read per frame")
     }
 
+    /**
+     * The stage a file starts in is the fetch, and it is the feature's own: the vault never reports
+     * it, because the wait it names happens before the vault is called at all.
+     */
     @Test
     fun a_file_starts_in_the_fetch_stage_with_nothing_to_measure() = runTest {
         val vault = FakeVaultItems(bytesPerImport = listOf(2L))
@@ -385,6 +385,7 @@ class ImportQueueTest {
             failed = listOf(FailedImport("passport.jpg", VaultError.Crypto.IntegrityFailure)),
             deletableOriginals = listOf(TalkativePickedFile("payslip.pdf")),
         )
+        val facts = PickedFileFacts(name = "medical-report.pdf", mime = "application/pdf", size = 12L)
 
         // Both types carry decrypted vault content, so the generated data-class toString would print
         // a file name into any log line that renders them (hard rule #4). The retained handles are
@@ -393,6 +394,9 @@ class ImportQueueTest {
         assertFalse(progress.toString().contains("tax-return"), "got $progress")
         assertFalse(summary.toString().contains("passport"), "got $summary")
         assertFalse(summary.toString().contains("payslip"), "got $summary")
+        // The snapshot is the newest type to carry a name, and it is the one the batch holds for the
+        // whole of a file's import — so it is the one most likely to end up in a log line.
+        assertFalse(facts.toString().contains("medical-report"), "got $facts")
     }
 
     /**
