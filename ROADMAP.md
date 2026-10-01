@@ -96,8 +96,10 @@ The complete free product. Everything here ships open source and free.
 > - **Delete the original after importing it**, where the system will allow it, behind a disclosure
 >   that has to be answered and that states what deletion on flash storage can and cannot promise.
 >   Most sources cannot offer it at all, and no offer is made where it cannot be honoured.
-> - **Keep the screen private** — screenshot and app-switcher protection, whole-app rather than
->   per-screen.
+> - **Keep the screen private** — whole-app rather than per-screen: screenshot and screen-recording
+>   blocking plus a blank app-switcher card on Android, and an obscured app-switcher snapshot on
+>   iOS. iOS gives apps no way to block a screenshot at all, which the threat model states and no
+>   copy here softens.
 > - **Import from the cloud without the app seeming to hang.** A file stored in a cloud service has
 >   to be downloaded before it can be encrypted, which the provider does on its own schedule and
 >   reports nothing about — minutes, for a large file. The import now says it is waiting for the
