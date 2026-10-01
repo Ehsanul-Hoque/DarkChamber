@@ -4,17 +4,25 @@ import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
 import dev.ehsanfahad.darkchamber.feature.vault.BlockingPickedFile
 import dev.ehsanfahad.darkchamber.feature.vault.CancellingVaultItems
+import dev.ehsanfahad.darkchamber.feature.vault.DetailsThrowingPickedFile
 import dev.ehsanfahad.darkchamber.feature.vault.FakePickedFile
 import dev.ehsanfahad.darkchamber.feature.vault.FakeVaultItems
+import dev.ehsanfahad.darkchamber.feature.vault.ManualDispatcher
+import dev.ehsanfahad.darkchamber.feature.vault.RecordingPickedFile
 import dev.ehsanfahad.darkchamber.feature.vault.ThrowingVaultItems
+import dev.ehsanfahad.darkchamber.feature.vault.TrackedPickedFile
 import dev.ehsanfahad.darkchamber.feature.vault.awaitTrue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runTest
 import kotlinx.io.RawSource
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.minutes
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -109,7 +117,7 @@ class ImportFileTest {
     }
 
     /**
-     * The finding this whole cycle exists for.
+     * The defect the abandonable open exists to fix.
      *
      * A provider may sit inside `openSource()` for minutes — Drive downloads the entire file there —
      * and during that time the import performs no reads, so the per-read stop guard has nothing to
@@ -128,6 +136,12 @@ class ImportFileTest {
         assertIs<ImportResult.Stopped>(result, "a stopped fetch is not a failure and not an import")
         assertEquals(0, vault.importCalls, "nothing may be imported from a file we never received")
         assertTrue(picked.closed, "the grant is released even though the open never returned")
+
+        // Everything above was asserted while the open was still blocked, which is the state under
+        // test. Released only now, and only so the fake stops occupying a dispatcher thread for the
+        // rest of the suite: it busy-waits, and `Dispatchers.Default` on a two-core runner has two
+        // threads to give.
+        picked.released = true
     }
 
     /**
@@ -152,6 +166,126 @@ class ImportFileTest {
 
         awaitTrue("the abandoned source to be delivered") { picked.delivered != null }
         awaitTrue("the abandoned source to be closed") { picked.delivered?.closed == true }
+    }
+
+    /**
+     * The wait is an `await` with a timeout on it, not a sleep followed by a look.
+     *
+     * A source that is already there has to resume the import at once. A loop that slept first would
+     * charge **every** file the poll interval — five seconds across a fifty-file batch of local
+     * photos, every one of which opens in microseconds — for a wait that only a provider ever makes
+     * anyone do.
+     */
+    @Test
+    fun an_open_that_returns_at_once_waits_for_nothing() = runTest {
+        val picked = FakePickedFile()
+        // An interval no import may ever be made to sit through, so any sleep at all is visible on
+        // the test clock.
+        val importer = ImportFile(
+            vault = FakeVaultItems(),
+            ioContext = UnconfinedTestDispatcher(testScheduler),
+            pollInterval = 10.minutes,
+        )
+
+        val before = currentTime
+        val result = importer(picked)
+
+        assertIs<ImportResult.Imported>(result)
+        assertEquals(before, currentTime, "a local file must not be charged the poll interval")
+    }
+
+    /**
+     * A lock landing in the hand-off itself still releases the descriptor.
+     *
+     * Opening the payload here rather than inside the vault created a window that did not exist
+     * before: between this side opening the source and the vault taking ownership of it there is a
+     * dispatch, and a dispatch is a cancellation point. The vault closes the handed source on every
+     * path it takes — but it cannot close one it was never given, and releasing the picked file
+     * releases the platform grant, not a stream already opened against it. So the descriptor is this
+     * side's to release for exactly as long as the hand-off has not completed.
+     *
+     * Driven one dispatch at a time because the window *is* the gap between two hops: a dispatcher
+     * that ran until idle would carry the import past it.
+     */
+    @Test
+    fun a_source_already_opened_is_closed_when_the_handoff_is_cancelled() = runTest {
+        val io = ManualDispatcher()
+        val picked = TrackedPickedFile()
+        val vault = FakeVaultItems()
+        val importer = ImportFile(vault = vault, ioContext = io)
+
+        val job = launch(UnconfinedTestDispatcher(testScheduler)) { importer(picked) }
+        // The open, which succeeds: control comes back with the source in hand and the import's own
+        // hop onto the dispatcher queued but not yet begun.
+        io.runNext()
+        assertEquals(1, picked.opened.size, "the open has to have succeeded for this to be the window")
+
+        job.cancel()
+        io.runNext()
+        job.join()
+
+        assertEquals(0, vault.importCalls, "the hand-off must not have completed, or this is a different window")
+        assertTrue(picked.opened.single().closed, "a source the vault never received is still ours to close")
+    }
+
+    /**
+     * Asking the file about itself is a provider query, so the fallback asks from the import thread.
+     *
+     * A batch resolves these up front and hands them in, which is why no caller in the app takes
+     * this path today. The default is still the one a *new* caller gets for free, and on Android each
+     * of these three reads is a blocking binder round-trip into the provider that owns the file —
+     * which a cloud provider may take its time over. Left on the caller's thread, the default would
+     * quietly re-arm the stall that resolving them up front was done to remove.
+     */
+    @Test
+    fun the_details_fallback_is_read_on_the_import_thread() = runTest {
+        val io = ManualDispatcher()
+        val picked = RecordingPickedFile(onImportDispatcher = { io.isRunning })
+        val importer = ImportFile(vault = FakeVaultItems(), ioContext = io)
+
+        // `StandardTestDispatcher`, emphatically not unconfined: an unconfined coroutine resumes
+        // *inline*, so a read made on this side would run on the stack of whoever delivered the
+        // resumption — which is the manual dispatcher — and `isRunning` would report true for a read
+        // that never went near the import thread. A queued dispatcher keeps the two apart, and
+        // nothing of this test survives without it.
+        //
+        // No `facts` argument: the path a caller that has no snapshot of its own takes.
+        val job = launch(StandardTestDispatcher(testScheduler)) { importer(picked) }
+        // Each side hands work to the other, so they are driven alternately. `runCurrent`, not
+        // `advanceUntilIdle`: the wait for the open re-arms a timeout every interval, so advancing
+        // until idle never finds an idle moment and simply spins. Nothing here needs the clock to
+        // move — the open completes long before its first timeout — and a bounded number of turns
+        // cannot hang, it can only fail the assertion below.
+        repeat(6) {
+            testScheduler.runCurrent()
+            io.drain()
+        }
+        testScheduler.runCurrent()
+
+        assertTrue(job.isCompleted, "the import has to have finished for the reads to all be in")
+        assertTrue(picked.columnReads > 0, "the details have to have been read for this to prove anything")
+        assertEquals(0, picked.columnReadsElsewhere, "every provider query belongs on the import thread")
+    }
+
+    /**
+     * And if asking throws, the source already opened is still released.
+     *
+     * The ownership flag has to be raised *after* the details are resolved, not before: these reads
+     * are provider calls and can fail on their own, and a failure between raising the flag and
+     * calling the vault would leave the descriptor with nobody responsible for it — the same hole as
+     * a cancelled hand-off, reached by a different route.
+     */
+    @Test
+    fun a_source_is_closed_when_reading_the_details_fails() = runTest {
+        val picked = DetailsThrowingPickedFile()
+        val vault = FakeVaultItems()
+        val importer = ImportFile(vault = vault, ioContext = UnconfinedTestDispatcher(testScheduler))
+
+        val result = importer(picked)
+
+        assertIs<ImportResult.Failed>(result)
+        assertEquals(0, vault.importCalls, "the vault was never reached, so it closed nothing")
+        assertTrue(picked.opened.single().closed, "the descriptor is still ours to release")
     }
 
     @Test

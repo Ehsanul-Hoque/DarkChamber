@@ -67,11 +67,15 @@ internal class ImportFile(
         picked: PickedFile,
         /**
          * What the platform already told the caller about this file, read once and off the main
-         * thread. Defaulted to asking the file, which is what a caller with no snapshot of its own
-         * would do — but a batch resolves it up front, because on Android every one of these is a
-         * cursor query into the provider.
+         * thread. A batch resolves it up front, because on Android every one of these is a cursor
+         * query into the provider.
+         *
+         * `null` asks the file directly instead, which is what a caller with no snapshot of its own
+         * gets. Resolved on [ioContext] rather than evaluated here as a default argument would be:
+         * a default is computed on whatever thread called, and these three reads are blocking binder
+         * round-trips that a cloud provider may take its time over.
          */
-        facts: PickedFileFacts = PickedFileFacts(picked.name, picked.mime, picked.size),
+        facts: PickedFileFacts? = null,
         isActive: () -> Boolean = { true },
         onProgress: (ImportPhase, Long) -> Unit = { _, _ -> },
     ): ImportResult {
@@ -87,17 +91,42 @@ internal class ImportFile(
                 return ImportResult.Failed(VaultError.Io(e))
             } ?: return ImportResult.Stopped
 
-            val outcome = withContext(ioContext) {
-                // Named, not positional: the seam grew a parameter between `isActive` and the opener,
-                // and a positional call would have passed the opener as the already-open source.
-                vault.import(
-                    name = facts.name,
-                    mime = facts.mime,
-                    onProgress = onProgress,
-                    isActive = isActive,
-                    first = first,
-                    openSource = picked::openSource,
-                )
+            // Whether the vault has taken over closing `first`. Hopping onto [ioContext] is a
+            // cancellation point, so a lock landing in that hop throws before the vault is ever
+            // called — and the source opened just above is then nobody's: the vault closes the one
+            // it was handed, and closing the picked file releases the platform grant rather than a
+            // stream already opened against it. A flag rather than closing from the catch, because
+            // once the vault owns the source a second close would be a double close.
+            var handed = false
+            val outcome = try {
+                withContext(ioContext) {
+                    // Resolved before ownership is handed over, not after: these are provider calls
+                    // and can fail on their own, and a throw with the flag already raised would
+                    // leave the source with nobody responsible for closing it.
+                    val resolved = facts ?: PickedFileFacts(picked.name, picked.mime, picked.size)
+                    handed = true
+                    // Named, not positional: the seam grew a parameter between `isActive` and the
+                    // opener, and a positional call would have passed the opener as the already-open
+                    // source.
+                    vault.import(
+                        name = resolved.name,
+                        mime = resolved.mime,
+                        onProgress = onProgress,
+                        isActive = isActive,
+                        first = first,
+                        openSource = picked::openSource,
+                    )
+                }
+            } catch (e: Throwable) {
+                if (!handed) {
+                    try {
+                        first.close()
+                    } catch (_: Exception) {
+                        // Best-effort, exactly as the grant's own close below is: a failure here must
+                        // not replace the reason we are unwinding.
+                    }
+                }
+                throw e
             }
             when (outcome) {
                 is Outcome.Ok -> ImportResult.Imported

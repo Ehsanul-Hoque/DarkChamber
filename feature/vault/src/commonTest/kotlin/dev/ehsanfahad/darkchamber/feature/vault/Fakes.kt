@@ -243,6 +243,77 @@ internal class ManualDispatcher : CoroutineDispatcher() {
             isRunning = false
         }
     }
+
+    /**
+     * Runs **one** queued block and stops, leaving whatever it queued for the next call.
+     *
+     * [drain] cannot express a test that needs to act *between* two hops onto this dispatcher,
+     * because its loop keeps going until the queue is empty and so runs the second hop too. Stepping
+     * one block at a time is what makes the gap between them a place a test can stand.
+     */
+    fun runNext() {
+        val next = queued.removeFirstOrNull() ?: return
+        isRunning = true
+        try {
+            next.run()
+        } finally {
+            isRunning = false
+        }
+    }
+}
+
+/**
+ * A picked file that opens at once and hands out sources whose closing can be checked.
+ *
+ * [BlockingPickedFile] also delivers a [TrackedRawSource], but only after busy-waiting for a
+ * release flag — which is the wrong shape for a test about what happens *after* a successful open.
+ */
+internal class TrackedPickedFile(
+    override val name: String = "photo.jpg",
+    override val mime: String = "image/jpeg",
+    override val size: Long? = 3L,
+    override val deletable: Boolean = false,
+) : PickedFile {
+    /** Every source this file has produced, in the order it produced them. */
+    val opened = mutableListOf<TrackedRawSource>()
+
+    var closed = false
+        private set
+
+    override fun openSource(): RawSource = TrackedRawSource().also { opened += it }
+
+    override fun deleteOriginal(): Boolean = false
+
+    override fun close() {
+        closed = true
+    }
+}
+
+/**
+ * A picked file that opens fine and then fails to describe itself.
+ *
+ * Not as contrived as it reads: on Android the name, size and MIME each come from a cursor query
+ * into the owning provider, and a provider that has died, revoked the grant or lost its backing
+ * document between the open and the query throws from exactly here.
+ */
+internal class DetailsThrowingPickedFile : PickedFile {
+    val opened = mutableListOf<TrackedRawSource>()
+
+    var closed = false
+        private set
+
+    override val name: String get() = error("the provider stopped answering")
+    override val mime: String get() = "image/jpeg"
+    override val size: Long? get() = 3L
+    override val deletable: Boolean get() = false
+
+    override fun openSource(): RawSource = TrackedRawSource().also { opened += it }
+
+    override fun deleteOriginal(): Boolean = false
+
+    override fun close() {
+        closed = true
+    }
 }
 
 /** A source that records whether anyone closed it. */
