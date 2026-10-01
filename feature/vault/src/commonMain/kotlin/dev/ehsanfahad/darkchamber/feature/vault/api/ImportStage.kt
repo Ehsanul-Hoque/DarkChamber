@@ -54,11 +54,27 @@ enum class ImportStage {
     ;
 
     /**
+     * How many times the payload is read during this stage, or `null` when there is no total to
+     * divide by.
+     *
+     * The one place the divisors are written down, so the table above cannot drift from the
+     * arithmetic and [measurable] cannot disagree with whether a fraction actually comes out. A
+     * `when` over the entries rather than a predicate, so a stage added later has to answer this
+     * question instead of silently inheriting someone else's denominator.
+     */
+    internal val passes: Int?
+        get() = when (this) {
+            COPYING -> 1
+            ENCRYPTING -> 2
+            FETCHING, FINISHING -> null
+        }
+
+    /**
      * Whether this stage has a total to divide by.
      *
      * The two that do not are exactly the two a screen has to **name**, because a bar that cannot
      * move explains nothing on its own. They are also the two that must not be named too eagerly: a
      * local file passes through both in less time than a frame, so a batch of them would strobe.
      */
-    val measurable: Boolean get() = this == COPYING || this == ENCRYPTING
+    val measurable: Boolean get() = passes != null
 }

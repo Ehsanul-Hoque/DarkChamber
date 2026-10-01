@@ -204,15 +204,13 @@ internal class ImportQueue(
          * either way.
          */
         fun Long?.fractionAt(stage: ImportStage, bytes: Long): Float? {
+            // Nothing to measure: no byte exists yet, or the reads being made have no declared
+            // total. A bar drawn here would be invented (hard rule #6). The stage itself is asked,
+            // rather than the stages being listed a second time here, so that what a screen is told
+            // is measurable and what actually divides cannot come apart.
+            val passes = stage.passes ?: return null
             val size = this ?: return null
             if (size <= 0L) return null
-            val passes = when (stage) {
-                ImportStage.COPYING -> 1f
-                ImportStage.ENCRYPTING -> 2f
-                // Nothing to measure: no byte exists yet, or the reads being made have no declared
-                // total. A bar drawn here would be invented (hard rule #6).
-                ImportStage.FETCHING, ImportStage.FINISHING -> return null
-            }
             return (bytes.toFloat() / (passes * size)).coerceIn(0f, 1f)
         }
     }
