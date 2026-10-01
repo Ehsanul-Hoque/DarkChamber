@@ -147,11 +147,6 @@ class DefaultVaultGalleryComponentTest {
     }
 
     /**
-     * A batch reports every buffered read — kilobytes apart — which is far finer than a screen can
-     * show. Throttling belongs here rather than in the core, where the honest byte count has to stay
-     * intact for anything else watching it.
-     */
-    /**
      * A wait is worth naming only once it has lasted.
      *
      * The two stages a screen can name are the two with nothing to measure, and a local file passes
@@ -205,6 +200,41 @@ class DefaultVaultGalleryComponentTest {
 
         assertFalse(ImportStage.FETCHING in seen, "a wait that did not last is never mentioned, got $seen")
         assertEquals(ImportStage.ENCRYPTING, seen.last(), "and the stage that superseded it stands")
+    }
+
+    /**
+     * A stage already named stays named when the batch starts stopping.
+     *
+     * Stopping re-emits the same stage with the stop flag set, and the grace treated that as a stage
+     * arriving for the first time: the label was taken back off the screen and the user watched the
+     * explanation for a wait vanish at the exact moment they asked to end it. The grace exists to
+     * stop a label flashing on, not to make one flash off — and the stop is pressed most often during
+     * precisely the long fetch this label was added to explain.
+     */
+    @Test
+    fun a_stage_already_named_is_not_taken_back_when_the_stop_arrives() = runTest {
+        val imports = FakeImports()
+        val component = component(FakeVaultItems(), imports = imports, stageGrace = 400.milliseconds)
+        val fetching = ImportState.Running(
+            index = 0,
+            total = 1,
+            name = "from-the-cloud.mov",
+            fileFraction = null,
+            stage = ImportStage.FETCHING,
+        )
+
+        imports.emit(fetching)
+        advanceTimeBy(401.milliseconds)
+        assertEquals(ImportStage.FETCHING, (component.state.value.batch as ImportState.Running).stage)
+
+        imports.emit(fetching.copy(stopping = true))
+
+        // Synchronously after the stop, with no time advanced: the hold-back would have published a
+        // null here and put the label back 400ms later.
+        val stopping = component.state.value.batch
+        assertIs<ImportState.Running>(stopping)
+        assertTrue(stopping.stopping, "the stop itself is never held back")
+        assertEquals(ImportStage.FETCHING, stopping.stage, "a stage already named is not un-named by the stop")
     }
 
     @Test
@@ -273,6 +303,11 @@ class DefaultVaultGalleryComponentTest {
         assertEquals(ImportStage.FINISHING, staged.stage, "a change of stage is not progress to be dropped")
     }
 
+    /**
+     * A batch reports every buffered read — kilobytes apart — which is far finer than a screen can
+     * show. Throttling belongs here rather than in the core, where the honest byte count has to stay
+     * intact for anything else watching it.
+     */
     @Test
     fun progress_updates_are_throttled_but_the_batch_ending_is_never_delayed() = runTest {
         val imports = FakeImports()

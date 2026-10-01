@@ -156,17 +156,37 @@ internal class DefaultVaultGalleryComponent(
      * pending announcement, so a stage that did not last is never named at all. The silent version
      * goes out immediately, so the card keeps its file, its count and its indeterminate bar
      * throughout — exactly as it looked before stages existed.
+     *
+     * **Only a stage that is new is held back.** A batch re-reports the stage it is already in — the
+     * stop arriving is one such re-report, and during a long fetch it is the likeliest one — and
+     * holding those back would take a label the user is reading back off the screen for [after]
+     * before restoring it. The grace exists to keep a label from flashing on, not to make one flash
+     * off, so an announcement already made stands until the stage actually changes.
      */
     private fun Flow<ImportState>.holdBackUnmeasurableStages(after: Duration): Flow<ImportState> =
-        transformLatest { value ->
-            val stage = (value as? ImportState.Running)?.stage
-            if (stage != null && !stage.measurable) {
-                emit(value.copy(stage = null))
-                delay(after)
-                emit(value)
-            } else {
-                emit(value)
-            }
+        flow {
+            // Inside the returned flow, not captured beside it: a flow may be collected more than
+            // once, and two collectors sharing one `announced` would each see the other's stages.
+            var announced: ImportStage? = null
+            transformLatest { value ->
+                val stage = (value as? ImportState.Running)?.stage
+                when {
+                    // Measurable, or nothing to name: there is no announcement pending and none owed.
+                    stage == null || stage.measurable -> {
+                        announced = null
+                        emit(value)
+                    }
+                    // Already on screen. Saying it again costs nothing; taking it away costs the
+                    // explanation for a wait that is still going on.
+                    stage == announced -> emit(value)
+                    else -> {
+                        emit(value.copy(stage = null))
+                        delay(after)
+                        announced = stage
+                        emit(value)
+                    }
+                }
+            }.collect { emit(it) }
         }
 
     /**
