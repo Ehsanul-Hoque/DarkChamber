@@ -36,6 +36,15 @@ a real photo actually looks like is checked on a device below.
 
 Start from a fresh install (or clear app data) so the first run creates a vault.
 
+You will need a throwaway vault passphrase and a handful of files of each kind — images (ideally
+covering the EXIF orientation values), video large enough to take a while, a PDF, a text file. How you
+keep and load those is your own business; nothing here depends on particular fixtures.
+
+Note that `FLAG_SECURE` is set for the whole app, so **screen captures come back blank**. A view
+hierarchy dump (`adb shell uiautomator dump`) reads the tree rather than the pixels and works
+regardless, which is usually enough to check a layout — including exact bounds, which the eye cannot
+do anyway.
+
 ## Checklist
 
 Tick each line. A failure here is a release blocker.
@@ -50,8 +59,10 @@ Tick each line. A failure here is a release blocker.
       appears** — cancelling is not a failure.
 - [ ] Double-tap **Add file** quickly. Exactly one picker opens.
 - [ ] Import a large file (≥ 200 MB video). It completes, and the tile's size matches the original.
-- [ ] Import a file from a cloud provider (Drive / OneDrive) if one is installed. It completes —
-      this is the path that exercises the one-shot-source spill.
+- [ ] Import a file from a cloud provider (Drive / OneDrive) if one is installed. It completes.
+      This exercises the **blocking open**, not the spill: Drive downloads the whole file inside its
+      open and then serves re-opens from its cache, so nothing is copied into scratch. See
+      "A file the platform has to fetch" below for the checks that matter on this path.
 - [ ] After each import, the app-private `tmp/` directory is empty:
       `adb shell "run-as dev.ehsanfahad.darkchamber ls files/vault/tmp"` → no output.
 
@@ -85,8 +96,10 @@ two pickers reach the same queue by different platform APIs.
 - [ ] The progress reports **both levels**: a file count that advances ("12 of 20"), and for each
       file either a bar that fills once or an indeterminate indicator — never a bar that fills,
       resets and fills again (the container reads each file twice; the UI must not show that twice).
-- [ ] Include **one file from a cloud provider** (Drive / iCloud Drive) in a batch. It completes —
-      this is the one-shot source that exercises the spill path, now inside a batch.
+- [ ] Include **one file from a cloud provider** (Drive / iCloud Drive) in a batch. It completes, and
+      the batch carries on through it — a file the platform has to fetch holds a batch up without
+      failing it. (On Android this is the blocking open rather than the spill; the spill needs a
+      provider that streams, which we have none of.)
 - [ ] Include a file you have **no permission to read** if you can arrange one. The batch finishes
       the others and reports honestly how many could not be read; it does **not** stop at the failure.
 - [ ] The notice **"Keep DarkChamber open — locking the vault or leaving the app stops the import"**
@@ -144,6 +157,49 @@ arithmetic. Everything below needs a device.
 - [ ] **Lock the vault with the grid scrolled and previews on screen**, then unlock. The tiles
       re-render (they are decrypted again, not served from what the lock left behind).
 
+### A file the platform has to fetch
+
+A file stored in a cloud service is downloaded by its provider before a single byte reaches us, and
+the provider reports nothing about it. Google Drive blocks inside its open until the whole file has
+landed — measured at four to five minutes for 155 MB on a slow connection — so these checks need a
+**cold** provider cache, not a file opened a moment ago. Clear the provider app's cache first.
+
+- [ ] **During the download the card says what it is waiting for.** Import a large file (100 MB+)
+      from Drive. While the provider is fetching, the card reads **"Waiting for the file…"** under the
+      file name, with an **indeterminate** bar — no percentage, because there is no number to show:
+      nothing in the platform reports a provider's download progress. The app stays responsive
+      throughout, and the label persists for the whole wait rather than flashing once.
+- [ ] **Stopping during that wait actually stops.** Tap **Stop** while "Waiting for the file…" is on
+      screen. The batch ends within a second or two — *not* when the download finishes — and the
+      summary reads **"Nothing was added."**, with the file in neither the imported nor the failed
+      list. The grid gains nothing. This is the check this whole area exists for: before it, the
+      batch sat through the rest of the download with the Stop button already pressed.
+- [ ] **The download carries on anyway, and that is expected.** Nothing can call off a transfer
+      running in another app's process. Watch the provider's own notification if it shows one: it
+      finishes. What we hand back is discarded. Confirm only that the app is unaffected — no stall,
+      no late tile appearing minutes later.
+- [ ] **A second import of the same file is quicker.** Repeat the import without clearing the cache.
+      The wait is **noticeably shorter**, but the label may still appear briefly — a provider
+      re-serves through its own machinery even when the bytes are already local, which takes longer
+      than the moment a local file needs. Do **not** expect the label to be absent; expect it to be
+      short.
+- [ ] **A local import names no stage at all.** Import a file from Downloads. There is **no** line
+      under the file name at any point, and the card does not change height: both unmeasurable stages
+      pass far quicker than the delay before either is worth mentioning, and the encrypt is
+      deliberately unlabelled because the heading already says which file of how many. A batch of
+      twenty-five local photos must not flicker labels.
+- [ ] **A big pick starts promptly.** Select fifty files in one gesture and time the gap between the
+      picker closing and the first progress appearing. It should be immediate. The file details each
+      one reports — name, type, size, whether its original can be deleted — are provider round-trips,
+      and they are read off the thread that draws the screen; if that regresses, fifty files means a
+      hundred and fifty blocking calls on the UI thread before anything is drawn.
+
+> **One shape of provider cannot be checked here, by anyone.** A provider that *streams* — returning
+> from the open at once and blocking on the reads instead — takes the copy-into-scratch path, and its
+> whole transfer is counted as a **"Copying it in…"** stage with a real bar. No provider we can reach
+> behaves that way: Drive caches. That stage therefore ships covered by unit tests against a
+> one-shot fake and **by no device walk at all**. Stated so nobody records it as passed.
+
 ### Deleting the original
 
 Offered for documents whose provider allows it, and for nothing else. "No offer" is the ordinary
@@ -158,8 +214,12 @@ result — make sure it looks ordinary.
 - [ ] **Keep them** leaves both the original and the offer in place.
 - [ ] **Delete** removes the file from Downloads (check in the Files app) and the summary reports how
       many went.
-- [ ] **A provider that does not support deletion** — a file picked from Drive or OneDrive — offers
-      **nothing at all**: no button, no greyed-out control, no explanation.
+- [ ] **A cloud document may well offer it.** Google Drive advertises deletion, so importing a Drive
+      file **does** produce the offer — this was assumed otherwise until a device run showed
+      otherwise, so do not treat its absence as the expected result for cloud files.
+- [ ] **A provider that does not support deletion** offers **nothing at all**: no button, no
+      greyed-out control, no explanation. Easiest to arrange with a photo-picker item, which never
+      supports it; a read-only document works too if you can find one.
 - [ ] **The photo picker never offers it**, on either platform, however the photo was added.
 - [ ] **iOS offers it for nothing**, including documents from iCloud Drive and Files. Confirm no copy
       anywhere in the app implies that originals can be removed on iOS.
