@@ -44,8 +44,10 @@ internal data class ImportProgress(
  * `finally`. Deleting still works, because the grant belongs to the platform host rather than to any
  * stream we opened — the seam documents that as a promise implementations have to keep.
  *
- * Usually empty. Photo-library items never support deletion, iOS never does, and cloud providers
- * commonly do not, so no offer at all is the ordinary shape of a finished batch.
+ * Often empty: photo-library items never support deletion and iOS never does, so no offer at all is
+ * an ordinary shape for a finished batch. **Cloud documents are not the exception they were assumed
+ * to be** — Google Drive advertises deletion, observed on a device — so this list is not a
+ * local-files-only affair.
  */
 internal data class ImportSummary(
     val imported: Int,

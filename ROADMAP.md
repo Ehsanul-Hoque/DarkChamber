@@ -98,6 +98,12 @@ The complete free product. Everything here ships open source and free.
 >   Most sources cannot offer it at all, and no offer is made where it cannot be honoured.
 > - **Keep the screen private** — screenshot and app-switcher protection, whole-app rather than
 >   per-screen.
+> - **Import from the cloud without the app seeming to hang.** A file stored in a cloud service has
+>   to be downloaded before it can be encrypted, which the provider does on its own schedule and
+>   reports nothing about — minutes, for a large file. The import now says it is waiting for the
+>   file, and **stopping actually stops**: it gives up on the wait rather than sitting through the
+>   rest of the download. The transfer itself carries on in the other app, because nothing can call
+>   it off, and what it eventually hands over is thrown away unread.
 >
 > Still to come before v1.0: albums and folders with sort/search, the private camera, the in-app
 > viewers and the seekable reads they need, export with metadata scrubbing, the settings screen and
