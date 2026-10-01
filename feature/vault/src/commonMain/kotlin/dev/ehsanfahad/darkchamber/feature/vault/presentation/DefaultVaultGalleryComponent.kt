@@ -9,6 +9,7 @@ import dev.ehsanfahad.darkchamber.core.model.VaultError
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryError
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryState
+import dev.ehsanfahad.darkchamber.feature.vault.api.ImportStage
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportState
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultGalleryComponent
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultImports
@@ -176,6 +177,7 @@ internal class DefaultVaultGalleryComponent(
     private fun Flow<ImportState>.throttleProgress(interval: Duration): Flow<ImportState> = flow {
         var lastRunning: TimeMark? = null
         var wasStopping = false
+        var lastStage: ImportStage? = null
         collect { value ->
             if (value is ImportState.Running) {
                 val previous = lastRunning
@@ -184,14 +186,27 @@ internal class DefaultVaultGalleryComponent(
                 // says for minutes if the platform is inside a blocking read. Held back, it leaves a
                 // Stop button on screen that has already been pressed.
                 val becameStopping = value.stopping != wasStopping
-                if (becameStopping || previous == null || previous.elapsedNow() >= interval) {
+                // Nor is a change of stage. It is a different thing being done, and the stage the
+                // screen is still showing has an announcement pending behind it: drop the change and
+                // that announcement arrives anyway, labelling the import with a stage it has already
+                // left. A bar that says it is waiting for a file it is busy encrypting is worse than
+                // a bar that says nothing.
+                val changedStage = value.stage != lastStage
+                if (becameStopping || changedStage || previous == null || previous.elapsedNow() >= interval) {
                     lastRunning = TimeSource.Monotonic.markNow()
                     wasStopping = value.stopping
+                    // Updated only alongside an emission, which today is indistinguishable from
+                    // updating it on every report: a changed stage always passes, so the last stage
+                    // reported and the last stage shown cannot diverge. Kept here because it is the
+                    // placement that survives the bypass ever being narrowed — not because anything
+                    // currently depends on it, and a test cannot tell the two apart.
+                    lastStage = value.stage
                     emit(value)
                 }
             } else {
                 lastRunning = null
                 wasStopping = false
+                lastStage = null
                 emit(value)
             }
         }

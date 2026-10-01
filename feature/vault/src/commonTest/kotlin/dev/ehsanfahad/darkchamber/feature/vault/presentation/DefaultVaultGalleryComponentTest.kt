@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
@@ -236,6 +237,40 @@ class DefaultVaultGalleryComponentTest {
 
         advanceTimeBy(401.milliseconds)
         assertEquals(ImportStage.FINISHING, (component.state.value.batch as ImportState.Running).stage)
+    }
+
+    /**
+     * The throttle drops redundant *progress*. A change of stage is not progress — it is a different
+     * thing being done — and dropping it is worse than merely late: the stage the screen is still
+     * showing has an announcement pending behind it, so the label arrives anyway and names a stage
+     * the import has already left.
+     */
+    @Test
+    fun a_change_of_stage_is_never_held_back_by_the_throttle() = runTest {
+        val imports = FakeImports()
+        // A window no test can outrun, so anything that is not explicitly let through is dropped.
+        val component = component(FakeVaultItems(), imports = imports, progressInterval = 1.hours)
+
+        imports.emit(
+            ImportState.Running(index = 0, total = 1, name = "a.jpg", fileFraction = 0.1f, stage = ImportStage.ENCRYPTING),
+        )
+        imports.emit(
+            ImportState.Running(index = 0, total = 1, name = "a.jpg", fileFraction = 0.9f, stage = ImportStage.ENCRYPTING),
+        )
+        advanceUntilIdle()
+
+        val throttled = component.state.value.batch
+        assertIs<ImportState.Running>(throttled)
+        assertEquals(0.1f, throttled.fileFraction, "ordinary progress inside the window is still dropped")
+
+        imports.emit(
+            ImportState.Running(index = 0, total = 1, name = "a.jpg", fileFraction = null, stage = ImportStage.FINISHING),
+        )
+        advanceUntilIdle()
+
+        val staged = component.state.value.batch
+        assertIs<ImportState.Running>(staged)
+        assertEquals(ImportStage.FINISHING, staged.stage, "a change of stage is not progress to be dropped")
     }
 
     @Test
