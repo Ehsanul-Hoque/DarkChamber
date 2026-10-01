@@ -1,5 +1,7 @@
 package dev.ehsanfahad.darkchamber.feature.vault.presentation
 
+import dev.ehsanfahad.darkchamber.feature.vault.api.ImportStage
+
 /**
  * Pure formatting for a gallery tile. Kept out of the composable so it can be tested directly, and
  * so the rules — what a size reads as, how coarse an age is — live in one place.
@@ -19,6 +21,27 @@ internal object GalleryFormat {
             mime == "application/pdf" -> "PDF"
             mime.startsWith("text/") -> "TXT"
             else -> "FILE"
+        }
+
+    /**
+     * What to say about the stage an import is in, or **null** when there is nothing worth saying.
+     *
+     * Two of the four stages get no label. The encrypt is the ordinary case and the card's heading
+     * already says which file of how many, so a line repeating it would appear on every import and
+     * inform nobody. A null stage is presentation declining to name one yet, because it has not
+     * lasted long enough to be worth a word.
+     *
+     * The wait is **not** called "Downloading". We cannot tell a download from a provider that is
+     * merely slow, and naming the wrong one is the kind of small lie hard rule 6 exists to prevent —
+     * while "waiting for the file" is true in either case and still explains the stall, which is the
+     * whole reason the stage is surfaced at all.
+     */
+    fun stageLabel(stage: ImportStage?): String? =
+        when (stage) {
+            ImportStage.FETCHING -> "Waiting for the file…"
+            ImportStage.COPYING -> "Copying it in…"
+            ImportStage.FINISHING -> "Finishing…"
+            ImportStage.ENCRYPTING, null -> null
         }
 
     /** Binary units, one decimal above a kibibyte — the sizes a file manager would show. */

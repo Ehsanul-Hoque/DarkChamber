@@ -316,6 +316,19 @@ private fun ImportProgressCard(batch: ImportState.Running, onCancel: () -> Unit)
             modifier = Modifier.padding(top = spacing.spaceXs),
         )
 
+        // Only the stages that cannot be measured say anything, and only once they have lasted — so
+        // an ordinary import shows no line here at all and the card never changes height. A slow one
+        // gains a line for as long as it is slow, which is the case where a bar that cannot move
+        // needs explaining.
+        GalleryFormat.stageLabel(batch.stage)?.let { label ->
+            Text(
+                text = label,
+                style = DarkChamberTheme.typography.caption,
+                color = colors.textSecondary,
+                modifier = Modifier.padding(top = spacing.spaceXs),
+            )
+        }
+
         val fraction = batch.fileFraction
         if (fraction == null) {
             LinearProgressIndicator(
@@ -334,9 +347,9 @@ private fun ImportProgressCard(batch: ImportState.Running, onCancel: () -> Unit)
 
         Text(
             // Once stopping, the keep-open notice is the wrong warning: the batch is already ending,
-            // and what the user needs to know is that it has heard them and why it has not stopped
-            // yet. "The current file" is as specific as we can honestly be — this layer does not
-            // know whether the platform is fetching it, and claiming it is would be a guess.
+            // and what the user needs to know is that it has heard them and that nothing already
+            // added is at risk. Which wait it is in is said by the stage line above rather than
+            // guessed at here.
             text = if (batch.stopping) STOPPING_NOTICE else KEEP_OPEN_NOTICE,
             style = DarkChamberTheme.typography.caption,
             color = colors.textSecondary,
@@ -714,14 +727,18 @@ private const val KEEP_OPEN_NOTICE =
 /**
  * Shown from the moment Stop is tapped until the batch actually ends.
  *
- * Deliberately says *finishing reading* rather than "stopping now": a stop takes effect on the next
- * read of the payload, and a file the platform is still fetching can sit inside one read for minutes
- * (docs/THREAT_MODEL.md's note that a stop is cooperative). Promising an instant stop would be a
- * claim the code cannot keep (hard rule #6). The second half is the part that stops the wait feeling
- * like a loss.
+ * Says a stop *may take a moment* rather than naming what it is waiting for, because that now
+ * depends on where the stop lands. Waiting for a provider to hand the file over is abandoned at
+ * once; part-way through the encrypt the stop takes effect on the next read of the payload, which is
+ * kilobytes away but still not instant (docs/THREAT_MODEL.md's note that a stop is cooperative).
+ *
+ * It used to say "once the current file finishes reading", which described the longer of those two
+ * waits — correct when a blocked fetch could not be interrupted, and an understatement of the stop
+ * now that it can be. Promising an instant stop would be the opposite error (hard rule #6), so it
+ * promises neither. The second half is the part that stops the wait feeling like a loss.
  */
 private const val STOPPING_NOTICE =
-    "Stopping once the current file finishes reading. Everything already added stays in the vault."
+    "Stopping — this may take a moment. Everything already added stays in the vault."
 
 /** Wide enough for a name to read at two columns on a phone, narrow enough for three on a tablet. */
 private val TILE_MIN_WIDTH = 132.dp
