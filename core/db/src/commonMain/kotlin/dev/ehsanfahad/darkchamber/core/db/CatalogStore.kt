@@ -97,6 +97,26 @@ class CatalogStore private constructor(
     fun listAlbums(): Outcome<List<Albums>> =
         catchingDb { albums.selectAllAlbums().executeAsList() }
 
+    /**
+     * Live album listing: every album with its item count and the id of the item that represents it.
+     *
+     * **Re-emits when `items` changes, not only `albums`.** Importing, shredding or moving an item
+     * changes a count or a cover while every album row stays byte-identical, so a listener on
+     * `albums` alone would leave the grid confidently wrong. The query reaches into `items` for both
+     * derived columns, and SQLDelight registers a query's listener against every table its SQL
+     * names — so a write to either notifies this. That is load-bearing rather than incidental: a
+     * narrowing of this query that stopped mentioning `items` would silently stop the updates, which
+     * is why it is pinned by a test.
+     *
+     * Counts and covers come from the plaintext index columns only; nothing here decrypts. Returns a
+     * raw [Flow] for the same reason [observeItems] does — a hot stream has no single [Outcome] to
+     * return, so the collector maps failures.
+     */
+    fun observeAlbums(): Flow<List<SelectAlbumsWithCounts>> =
+        albums.selectAlbumsWithCounts()
+            .asFlow()
+            .mapToList(dispatcher)
+
     /** Remove the album with [id]. Idempotent — an absent id is `Ok`, never a throw. */
     fun deleteAlbum(id: ByteArray): Outcome<Unit> =
         catchingDb { albums.deleteAlbumById(id) }

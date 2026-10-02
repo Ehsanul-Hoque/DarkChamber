@@ -210,6 +210,60 @@ class CatalogStoreTest {
         obsDriver.close()
     }
 
+    /**
+     * The album grid's liveness depends on a listener firing for a table the album rows do not live
+     * in.
+     *
+     * Every assertion here writes to **items only** — no album row is touched after the first one is
+     * created — so each re-emission proves the listener covers `items` as well as `albums`. If it
+     * does not, the grid shows a count and a cover that were right when the screen opened and drift
+     * silently from then on, which is worse than showing nothing because a number looks
+     * authoritative.
+     */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    @Test
+    fun observeAlbums_reemits_when_only_the_items_table_changes() = runTest {
+        val obsDriver = testSqlDriver()
+        val obsStore = CatalogStore.create(obsDriver, UnconfinedTestDispatcher(testScheduler)).unwrap()
+        obsStore.upsertAlbum(album(1)).unwrap()
+        obsStore.upsertAlbum(album(2)).unwrap()
+
+        obsStore.observeAlbums().test {
+            val initial = awaitItem()
+            assertEquals(listOf(0L, 0L), initial.map { it.item_count }, "both albums start empty")
+            assertNull(initial.first().cover_item_id, "an empty album has no cover")
+
+            // Insert into album 1.
+            obsStore.upsertItem(item(10, albumId = byteArrayOf(1), createdAt = 100L)).unwrap()
+            val afterInsert = awaitItem()
+            assertEquals(listOf(1L, 0L), afterInsert.map { it.item_count }, "an insert into items re-emits")
+            assertContentEquals(byteArrayOf(10), afterInsert.first().cover_item_id, "newest item becomes the cover")
+
+            // A newer item takes the cover without changing which album anything is in.
+            obsStore.upsertItem(item(11, albumId = byteArrayOf(1), createdAt = 200L)).unwrap()
+            val afterNewer = awaitItem()
+            assertContentEquals(byteArrayOf(11), afterNewer.first().cover_item_id, "the cover follows the newest item")
+
+            // The case that matters: move an item between albums. The row count across the vault is
+            // unchanged, so anything deduplicating on a total would miss this entirely — and moving
+            // items between albums is the single most ordinary thing this screen has to reflect.
+            obsStore.upsertItem(item(11, albumId = byteArrayOf(2), createdAt = 200L)).unwrap()
+            val afterMove = awaitItem()
+            assertEquals(listOf(1L, 1L), afterMove.map { it.item_count }, "a move re-emits both counts")
+            assertContentEquals(byteArrayOf(10), afterMove.first().cover_item_id, "the cover falls back to what is left")
+            assertContentEquals(byteArrayOf(11), afterMove.last().cover_item_id, "and the destination gains one")
+
+            // Deleting the last item empties the album rather than dropping it from the listing.
+            obsStore.deleteItem(byteArrayOf(11)).unwrap()
+            val afterDelete = awaitItem()
+            assertEquals(listOf(1L, 0L), afterDelete.map { it.item_count }, "a delete from items re-emits")
+            assertNull(afterDelete.last().cover_item_id, "an emptied album keeps its row and loses its cover")
+
+            cancelAndIgnoreRemainingEvents()
+        }
+        obsDriver.close()
+    }
+
     @Test
     fun create_fails_closed_on_a_newer_catalog_version() {
         val newer = testSqlDriver()

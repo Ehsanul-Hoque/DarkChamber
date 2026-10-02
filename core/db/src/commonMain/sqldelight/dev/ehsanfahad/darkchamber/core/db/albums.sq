@@ -16,5 +16,36 @@ SELECT * FROM albums WHERE id = ?;
 selectAllAlbums:
 SELECT * FROM albums ORDER BY created_at;
 
+-- Every album with the two facts a grid needs about its contents: how many items it holds, and
+-- which item should represent it.
+--
+-- Both come from the plaintext index columns alone — `album_id` and `created_at` — so listing
+-- albums decrypts **nothing per item**. Only the album's own `enc_name` is a secret, and there are
+-- few of those. Anything that makes this query reach into `enc_meta` turns a cheap screen into one
+-- whose cost grows with the whole vault.
+--
+-- The cover is the newest item, tie-broken by id for the same reason the item listings are: a batch
+-- import writes many rows inside one millisecond, and without a total order SQLite may pick a
+-- different "newest" each time the query re-runs, which would make covers flicker between equals.
+--
+-- Ordering is by `created_at` here and re-sorted by name after decryption, because the name this
+-- would have to sort on is sealed and the database cannot read it.
+selectAlbumsWithCounts:
+SELECT
+    a.id,
+    a.kek_variant,
+    a.enc_name,
+    a.created_at,
+    (SELECT count(*) FROM items i WHERE i.album_id = a.id) AS item_count,
+    cover.id AS cover_item_id
+FROM albums a
+LEFT JOIN items cover ON cover.id = (
+    SELECT c.id FROM items c
+    WHERE c.album_id = a.id
+    ORDER BY c.created_at DESC, c.id DESC
+    LIMIT 1
+)
+ORDER BY a.created_at;
+
 deleteAlbumById:
 DELETE FROM albums WHERE id = ?;
