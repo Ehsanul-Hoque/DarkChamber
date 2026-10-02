@@ -94,6 +94,12 @@ internal class ImportCoordinator(
 
     /** Dismiss a finished summary. Anything else is left alone — a running batch is not dismissible. */
     override fun acknowledge() {
+        // The picker-failure notice is dismissible too, and there is nothing to tidy up behind it:
+        // no grant was taken and no batch ran.
+        if (_state.value == ImportState.PickerUnavailable) {
+            _state.value = ImportState.Idle
+            return
+        }
         val finished = _state.value as? ImportState.Finished ?: return
         // Not while its deletes are running. Dismissing would not stop them — they run on a list
         // captured before the launch — so it would only hide them, and the outcome would then be
@@ -166,12 +172,11 @@ internal class ImportCoordinator(
                 // state left to publish — this object is going away with it.
                 throw e
             } catch (_: Exception) {
-                // The picker could not even be shown: no grant was taken, nothing to close, and
-                // nothing imported, so Idle is the honest state. It is also a *silent* one — no
-                // banner is raised for a picker that never opened, so the affordance simply looks
-                // inert. A known gap rather than a decision; surfacing it needs a state of its own,
-                // because "the picker would not open" is not "that file could not be added".
-                _state.value = ImportState.Idle
+                // The picker could not even be shown: no grant was taken, nothing to close, nothing
+                // imported. Said out loud rather than dropped back to Idle, which left the button
+                // the user had just tapped looking inert. Its own state, because "the picker would
+                // not open" is not "that file could not be added" — there is no file to name.
+                _state.value = ImportState.PickerUnavailable
                 return@launch
             }
 
@@ -190,6 +195,7 @@ internal class ImportCoordinator(
                         index = progress.index,
                         total = progress.total,
                         name = progress.name,
+                        stage = progress.stage,
                         fileFraction = progress.fileFraction,
                         // Carried on every emission, not just set once by cancel(): the queue keeps
                         // reporting progress for the file it is still finishing, and rebuilding the

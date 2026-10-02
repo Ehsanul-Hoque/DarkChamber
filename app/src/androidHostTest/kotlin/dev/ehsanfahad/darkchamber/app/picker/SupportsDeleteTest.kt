@@ -10,8 +10,9 @@ import kotlin.test.assertTrue
  *
  * Two things have to hold, and they fail independently. The URI must be a **document** — the photo
  * picker hands back media URIs that no provider will delete, so asking is meaningless there — and
- * the document must advertise `FLAG_SUPPORTS_DELETE`, which most cloud providers do not. Either
- * missing means no offer at all, which is the ordinary case rather than an error (hard rule #6).
+ * the document must advertise `FLAG_SUPPORTS_DELETE`, which a read-only document never does and a
+ * cloud provider may well (Google Drive advertises it, observed on a device). Either missing means
+ * no offer at all, which is the ordinary case rather than an error (hard rule #6).
  *
  * The decision is pulled out here because the rest of the delete path needs a live provider and can
  * only be verified on a device.

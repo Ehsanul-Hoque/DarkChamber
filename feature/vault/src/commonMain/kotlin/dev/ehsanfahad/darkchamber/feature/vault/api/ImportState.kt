@@ -16,11 +16,41 @@ sealed interface ImportState {
     data object Picking : ImportState
 
     /**
-     * A file is being encrypted. [index] is zero-based, so a screen shows `index + 1` of [total].
+     * The picker could not be shown at all, so nothing was chosen and nothing was imported.
      *
-     * [fileFraction] runs 0 → 1 across the whole of one file, or is **null** when the platform never
-     * said how big the file is — draw an indeterminate indicator, never a bar against a guessed
-     * total (hard rule #6).
+     * A state of its own rather than a [FailedImport] entry. Nothing failed to be *added* — there is
+     * no file to name, and the failure banner would name a victim that does not exist (hard rule #6).
+     * Without it the batch went straight back to [Idle] and the button the user had just tapped
+     * simply looked inert.
+     *
+     * Rare, and not the same as the user backing out: a cancelled pick returns an empty list and goes
+     * quietly to [Idle]. This is the platform refusing — no activity to host the intent, no view
+     * controller to present from.
+     *
+     * Dismissible, and it must not latch the affordance shut: a picker that failed once is the kind
+     * of thing a second tap fixes.
+     */
+    data object PickerUnavailable : ImportState
+
+    /**
+     * A file is being imported. [index] is zero-based, so a screen shows `index + 1` of [total].
+     *
+     * [stage] is which part of that a screen may name — waiting for the file, copying it in,
+     * encrypting, finishing. It exists because the two unmeasurable stages are exactly the two that
+     * used to look like nothing was happening, one before any byte existed and one after the bar had
+     * reached its own end.
+     *
+     * **`null` means there is nothing worth naming yet.** The batch always knows which stage it is
+     * in; what it does not know is whether that stage has lasted long enough to be worth saying out
+     * loud. A local file passes through the two unmeasurable stages in less time than a frame, so
+     * presentation holds their names back until they have lasted and publishes `null` until then —
+     * which is exactly the card as it looked before stages existed.
+     *
+     * [fileFraction] runs 0 → 1 across the current [stage], not across the whole file: the stages
+     * divide by different numbers, and two of them divide by nothing. It is **null** whenever there
+     * is nothing honest to divide by — an unmeasurable stage, or a platform that never said how big
+     * the file is. Draw an indeterminate indicator, never a bar against a guessed total
+     * (hard rule #6).
      *
      * [stopping] means the user has asked the batch to stop and it has not stopped yet. It is a
      * state of its own because the gap is real and can be long: a stop takes effect on the next read
@@ -33,13 +63,16 @@ sealed interface ImportState {
         val total: Int,
         val name: String,
         val fileFraction: Float?,
+        // Defaulted to the ordinary case, the same way `stopping` is: most of every import is the
+        // encrypt, and a test about something else should not have to name a stage to say so.
+        val stage: ImportStage? = ImportStage.ENCRYPTING,
         val stopping: Boolean = false,
     ) : ImportState {
         // The name is decrypted vault content; the generated toString would print it into any log
         // line that renders this state (hard rule #4).
         override fun toString(): String =
             "Running(index=$index, total=$total, name=${name.length} chars, " +
-                "fileFraction=$fileFraction, stopping=$stopping)"
+                "stage=$stage, fileFraction=$fileFraction, stopping=$stopping)"
     }
 
     /**

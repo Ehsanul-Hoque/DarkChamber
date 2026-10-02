@@ -9,6 +9,7 @@ import dev.ehsanfahad.darkchamber.core.model.VaultError
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryError
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryState
+import dev.ehsanfahad.darkchamber.feature.vault.api.ImportStage
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportState
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultGalleryComponent
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultImports
@@ -58,6 +59,10 @@ internal class DefaultVaultGalleryComponent(
     // the user has chosen, while the system materialises the selection (on iOS, a per-asset iCloud
     // download that can run to seconds). Zero in tests.
     private val pickingDelay: Duration = PICKING_DELAY,
+    // How long a stage that cannot be measured has to last before it is worth naming. Short enough
+    // that a real wait is explained almost at once, long enough that a local file — which passes
+    // through both unmeasurable stages in microseconds — never names either. Zero in tests.
+    private val stageGrace: Duration = STAGE_GRACE,
 ) : VaultGalleryComponent, ComponentContext by componentContext {
 
     // SupervisorJob so one failed intent does not kill the component's other work, but parented to
@@ -87,6 +92,10 @@ internal class DefaultVaultGalleryComponent(
         imports.state
             .holdBackPicking(pickingDelay)
             .throttleProgress(progressInterval)
+            // After the throttle, not before: the announcement it makes later is a single frame the
+            // throttle would be entitled to drop, having just let the silent version of the same
+            // state through.
+            .holdBackUnmeasurableStages(stageGrace)
             .onEach(::onImportState)
             .launchIn(scope)
     }
@@ -133,6 +142,54 @@ internal class DefaultVaultGalleryComponent(
         }
 
     /**
+     * Hold back the *name* of a stage that cannot be measured until it has lasted [after].
+     *
+     * One rule, not two special cases: **a stage with no fraction to draw is announced only once it
+     * has lasted; a stage with a denominator is announced at once**, because a moving bar is its own
+     * evidence that something is happening.
+     *
+     * Both unmeasurable stages need it. Waiting for a local file takes microseconds, and every import
+     * ends with a preview attempt whether or not a preview is possible — so without this, a batch of
+     * twenty-five local photos would flash two labels per file, fifty in a few seconds.
+     *
+     * `transformLatest`, for the same reason as [holdBackPicking]: a new state must **cancel** the
+     * pending announcement, so a stage that did not last is never named at all. The silent version
+     * goes out immediately, so the card keeps its file, its count and its indeterminate bar
+     * throughout — exactly as it looked before stages existed.
+     *
+     * **Only a stage that is new is held back.** A batch re-reports the stage it is already in — the
+     * stop arriving is one such re-report, and during a long fetch it is the likeliest one — and
+     * holding those back would take a label the user is reading back off the screen for [after]
+     * before restoring it. The grace exists to keep a label from flashing on, not to make one flash
+     * off, so an announcement already made stands until the stage actually changes.
+     */
+    private fun Flow<ImportState>.holdBackUnmeasurableStages(after: Duration): Flow<ImportState> =
+        flow {
+            // Inside the returned flow, not captured beside it: a flow may be collected more than
+            // once, and two collectors sharing one `announced` would each see the other's stages.
+            var announced: ImportStage? = null
+            transformLatest { value ->
+                val stage = (value as? ImportState.Running)?.stage
+                when {
+                    // Measurable, or nothing to name: there is no announcement pending and none owed.
+                    stage == null || stage.measurable -> {
+                        announced = null
+                        emit(value)
+                    }
+                    // Already on screen. Saying it again costs nothing; taking it away costs the
+                    // explanation for a wait that is still going on.
+                    stage == announced -> emit(value)
+                    else -> {
+                        emit(value.copy(stage = null))
+                        delay(after)
+                        announced = stage
+                        emit(value)
+                    }
+                }
+            }.collect { emit(it) }
+        }
+
+    /**
      * Let every state through except a flood of [ImportState.Running] updates, of which one per
      * [interval] is enough. A batch ending — or starting, or being cancelled — is never delayed:
      * those are the frames that must land immediately, and there are only ever a handful of them.
@@ -140,6 +197,7 @@ internal class DefaultVaultGalleryComponent(
     private fun Flow<ImportState>.throttleProgress(interval: Duration): Flow<ImportState> = flow {
         var lastRunning: TimeMark? = null
         var wasStopping = false
+        var lastStage: ImportStage? = null
         collect { value ->
             if (value is ImportState.Running) {
                 val previous = lastRunning
@@ -148,14 +206,27 @@ internal class DefaultVaultGalleryComponent(
                 // says for minutes if the platform is inside a blocking read. Held back, it leaves a
                 // Stop button on screen that has already been pressed.
                 val becameStopping = value.stopping != wasStopping
-                if (becameStopping || previous == null || previous.elapsedNow() >= interval) {
+                // Nor is a change of stage. It is a different thing being done, and the stage the
+                // screen is still showing has an announcement pending behind it: drop the change and
+                // that announcement arrives anyway, labelling the import with a stage it has already
+                // left. A bar that says it is waiting for a file it is busy encrypting is worse than
+                // a bar that says nothing.
+                val changedStage = value.stage != lastStage
+                if (becameStopping || changedStage || previous == null || previous.elapsedNow() >= interval) {
                     lastRunning = TimeSource.Monotonic.markNow()
                     wasStopping = value.stopping
+                    // Updated only alongside an emission, which today is indistinguishable from
+                    // updating it on every report: a changed stage always passes, so the last stage
+                    // reported and the last stage shown cannot diverge. Kept here because it is the
+                    // placement that survives the bypass ever being narrowed — not because anything
+                    // currently depends on it, and a test cannot tell the two apart.
+                    lastStage = value.stage
                     emit(value)
                 }
             } else {
                 lastRunning = null
                 wasStopping = false
+                lastStage = null
                 emit(value)
             }
         }
@@ -196,5 +267,16 @@ internal class DefaultVaultGalleryComponent(
          * moment later anyway.
          */
         val PICKING_DELAY: Duration = 450.milliseconds
+
+        /**
+         * A wait worth naming is one that lasted.
+         *
+         * Below this, an import is not waiting on anything a person would notice: a local file is
+         * handed over and previewed in microseconds, and naming either stage would put two labels on
+         * screen per file — fifty of them across a batch of twenty-five photos, none legible. Above
+         * it, something really is holding the import up, and saying which of the two it is turns a
+         * bar that cannot move into an explanation.
+         */
+        val STAGE_GRACE: Duration = 400.milliseconds
     }
 }

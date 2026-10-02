@@ -1,5 +1,6 @@
 package dev.ehsanfahad.darkchamber.feature.vault.presentation
 
+import dev.ehsanfahad.darkchamber.feature.vault.api.ImportStage
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -104,5 +105,48 @@ class GalleryFormatTest {
         // Because the question a user actually has at that dialog is "am I about to lose this?"
         val copy = GalleryFormat.deleteOriginalsDisclosure(1).lowercase()
         assertTrue("vault" in copy && "encrypted" in copy, "got: $copy")
+    }
+
+    /**
+     * Only the stages that cannot be measured are named. The encrypt is the ordinary case and the
+     * card's heading already says which file of how many, so labelling it would add a line to every
+     * import that tells the reader nothing.
+     */
+    @Test
+    fun only_the_stages_with_nothing_to_measure_are_named() {
+        assertEquals(null, GalleryFormat.stageLabel(ImportStage.ENCRYPTING), "the ordinary case says nothing")
+        assertEquals(null, GalleryFormat.stageLabel(null), "and neither does a stage not worth naming yet")
+
+        for (stage in listOf(ImportStage.FETCHING, ImportStage.COPYING, ImportStage.FINISHING)) {
+            assertTrue(
+                GalleryFormat.stageLabel(stage)?.isNotBlank() == true,
+                "a stage with no bar to draw has to explain itself, got none for $stage",
+            )
+        }
+    }
+
+    /**
+     * The wait must not be called a download. We cannot tell a provider downloading a file from one
+     * that is merely slow — no Android API says — and naming the wrong one is exactly the kind of
+     * small lie hard rule 6 exists to prevent. This test is the guard on that wording, because
+     * nothing else would notice it drifting.
+     */
+    @Test
+    fun the_wait_does_not_claim_to_know_what_the_platform_is_doing() {
+        val copy = GalleryFormat.stageLabel(ImportStage.FETCHING)!!.lowercase()
+
+        assertTrue("waiting" in copy, "it says what we know — that we are waiting — got: $copy")
+        for (guess in listOf("download", "fetch", "cloud", "network", "server")) {
+            assertFalse(guess in copy, "the label claims something we cannot know: $guess")
+        }
+    }
+
+    /** Each named stage says something different, or the label is decoration rather than information. */
+    @Test
+    fun the_named_stages_are_told_apart() {
+        val labels = listOf(ImportStage.FETCHING, ImportStage.COPYING, ImportStage.FINISHING)
+            .map { GalleryFormat.stageLabel(it) }
+
+        assertEquals(labels.size, labels.distinct().size, "two stages reading alike explain nothing: $labels")
     }
 }

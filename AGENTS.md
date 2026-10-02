@@ -6,10 +6,11 @@ DarkChamber is a **Kotlin Multiplatform (KMP) + Compose Multiplatform (CMP)** ap
 
 Package root: `dev.ehsanfahad.darkchamber`.
 
-> **Current state.** Phase 0 is **complete** — the encrypted-vault core is built. The module graph is
+> **Current state.** Phase 0 is **complete** — the encrypted-vault core is built — and **Phase 1 is
+> in progress**: the vault feature module ships the gallery and import. The module graph is
 > wired by the `:build-logic` convention plugins (`darkchamber.kmp.library`,
-> `darkchamber.android.application`, `darkchamber.kmp.compose`), versions pinned in
-> `gradle/libs.versions.toml`. What exists:
+> `darkchamber.android.application`, `darkchamber.kmp.compose`, `darkchamber.kmp.feature`), versions
+> pinned in `gradle/libs.versions.toml`. What exists:
 >
 > - **`:core:model`** — `VaultError` / `Outcome` types.
 > - **`:core:crypto`** — the `.dchm` container codec (chunked AES-256-GCM) behind the swappable
@@ -32,11 +33,19 @@ Package root: `dev.ehsanfahad.darkchamber`.
 >   unlock Compose UI, and the lock lifecycle (teardown on Lock **and** on background). Hosted by an
 >   Android `FragmentActivity` (`:androidApp`) and an iOS `ComposeUIViewController` linking the
 >   `Shared` umbrella framework (`:iosApp`).
+> - **`:feature:vault`** — the gallery (adaptive grid over `observeItems`, newest first, encrypted
+>   previews in the media slot) and import: multi-select file + photo pickers behind `FilePicker` /
+>   `PhotoPicker` seams the app implements, a sequential batch with two-level progress,
+>   continue-on-error and a stop that lands **within** a file, thumbnails generated inline at import
+>   under their own DEK, and the original-delete offer behind its non-dismissable disclosure. Public
+>   surface is one factory plus the `api` package; everything else is `internal`. Reaches the vault
+>   through `core:vault` only.
+> - **`:konsist`** — the architecture + **security-invariant** rules, running in CI on every PR.
 >
-> Still a stub (marker + smoke test): `:core:testing`. **Next: Phase 1 feature UI** — camera/import,
-> in-app viewers with seekable range reads + a media `DataSource` (deferred from Phase 0). **Planned,
-> not yet wired:** the quality tooling (ktlint/detekt/Konsist/Kover), Lefthook, `migrationTest`, and
-> the Konsist security-invariant rules — verify a Gradle task exists before assuming it runs. CI:
+> Still a stub (marker + smoke test): `:core:testing`. **In progress: Phase 1** — the import plumbing
+> the pickers exposed, then albums/browse, camera, the seek primitive and the in-app viewers
+> (deferred from Phase 0). **Planned, not yet wired:** ktlint/detekt/Kover, Lefthook and
+> `migrationTest` — verify a Gradle task exists before assuming it runs. CI:
 > `pr.yml` is enabled (build + commit-message check + gated iOS compile); its `quality` job stays
 > commented out until those plugins land, and `nightly`/`release`/`test-build` stay committed
 > **disabled** (`*.yml.disabled`). Treat `docs/` as the source of truth for *where things are going*,

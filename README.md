@@ -6,8 +6,9 @@ A Kotlin Multiplatform app for **Android** and **iOS** that encrypts, stores, an
 
 **Free and open source (GPLv3). Local-first. No ads, no trackers, no accounts — and v1 ships with no `INTERNET` permission, so you can verify in the manifest that your files cannot leave your device.**
 
-> ⚠️ **Status: pre-release.** Phase 0 — the encrypted-vault core — is **built and verified**, but
-> **nothing here is ready to protect real files yet.** What exists, on both Android and iOS:
+> ⚠️ **Status: pre-release.** The encrypted-vault core is **built and verified**, and the vault
+> itself now has a usable face on it — but **nothing here is ready to protect real files yet.**
+> What exists, on both Android and iOS:
 >
 > - the **`.dchm` container format** (chunked AES-256-GCM behind a swappable `CryptoEngine`) and the
 >   portable **key hierarchy** (MasterKey/per-object DEK, Argon2id passphrase + PBKDF2 fallback + HKDF
@@ -17,10 +18,18 @@ A Kotlin Multiplatform app for **Android** and **iOS** that encrypts, stores, an
 >   catalog**;
 > - **streaming** import + large-file (2 GB video) **stream-decrypt** in bounded RAM;
 > - the **session gate** with cryptographic per-use **biometric unlock**, a passphrase fallback, and a
->   lock lifecycle that tears the session down on lock and on backgrounding.
+>   lock lifecycle that tears the session down on lock and on backgrounding;
+> - the **vault screen** — a grid of what you have put in, newest first — and **batch import** from
+>   the file picker or the photo picker, with progress you can watch and stop part-way through;
+> - **encrypted previews**, generated as a file is imported and sealed under their own key. No
+>   decrypted image is ever written to storage, and the in-memory cache is emptied when you lock;
+> - the option to **delete the original** after importing it, where the system allows it, behind a
+>   disclosure you have to answer that says what deleting on flash storage can and cannot promise.
 >
-> What's left before the vault is usable: the actual **camera / vault / viewer UI** (next), then the
-> rest of the roadmap. The documents under [`docs/`](./docs) describe the target design.
+> What's left before the vault is usable: **albums and search**, the **private camera**, and the
+> **in-app viewers** — tapping an item is deliberately inert until those land — then export with
+> metadata scrubbing and the settings screen. The documents under [`docs/`](./docs) describe the
+> target design.
 
 ---
 

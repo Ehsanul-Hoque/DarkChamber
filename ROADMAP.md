@@ -2,7 +2,7 @@
 
 > *Encrypted vault & private camera. A camera obscura for the modern age: what enters the chamber never leaves it.*
 
-> **Status:** In development (Phase 0) · **Platforms:** Android & iOS · **Stack:** Kotlin Multiplatform + Compose Multiplatform
+> **Status:** In development (Phase 1) · **Platforms:** Android & iOS · **Stack:** Kotlin Multiplatform + Compose Multiplatform
 > **License:** GPLv3 (app), trademark reserved · **Model:** Free & open source, one-time purchase for cloud sync
 
 ---
@@ -65,8 +65,8 @@ Goal: a walking skeleton with the security core proven before any product UI.
 >   and an iOS `ComposeUIViewController`.
 >
 > The exit criteria below are **met** (streaming encrypt + 2 GB stream-decrypt in bounded RAM;
-> kill → relaunch → biometric unlock, plaintext never on disk). **Next: Phase 1** — the camera/import
-> + viewer UI. See the git history and `docs/` for detail.
+> kill → relaunch → biometric unlock, plaintext never on disk). **Phase 1 picked up from here** — the
+> camera/import + viewer UI; its progress note is below. See the git history and `docs/` for detail.
 
 - KMP project scaffold: `core-crypto`, `core-storage`, `core-db`, `app` (Compose Multiplatform), CI on GitHub Actions (Android + iOS builds, unit tests).
 - **Crypto core v1:** AES-256-GCM chunked streaming encryption/decryption (the `.dchm` container format — see docs/FORMAT.md), envelope key hierarchy, Argon2id KDF.
@@ -79,6 +79,41 @@ Goal: a walking skeleton with the security core proven before any product UI.
 ### Phase 1 — MVP: Vault + Private Camera → **v1.0**
 
 The complete free product. Everything here ships open source and free.
+
+> **Progress (2026-09): Phase 1 is under way — the vault half of it is taking shape.** What a build
+> can do today, on Android and iOS:
+>
+> - **Browse the vault.** An adaptive grid over the encrypted catalog, newest first, backed by the
+>   session gate from Phase 0 — the item list cannot exist without an open vault.
+> - **Import files at scale.** Multi-select from both the system file picker and the photo picker,
+>   encrypted one file at a time in bounded RAM. A batch reports which file it is on and how far into
+>   it, keeps going when one file cannot be read, and can be stopped **during** a file rather than
+>   after it.
+> - **See what is in there.** Previews are generated while a file is being imported, each sealed under
+>   its own key alongside the file it previews. Nothing decrypted is ever written to storage — the
+>   image loader keeps no disk cache, and its memory cache is emptied when the vault locks. A file
+>   with no preview shows its type instead; a preview is a convenience and never evidence.
+> - **Delete the original after importing it**, where the system will allow it, behind a disclosure
+>   that has to be answered and that states what deletion on flash storage can and cannot promise.
+>   Most sources cannot offer it at all, and no offer is made where it cannot be honoured.
+> - **Keep the screen private** — whole-app rather than per-screen: screenshot and screen-recording
+>   blocking plus a blank app-switcher card on Android, and an obscured app-switcher snapshot on
+>   iOS. iOS gives apps no way to block a screenshot at all, which the threat model states and no
+>   copy here softens.
+> - **Import from the cloud without the app seeming to hang.** A file stored in a cloud service has
+>   to be downloaded before it can be encrypted, which the provider does on its own schedule and
+>   reports nothing about — minutes, for a large file. The import now says it is waiting for the
+>   file, and **stopping actually stops**: it gives up on the wait rather than sitting through the
+>   rest of the download. The transfer itself carries on in the other app, because nothing can call
+>   it off, and what it eventually hands over is thrown away unread.
+>
+> Still to come before v1.0: albums and folders with sort/search, the private camera, the in-app
+> viewers and the seekable reads they need, export with metadata scrubbing, the settings screen and
+> recovery-key entry, and the release-readiness tooling.
+>
+> **Verified on Android hardware.** The iOS side is built and passes on the simulator, but the
+> platform-specific paths — the pickers and the preview encoder — have not yet been run on a device.
+> That is a pre-release gate, and it is stated here rather than implied away.
 
 | Feature                                | Notes                                                                                                                                                                                               |
 |----------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|

@@ -58,12 +58,29 @@ class VaultObjects(
      * row insert fails after the object is written, the object is deleted so no orphan ciphertext is
      * left behind.
      *
-     * [onProgress] receives the **cumulative** count of payload bytes read so far — one monotonic
-     * run from 0 to `2 × size`, because both of the codec's passes are counted. The two-pass read is
-     * the container's business, not the user's, so this module reports bytes and nothing else: the
-     * caller owns the denominator, the percentage and the decision of what to draw when no size is
-     * known. A spilled one-shot source is copied to `tmp/` before any of this, and that copy is not
-     * counted — the end point must not depend on whether the source could be re-opened.
+     * [onProgress] receives an [ImportPhase] and the **cumulative** count of bytes read within that
+     * phase. [ImportPhase.ENCRYPTING] covers both of the codec's passes as one monotonic run from 0
+     * to `2 × size`, because the two-pass read is the container's business and not the user's.
+     *
+     * The phase is reported because the denominator differs between them and only this module knows
+     * which one applies — whether the source had to be spilled is decided in here. The caller still
+     * owns the denominator, the percentage, and the decision of what to draw when no size is known:
+     * [ImportPhase] says which arithmetic to do, never what to show.
+     *
+     * [first] is an **already-open** source over the same payload, which stands in for the first
+     * open this function would otherwise perform. It exists because a provider may block for minutes
+     * inside that open — Drive downloads the whole file there — and abandoning a blocked call needs
+     * a second thread, which this module does not have: it is synchronous and `Outcome`-returning by
+     * design. The caller, which is coroutine-aware, opens it and can give up waiting.
+     *
+     * Only the first open needs it. A caching provider serves every later open from its cache, and a
+     * streaming provider returns from the open at once, so the remaining opens are not where a wait
+     * lands.
+     *
+     * **Ownership passes here.** Once handed over the source belongs to this function, which closes
+     * it on every path — used or unread, imported or failed. A caller that closes it too would be
+     * closing a descriptor twice. Passing `null` keeps the old behaviour and opens the payload here,
+     * which is what every caller that has nothing to abandon should do.
      *
      * [isActive] lets a caller abandon an import that is still running. It is polled on every read,
      * alongside the session's own state, and returning `false` aborts within a read or two — the
@@ -77,8 +94,9 @@ class VaultObjects(
         name: String,
         mime: String,
         chunkSize: Int = DchmFormat.DEFAULT_CHUNK_SIZE,
-        onProgress: (Long) -> Unit = {},
+        onProgress: (ImportPhase, Long) -> Unit = { _, _ -> },
         isActive: () -> Boolean = { true },
+        first: RawSource? = null,
         openSource: () -> RawSource,
     ): Outcome<ByteArray> {
         // Probe re-openability BEFORE reading anything. The check cannot be done after a failure:
@@ -90,7 +108,7 @@ class VaultObjects(
         // that a re-openable source streams straight into the container and its plaintext never
         // touches disk at all (hard rule #1). A provider that refuses two *concurrent* opens is
         // spilled unnecessarily — slower, still correct.
-        val held = try {
+        val held = first ?: try {
             openSource()
         } catch (e: Exception) {
             return Outcome.Err(VaultError.Io(e)) // never opened: nothing to spill, nothing to retry
@@ -117,6 +135,11 @@ class VaultObjects(
             }
         }
 
+        // The copy's own counter, separate from the encrypt's by construction rather than by being
+        // reset. One counter shared across the two would open the encrypt phase at the payload size,
+        // and a caller dividing by `2 × size` would draw a bar that begins half full.
+        var copied = 0L
+
         // useSpilledCopy owns `held` once it starts copying — but it can throw before it gets there
         // (its scratch-name collision loop touches the filesystem first), and storeObject can throw
         // if the session dies mid-import. Either way the provider stream would be leaked and the
@@ -130,7 +153,19 @@ class VaultObjects(
                 // into an already-wiped directory after the master key is gone. Aborting here throws
                 // out of the copy, and `useSpilledCopy` deletes the half-written scratch on its way
                 // out.
-                .useSpilledCopy(SessionGuardedSource(held) { session.isOpen && isActive() }) { spilled ->
+                //
+                // Counted, and only on this path: a re-openable source is never copied, so reporting
+                // the phase for it would put a label on work that is not happening. For a provider
+                // that streams, this drain *is* the transfer — the guard is nested inside so a stopped
+                // copy reports nothing further, the same ordering the encrypt phase uses.
+                .useSpilledCopy(
+                    SessionGuardedSource(
+                        ProgressSource(held) { n ->
+                            copied += n
+                            onProgress(ImportPhase.COPYING, copied)
+                        },
+                    ) { session.isOpen && isActive() },
+                ) { spilled ->
                     storeObject(kind, name, mime, chunkSize, onProgress, isActive, spilled)
                 }
                 .flatMap { it }
@@ -154,13 +189,15 @@ class VaultObjects(
         name: String,
         mime: String,
         chunkSize: Int,
-        onProgress: (Long) -> Unit,
+        onProgress: (ImportPhase, Long) -> Unit,
         isActive: () -> Boolean,
         openSource: () -> RawSource,
     ): Outcome<ByteArray> {
-        // One counter for the whole import, declared here rather than inside the opener: the codec
-        // opens a fresh source per pass, so a per-source counter would restart halfway and the
-        // caller would watch the same bytes arrive twice.
+        // One counter for this phase, declared here rather than inside the opener: the codec opens a
+        // fresh source per pass, so a per-source counter would restart halfway and the caller would
+        // watch the same bytes arrive twice. It starts at zero even when a copy preceded it — the
+        // phases divide by different numbers, so a count carried across the boundary would open this
+        // one at the payload size.
         var processed = 0L
         val stillWanted = { session.isOpen && isActive() }
         return storeGuarded(
@@ -172,17 +209,20 @@ class VaultObjects(
                 SessionGuardedSource(
                     ProgressSource(openSource()) { n ->
                         processed += n
-                        onProgress(processed)
+                        onProgress(ImportPhase.ENCRYPTING, processed)
                     },
                     stillWanted,
                 )
             },
             // Guarded like every other read — a lock must stop a decode mid-file — but deliberately
-            // **not** counted. The reported total is `2 × size` because the codec reads twice; a
-            // third counted pass would push an image's bar past its own denominator. The known cost
-            // is the opposite rounding: an image's bar reaches full a moment before its import
-            // finishes, which the cycle that generalises the contract to a pass count will fix.
+            // **not** counted. How many times the encoder passes over the payload is its own
+            // business, so there is no denominator these bytes could be drawn against, and counting
+            // them would push the encrypt phase past `2 × size`.
             openForThumbnail = { SessionGuardedSource(openSource(), stillWanted) },
+            // What is reported instead is that the attempt is happening, once, with no bytes. It
+            // replaces the bar sitting full while the encoder works — the reported total is reached
+            // when the payload is sealed, and everything after it used to be silent.
+            onPreviewAttempt = { onProgress(ImportPhase.PREVIEWING, 0L) },
         )
     }
 
@@ -193,6 +233,10 @@ class VaultObjects(
         chunkSize: Int,
         openSource: () -> RawSource,
         openForThumbnail: () -> RawSource,
+        // Called once, immediately before the encoder is asked. A lambda rather than a phase value
+        // so this function keeps knowing nothing about progress vocabulary: it says *when*, and the
+        // caller decides what that is worth reporting.
+        onPreviewAttempt: () -> Unit = {},
     ): Outcome<ByteArray> {
         val fileId = random(FILE_ID_SIZE)
         val noncePrefix = random(DchmFormat.NONCE_PREFIX_SIZE)
@@ -214,6 +258,7 @@ class VaultObjects(
         //    instead would mean decrypting the whole file: the random-access seek primitive does
         //    not exist yet. Returns null — and leaves nothing behind — for everything that is not
         //    an image the platform decoder accepts, which is the ordinary case for most of a vault.
+        onPreviewAttempt()
         val thumbnailKey = makeThumbnail(fileId, mime, createdAt, chunkSize, openForThumbnail)
 
         // 3. Seal the metadata and persist the row. Fail-closed: a row failure removes the object.

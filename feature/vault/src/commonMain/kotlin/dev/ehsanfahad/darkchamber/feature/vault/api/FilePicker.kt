@@ -64,11 +64,15 @@ interface PickedFile : AutoCloseable {
     /**
      * Whether the platform will let us ask for this original to be deleted after it is imported.
      *
-     * **`false` is the ordinary answer, not a fault.** Cloud providers routinely decline to
-     * advertise deletion, items chosen from a photo library never support it, and on iOS it is
-     * always `false` by design. Callers must treat the absence of the capability as the normal
-     * shape of things: no offer at all, rather than a disabled control that owes the user an
-     * explanation.
+     * **`false` is an ordinary answer, not a fault.** Items chosen from a photo library never
+     * support deletion and on iOS it is always `false` by design, so callers must treat the absence
+     * of the capability as a normal shape of things: no offer at all, rather than a disabled control
+     * that owes the user an explanation.
+     *
+     * It is **not** a local-files-only capability, which an earlier version of this note implied:
+     * Google Drive advertises deletion for its documents, observed on a device. And the flag stays
+     * only an advertisement either way — a provider may refuse the call it advertised, which is why
+     * [deleteOriginal] reports what happened rather than being assumed to have worked.
      *
      * Resolving this may cost a platform round-trip, so read it off the import dispatcher — never
      * while mapping a pick result on the main thread.

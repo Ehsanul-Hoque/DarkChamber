@@ -44,7 +44,7 @@ DarkChamber is a multi-module Gradle project. Isolation is real (compile-time), 
 
 ### Feature modules
 
-- `:feature:vault` — the gallery and import. *Built:* a public `api` package (the gallery component contract, `GalleryState`/`GalleryItem`, and the `FilePicker`/`PickedFile` seam the app implements) plus one factory, `vaultGalleryComponent(...)`; everything else — `domain` use cases, the `data` adapter over `VaultObjects`, the component and the Compose screen — is `internal`. It depends on **`core:vault` only** for vault access: no cipher primitive, no filesystem API, no SQLDelight type is reachable from it. Single-module for now; the `api`/`impl` split (§2) happens when a second feature needs the contract, and the `internal` discipline makes that a folder move.
+- `:feature:vault` — the gallery and import. *Built:* a public `api` package (the gallery component contract, `GalleryState`/`GalleryItem`, the import state a screen renders, and the `FilePicker`/`PhotoPicker`/`PickedFile` seams the app implements) plus one factory, `vaultGalleryComponent(...)`; everything else — `domain` use cases, the `data` adapter over `VaultObjects`, the component and the Compose screen — is `internal`. It depends on **`core:vault` only** for vault access: no cipher primitive, no filesystem API, no SQLDelight type is reachable from it. Single-module for now; the `api`/`impl` split (§2) happens when a second feature needs the contract, and the `internal` discipline makes that a folder move.
 
 ### Verification modules
 

@@ -1,6 +1,7 @@
 package dev.ehsanfahad.darkchamber.feature.vault.domain
 
 import dev.ehsanfahad.darkchamber.core.model.Outcome
+import dev.ehsanfahad.darkchamber.core.vault.ImportPhase
 import dev.ehsanfahad.darkchamber.core.vault.VaultItemSummary
 import kotlinx.coroutines.flow.Flow
 import kotlinx.io.RawSource
@@ -21,18 +22,28 @@ internal interface VaultItems {
     /**
      * Stream-encrypt a payload into the vault, returning the new object's id.
      *
-     * [onProgress] receives payload bytes read so far, cumulatively across the container's two
-     * passes — so it runs to `2 × size`, and turning that into anything a user sees is the caller's
-     * job (`core:vault` owns no notion of a total or a percentage).
+     * [onProgress] receives the phase the import is in and the bytes read so far within it. The
+     * encrypt phase runs to `2 × size` because the container reads its payload twice; the other
+     * phases divide by something else, or by nothing at all. Turning any of that into something a
+     * user sees is the caller's job — `core:vault` owns no total and no percentage, and the phase is
+     * there because which denominator applies is the one part only it can know.
      *
      * [isActive] going false aborts within a read rather than at the end of the file: the encrypt is
      * blocking, so a caller that waited for the loop to notice would wait out the rest of a video.
+     *
+     * [first] is an already-open source over the same payload, standing in for the first open the
+     * vault would otherwise perform. It is how a caller keeps a provider's blocking open somewhere it
+     * can be abandoned: the vault is synchronous, so a wait inside it cannot be given up on.
+     * **Ownership passes with it** — the vault closes it on every path, so a caller must not. `null`
+     * leaves the vault to open the payload itself, which is right for a caller with nothing to
+     * abandon.
      */
     fun import(
         name: String,
         mime: String,
-        onProgress: (Long) -> Unit = {},
+        onProgress: (ImportPhase, Long) -> Unit = { _, _ -> },
         isActive: () -> Boolean = { true },
+        first: RawSource? = null,
         openSource: () -> RawSource,
     ): Outcome<ByteArray>
 

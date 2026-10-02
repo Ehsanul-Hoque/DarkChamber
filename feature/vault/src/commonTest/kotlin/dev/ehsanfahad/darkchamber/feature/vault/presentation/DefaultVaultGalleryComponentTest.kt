@@ -6,6 +6,7 @@ import com.arkivanov.essenty.lifecycle.destroy
 import com.arkivanov.essenty.lifecycle.resume
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
+import dev.ehsanfahad.darkchamber.core.vault.ImportPhase
 import dev.ehsanfahad.darkchamber.core.vault.VaultItemSummary
 import dev.ehsanfahad.darkchamber.feature.vault.FakeFilePicker
 import dev.ehsanfahad.darkchamber.feature.vault.FakePickedFile
@@ -13,6 +14,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.FakeVaultItems
 import dev.ehsanfahad.darkchamber.feature.vault.api.FailedImport
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryError
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
+import dev.ehsanfahad.darkchamber.feature.vault.api.ImportStage
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportState
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultImports
 import dev.ehsanfahad.darkchamber.feature.vault.damagedMeta
@@ -28,6 +30,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
@@ -50,6 +53,7 @@ class DefaultVaultGalleryComponentTest {
         imports: VaultImports = FakeImports(),
         progressInterval: Duration = Duration.ZERO,
         pickingDelay: Duration = Duration.ZERO,
+        stageGrace: Duration = Duration.ZERO,
     ): DefaultVaultGalleryComponent {
         val dispatcher = UnconfinedTestDispatcher(testScheduler)
         return DefaultVaultGalleryComponent(
@@ -60,6 +64,7 @@ class DefaultVaultGalleryComponentTest {
             // No throttling by default: these tests are about which states arrive, not how often.
             progressInterval = progressInterval,
             pickingDelay = pickingDelay,
+            stageGrace = stageGrace,
         )
     }
 
@@ -139,6 +144,163 @@ class DefaultVaultGalleryComponentTest {
         // thing — one of them always a frame behind.
         assertEquals(running, component.state.value.batch)
         assertTrue(component.state.value.importing)
+    }
+
+    /**
+     * A wait is worth naming only once it has lasted.
+     *
+     * The two stages a screen can name are the two with nothing to measure, and a local file passes
+     * through both in microseconds. Naming them the instant they start would put two labels on screen
+     * per file — fifty across a batch of twenty-five photos, none of them readable.
+     */
+    @Test
+    fun a_stage_that_cannot_be_measured_is_not_named_until_it_has_lasted() = runTest {
+        val imports = FakeImports()
+        val component = component(FakeVaultItems(), imports = imports, stageGrace = 400.milliseconds)
+
+        imports.emit(
+            ImportState.Running(index = 0, total = 1, name = "a.mov", fileFraction = null, stage = ImportStage.FETCHING),
+        )
+
+        // Immediately: the card as it looked before stages existed — the file, the count, an
+        // indeterminate bar, and nothing claimed about why.
+        val silent = component.state.value.batch
+        assertIs<ImportState.Running>(silent)
+        assertNull(silent.stage, "a stage is not named the instant it starts")
+        assertEquals("a.mov", silent.name, "everything else about the card is unaffected")
+
+        advanceTimeBy(401.milliseconds)
+
+        val named = component.state.value.batch
+        assertIs<ImportState.Running>(named)
+        assertEquals(ImportStage.FETCHING, named.stage, "a wait that lasted is explained")
+    }
+
+    @Test
+    fun a_stage_that_does_not_last_is_never_named_at_all() = runTest {
+        val imports = FakeImports()
+        val seen = mutableListOf<ImportStage?>()
+        val component = component(FakeVaultItems(), imports = imports, stageGrace = 400.milliseconds)
+
+        imports.emit(
+            ImportState.Running(index = 0, total = 1, name = "a.jpg", fileFraction = null, stage = ImportStage.FETCHING),
+        )
+        seen += (component.state.value.batch as ImportState.Running).stage
+
+        // The file arrives well inside the grace, which is what a local file does.
+        advanceTimeBy(50.milliseconds)
+        imports.emit(
+            ImportState.Running(index = 0, total = 1, name = "a.jpg", fileFraction = 0.2f, stage = ImportStage.ENCRYPTING),
+        )
+        seen += (component.state.value.batch as ImportState.Running).stage
+
+        // Long past when the announcement would have been due, had it not been cancelled.
+        advanceTimeBy(1_000.milliseconds)
+        seen += (component.state.value.batch as ImportState.Running).stage
+
+        assertFalse(ImportStage.FETCHING in seen, "a wait that did not last is never mentioned, got $seen")
+        assertEquals(ImportStage.ENCRYPTING, seen.last(), "and the stage that superseded it stands")
+    }
+
+    /**
+     * A stage already named stays named when the batch starts stopping.
+     *
+     * Stopping re-emits the same stage with the stop flag set, and the grace treated that as a stage
+     * arriving for the first time: the label was taken back off the screen and the user watched the
+     * explanation for a wait vanish at the exact moment they asked to end it. The grace exists to
+     * stop a label flashing on, not to make one flash off — and the stop is pressed most often during
+     * precisely the long fetch this label was added to explain.
+     */
+    @Test
+    fun a_stage_already_named_is_not_taken_back_when_the_stop_arrives() = runTest {
+        val imports = FakeImports()
+        val component = component(FakeVaultItems(), imports = imports, stageGrace = 400.milliseconds)
+        val fetching = ImportState.Running(
+            index = 0,
+            total = 1,
+            name = "from-the-cloud.mov",
+            fileFraction = null,
+            stage = ImportStage.FETCHING,
+        )
+
+        imports.emit(fetching)
+        advanceTimeBy(401.milliseconds)
+        assertEquals(ImportStage.FETCHING, (component.state.value.batch as ImportState.Running).stage)
+
+        imports.emit(fetching.copy(stopping = true))
+
+        // Synchronously after the stop, with no time advanced: the hold-back would have published a
+        // null here and put the label back 400ms later.
+        val stopping = component.state.value.batch
+        assertIs<ImportState.Running>(stopping)
+        assertTrue(stopping.stopping, "the stop itself is never held back")
+        assertEquals(ImportStage.FETCHING, stopping.stage, "a stage already named is not un-named by the stop")
+    }
+
+    @Test
+    fun a_stage_with_a_bar_to_draw_is_named_at_once() = runTest {
+        val imports = FakeImports()
+        val component = component(FakeVaultItems(), imports = imports, stageGrace = 1.hours)
+
+        imports.emit(
+            ImportState.Running(index = 0, total = 1, name = "a.bin", fileFraction = 0.5f, stage = ImportStage.COPYING),
+        )
+
+        // No grace at all: a moving bar is its own evidence that something is happening, so there is
+        // nothing to hold back and nothing to strobe.
+        val batch = component.state.value.batch
+        assertIs<ImportState.Running>(batch)
+        assertEquals(ImportStage.COPYING, batch.stage, "a measurable stage is not held back")
+    }
+
+    @Test
+    fun the_finishing_stage_takes_the_same_grace_as_the_wait() = runTest {
+        val imports = FakeImports()
+        val component = component(FakeVaultItems(), imports = imports, stageGrace = 400.milliseconds)
+
+        // Every import ends with a preview attempt, including the files that get no preview, so
+        // without the same grace a video would flash a label on its way out.
+        imports.emit(
+            ImportState.Running(index = 0, total = 1, name = "clip.mp4", fileFraction = null, stage = ImportStage.FINISHING),
+        )
+        assertNull((component.state.value.batch as ImportState.Running).stage)
+
+        advanceTimeBy(401.milliseconds)
+        assertEquals(ImportStage.FINISHING, (component.state.value.batch as ImportState.Running).stage)
+    }
+
+    /**
+     * The throttle drops redundant *progress*. A change of stage is not progress — it is a different
+     * thing being done — and dropping it is worse than merely late: the stage the screen is still
+     * showing has an announcement pending behind it, so the label arrives anyway and names a stage
+     * the import has already left.
+     */
+    @Test
+    fun a_change_of_stage_is_never_held_back_by_the_throttle() = runTest {
+        val imports = FakeImports()
+        // A window no test can outrun, so anything that is not explicitly let through is dropped.
+        val component = component(FakeVaultItems(), imports = imports, progressInterval = 1.hours)
+
+        imports.emit(
+            ImportState.Running(index = 0, total = 1, name = "a.jpg", fileFraction = 0.1f, stage = ImportStage.ENCRYPTING),
+        )
+        imports.emit(
+            ImportState.Running(index = 0, total = 1, name = "a.jpg", fileFraction = 0.9f, stage = ImportStage.ENCRYPTING),
+        )
+        advanceUntilIdle()
+
+        val throttled = component.state.value.batch
+        assertIs<ImportState.Running>(throttled)
+        assertEquals(0.1f, throttled.fileFraction, "ordinary progress inside the window is still dropped")
+
+        imports.emit(
+            ImportState.Running(index = 0, total = 1, name = "a.jpg", fileFraction = null, stage = ImportStage.FINISHING),
+        )
+        advanceUntilIdle()
+
+        val staged = component.state.value.batch
+        assertIs<ImportState.Running>(staged)
+        assertEquals(ImportStage.FINISHING, staged.stage, "a change of stage is not progress to be dropped")
     }
 
     /**
@@ -378,8 +540,9 @@ private class ExplodingVaultItems : VaultItems {
     override fun import(
         name: String,
         mime: String,
-        onProgress: (Long) -> Unit,
+        onProgress: (ImportPhase, Long) -> Unit,
         isActive: () -> Boolean,
+        first: RawSource?,
         openSource: () -> RawSource,
     ): Outcome<ByteArray> = Outcome.Ok(byteArrayOf(1))
 

@@ -134,8 +134,10 @@ private fun ContentResolver.queryOpenable(uri: Uri, withFlags: Boolean): Openabl
  *
  * Both halves fail independently and both are ordinary. A photo-picker item is not a document, so
  * there is nothing `DocumentsContract` could delete — a platform fact, not something left
- * unimplemented here. And a document only supports deletion if it says so: cloud providers commonly
- * do not, and a document opened read-only never will.
+ * unimplemented here. And a document only supports deletion if it says so: a document opened
+ * read-only never will, while a cloud provider may well — Google Drive advertises it, observed on a
+ * device — so this is not a local-files-only capability. The flag stays an advertisement either way:
+ * `deleteOriginal` reports what happened rather than assuming the call it was offered succeeds.
  */
 internal fun supportsDelete(isDocument: Boolean, flags: Int?): Boolean =
     isDocument && flags != null && (flags and Document.FLAG_SUPPORTS_DELETE) != 0

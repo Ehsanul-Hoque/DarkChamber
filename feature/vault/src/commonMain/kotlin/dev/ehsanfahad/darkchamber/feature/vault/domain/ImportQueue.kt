@@ -1,25 +1,34 @@
 package dev.ehsanfahad.darkchamber.feature.vault.domain
 
+import dev.ehsanfahad.darkchamber.core.vault.ImportPhase
 import dev.ehsanfahad.darkchamber.feature.vault.api.FailedImport
+import dev.ehsanfahad.darkchamber.feature.vault.api.ImportStage
 import dev.ehsanfahad.darkchamber.feature.vault.api.PickedFile
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlin.coroutines.CoroutineContext
 
 /**
- * How far a batch has got: which file, and how far into it.
+ * How far a batch has got: which file, which stage of it, and how far into that stage.
  *
- * [fileFraction] runs 0 → 1 across the whole of one file, or is **null** when the platform never
- * said how big the file is — rendered as an indeterminate indicator rather than a bar against a
+ * [fileFraction] runs 0 → 1 across the current [stage] — not across the whole file, because the
+ * stages divide by different numbers and two of them divide by nothing at all. It is **null**
+ * whenever there is nothing honest to divide by: an unmeasurable stage, or a platform that never
+ * said how big the file is. Rendered as an indeterminate indicator rather than a bar against a
  * guessed total (hard rule #6).
  */
 internal data class ImportProgress(
     val index: Int,
     val total: Int,
     val name: String,
+    val stage: ImportStage,
     val fileFraction: Float?,
 ) {
     // The name is decrypted vault content, so the generated toString would put a file name in any
     // log line that renders this (hard rule #4).
     override fun toString(): String =
-        "ImportProgress(index=$index, total=$total, name=${name.length} chars, fileFraction=$fileFraction)"
+        "ImportProgress(index=$index, total=$total, name=${name.length} chars, " +
+            "stage=$stage, fileFraction=$fileFraction)"
 }
 
 /**
@@ -35,8 +44,10 @@ internal data class ImportProgress(
  * `finally`. Deleting still works, because the grant belongs to the platform host rather than to any
  * stream we opened — the seam documents that as a promise implementations have to keep.
  *
- * Usually empty. Photo-library items never support deletion, iOS never does, and cloud providers
- * commonly do not, so no offer at all is the ordinary shape of a finished batch.
+ * Often empty: photo-library items never support deletion and iOS never does, so no offer at all is
+ * an ordinary shape for a finished batch. **Cloud documents are not the exception they were assumed
+ * to be** — Google Drive advertises deletion, observed on a device — so this list is not a
+ * local-files-only affair.
  */
 internal data class ImportSummary(
     val imported: Int,
@@ -47,6 +58,19 @@ internal data class ImportSummary(
     // (hard rule #4).
     override fun toString(): String =
         "ImportSummary(imported=$imported, failed=${failed.size}, deletable=${deletableOriginals.size})"
+}
+
+/**
+ * What a picked file says about itself, read once.
+ *
+ * A snapshot rather than repeated property access, because on Android each of these is a query into
+ * the provider that owns the file. Reading them twice is a second round-trip for an answer that
+ * cannot have changed, and reading them on the wrong thread is what this type exists to stop.
+ *
+ * The name is decrypted vault content, so it must not reach a log line (hard rule #4).
+ */
+internal data class PickedFileFacts(val name: String, val mime: String, val size: Long?) {
+    override fun toString(): String = "PickedFileFacts(name=${name.length} chars, mime=$mime, size=$size)"
 }
 
 /**
@@ -67,7 +91,19 @@ internal data class ImportSummary(
  * Every [PickedFile] holds a platform grant. [ImportFile] closes the one it is handed, on every
  * path; the ones a stopped batch never reached are closed here.
  */
-internal class ImportQueue(private val importFile: ImportFile) {
+internal class ImportQueue(
+    private val importFile: ImportFile,
+    /**
+     * Where a picked file's details are read from the platform.
+     *
+     * On Android a name, a size and a deletable flag are a cursor query into the provider that owns
+     * the file — a blocking binder round-trip, and a cloud provider may take its time over one. This
+     * loop runs on whatever context the caller drives it from, which is the main thread, so a
+     * fifty-file pick was a hundred and fifty of those round-trips on the thread that draws the
+     * screen before the first byte was read. A single-file pick never showed it.
+     */
+    private val ioContext: CoroutineContext = Dispatchers.Default,
+) {
 
     suspend operator fun invoke(
         files: List<PickedFile>,
@@ -88,23 +124,39 @@ internal class ImportQueue(private val importFile: ImportFile) {
                 val index = next
                 next++
 
-                val total = file.size
-                onProgress(ImportProgress(index, files.size, file.name, startingFraction()))
+                // Resolved once, off this thread, before anything is reported about the file. Every
+                // later use is this snapshot rather than another look at the provider.
+                val facts = withContext(ioContext) { PickedFileFacts(file.name, file.mime, file.size) }
 
-                val result = importFile(file, isActive) { bytes ->
-                    onProgress(ImportProgress(index, files.size, file.name, total.fractionAt(bytes)))
+                // Before the first report the file has not been handed over yet, which is the fetch
+                // stage by definition — there is nothing to measure because nothing exists to
+                // measure. For a local file it lasts one read and nobody sees it.
+                onProgress(ImportProgress(index, files.size, facts.name, ImportStage.FETCHING, null))
+
+                // The snapshot goes with the file rather than being re-read downstream: nothing in
+                // the seam promises these are cached, and an implementation that queries on every
+                // access would otherwise pay for one per progress frame.
+                val result = importFile(file, facts, isActive) { phase, bytes ->
+                    val stage = phase.toStage()
+                    onProgress(
+                        ImportProgress(index, files.size, facts.name, stage, facts.size.fractionAt(stage, bytes)),
+                    )
                 }
                 when (result) {
                     is ImportResult.Imported -> {
                         imported++
-                        // Asked only of a file that landed. On Android the answer comes from the
-                        // column lookup this file's name already forced, so it costs nothing here —
-                        // and asking about a file we will never offer would be a provider
-                        // round-trip spent on nothing.
-                        if (file.deletable) deletable += file
+                        // Asked only of a file that landed, and asked off this thread like the rest:
+                        // on Android it is another provider round-trip, even when the answer is
+                        // already cached behind the name lookup. Asking about a file we will never
+                        // offer would be one spent on nothing.
+                        if (withContext(ioContext) { file.deletable }) deletable += file
                     }
-                    // A file that stopped because the user stopped the batch is not a broken file.
-                    is ImportResult.Failed -> if (isActive()) failed += FailedImport(file.name, result.error)
+                    is ImportResult.Failed -> failed += FailedImport(facts.name, result.error)
+                    // Neither list. Nothing was wrong with this file — the batch was stopped while it
+                    // was being fetched or encrypted — and telling the user it failed would blame a
+                    // file for their own decision. Which of the two it was is settled upstream,
+                    // where the stop flag lives.
+                    ImportResult.Stopped -> Unit
                 }
             }
         } finally {
@@ -125,36 +177,41 @@ internal class ImportQueue(private val importFile: ImportFile) {
 
     private companion object {
         /**
-         * Always indeterminate: a file that has not yet reported a single byte has no fraction to
-         * draw, and a confident `0f` claims otherwise.
+         * The vault's phase in the words a screen uses.
          *
-         * This is not pedantry about one frame. Between this emission and the first counted byte
-         * sits everything the platform does before we can read the file at all — and for a cloud
-         * document the provider downloads on demand, that is the *whole* download. A determinate bar
-         * pinned at 0% for minutes reads as "stuck"; an indeterminate one reads as "working", which
-         * is the only claim we can support (hard rule #6). For a local file this lasts one read and
-         * nobody sees it.
-         *
-         * The fetch still goes uncounted, so the bar has no way to move during it — this only stops
-         * it lying. Counting it means teaching the import path to report how many passes a payload
-         * will take, since only it knows whether the source spilled.
+         * Only the last one is renamed: the vault says it is generating a preview, which is true and
+         * is not what a user is waiting to hear. What they are told is that the file is nearly in —
+         * the bytes are already sealed by this point, and everything after it is a convenience.
          */
-        fun startingFraction(): Float? = null
+        fun ImportPhase.toStage(): ImportStage = when (this) {
+            ImportPhase.COPYING -> ImportStage.COPYING
+            ImportPhase.ENCRYPTING -> ImportStage.ENCRYPTING
+            ImportPhase.PREVIEWING -> ImportStage.FINISHING
+        }
 
         /**
-         * The container reads each payload **twice** — size and digest, then the chunk encrypt — so
-         * the byte count runs to `2 × size`. The user is shown one bar filling once, not the same
-         * file arriving twice.
+         * The fraction of the **current stage**, or null when there is nothing honest to divide by.
+         *
+         * The denominators differ because the work does. A copy is one pass over the payload. The
+         * container reads it **twice** — size and digest, then the chunk encrypt — so that count runs
+         * to `2 × size`, and the user is shown one bar filling once rather than the same file
+         * arriving twice. The other two stages have no total at all: nothing has been read yet, or
+         * what is being read is the preview encoder's own business.
          *
          * A size of zero draws the indeterminate bar, which is **not** the picker calling an empty
          * file unknown — the picker reports zero as the fact it is. It is that a fraction of zero
          * bytes has no value to take, and an empty file is imported faster than a bar can be seen
          * either way.
          */
-        fun Long?.fractionAt(bytes: Long): Float? {
+        fun Long?.fractionAt(stage: ImportStage, bytes: Long): Float? {
+            // Nothing to measure: no byte exists yet, or the reads being made have no declared
+            // total. A bar drawn here would be invented (hard rule #6). The stage itself is asked,
+            // rather than the stages being listed a second time here, so that what a screen is told
+            // is measurable and what actually divides cannot come apart.
+            val passes = stage.passes ?: return null
             val size = this ?: return null
             if (size <= 0L) return null
-            return (bytes.toFloat() / (2f * size)).coerceIn(0f, 1f)
+            return (bytes.toFloat() / (passes * size)).coerceIn(0f, 1f)
         }
     }
 }
