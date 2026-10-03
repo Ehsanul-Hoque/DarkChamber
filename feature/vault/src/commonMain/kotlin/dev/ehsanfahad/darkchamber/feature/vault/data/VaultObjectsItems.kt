@@ -1,5 +1,6 @@
 package dev.ehsanfahad.darkchamber.feature.vault.data
 
+import dev.ehsanfahad.darkchamber.core.model.ItemFilter
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultItemKind
 import dev.ehsanfahad.darkchamber.core.vault.ImportPhase
@@ -20,8 +21,8 @@ import kotlinx.io.RawSource
  */
 internal class VaultObjectsItems(private val objects: VaultObjects) : VaultItems {
 
-    override fun observe(albumId: ByteArray?): Flow<List<VaultItemSummary>> =
-        objects.observeItems(albumId)
+    override fun observe(filter: ItemFilter): Flow<List<VaultItemSummary>> =
+        objects.observeItems(filter)
 
     override fun import(
         name: String,

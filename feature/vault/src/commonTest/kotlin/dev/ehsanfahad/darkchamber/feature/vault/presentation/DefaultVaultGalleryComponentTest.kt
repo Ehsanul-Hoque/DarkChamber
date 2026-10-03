@@ -5,6 +5,7 @@ import com.arkivanov.essenty.lifecycle.LifecycleRegistry
 import com.arkivanov.essenty.lifecycle.destroy
 import com.arkivanov.essenty.lifecycle.resume
 import dev.ehsanfahad.darkchamber.core.model.Outcome
+import dev.ehsanfahad.darkchamber.core.model.ItemFilter
 import dev.ehsanfahad.darkchamber.core.model.VaultError
 import dev.ehsanfahad.darkchamber.core.vault.ImportPhase
 import dev.ehsanfahad.darkchamber.core.vault.VaultItemSummary
@@ -534,7 +535,7 @@ private class FakeImports : VaultImports {
 
 /** A listing that fails the way a broken catalog does: by throwing inside the flow. */
 private class ExplodingVaultItems : VaultItems {
-    override fun observe(albumId: ByteArray?): Flow<List<VaultItemSummary>> =
+    override fun observe(filter: ItemFilter): Flow<List<VaultItemSummary>> =
         flow { throw IllegalStateException("catalog unreadable") }
 
     override fun import(

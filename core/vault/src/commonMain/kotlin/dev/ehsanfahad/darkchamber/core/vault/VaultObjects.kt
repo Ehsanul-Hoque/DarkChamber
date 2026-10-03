@@ -5,6 +5,7 @@ import dev.ehsanfahad.darkchamber.core.crypto.DchmFormat
 import dev.ehsanfahad.darkchamber.core.crypto.VaultSession
 import dev.ehsanfahad.darkchamber.core.db.CatalogStore
 import dev.ehsanfahad.darkchamber.core.db.Items
+import dev.ehsanfahad.darkchamber.core.model.ItemFilter
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
 import dev.ehsanfahad.darkchamber.core.model.VaultItemKind
@@ -445,8 +446,8 @@ class VaultObjects(
     /**
      * The listing feeding a gallery: each catalog row joined to its decrypted [ObjectMeta], so
      * features consume [VaultItemSummary] and never a SQLDelight row type. Re-emits whenever the
-     * catalog changes (an import, a shred), so callers never refresh by hand. Pass [albumId] to
-     * narrow to one album, or `null` for everything.
+     * catalog changes (an import, a shred), so callers never refresh by hand. [filter] chooses what
+     * the listing covers: the whole vault, one album, or the items in no album at all.
      *
      * A row whose `enc_meta` will not open is **listed with the error**, never dropped — omitting it
      * would hide tampering, and its plaintext columns are still usable (§4). Only the metadata is
@@ -464,8 +465,8 @@ class VaultObjects(
      * (the gallery component maps it to an error state). Swallowing it here would turn a broken
      * catalog into a silently empty vault, which is exactly the fail-closed rule's target.
      */
-    fun observeItems(albumId: ByteArray? = null): Flow<List<VaultItemSummary>> =
-        catalog.observeItems(albumId)
+    fun observeItems(filter: ItemFilter = ItemFilter.All): Flow<List<VaultItemSummary>> =
+        catalog.observeItems(filter)
             .map { rows -> rows.map(::toSummary) }
             .flowOn(mapContext)
 

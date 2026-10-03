@@ -1,5 +1,6 @@
 package dev.ehsanfahad.darkchamber.feature.vault
 
+import dev.ehsanfahad.darkchamber.core.model.ItemFilter
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
 import dev.ehsanfahad.darkchamber.core.model.VaultItemKind
@@ -374,15 +375,15 @@ internal class FakeVaultItems(
         private set
     var lastMime: String? = null
         private set
-    var observedAlbum: ByteArray? = null
+    var observedFilter: ItemFilter? = null
         private set
 
     /** The already-open source of the most recent call, or `null` when the caller handed none. */
     var handedFirst: RawSource? = null
         private set
 
-    override fun observe(albumId: ByteArray?): Flow<List<VaultItemSummary>> {
-        observedAlbum = albumId
+    override fun observe(filter: ItemFilter): Flow<List<VaultItemSummary>> {
+        observedFilter = filter
         return summaries
     }
 
@@ -428,7 +429,7 @@ private val NO_THUMBNAIL: Outcome<ByteArray?> = Outcome.Ok(null)
 
 /** A seam whose import blows up rather than returning — the "should never happen" path. */
 internal class ThrowingVaultItems : VaultItems {
-    override fun observe(albumId: ByteArray?): Flow<List<VaultItemSummary>> = MutableStateFlow(emptyList())
+    override fun observe(filter: ItemFilter): Flow<List<VaultItemSummary>> = MutableStateFlow(emptyList())
 
     override fun import(
         name: String,
@@ -444,7 +445,7 @@ internal class ThrowingVaultItems : VaultItems {
 
 /** A seam that behaves like an import interrupted by a lock cancelling the scope. */
 internal class CancellingVaultItems : VaultItems {
-    override fun observe(albumId: ByteArray?): Flow<List<VaultItemSummary>> = MutableStateFlow(emptyList())
+    override fun observe(filter: ItemFilter): Flow<List<VaultItemSummary>> = MutableStateFlow(emptyList())
 
     override fun import(
         name: String,

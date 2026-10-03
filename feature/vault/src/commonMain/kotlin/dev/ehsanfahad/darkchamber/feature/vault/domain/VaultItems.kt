@@ -1,5 +1,6 @@
 package dev.ehsanfahad.darkchamber.feature.vault.domain
 
+import dev.ehsanfahad.darkchamber.core.model.ItemFilter
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.vault.ImportPhase
 import dev.ehsanfahad.darkchamber.core.vault.VaultItemSummary
@@ -16,8 +17,15 @@ import kotlinx.io.RawSource
  * no SQLDelight type is reachable from this module.
  */
 internal interface VaultItems {
-    /** The live listing, re-emitting on every catalog change. `null` album = the whole vault. */
-    fun observe(albumId: ByteArray?): Flow<List<VaultItemSummary>>
+    /**
+     * The live listing, re-emitting on every catalog change. [filter] chooses what it covers — the
+     * whole vault, one album, or the items in no album.
+     *
+     * The three cases are a filter, not a destination: unlike an album id being *assigned*, where
+     * `null` means "unfile these", there is no value of a nullable id that means "the unfiled ones"
+     * — which is why this is a type and not a parameter that can be left out.
+     */
+    fun observe(filter: ItemFilter): Flow<List<VaultItemSummary>>
 
     /**
      * Stream-encrypt a payload into the vault, returning the new object's id.

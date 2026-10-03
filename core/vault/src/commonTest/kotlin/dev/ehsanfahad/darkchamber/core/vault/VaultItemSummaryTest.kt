@@ -7,6 +7,7 @@ import dev.ehsanfahad.darkchamber.core.crypto.DefaultKeyDerivation
 import dev.ehsanfahad.darkchamber.core.crypto.PassphraseKdfProfile
 import dev.ehsanfahad.darkchamber.core.crypto.VaultSession
 import dev.ehsanfahad.darkchamber.core.db.CatalogStore
+import dev.ehsanfahad.darkchamber.core.model.ItemFilter
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
 import dev.ehsanfahad.darkchamber.core.model.VaultItemKind
@@ -144,19 +145,28 @@ class VaultItemSummaryTest {
     }
 
     @Test
-    fun observe_items_filters_by_album() = runTest {
+    fun observe_items_honours_each_filter() = runTest {
         val (vo, catalog) = fixture()
         val album = byteArrayOf(0xA1.toByte(), 0xB2.toByte())
         val filedId = vo.importFile("filed.txt", "text/plain", byteArrayOf(1))
-        vo.importFile("unfiled.txt", "text/plain", byteArrayOf(2))
+        val unfiledId = vo.importFile("unfiled.txt", "text/plain", byteArrayOf(2))
 
         val filed = (catalog.getItem(filedId) as Outcome.Ok).value!!
         assertTrue(catalog.upsertItem(filed.copy(album_id = album)) is Outcome.Ok)
 
-        vo.observeItems(albumId = album).test {
+        vo.observeItems(ItemFilter.Album(album)).test {
             val summaries = awaitItem()
             assertEquals(1, summaries.size, "only the filed item")
             assertContentEquals(filedId, summaries.single().id)
+            cancelAndIgnoreRemainingEvents()
+        }
+
+        // Unfiled is the complement, and it still carries decrypted metadata — the filter narrows
+        // the rows, it does not change what a summary is.
+        vo.observeItems(ItemFilter.Unfiled).test {
+            val summaries = awaitItem()
+            assertContentEquals(unfiledId, summaries.single().id, "only the item in no album")
+            assertEquals("unfiled.txt", (summaries.single().meta as Outcome.Ok).value.name)
             cancelAndIgnoreRemainingEvents()
         }
 

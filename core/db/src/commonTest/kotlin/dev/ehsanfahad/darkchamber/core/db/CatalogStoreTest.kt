@@ -1,6 +1,7 @@
 package dev.ehsanfahad.darkchamber.core.db
 
 import app.cash.turbine.test
+import dev.ehsanfahad.darkchamber.core.model.ItemFilter
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -118,10 +119,68 @@ class CatalogStoreTest {
         store.upsertItem(item(2, albumId = albumB, createdAt = 200L)).unwrap()
         store.upsertItem(item(3, albumId = albumA, createdAt = 300L)).unwrap()
 
-        val inA = store.listItems(albumA).unwrap()
+        val inA = store.listItems(ItemFilter.Album(albumA)).unwrap()
         assertEquals(2, inA.size)
         // Same order as the unfiltered listing — an album must not sort differently from the vault.
         assertEquals(listOf(300L, 100L), inA.map { it.created_at })
+    }
+
+    /**
+     * The case the old nullable filter could not express at all: `album_id = ?` bound to NULL
+     * matches nothing, and the parameter's own `null` already meant "everything", so there was no
+     * value to pass that returned these rows. Anything imported without an album — which is every
+     * import until the user files it — was reachable only through the full listing.
+     */
+    @Test
+    fun listItems_unfiled_returns_only_items_with_no_album() {
+        val album = byteArrayOf(0xA1.toByte())
+        store.upsertItem(item(1, albumId = album, createdAt = 100L)).unwrap()
+        store.upsertItem(item(2, albumId = null, createdAt = 200L)).unwrap()
+        store.upsertItem(item(3, albumId = null, createdAt = 300L)).unwrap()
+
+        val unfiled = store.listItems(ItemFilter.Unfiled).unwrap()
+        assertEquals(listOf<Byte>(3, 2), unfiled.map { it.id.single() }, "the unfiled rows, newest first")
+        assertEquals(3, store.listItems(ItemFilter.All).unwrap().size, "All still means the whole vault")
+        assertEquals(
+            listOf<Byte>(1),
+            store.listItems(ItemFilter.Album(album)).unwrap().map { it.id.single() },
+            "and an album filter is not the unfiled one",
+        )
+    }
+
+    /**
+     * Unfiled is a *filter*, so it narrows; the tri-state exists to distinguish it from All, and the
+     * two are easy to collapse into each other by accident — a vault whose items are all unfiled
+     * makes them identical, which is the state a fresh vault is in.
+     */
+    @Test
+    fun listItems_unfiled_is_empty_when_everything_is_filed() {
+        store.upsertItem(item(1, albumId = byteArrayOf(0xA1.toByte()))).unwrap()
+        store.upsertItem(item(2, albumId = byteArrayOf(0xB2.toByte()))).unwrap()
+
+        assertEquals(emptyList(), store.listItems(ItemFilter.Unfiled).unwrap(), "nothing is unfiled")
+        assertEquals(2, store.listItems().unwrap().size, "though the vault is not empty")
+    }
+
+    /** The reactive path takes the same filter, not just the one-shot listing. */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    @Test
+    fun observeItems_unfiled_reemits_when_an_item_is_filed() = runTest {
+        val obsDriver = testSqlDriver()
+        val obsStore = CatalogStore.create(obsDriver, UnconfinedTestDispatcher(testScheduler)).unwrap()
+        obsStore.upsertItem(item(1, albumId = null, createdAt = 100L)).unwrap()
+
+        obsStore.observeItems(ItemFilter.Unfiled).test {
+            assertEquals(listOf<Byte>(1), awaitItem().map { it.id.single() }, "the unfiled item is listed")
+
+            // Filing it is a write to items, so the listener fires — and the row leaves this listing
+            // without being deleted.
+            obsStore.upsertItem(item(1, albumId = byteArrayOf(0xA1.toByte()), createdAt = 100L)).unwrap()
+            assertEquals(emptyList(), awaitItem(), "filing an item removes it from Unfiled")
+
+            cancelAndIgnoreRemainingEvents()
+        }
+        obsDriver.close()
     }
 
     @Test

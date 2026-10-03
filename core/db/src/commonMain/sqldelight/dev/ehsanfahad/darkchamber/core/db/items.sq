@@ -36,6 +36,13 @@ SELECT * FROM items WHERE album_id = ? ORDER BY created_at DESC, id DESC;
 selectAllItems:
 SELECT * FROM items ORDER BY created_at DESC, id DESC;
 
+-- Its own query rather than a parameter on selectItemsByAlbum: `album_id = ?` bound to NULL
+-- matches nothing in SQL (NULL = NULL is NULL, not true), so the unfiled items are unreachable
+-- through that parameter however it is bound. Same order and same tie-break as the other two —
+-- Unfiled is a view of the gallery, not a different sort of it.
+selectUnfiledItems:
+SELECT * FROM items WHERE album_id IS NULL ORDER BY created_at DESC, id DESC;
+
 deleteItemById:
 DELETE FROM items WHERE id = ?;
 

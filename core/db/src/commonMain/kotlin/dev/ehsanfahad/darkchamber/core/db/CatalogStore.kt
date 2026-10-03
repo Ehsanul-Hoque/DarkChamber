@@ -1,9 +1,11 @@
 package dev.ehsanfahad.darkchamber.core.db
 
+import app.cash.sqldelight.Query
 import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
+import dev.ehsanfahad.darkchamber.core.model.ItemFilter
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
 import kotlinx.coroutines.CoroutineDispatcher
@@ -47,15 +49,9 @@ class CatalogStore private constructor(
     fun getItem(id: ByteArray): Outcome<Items?> =
         catchingDb { items.selectItemById(id).executeAsOneOrNull() }
 
-    /** Items in [albumId] (or all items when null), ordered by `created_at`. */
-    fun listItems(albumId: ByteArray? = null): Outcome<List<Items>> =
-        catchingDb {
-            if (albumId != null) {
-                items.selectItemsByAlbum(albumId).executeAsList()
-            } else {
-                items.selectAllItems().executeAsList()
-            }
-        }
+    /** The items [filter] covers, ordered by `created_at`. */
+    fun listItems(filter: ItemFilter = ItemFilter.All): Outcome<List<Items>> =
+        catchingDb { itemQuery(filter).executeAsList() }
 
     /** Remove the item with [id]. Idempotent — an absent id is `Ok`, never a throw. */
     fun deleteItem(id: ByteArray): Outcome<Unit> =
@@ -66,15 +62,27 @@ class CatalogStore private constructor(
         catchingDb { items.countItems().executeAsOne() }
 
     /**
-     * A reactive list of items in [albumId] (or all items when null), ordered by `created_at`,
-     * re-emitting on every catalog write. Rows carry ids + opaque blobs only — never decrypted
-     * content (the session-gate rule). Unlike the one-shot ops this returns a raw [Flow]; the
-     * collector maps failures, since a hot stream has no single [Outcome] to return.
+     * A reactive list of the items [filter] covers, ordered by `created_at`, re-emitting on every
+     * catalog write. Rows carry ids + opaque blobs only — never decrypted content (the session-gate
+     * rule). Unlike the one-shot ops this returns a raw [Flow]; the collector maps failures, since a
+     * hot stream has no single [Outcome] to return.
      */
-    fun observeItems(albumId: ByteArray? = null): Flow<List<Items>> =
-        (if (albumId != null) items.selectItemsByAlbum(albumId) else items.selectAllItems())
+    fun observeItems(filter: ItemFilter = ItemFilter.All): Flow<List<Items>> =
+        itemQuery(filter)
             .asFlow()
             .mapToList(dispatcher)
+
+    /**
+     * The one place a filter becomes a query, shared by the listing and the stream so the two can
+     * never disagree about what a filter means. Exhaustive on purpose: a fourth case has to pick a
+     * query here rather than silently inherit one.
+     */
+    private fun itemQuery(filter: ItemFilter): Query<Items> =
+        when (filter) {
+            ItemFilter.All -> items.selectAllItems()
+            ItemFilter.Unfiled -> items.selectUnfiledItems()
+            is ItemFilter.Album -> items.selectItemsByAlbum(filter.id)
+        }
 
     private val albums get() = db.albumsQueries
 
