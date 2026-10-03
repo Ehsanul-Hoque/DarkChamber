@@ -53,6 +53,64 @@ class CatalogStore private constructor(
     fun listItems(filter: ItemFilter = ItemFilter.All): Outcome<List<Items>> =
         catchingDb { itemQuery(filter).executeAsList() }
 
+    /**
+     * File every item in [ids] into [albumId], or unfile them all when it is `null`.
+     *
+     * **A destination, not a filter.** `null` here means "unfile these" and is unambiguous, because
+     * a destination has only two kinds of answer; a filter needs a third and so takes [ItemFilter]
+     * instead. The two read alike and mean different things.
+     *
+     * One statement for the whole set, inside one transaction: a bulk move either happens or does
+     * not, and listeners are notified once rather than once per item — a move of fifty items that
+     * emitted fifty times would have the gallery above it re-decrypt every row's metadata fifty
+     * times over.
+     *
+     * An empty [ids] short-circuits to `Ok` without running anything. Not for correctness — SQLite
+     * accepts the generated `IN ()` and matches nothing — but because executing it would still
+     * notify every listing that `items` changed, making each one re-read and re-decrypt itself to
+     * arrive at what it already had.
+     *
+     * **A non-existent [albumId] is an error.** The schema declares no foreign key, so SQLite would
+     * accept it and leave items filed into an album that does not exist — absent from every album
+     * listing and absent from the unfiled one too, since their `album_id` is not NULL. That is an
+     * item the album surfaces cannot reach, so the store enforces what the schema does not. Unknown
+     * *item* ids are not an error by contrast: an item shredded between selection and assignment is
+     * an ordinary race, and its absence is already the outcome the caller wanted.
+     */
+    fun updateItemAlbum(ids: List<ByteArray>, albumId: ByteArray?): Outcome<Unit> =
+        if (ids.isEmpty()) {
+            Outcome.Ok(Unit)
+        } else {
+            catchingDb {
+                db.transaction {
+                    // Inside the transaction for two reasons: the album cannot be deleted between
+                    // this check and the write, and the catalog defers its listener notification to
+                    // the commit — so however many statements this grows into, the listings are told
+                    // once.
+                    if (albumId != null && albums.selectAlbumById(albumId).executeAsOneOrNull() == null) {
+                        error("assignment destination album does not exist")
+                    }
+                    items.updateItemAlbum(album_id = albumId, id = ids)
+                }
+            }
+        }
+
+    /**
+     * Unfile every item currently in [albumId], leaving the album row itself alone.
+     *
+     * This is what deleting an album does to its contents: they become unfiled, and **nothing is
+     * destroyed**. Deleting an item's row destroys the wrapped DEK living in it, which is the only
+     * way of reading that file — so an album delete must go through here and never through
+     * [deleteItem].
+     *
+     * A no-op is `Ok`: an album with nothing in it is the ordinary case for a delete, and so is an
+     * album id that no longer exists. Takes a non-null id deliberately — the generated query accepts
+     * one and quietly rewrites `=` to `IS`, which would make `null` mean "unfile the already
+     * unfiled" rather than the error it is.
+     */
+    fun clearAlbumOnItems(albumId: ByteArray): Outcome<Unit> =
+        catchingDb { items.clearAlbumOnItems(albumId) }
+
     /** Remove the item with [id]. Idempotent — an absent id is `Ok`, never a throw. */
     fun deleteItem(id: ByteArray): Outcome<Unit> =
         catchingDb { items.deleteItemById(id) }

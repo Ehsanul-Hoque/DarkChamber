@@ -184,6 +184,204 @@ class CatalogStoreTest {
     }
 
     @Test
+    fun updateItemAlbum_files_a_whole_set_at_once() {
+        val albumA = byteArrayOf(0xA1.toByte())
+        store.upsertAlbum(album(0xA1.toByte())).unwrap()
+        store.upsertItem(item(1, createdAt = 100L)).unwrap()
+        store.upsertItem(item(2, createdAt = 200L)).unwrap()
+        store.upsertItem(item(3, createdAt = 300L)).unwrap()
+
+        store.updateItemAlbum(listOf(byteArrayOf(1), byteArrayOf(3)), albumA).unwrap()
+
+        assertEquals(
+            listOf<Byte>(3, 1),
+            store.listItems(ItemFilter.Album(albumA)).unwrap().map { it.id.single() },
+            "both named items are filed, in the listing's own order",
+        )
+        assertEquals(
+            listOf<Byte>(2),
+            store.listItems(ItemFilter.Unfiled).unwrap().map { it.id.single() },
+            "and the item nobody named stayed where it was",
+        )
+    }
+
+    /** The other direction of the same op: a `null` destination unfiles, rather than meaning "no change". */
+    @Test
+    fun updateItemAlbum_with_a_null_destination_unfiles() {
+        val albumA = byteArrayOf(0xA1.toByte())
+        store.upsertAlbum(album(0xA1.toByte())).unwrap()
+        store.upsertItem(item(1, albumId = albumA)).unwrap()
+
+        store.updateItemAlbum(listOf(byteArrayOf(1)), albumId = null).unwrap()
+
+        assertEquals(1, store.listItems(ItemFilter.Unfiled).unwrap().size, "the item is unfiled")
+        assertEquals(emptyList(), store.listItems(ItemFilter.Album(albumA)).unwrap(), "and out of the album")
+    }
+
+    /**
+     * The schema declares no foreign key on `album_id`, so SQLite accepts a destination that does
+     * not exist — and the result is an item no album surface can reach: it is in no listed album,
+     * and it is not unfiled either, because its `album_id` is not NULL. The store enforces what the
+     * schema does not.
+     */
+    @Test
+    fun updateItemAlbum_rejects_a_destination_that_does_not_exist() {
+        store.upsertItem(item(1)).unwrap()
+
+        val result = store.updateItemAlbum(listOf(byteArrayOf(1)), byteArrayOf(0xFF.toByte()))
+
+        assertTrue(result is Outcome.Err, "an unknown destination is an error, not a silent write")
+        assertTrue(result.error is VaultError.Db, "mapped to VaultError.Db")
+        assertEquals(
+            1,
+            store.listItems(ItemFilter.Unfiled).unwrap().size,
+            "and the item is untouched — the transaction rolled back",
+        )
+    }
+
+    /**
+     * A rejected destination must take the *whole* set with it. Half a move is worse than none: the
+     * user sees some of their selection in the album and has no way to tell which part failed.
+     */
+    @Test
+    fun updateItemAlbum_rolls_the_whole_set_back_when_the_destination_is_missing() {
+        store.upsertItem(item(1)).unwrap()
+        store.upsertItem(item(2)).unwrap()
+
+        assertTrue(
+            store.updateItemAlbum(listOf(byteArrayOf(1), byteArrayOf(2)), byteArrayOf(0xFF.toByte())) is Outcome.Err,
+        )
+        assertEquals(2, store.listItems(ItemFilter.Unfiled).unwrap().size, "neither item moved")
+    }
+
+    /**
+     * An empty set is `Ok`, and — the part worth pinning — it tells nobody anything happened.
+     *
+     * Running the statement would be harmless to the data: the generated query expands its ids into
+     * `IN (?, ?, …)`, and SQLite accepts the resulting `IN ()` as matching nothing. What it would not
+     * be harmless to is the listings, which get notified that `items` changed and re-read themselves
+     * — in the gallery, re-decrypting every row's metadata to arrive back at what it already had. An
+     * empty selection is an ordinary thing for a UI to send.
+     */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    @Test
+    fun updateItemAlbum_with_no_ids_changes_nothing_and_notifies_nobody() = runTest {
+        val obsDriver = testSqlDriver()
+        val obsStore = CatalogStore.create(obsDriver, UnconfinedTestDispatcher(testScheduler)).unwrap()
+        obsStore.upsertAlbum(album(0xA1.toByte())).unwrap()
+        obsStore.upsertItem(item(1)).unwrap()
+
+        obsStore.observeItems().test {
+            assertEquals(1, awaitItem().size, "the listing starts with the one item")
+
+            assertTrue(obsStore.updateItemAlbum(emptyList(), byteArrayOf(0xA1.toByte())) is Outcome.Ok)
+            expectNoEvents()
+
+            cancelAndIgnoreRemainingEvents()
+        }
+        assertEquals(1, obsStore.listItems(ItemFilter.Unfiled).unwrap().size, "and nothing was filed")
+        obsDriver.close()
+    }
+
+    /**
+     * An item id that is not in the catalog is **not** an error, unlike a missing destination: an
+     * item shredded between being selected and being assigned is an ordinary race, and its absence
+     * from the album is already what the caller wanted.
+     */
+    @Test
+    fun updateItemAlbum_ignores_item_ids_that_are_not_there() {
+        val albumA = byteArrayOf(0xA1.toByte())
+        store.upsertAlbum(album(0xA1.toByte())).unwrap()
+        store.upsertItem(item(1)).unwrap()
+
+        store.updateItemAlbum(listOf(byteArrayOf(1), byteArrayOf(9)), albumA).unwrap()
+
+        assertEquals(
+            listOf<Byte>(1),
+            store.listItems(ItemFilter.Album(albumA)).unwrap().map { it.id.single() },
+            "the real item filed; the ghost was skipped",
+        )
+        assertEquals(1L, store.countItems().unwrap(), "and no row was invented for it")
+    }
+
+    /**
+     * What an album delete does to its contents. The items survive and become unfiled — deleting
+     * their rows would destroy the wrapped DEKs inside them, which is the only way of reading those
+     * files, and there is no undoing that.
+     */
+    @Test
+    fun clearAlbumOnItems_unfiles_the_contents_without_destroying_them() {
+        val albumA = byteArrayOf(0xA1.toByte())
+        val albumB = byteArrayOf(0xB2.toByte())
+        store.upsertItem(item(1, albumId = albumA, createdAt = 100L)).unwrap()
+        store.upsertItem(item(2, albumId = albumA, createdAt = 200L)).unwrap()
+        store.upsertItem(item(3, albumId = albumB, createdAt = 300L)).unwrap()
+
+        store.clearAlbumOnItems(albumA).unwrap()
+
+        assertEquals(3L, store.countItems().unwrap(), "every item still exists")
+        assertEquals(
+            listOf<Byte>(2, 1),
+            store.listItems(ItemFilter.Unfiled).unwrap().map { it.id.single() },
+            "the album's contents are unfiled",
+        )
+        assertEquals(
+            listOf<Byte>(3),
+            store.listItems(ItemFilter.Album(albumB)).unwrap().map { it.id.single() },
+            "and another album is untouched",
+        )
+        assertContentEquals(
+            byteArrayOf(0x0A, 0x0B),
+            store.getItem(byteArrayOf(1)).unwrap()!!.dek_wrapped,
+            "including the wrapped key that makes the file readable",
+        )
+    }
+
+    /** Clearing an empty album, or one that never existed, is a no-op — the ordinary delete case. */
+    @Test
+    fun clearAlbumOnItems_is_a_no_op_when_nothing_is_in_the_album() {
+        store.upsertItem(item(1, albumId = byteArrayOf(0xB2.toByte()))).unwrap()
+
+        assertTrue(store.clearAlbumOnItems(byteArrayOf(0xA1.toByte())) is Outcome.Ok, "an empty album clears cleanly")
+        assertTrue(store.clearAlbumOnItems(byteArrayOf(0xFF.toByte())) is Outcome.Ok, "so does an unknown one")
+        assertEquals(
+            listOf<Byte>(1),
+            store.listItems(ItemFilter.Album(byteArrayOf(0xB2.toByte()))).unwrap().map { it.id.single() },
+            "and the clear did not reach past its own album",
+        )
+    }
+
+    /**
+     * Both writes have to reach the listings, and the bulk one has to reach them **once**. A move of
+     * fifty items emitting fifty times would re-decrypt every row's metadata fifty times over in the
+     * gallery above it.
+     */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    @Test
+    fun the_album_writes_notify_the_listings_once_each() = runTest {
+        val obsDriver = testSqlDriver()
+        val obsStore = CatalogStore.create(obsDriver, UnconfinedTestDispatcher(testScheduler)).unwrap()
+        val albumA = byteArrayOf(0xA1.toByte())
+        obsStore.upsertAlbum(album(0xA1.toByte())).unwrap()
+        obsStore.upsertItem(item(1, createdAt = 100L)).unwrap()
+        obsStore.upsertItem(item(2, createdAt = 200L)).unwrap()
+
+        obsStore.observeItems(ItemFilter.Album(albumA)).test {
+            assertEquals(emptyList(), awaitItem(), "the album starts empty")
+
+            obsStore.updateItemAlbum(listOf(byteArrayOf(1), byteArrayOf(2)), albumA).unwrap()
+            assertEquals(listOf<Byte>(2, 1), awaitItem().map { it.id.single() }, "one emission for the whole set")
+            expectNoEvents()
+
+            obsStore.clearAlbumOnItems(albumA).unwrap()
+            assertEquals(emptyList(), awaitItem(), "and the clear re-emits too")
+
+            cancelAndIgnoreRemainingEvents()
+        }
+        obsDriver.close()
+    }
+
+    @Test
     fun deleteItem_removes_and_is_idempotent() {
         store.upsertItem(item(1)).unwrap()
         store.deleteItem(byteArrayOf(1)).unwrap()

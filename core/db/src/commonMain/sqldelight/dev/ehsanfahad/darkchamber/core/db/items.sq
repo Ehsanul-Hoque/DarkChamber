@@ -43,6 +43,23 @@ SELECT * FROM items ORDER BY created_at DESC, id DESC;
 selectUnfiledItems:
 SELECT * FROM items WHERE album_id IS NULL ORDER BY created_at DESC, id DESC;
 
+-- Filing items. One statement for the whole set rather than one per item: a bulk move is then
+-- atomic for free, and the catalog notifies its listeners once instead of once per item — a move of
+-- fifty items would otherwise re-emit the gallery fifty times, each re-decrypting every row's
+-- metadata.
+--
+-- The destination is nullable and NULL means "unfile these" — unambiguous here, because a
+-- destination has only two kinds of answer. A *filter* needs three (see selectUnfiledItems), which
+-- is why that one is not a nullable parameter.
+updateItemAlbum:
+UPDATE items SET album_id = ? WHERE id IN ?;
+
+-- Emptying an album without touching its items, which is what deleting an album does: the items
+-- become unfiled, and nothing is destroyed. Deleting an item's row destroys its wrapped DEK and
+-- with it any way of reading the file, so an album delete must never reach the rows.
+clearAlbumOnItems:
+UPDATE items SET album_id = NULL WHERE album_id = ?;
+
 deleteItemById:
 DELETE FROM items WHERE id = ?;
 
