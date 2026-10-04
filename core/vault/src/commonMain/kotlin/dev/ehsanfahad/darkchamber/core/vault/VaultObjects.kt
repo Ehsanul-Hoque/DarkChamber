@@ -549,6 +549,37 @@ class VaultObjects(
     }
 
     /**
+     * Delete the album with [id]. **Its items are kept** — they become unfiled, and nothing of
+     * theirs is touched.
+     *
+     * An album is a label on an item, not a container that owns it. Deleting an item's catalog row
+     * *is* the crypto-shred, because the wrapped DEK that opens that file lives in the row, so
+     * folder-deletes-contents semantics here would destroy files irreversibly with no trash to stage
+     * them in and no undo to offer. The album most likely to be deleted by mistake is a full one,
+     * because the grid shows its count.
+     *
+     * ### The order of the two writes is the design, and must not be tidied
+     *
+     * `CatalogStore` exposes no transaction spanning two of its operations, so this is two writes.
+     * **Clear the items first, then delete the album row** — and stop if the clear fails, which is
+     * what the short-circuit below is for.
+     *
+     * Interrupted after the first write, that leaves an album holding nothing: visible in the grid,
+     * harmless, and deletable again. Interrupted after the *other* order, it would leave items
+     * pointing at an album that no longer exists — absent from every album view, absent from the
+     * unfiled listing because their `album_id` is not null, and reachable only through the whole
+     * vault. One is a cosmetic leftover; the other is files the album surfaces cannot find.
+     *
+     * Both orders look equally reasonable in a diff, which is why the failure case is pinned by
+     * tests that inject a driver failure between the writes rather than left to this comment.
+     *
+     * An id that is not there is `Ok`: both writes are no-ops, the user's intent is already true, and
+     * unlike a shred of an unknown id there is no destruction being falsely reported.
+     */
+    fun deleteAlbum(id: ByteArray): Outcome<Unit> =
+        catalog.clearAlbumOnItems(id).flatMap { catalog.deleteAlbum(id) }
+
+    /**
      * A blank name is a **caller bug, not a user error**, so it is a precondition rather than an
      * `Outcome`.
      *

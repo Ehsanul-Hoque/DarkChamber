@@ -8,6 +8,7 @@ import dev.ehsanfahad.darkchamber.core.crypto.IncrementalHash
 import dev.ehsanfahad.darkchamber.core.crypto.PassphraseKdfProfile
 import dev.ehsanfahad.darkchamber.core.crypto.VaultSession
 import dev.ehsanfahad.darkchamber.core.db.Albums
+import app.cash.sqldelight.db.SqlDriver
 import dev.ehsanfahad.darkchamber.core.db.CatalogStore
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultItemKind
@@ -39,6 +40,9 @@ import kotlin.test.assertIs
 internal class AlbumFixture(
     mapContext: CoroutineContext = Dispatchers.Unconfined,
     val engine: CryptoEngine = CryptographyKotlinEngine(),
+    // Pass a wrapped driver to interrupt a multi-write operation partway — see FailingSqlDriver,
+    // which is how the album delete's ordering is pinned.
+    driver: SqlDriver = testSqlDriver(),
 ) {
     private val dir = Path(SystemTemporaryDirectory, "alb-${Random.nextULong()}")
 
@@ -59,7 +63,7 @@ internal class AlbumFixture(
 
     init {
         SystemFileSystem.createDirectories(dir)
-        catalog = (CatalogStore.create(testSqlDriver(), UnconfinedTestDispatcher()) as Outcome.Ok).value
+        catalog = (CatalogStore.create(driver, UnconfinedTestDispatcher()) as Outcome.Ok).value
         objects = VaultObjects(
             session = session,
             storage = VaultStorage(dir),
