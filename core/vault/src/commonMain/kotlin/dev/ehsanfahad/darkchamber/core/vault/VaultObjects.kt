@@ -3,6 +3,7 @@ package dev.ehsanfahad.darkchamber.core.vault
 import dev.ehsanfahad.darkchamber.core.crypto.DchmCodec
 import dev.ehsanfahad.darkchamber.core.crypto.DchmFormat
 import dev.ehsanfahad.darkchamber.core.crypto.VaultSession
+import dev.ehsanfahad.darkchamber.core.db.Albums
 import dev.ehsanfahad.darkchamber.core.db.CatalogStore
 import dev.ehsanfahad.darkchamber.core.db.Items
 import dev.ehsanfahad.darkchamber.core.db.SelectAlbumsWithCounts
@@ -498,6 +499,72 @@ class VaultObjects(
             .map { rows -> rows.map(::toAlbumSummary) }
             .flowOn(mapContext)
 
+    /**
+     * Create an album named [name], returning its new id.
+     *
+     * **Duplicate names are allowed, by decision.** The id is identity and the name is a label, so
+     * two albums called "Holiday" are confusing rather than broken. Enforcing uniqueness would mean
+     * opening every album's name on every create — the cost the album listing is carefully built to
+     * avoid — to buy an error message for something that is not an error.
+     *
+     * Nothing per-album is keyed here: `kek_variant` records that this album's name is sealed under
+     * MK like everything else, because an album organises and does not protect. A per-album key is a
+     * documented possibility for later, which is what the column is for.
+     *
+     * [name] must not be blank — see [requireUsableName]. The name is sealed **before** the row is
+     * written, so a session locked mid-create throws with nothing persisted; there is no half-made
+     * album to clean up, unlike an object import where bytes land first.
+     */
+    fun createAlbum(name: String): Outcome<ByteArray> {
+        requireUsableName(name)
+        val id = random(ALBUM_ID_SIZE)
+        val row = Albums(
+            id = id,
+            kek_variant = KEK_VARIANT_MASTER_KEY,
+            enc_name = session.sealAlbumMeta(AlbumMeta(name)),
+            created_at = clock(),
+        )
+        return catalog.upsertAlbum(row).map { id }
+    }
+
+    /**
+     * Rename the album with [id]. An unknown id is `VaultError.Io(NoSuchElementException)`, matching
+     * [openMeta] and [shredObject] — a rename is not a create, and silently making the album the
+     * caller thought it was editing would be worse than failing.
+     *
+     * **Reads the existing row and replaces only the sealed name.** The catalog's upsert is `INSERT
+     * OR REPLACE`, so building a fresh row here would quietly reset `created_at` — reordering the
+     * album grid — and discard `kek_variant`, which is the flag a later per-album key would live in.
+     * Both are pinned by a test.
+     *
+     * [name] must not be blank — see [requireUsableName].
+     */
+    fun renameAlbum(id: ByteArray, name: String): Outcome<Unit> {
+        requireUsableName(name)
+        val existing = when (val got = catalog.getAlbum(id)) {
+            is Outcome.Err -> return got
+            is Outcome.Ok -> got.value ?: return absentAlbum(id)
+        }
+        return catalog.upsertAlbum(existing.copy(enc_name = session.sealAlbumMeta(AlbumMeta(name))))
+    }
+
+    /**
+     * A blank name is a **caller bug, not a user error**, so it is a precondition rather than an
+     * `Outcome`.
+     *
+     * Deciding what to do about what the user typed — rejecting it, trimming it, keeping the field
+     * disabled until it is non-empty — is the use case's job, because that layer is the one that can
+     * say so in the interface and the one that knows whether the text is still being typed. By the
+     * time a name reaches here it has been through that, so blank means the validation was skipped.
+     * Failing loudly is how that gets found in a test rather than becoming an album with no name,
+     * which cannot be told apart from an album whose name will not decrypt.
+     *
+     * Whitespace counts as blank for the same reason: a name of three spaces is not a name, and
+     * storing one produces an album the user cannot identify or describe to anyone.
+     */
+    private fun requireUsableName(name: String) =
+        require(name.isNotBlank()) { "album name must not be blank" }
+
     private fun toAlbumSummary(row: SelectAlbumsWithCounts): AlbumSummary =
         AlbumSummary(
             id = row.id,
@@ -587,9 +654,21 @@ class VaultObjects(
     private fun absent(id: ByteArray): Outcome.Err =
         Outcome.Err(VaultError.Io(NoSuchElementException("no vault object for id (${id.size} bytes)")))
 
+    private fun absentAlbum(id: ByteArray): Outcome.Err =
+        Outcome.Err(VaultError.Io(NoSuchElementException("no album for id (${id.size} bytes)")))
+
     private companion object {
         // 128-bit random object id; the catalog primary key and the codec's chunk-AAD file_id.
         const val FILE_ID_SIZE = 16
+
+        // Album ids come from the same randomness and at the same width as object ids: one source
+        // of identity in this module, not two. An album id is only a primary key — it never reaches
+        // the container AAD the way a file_id does.
+        const val ALBUM_ID_SIZE = 16
+
+        // The album's name is sealed under MK, with no per-album key. Named rather than a bare 0 so
+        // the day a second variant exists, the existing rows say which one they are.
+        const val KEK_VARIANT_MASTER_KEY = 0
     }
 }
 
