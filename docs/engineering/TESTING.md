@@ -59,15 +59,22 @@ Applied uniformly via the `darkchamber.quality` convention plugin; configs live 
 |-------------|----------------------------|-----------------------------------------|--------------------------------|
 | **ktlint**  | `.editorconfig`            | formatting (auto-fixable)               | `ktlintCheck` / `ktlintFormat` |
 | **detekt**  | `config/detekt/detekt.yml` | static analysis, complexity, Koin rules | `detekt`                       |
-| **Konsist** | `:konsist` module          | architecture + security invariants      | `konsistTest`                  |
+| **Konsist** | `:konsist` module          | architecture + security invariants      | `:konsist:test`                |
 | **Kover**   | quality plugin             | coverage thresholds (§4)                | `koverVerify`                  |
+
+**Konsist is the exception on both counts, and the only one of the four that exists today.** It is not
+applied by the quality plugin: its rules are ordinary tests in their own module, so they run as that
+module's test task and there is no aggregate `konsistTest` to invoke. Run it on its own rather than
+alongside the others, since a single command naming a task that does not exist yet fails before
+reaching the one that does.
 
 detekt version note: pick the line built against the project's Kotlin version at setup (this pairing is the most volatile in the toolchain); a baseline file may grandfather issues on adoption but **never** in `core:crypto`.
 
 ## 6. Running
 
 ```bash
-./gradlew ktlintCheck detekt konsistTest    # style + architecture
+./gradlew :konsist:test                      # architecture + security invariants
+./gradlew ktlintCheck detekt                 # style
 ./gradlew testDebugUnitTest                  # fast JVM suite (incl. format vectors)
 ./gradlew iosSimulatorArm64Test              # iOS (CI-gated, see RELEASE.md)
 ./gradlew koverVerify                        # coverage gate

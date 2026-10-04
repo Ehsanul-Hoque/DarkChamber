@@ -90,11 +90,17 @@ Test:
 ./gradlew iosSimulatorArm64Test            # iOS tests (expensive — CI-gated to core/feature changes)
 ```
 
-Quality & coverage (target tooling — confirm the task exists before relying on it):
+Architecture + security rules (**exists today**, and runs in CI on every PR):
+```bash
+./gradlew :konsist:test       # architecture + SECURITY-INVARIANT rules (crypto/storage confinement)
+```
+The `:konsist` module has no quality convention plugin applied, so its rules run as that module's own
+test task — there is no top-level `konsistTest`.
+
+Quality & coverage (target tooling — **none of these tasks exist yet**; confirm before relying on one):
 ```bash
 ./gradlew ktlintFormat        # auto-fix formatting — run before committing
 ./gradlew ktlintCheck detekt  # lint + static analysis
-./gradlew konsistTest         # architecture + SECURITY-INVARIANT rules (crypto/storage confinement)
 ./gradlew koverVerify         # coverage gates: core:crypto ~100%, domain 90%, overall 80%
 ./gradlew migrationTest       # fixture-vault upgrade gate (exists after v1.0 ships)
 ```
