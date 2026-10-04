@@ -76,13 +76,17 @@ class CatalogStore private constructor(
      * item the album surfaces cannot reach, so the store enforces what the schema does not. Unknown
      * *item* ids are not an error by contrast: an item shredded between selection and assignment is
      * an ordinary race, and its absence is already the outcome the caller wanted.
+     *
+     * Returns **how many rows the write touched**, which is how a caller tells that ordinary race
+     * apart from a clean run: fewer rows than ids means some of them are no longer in the catalog.
+     * The count comes from the driver, so asking for it costs nothing.
      */
-    fun updateItemAlbum(ids: List<ByteArray>, albumId: ByteArray?): Outcome<Unit> =
+    fun updateItemAlbum(ids: List<ByteArray>, albumId: ByteArray?): Outcome<Long> =
         if (ids.isEmpty()) {
-            Outcome.Ok(Unit)
+            Outcome.Ok(0L)
         } else {
             catchingDb {
-                db.transaction {
+                db.transactionWithResult {
                     // Inside the transaction for two reasons: the album cannot be deleted between
                     // this check and the write, and the catalog defers its listener notification to
                     // the commit — so however many statements this grows into, the listings are told
@@ -90,7 +94,7 @@ class CatalogStore private constructor(
                     if (albumId != null && albums.selectAlbumById(albumId).executeAsOneOrNull() == null) {
                         error("assignment destination album does not exist")
                     }
-                    items.updateItemAlbum(album_id = albumId, id = ids)
+                    items.updateItemAlbum(album_id = albumId, id = ids).value
                 }
             }
         }

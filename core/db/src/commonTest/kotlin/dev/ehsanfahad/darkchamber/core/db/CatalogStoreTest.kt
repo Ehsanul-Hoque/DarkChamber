@@ -284,6 +284,31 @@ class CatalogStoreTest {
     }
 
     /**
+     * The row count is how a caller distinguishes a clean batch from one whose ids have been
+     * shredded underneath it. Without it, assigning five items and assigning five ids of which two
+     * are gone are indistinguishable successes.
+     */
+    @Test
+    fun updateItemAlbum_reports_how_many_rows_it_touched() {
+        val albumA = byteArrayOf(0xA1.toByte())
+        store.upsertAlbum(album(0xA1.toByte())).unwrap()
+        store.upsertItem(item(1)).unwrap()
+        store.upsertItem(item(2)).unwrap()
+
+        assertEquals(
+            2L,
+            store.updateItemAlbum(listOf(byteArrayOf(1), byteArrayOf(2)), albumA).unwrap(),
+            "both rows moved",
+        )
+        assertEquals(
+            1L,
+            store.updateItemAlbum(listOf(byteArrayOf(1), byteArrayOf(9)), null).unwrap(),
+            "one id was not there, and the count says so",
+        )
+        assertEquals(0L, store.updateItemAlbum(emptyList(), albumA).unwrap(), "nothing asked, nothing touched")
+    }
+
+    /**
      * An item id that is not in the catalog is **not** an error, unlike a missing destination: an
      * item shredded between being selected and being assigned is an ordinary race, and its absence
      * from the album is already what the caller wanted.

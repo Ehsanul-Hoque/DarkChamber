@@ -549,6 +549,30 @@ class VaultObjects(
     }
 
     /**
+     * File every item in [ids] into [albumId], or unfile them all when it is `null`.
+     *
+     * **One write for the whole set, not one per item**, and that is a correctness-adjacent
+     * performance decision rather than a micro-optimisation. Every listing re-emits on any write to
+     * `items`, and the item listing opens and decodes every row's metadata on each emission — so
+     * fifty separate writes would mean fifty notifications and fifty full re-decrypts of a list that
+     * is being looked at while it happens. The catalog defers its notification to the commit, so the
+     * batch produces one.
+     *
+     * That per-emission re-decrypt is a **known cost of its own**, recorded in the standing phase
+     * backlog; batching here keeps this call site from multiplying it, and does not fix it. An
+     * album's own listing is cheap by construction and is not what this is about.
+     *
+     * Returns an [AssignSummary] rather than `Unit`: ids that are no longer in the catalog are
+     * skipped rather than failed — an item shredded between selection and assignment is an ordinary
+     * race — and a caller that cannot see the difference can only report a half-move as a clean one.
+     * A destination album that does not exist **is** an error, because it would leave items filed
+     * where no listing can reach them.
+     */
+    fun assignItems(ids: List<ByteArray>, albumId: ByteArray?): Outcome<AssignSummary> =
+        catalog.updateItemAlbum(ids, albumId)
+            .map { moved -> AssignSummary(requested = ids.size, assigned = moved.toInt()) }
+
+    /**
      * Delete the album with [id]. **Its items are kept** — they become unfiled, and nothing of
      * theirs is touched.
      *
