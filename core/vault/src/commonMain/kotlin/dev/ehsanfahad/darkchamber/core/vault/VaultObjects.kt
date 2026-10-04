@@ -5,6 +5,7 @@ import dev.ehsanfahad.darkchamber.core.crypto.DchmFormat
 import dev.ehsanfahad.darkchamber.core.crypto.VaultSession
 import dev.ehsanfahad.darkchamber.core.db.CatalogStore
 import dev.ehsanfahad.darkchamber.core.db.Items
+import dev.ehsanfahad.darkchamber.core.db.SelectAlbumsWithCounts
 import dev.ehsanfahad.darkchamber.core.model.ItemFilter
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
@@ -469,6 +470,46 @@ class VaultObjects(
         catalog.observeItems(filter)
             .map { rows -> rows.map(::toSummary) }
             .flowOn(mapContext)
+
+    /**
+     * The listing feeding the album grid: every album with its name opened, its item count and the
+     * id of the item that represents it. Re-emits whenever the catalog changes — **including when
+     * only the `items` table does**, which is what keeps a count and a cover current while every
+     * album row stays byte-identical.
+     *
+     * **One small decrypt per album, and nothing per item.** The count and the cover id arrive from
+     * the catalog's plaintext index columns — an item's album and its date — so this listing costs
+     * the same in a vault of ten files as in one of ten thousand. That is deliberate and worth
+     * defending: anything that makes this screen read item metadata to derive a count, a cover, or a
+     * total size turns a fixed cost into one GCM open per item per emission, on a screen that
+     * re-emits on every import.
+     *
+     * An album whose `enc_name` will not open is **listed with the error**, never dropped, for the
+     * same reason [observeItems] keeps a damaged row: an album that cannot be named still holds
+     * files, its id, count and cover still render, and omitting it would hide tampering while
+     * silently stranding whatever is inside it.
+     *
+     * Runs on [mapContext] and inherits `CatalogStore.observeAlbums`' failure contract, exactly as
+     * [observeItems] does — a driver failure surfaces as an exception in the flow for the collector
+     * to map, rather than becoming a silently empty list of albums.
+     */
+    fun observeAlbums(): Flow<List<AlbumSummary>> =
+        catalog.observeAlbums()
+            .map { rows -> rows.map(::toAlbumSummary) }
+            .flowOn(mapContext)
+
+    private fun toAlbumSummary(row: SelectAlbumsWithCounts): AlbumSummary =
+        AlbumSummary(
+            id = row.id,
+            // Only the name is sealed; everything else here is already plaintext in the catalog.
+            name = session.openAlbumMeta(row.enc_name).map { it.name },
+            // SQL counts are Long. Narrowed once, here, rather than carried through the UI: a vault
+            // that overflowed Int would have two billion files in one album, and every surface above
+            // this works in Int.
+            itemCount = row.item_count.toInt(),
+            coverItemId = row.cover_item_id,
+            createdAt = row.created_at,
+        )
 
     private fun toSummary(row: Items): VaultItemSummary =
         VaultItemSummary(
