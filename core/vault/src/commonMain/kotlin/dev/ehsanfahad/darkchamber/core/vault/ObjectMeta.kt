@@ -68,7 +68,9 @@ data class ObjectMeta(
         "ObjectMeta(mime=$mime, thumbnailKey=${if (thumbnailKey == null) "absent" else "present"})"
 }
 
-private fun ByteArray?.contentEqualsOrBothNull(other: ByteArray?): Boolean =
+// `internal` rather than private: AlbumSummary needs the same null-safe content comparison for its
+// cover id, and two copies of this are two chances for one of them to be written as `==`.
+internal fun ByteArray?.contentEqualsOrBothNull(other: ByteArray?): Boolean =
     if (this == null || other == null) this == null && other == null else contentEquals(other)
 
 // One CBOR instance for enc_meta framing — the same serialization idiom as the .dchm header and the
