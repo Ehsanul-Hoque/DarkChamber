@@ -7,7 +7,7 @@ import kotlinx.io.RawSource
 import kotlinx.io.readByteArray
 
 /**
- * Test fixtures for the bounded-RAM streaming round-trip (5c §5.2): a deterministic generating
+ * Test fixtures for the bounded-RAM streaming round-trip: a deterministic generating
  * source and a counting/hashing discard sink. Together they push an arbitrary volume through
  * import + open while only ever holding O(chunkSize) bytes — the plaintext is never materialised
  * whole, so the same code path proves out at 16 MiB in CI and at 2 GiB opt-in on a device.

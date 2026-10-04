@@ -541,6 +541,7 @@ private class ExplodingVaultItems : VaultItems {
     override fun import(
         name: String,
         mime: String,
+        albumId: ByteArray?,
         onProgress: (ImportPhase, Long) -> Unit,
         isActive: () -> Boolean,
         first: RawSource?,

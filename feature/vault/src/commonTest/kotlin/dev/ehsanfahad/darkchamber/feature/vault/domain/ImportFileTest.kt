@@ -35,6 +35,32 @@ class ImportFileTest {
     private fun importFile(vault: VaultItems) =
         ImportFile(vault = vault, ioContext = UnconfinedTestDispatcher())
 
+    /**
+     * The destination reaches the vault, where the filing happens as the row is written. Doing it
+     * here rather than assigning afterwards is what keeps the item from appearing unfiled first: the
+     * gallery re-emits on that write, so a two-step import would show the file land in the wrong
+     * place and then move.
+     */
+    @Test
+    fun the_album_a_file_is_imported_into_is_passed_to_the_vault() = runTest {
+        val album = byteArrayOf(0xA1.toByte(), 0xB2.toByte())
+        val vault = FakeVaultItems()
+
+        importFile(vault)(FakePickedFile(name = "photo.jpg"), albumId = album)
+
+        assertEquals(1, vault.importedAlbums.size)
+        assertTrue(vault.importedAlbums.single().contentEquals(album), "the same album, unchanged")
+    }
+
+    @Test
+    fun a_file_imported_with_no_album_is_left_unfiled() = runTest {
+        val vault = FakeVaultItems()
+
+        importFile(vault)(FakePickedFile(name = "photo.jpg"))
+
+        assertEquals(listOf<ByteArray?>(null), vault.importedAlbums, "the default is the whole-vault import")
+    }
+
     @Test
     fun a_picked_file_is_imported_under_its_own_name_and_mime() = runTest {
         val picked = FakePickedFile(name = "notes.pdf", mime = "application/pdf")

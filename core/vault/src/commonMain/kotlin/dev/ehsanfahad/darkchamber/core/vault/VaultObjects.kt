@@ -70,6 +70,16 @@ class VaultObjects(
      * owns the denominator, the percentage, and the decision of what to draw when no size is known:
      * [ImportPhase] says which arithmetic to do, never what to show.
      *
+     * [albumId] files the new item as it is created, so importing into the album being viewed is one
+     * action rather than an import followed by a selection. `null` leaves it unfiled, which is what
+     * an import from the whole-vault view should do and what every caller that predates albums gets.
+     *
+     * An album that does not exist is an **error**, not a quiet downgrade to unfiled: the schema
+     * declares no foreign key, so the row would be accepted and the item would land where no album
+     * view can reach it and the unfiled listing will not show it either. Checked twice on purpose —
+     * once before any bytes move, so a bad destination does not cost a full encrypt, and once against
+     * the finished row, because a long import can outlive the album it was aimed at.
+     *
      * [first] is an **already-open** source over the same payload, which stands in for the first
      * open this function would otherwise perform. It exists because a provider may block for minutes
      * inside that open — Drive downloads the whole file there — and abandoning a blocked call needs
@@ -96,12 +106,31 @@ class VaultObjects(
         kind: Int,
         name: String,
         mime: String,
+        albumId: ByteArray? = null,
         chunkSize: Int = DchmFormat.DEFAULT_CHUNK_SIZE,
         onProgress: (ImportPhase, Long) -> Unit = { _, _ -> },
         isActive: () -> Boolean = { true },
         first: RawSource? = null,
         openSource: () -> RawSource,
     ): Outcome<ByteArray> {
+        // Fail before any bytes move if the destination is not there. The check that *matters* is
+        // the one taken against the finished row (see storeGuarded), because an album can be deleted
+        // mid-import; this one exists so a mistyped destination does not cost a full encrypt of a
+        // video first. `first` belongs to the vault by contract, so this path closes it.
+        when (val destination = albumExists(albumId)) {
+            is Outcome.Err -> {
+                if (first != null) {
+                    try {
+                        first.close()
+                    } catch (_: Exception) {
+                        // best-effort: report the destination problem, not a close failure
+                    }
+                }
+                return destination
+            }
+            is Outcome.Ok -> Unit
+        }
+
         // Probe re-openability BEFORE reading anything. The check cannot be done after a failure:
         // by then the only stream a one-shot source will ever give has already been consumed by the
         // codec's first pass, leaving nothing to spill. So open one source and hold it, then try for
@@ -132,7 +161,7 @@ class VaultObjects(
             // Wrapped for the same reason as the spill path below: a lock can zeroize the session
             // mid-import, and a throw must not escape a function that promises an Outcome.
             return try {
-                storeObject(kind, name, mime, chunkSize, onProgress, isActive, openSource)
+                storeObject(kind, name, mime, albumId, chunkSize, onProgress, isActive, openSource)
             } catch (e: Exception) {
                 Outcome.Err(VaultError.Unexpected(e))
             }
@@ -169,7 +198,7 @@ class VaultObjects(
                         },
                     ) { session.isOpen && isActive() },
                 ) { spilled ->
-                    storeObject(kind, name, mime, chunkSize, onProgress, isActive, spilled)
+                    storeObject(kind, name, mime, albumId, chunkSize, onProgress, isActive, spilled)
                 }
                 .flatMap { it }
         } catch (e: Exception) {
@@ -191,6 +220,7 @@ class VaultObjects(
         kind: Int,
         name: String,
         mime: String,
+        albumId: ByteArray?,
         chunkSize: Int,
         onProgress: (ImportPhase, Long) -> Unit,
         isActive: () -> Boolean,
@@ -207,6 +237,7 @@ class VaultObjects(
             kind,
             name,
             mime,
+            albumId,
             chunkSize,
             openSource = {
                 SessionGuardedSource(
@@ -233,6 +264,7 @@ class VaultObjects(
         kind: Int,
         name: String,
         mime: String,
+        albumId: ByteArray?,
         chunkSize: Int,
         openSource: () -> RawSource,
         openForThumbnail: () -> RawSource,
@@ -275,9 +307,26 @@ class VaultObjects(
             storage.deleteThumbnail(fileId) // and no preview of an object that no longer exists
             throw e
         }
+
+        //    Still step 3: the destination is re-checked **here**, against the row about to be
+        //    written, and not only when the import started. An import of a large video takes
+        //    minutes, and the album it was aimed at can be deleted while it runs — `upsertItem`
+        //    would accept the stale id happily, since the schema declares no foreign key, and the
+        //    item would land where no album view can reach it and the unfiled listing will not show
+        //    it either. Cleaned up the same way a failed row write is: object bytes with no row are
+        //    unrecoverable garbage.
+        when (val destination = albumExists(albumId)) {
+            is Outcome.Err -> {
+                storage.deleteObject(fileId)
+                storage.deleteThumbnail(fileId)
+                return destination
+            }
+            is Outcome.Ok -> Unit
+        }
+
         val row = Items(
             id = fileId,
-            album_id = null,
+            album_id = albumId,
             kind = kind,
             size = size,
             created_at = createdAt,
@@ -708,6 +757,20 @@ class VaultObjects(
 
     private fun absent(id: ByteArray): Outcome.Err =
         Outcome.Err(VaultError.Io(NoSuchElementException("no vault object for id (${id.size} bytes)")))
+
+    /**
+     * `Ok` when [albumId] is null — unfiled is always a valid destination — or when that album is
+     * there. Absent is an error rather than a silent downgrade to unfiled: the caller asked for a
+     * specific album, and quietly putting the file somewhere else is the kind of helpfulness that
+     * loses things.
+     */
+    private fun albumExists(albumId: ByteArray?): Outcome<Unit> {
+        if (albumId == null) return Outcome.Ok(Unit)
+        return when (val got = catalog.getAlbum(albumId)) {
+            is Outcome.Err -> got
+            is Outcome.Ok -> if (got.value == null) absentAlbum(albumId) else Outcome.Ok(Unit)
+        }
+    }
 
     private fun absentAlbum(id: ByteArray): Outcome.Err =
         Outcome.Err(VaultError.Io(NoSuchElementException("no album for id (${id.size} bytes)")))

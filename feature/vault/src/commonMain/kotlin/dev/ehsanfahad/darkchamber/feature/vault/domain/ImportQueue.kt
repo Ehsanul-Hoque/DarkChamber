@@ -107,6 +107,13 @@ internal class ImportQueue(
 
     suspend operator fun invoke(
         files: List<PickedFile>,
+        /**
+         * Where the whole batch is filed as it lands, or `null` to leave it unfiled.
+         *
+         * Read once, here, and passed down per file — the destination belongs to the pick, so every
+         * file in one batch goes to the same place even if the screen behind it moves on.
+         */
+        albumId: ByteArray? = null,
         isActive: () -> Boolean = { true },
         onProgress: (ImportProgress) -> Unit = {},
     ): ImportSummary {
@@ -136,7 +143,7 @@ internal class ImportQueue(
                 // The snapshot goes with the file rather than being re-read downstream: nothing in
                 // the seam promises these are cached, and an implementation that queries on every
                 // access would otherwise pay for one per progress frame.
-                val result = importFile(file, facts, isActive) { phase, bytes ->
+                val result = importFile(file, facts, albumId, isActive) { phase, bytes ->
                     val stage = phase.toStage()
                     onProgress(
                         ImportProgress(index, files.size, facts.name, stage, facts.size.fractionAt(stage, bytes)),

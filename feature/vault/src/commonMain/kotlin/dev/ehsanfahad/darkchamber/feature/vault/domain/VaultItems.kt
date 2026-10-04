@@ -39,6 +39,10 @@ internal interface VaultItems {
      * [isActive] going false aborts within a read rather than at the end of the file: the encrypt is
      * blocking, so a caller that waited for the loop to notice would wait out the rest of a video.
      *
+     * [albumId] files the item as it is created, so importing into the album being viewed does not
+     * need a second step. `null` leaves it unfiled, which is what an import from the whole-vault
+     * view does. An album that is not there fails the import rather than quietly unfiling it.
+     *
      * [first] is an already-open source over the same payload, standing in for the first open the
      * vault would otherwise perform. It is how a caller keeps a provider's blocking open somewhere it
      * can be abandoned: the vault is synchronous, so a wait inside it cannot be given up on.
@@ -49,6 +53,7 @@ internal interface VaultItems {
     fun import(
         name: String,
         mime: String,
+        albumId: ByteArray? = null,
         onProgress: (ImportPhase, Long) -> Unit = { _, _ -> },
         isActive: () -> Boolean = { true },
         first: RawSource? = null,

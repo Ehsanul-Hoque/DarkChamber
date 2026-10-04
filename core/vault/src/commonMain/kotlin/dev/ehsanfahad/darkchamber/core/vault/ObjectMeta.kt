@@ -8,8 +8,8 @@ import kotlinx.serialization.encodeToByteArray
 
 /**
  * The list-view metadata for a vault object — the plaintext that gets sealed under MK into the
- * catalog `enc_meta` column (5c middle depth). Deliberately minimal; the richer metadata model
- * (dimensions, duration, origin) waits for the cycle that first reads it.
+ * catalog `enc_meta` column. Deliberately minimal — enough to list an item and no more; the richer
+ * metadata model (dimensions, duration, origin) waits for the work that first reads it.
  *
  * [thumbnailKey] is the DEK of this object's thumbnail container, **wrapped under MK**, absent when
  * the object has no thumbnail — an unsupported type, a file the decoder declined, or an item

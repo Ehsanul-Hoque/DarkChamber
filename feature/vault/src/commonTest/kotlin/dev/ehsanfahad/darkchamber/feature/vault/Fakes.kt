@@ -378,6 +378,9 @@ internal class FakeVaultItems(
     var observedFilter: ItemFilter? = null
         private set
 
+    /** The destination of every import call, in order — so a batch's filing can be checked per file. */
+    val importedAlbums = mutableListOf<ByteArray?>()
+
     /** The already-open source of the most recent call, or `null` when the caller handed none. */
     var handedFirst: RawSource? = null
         private set
@@ -390,12 +393,14 @@ internal class FakeVaultItems(
     override fun import(
         name: String,
         mime: String,
+        albumId: ByteArray?,
         onProgress: (ImportPhase, Long) -> Unit,
         isActive: () -> Boolean,
         first: RawSource?,
         openSource: () -> RawSource,
     ): Outcome<ByteArray> {
         importCalls++
+        importedAlbums += albumId
         handedFirst = first
         // The real vault owns a handed source and closes it on every path. The fake keeps that
         // promise, so a caller that leaks one is not covered for by the test double.
@@ -434,6 +439,7 @@ internal class ThrowingVaultItems : VaultItems {
     override fun import(
         name: String,
         mime: String,
+        albumId: ByteArray?,
         onProgress: (ImportPhase, Long) -> Unit,
         isActive: () -> Boolean,
         first: RawSource?,
@@ -450,6 +456,7 @@ internal class CancellingVaultItems : VaultItems {
     override fun import(
         name: String,
         mime: String,
+        albumId: ByteArray?,
         onProgress: (ImportPhase, Long) -> Unit,
         isActive: () -> Boolean,
         first: RawSource?,

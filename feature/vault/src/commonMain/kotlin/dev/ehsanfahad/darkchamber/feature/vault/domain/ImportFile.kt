@@ -76,6 +76,15 @@ internal class ImportFile(
          * round-trips that a cloud provider may take its time over.
          */
         facts: PickedFileFacts? = null,
+        /**
+         * Where this file is filed as it lands, or `null` to leave it unfiled.
+         *
+         * A parameter rather than state on this class: the destination is decided once, when the
+         * pick starts, and a field would let it change underneath a batch that is already running —
+         * so a fifty-file import could scatter itself across two albums because a screen navigated
+         * while it ran.
+         */
+        albumId: ByteArray? = null,
         isActive: () -> Boolean = { true },
         onProgress: (ImportPhase, Long) -> Unit = { _, _ -> },
     ): ImportResult {
@@ -111,6 +120,7 @@ internal class ImportFile(
                     vault.import(
                         name = resolved.name,
                         mime = resolved.mime,
+                        albumId = albumId,
                         onProgress = onProgress,
                         isActive = isActive,
                         first = first,

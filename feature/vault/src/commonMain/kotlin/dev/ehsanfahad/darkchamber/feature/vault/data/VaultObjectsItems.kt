@@ -27,6 +27,7 @@ internal class VaultObjectsItems(private val objects: VaultObjects) : VaultItems
     override fun import(
         name: String,
         mime: String,
+        albumId: ByteArray?,
         onProgress: (ImportPhase, Long) -> Unit,
         isActive: () -> Boolean,
         first: RawSource?,
@@ -36,6 +37,7 @@ internal class VaultObjectsItems(private val objects: VaultObjects) : VaultItems
             kind = VaultItemKind.FILE.code,
             name = name,
             mime = mime,
+            albumId = albumId,
             onProgress = onProgress,
             isActive = isActive,
             first = first,
