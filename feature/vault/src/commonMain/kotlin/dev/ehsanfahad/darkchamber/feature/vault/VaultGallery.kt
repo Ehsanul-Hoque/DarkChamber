@@ -1,18 +1,22 @@
 package dev.ehsanfahad.darkchamber.feature.vault
 
 import com.arkivanov.decompose.ComponentContext
+import dev.ehsanfahad.darkchamber.core.model.ItemFilter
 import dev.ehsanfahad.darkchamber.core.vault.VaultObjects
 import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
 import dev.ehsanfahad.darkchamber.feature.vault.api.PhotoPicker
+import dev.ehsanfahad.darkchamber.feature.vault.api.VaultAlbumsComponent
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultGalleryComponent
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultImports
 import dev.ehsanfahad.darkchamber.feature.vault.data.VaultObjectsItems
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ImportCoordinator
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ImportFile
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ImportQueue
+import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveAlbums
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveGallery
 import coil3.ImageLoader
 import coil3.PlatformContext
+import dev.ehsanfahad.darkchamber.feature.vault.presentation.DefaultVaultAlbumsComponent
 import dev.ehsanfahad.darkchamber.feature.vault.presentation.DefaultVaultGalleryComponent
 import dev.ehsanfahad.darkchamber.feature.vault.presentation.vaultImageLoader
 import kotlinx.coroutines.CoroutineScope
@@ -71,6 +75,10 @@ fun vaultGalleryComponent(
     vaultObjects: VaultObjects,
     imports: VaultImports,
     mainContext: CoroutineContext = Dispatchers.Main,
+    // What this instance of the gallery lists: the whole vault, one album, or the unfiled items.
+    // A construction parameter rather than an intent, because it is the screen's identity — the
+    // host pushes a new child to change it, and nothing on screen can.
+    filter: ItemFilter = ItemFilter.All,
 ): VaultGalleryComponent {
     val items = VaultObjectsItems(vaultObjects)
     return DefaultVaultGalleryComponent(
@@ -78,8 +86,29 @@ fun vaultGalleryComponent(
         observeGallery = ObserveGallery(items),
         imports = imports,
         mainContext = mainContext,
+        filter = filter,
     )
 }
+
+/**
+ * Build the album grid component. Same rules as the gallery's factory: [vaultObjects] must come from
+ * the session scope, and everything behind this stays `internal`.
+ *
+ * The screen it feeds draws album names and counts, which is why it belongs inside the unlocked
+ * subtree like every other decrypted-content screen.
+ */
+fun vaultAlbumsComponent(
+    componentContext: ComponentContext,
+    vaultObjects: VaultObjects,
+    mainContext: CoroutineContext = Dispatchers.Main,
+    onOpenAlbum: (ByteArray) -> Unit,
+): VaultAlbumsComponent =
+    DefaultVaultAlbumsComponent(
+        componentContext = componentContext,
+        observeAlbums = ObserveAlbums(VaultObjectsItems(vaultObjects)),
+        mainContext = mainContext,
+        onOpenAlbum = onOpenAlbum,
+    )
 
 /**
  * Build the gallery's image loader for one unlocked session.

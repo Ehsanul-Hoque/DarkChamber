@@ -6,6 +6,7 @@ import com.arkivanov.decompose.value.Value
 import com.arkivanov.essenty.backhandler.BackCallback
 import com.arkivanov.essenty.lifecycle.doOnDestroy
 import dev.ehsanfahad.darkchamber.core.logging.logVaultError
+import dev.ehsanfahad.darkchamber.core.model.ItemFilter
 import dev.ehsanfahad.darkchamber.core.model.VaultError
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryError
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
@@ -65,6 +66,10 @@ internal class DefaultVaultGalleryComponent(
     // that a real wait is explained almost at once, long enough that a local file — which passes
     // through both unmeasurable stages in microseconds — never names either. Zero in tests.
     private val stageGrace: Duration = STAGE_GRACE,
+    // What this gallery lists. Fixed for the life of the component: a screen showing one album is a
+    // different child from the one showing the whole vault, so changing it is navigation rather than
+    // a state change, and the selection below cannot straddle two listings.
+    private val filter: ItemFilter = ItemFilter.All,
 ) : VaultGalleryComponent, ComponentContext by componentContext {
 
     // SupervisorJob so one failed intent does not kill the component's other work, but parented to
@@ -101,7 +106,7 @@ internal class DefaultVaultGalleryComponent(
         }
         doOnDestroy(subscription::cancel)
 
-        observeGallery()
+        observeGallery(filter)
             // A catalog failure arrives as an exception in the flow, not an Outcome (core:vault's
             // documented contract). Report it: an empty list here would render a broken catalog as
             // an empty vault, which is the fail-closed rule's exact target.

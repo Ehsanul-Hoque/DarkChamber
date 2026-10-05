@@ -4,19 +4,23 @@ import com.arkivanov.decompose.ComponentContext
 import com.arkivanov.decompose.router.stack.ChildStack
 import com.arkivanov.decompose.router.stack.StackNavigation
 import com.arkivanov.decompose.router.stack.childStack
+import com.arkivanov.decompose.router.stack.pushNew
 import com.arkivanov.decompose.value.Value
 import com.arkivanov.essenty.lifecycle.doOnDestroy
 import coil3.ImageLoader
 import coil3.PlatformContext
 import com.arkivanov.essenty.lifecycle.doOnStop
+import dev.ehsanfahad.darkchamber.feature.vault.api.VaultAlbumsComponent
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultGalleryComponent
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultImports
+import dev.ehsanfahad.darkchamber.feature.vault.vaultAlbumsComponent
 import dev.ehsanfahad.darkchamber.feature.vault.vaultGalleryComponent
 import dev.ehsanfahad.darkchamber.feature.vault.vaultImageLoader
 import dev.ehsanfahad.darkchamber.feature.vault.vaultImports
 import dev.ehsanfahad.darkchamber.app.VaultBootstrap
 import dev.ehsanfahad.darkchamber.app.nowEpochMillis
 import dev.ehsanfahad.darkchamber.core.crypto.CryptoEngine
+import dev.ehsanfahad.darkchamber.core.model.ItemFilter
 import dev.ehsanfahad.darkchamber.core.crypto.DchmCodec
 import dev.ehsanfahad.darkchamber.core.crypto.VaultSession
 import dev.ehsanfahad.darkchamber.core.vault.NoThumbnails
@@ -64,11 +68,24 @@ interface UnlockedComponent {
 
     /** Lock now: tear down and return the gate to locked. */
     fun lock()
+
+    /**
+     * Open the album grid, as a sibling of the gallery rather than in place of it: unlocking still
+     * lands on the user's files, and a folder list is the second surface.
+     */
+    fun openAlbums()
 }
 
 /** A screen inside the unlocked subtree. Viewers join this list once the seekable read path exists. */
 sealed interface UnlockedChild {
-    class Gallery(val component: VaultGalleryComponent) : UnlockedChild
+    /**
+     * The item grid. The same child serves the whole vault, one album and the unfiled items — which
+     * of those is decided when it is constructed, so [atHome] is how the chrome above knows whether
+     * this is the screen the album grid is reached from.
+     */
+    class Gallery(val component: VaultGalleryComponent, val atHome: Boolean) : UnlockedChild
+
+    class Albums(val component: VaultAlbumsComponent) : UnlockedChild
 }
 
 class DefaultUnlockedComponent(
@@ -80,6 +97,11 @@ class DefaultUnlockedComponent(
     // Where an import's encrypt runs. Never the main thread — a device run found key derivation
     // there and the UI froze; injected for the same reason as [mainContext].
     private val ioContext: CoroutineContext = Dispatchers.Default,
+    // Where a listing's per-row metadata decrypt runs. Off the main thread in production for the
+    // same reason the encrypt is, and injected for the same reason as the two above: a host test
+    // reading a freshly pushed screen's state otherwise races a background dispatcher it cannot
+    // drive, and passes or fails on how much slow work happened to come first.
+    private val mapContext: CoroutineContext = Dispatchers.Default,
     private val onLock: () -> Unit,
 ) : UnlockedComponent, ComponentContext by componentContext {
 
@@ -99,6 +121,7 @@ class DefaultUnlockedComponent(
                     codec = DchmCodec(engine),
                     clock = ::nowEpochMillis,
                     random = engine::randomBytes,
+                    mapContext = mapContext,
                     // Optional on purpose. A thumbnail is a cache: resolving the encoder strictly
                     // would turn a platform module that forgot to bind one into a vault that
                     // cannot be opened at all. Without it every item renders its type badge, which
@@ -158,7 +181,7 @@ class DefaultUnlockedComponent(
     override val stack: Value<ChildStack<*, UnlockedChild>> =
         childStack(
             source = navigation,
-            initialConfiguration = Config.Gallery,
+            initialConfiguration = Config.Gallery(),
             // No state preservation, deliberately. A saved stack would be written into the platform's
             // saved-instance state — i.e. to disk — and the configs that will join Gallery carry item
             // ids. There is nothing to restore anyway: the session never survives process death, so a
@@ -200,16 +223,41 @@ class DefaultUnlockedComponent(
         scope.close() // dispose the session scope
     }
 
+    /**
+     * `pushNew`, not `push`: a stack may not hold the same configuration twice, and Decompose throws
+     * if asked to. Two taps on this before the first push lands is an ordinary thing for a finger to
+     * do, and it must not be a crash.
+     */
+    override fun openAlbums() = navigation.pushNew(Config.Albums)
+
     private fun createChild(config: Config, context: ComponentContext): UnlockedChild =
         when (config) {
-            Config.Gallery -> UnlockedChild.Gallery(
+            is Config.Gallery -> UnlockedChild.Gallery(
                 // VaultObjects comes from the session scope, so the gallery cannot outlive the
                 // session; the import batch is the session's, and the gallery only watches it.
-                vaultGalleryComponent(
+                component = vaultGalleryComponent(
                     componentContext = context,
                     vaultObjects = scope.get(),
                     imports = imports,
                     mainContext = mainContext + featureWork,
+                    filter = config.filter.toItemFilter(),
+                ),
+                atHome = config.filter == Config.Filter.All,
+            )
+            Config.Albums -> UnlockedChild.Albums(
+                vaultAlbumsComponent(
+                    componentContext = context,
+                    vaultObjects = scope.get(),
+                    mainContext = mainContext + featureWork,
+                    // Tapping an album pushes a gallery filtered to it, so the item grid is one
+                    // screen serving three listings rather than three screens to keep in agreement.
+                    // `pushNew` for the same reason as the albums entry above, and here it is
+                    // reachable with one finger: a double tap on an album tile fires this twice
+                    // before the first screen is on top, and two identical configs is an exception
+                    // rather than a second screen.
+                    onOpenAlbum = { id ->
+                        navigation.pushNew(Config.Gallery(Config.Filter.Album(id.toHex())))
+                    },
                 ),
             )
         }
@@ -219,10 +267,60 @@ class DefaultUnlockedComponent(
      * never decrypted bytes — so that a future `Viewer(itemId)` stays safe to hold.
      */
     private sealed interface Config {
-        data object Gallery : Config
+        data class Gallery(val filter: Filter = Filter.All) : Config
+
+        data object Albums : Config
+
+        /**
+         * Which items a gallery child lists.
+         *
+         * **The album id is hex, not a `ByteArray`.** Configs are compared for equality — that is how
+         * the stack decides whether a push is a new screen — and they are serialized when a host
+         * preserves state. `ByteArray` breaks both: its equality is identity, so two configs naming
+         * the same album would never match, and an array is not something a config serializer can
+         * round-trip. Converted back at the component boundary, which is the only place that needs
+         * the bytes.
+         */
+        sealed interface Filter {
+            data object All : Filter
+
+            data object Unfiled : Filter
+
+            data class Album(val idHex: String) : Filter
+        }
     }
+
+    private fun Config.Filter.toItemFilter(): ItemFilter =
+        when (this) {
+            Config.Filter.All -> ItemFilter.All
+            Config.Filter.Unfiled -> ItemFilter.Unfiled
+            is Config.Filter.Album -> ItemFilter.Album(idHex.hexToBytes())
+        }
 
     private companion object {
         const val SESSION_SCOPE = "VaultSession"
     }
 }
+
+/**
+ * Hex, both ways, for carrying an id through a config.
+ *
+ * Hand-rolled rather than the stdlib's `toHexString` / `hexToByteArray`, which are still behind an
+ * experimental opt-in: an id crossing a navigation boundary is not the place to take one on, and
+ * these are four lines each.
+ *
+ * Lowercase and fixed-width per byte, so the same id always produces the same string — that matters,
+ * because config equality is what the stack uses to decide whether a push is a new screen.
+ */
+private fun ByteArray.toHex(): String =
+    joinToString("") { byte ->
+        val value = byte.toInt() and 0xFF
+        "${HEX[value shr 4]}${HEX[value and 0x0F]}"
+    }
+
+private fun String.hexToBytes(): ByteArray =
+    ByteArray(length / 2) { i ->
+        ((HEX.indexOf(this[i * 2]) shl 4) or HEX.indexOf(this[i * 2 + 1])).toByte()
+    }
+
+private const val HEX = "0123456789abcdef"
