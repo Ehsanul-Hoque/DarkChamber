@@ -3,6 +3,7 @@ package dev.ehsanfahad.darkchamber.feature.vault.data
 import dev.ehsanfahad.darkchamber.core.model.ItemFilter
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultItemKind
+import dev.ehsanfahad.darkchamber.core.vault.AlbumSummary
 import dev.ehsanfahad.darkchamber.core.vault.ImportPhase
 import dev.ehsanfahad.darkchamber.core.vault.VaultItemSummary
 import dev.ehsanfahad.darkchamber.core.vault.VaultObjects
@@ -23,6 +24,8 @@ internal class VaultObjectsItems(private val objects: VaultObjects) : VaultItems
 
     override fun observe(filter: ItemFilter): Flow<List<VaultItemSummary>> =
         objects.observeItems(filter)
+
+    override fun observeAlbums(): Flow<List<AlbumSummary>> = objects.observeAlbums()
 
     override fun import(
         name: String,

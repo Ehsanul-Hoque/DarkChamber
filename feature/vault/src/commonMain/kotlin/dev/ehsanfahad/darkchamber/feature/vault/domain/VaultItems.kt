@@ -2,6 +2,7 @@ package dev.ehsanfahad.darkchamber.feature.vault.domain
 
 import dev.ehsanfahad.darkchamber.core.model.ItemFilter
 import dev.ehsanfahad.darkchamber.core.model.Outcome
+import dev.ehsanfahad.darkchamber.core.vault.AlbumSummary
 import dev.ehsanfahad.darkchamber.core.vault.ImportPhase
 import dev.ehsanfahad.darkchamber.core.vault.VaultItemSummary
 import kotlinx.coroutines.flow.Flow
@@ -26,6 +27,16 @@ internal interface VaultItems {
      * — which is why this is a type and not a parameter that can be left out.
      */
     fun observe(filter: ItemFilter): Flow<List<VaultItemSummary>>
+
+    /**
+     * The live album listing, re-emitting whenever the catalog changes — **including when only the
+     * items change**, which is what keeps a count and a cover current while every album row stays
+     * byte-identical.
+     *
+     * One small decrypt per album and nothing per item, which is the property that makes the album
+     * grid affordable in a large vault.
+     */
+    fun observeAlbums(): Flow<List<AlbumSummary>>
 
     /**
      * Stream-encrypt a payload into the vault, returning the new object's id.
