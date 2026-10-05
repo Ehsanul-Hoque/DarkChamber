@@ -35,6 +35,24 @@ interface VaultGalleryComponent {
     /** Decline the disclosure. The only other way out of it — it cannot be dismissed. */
     fun keepOriginals()
 
+    /**
+     * Long-press a tile: enter selecting mode with that item selected, or — already selecting —
+     * toggle it, so the caller does not branch on a mode it is already in.
+     *
+     * **Ignored while a batch is running.** The grid grows underneath an import, so a selection made
+     * then is a selection of a moving target.
+     */
+    fun selectItem(id: ByteArray)
+
+    /** Tap a tile while selecting: add it or remove it. A no-op outside selecting mode. */
+    fun toggleItem(id: ByteArray)
+
+    /** Select everything the screen is currently showing — which inside an album is that album. */
+    fun selectAllItems()
+
+    /** Leave selecting mode and drop the selection. Clear and back both land here. */
+    fun clearSelection()
+
     /** Clear a surfaced [GalleryError] after the user acknowledges it. */
     fun dismissError()
 }
@@ -51,9 +69,49 @@ data class GalleryState(
     val loading: Boolean = true,
     val batch: ImportState = ImportState.Idle,
     val error: GalleryError? = null,
+    val selection: GallerySelection = GallerySelection(),
 ) {
     /** Whether a batch is between the user asking for one and it ending. */
     val importing: Boolean get() = batch is ImportState.Picking || batch is ImportState.Running
+}
+
+/**
+ * What is selected, and whether the screen is in selecting mode.
+ *
+ * Ids only, like the rest of this state — a selection can never pin decrypted bytes past a lock.
+ *
+ * Not a data class: the generated `equals` would compare the [ids] arrays by identity, so two
+ * selections of the same items would be unequal whenever the arrays were rebuilt. Nothing on today's
+ * paths rebuilds an identical selection — a change is published only when the selection actually
+ * changes — so this is the type's contract being correct rather than a bug being fixed; the point is
+ * that a caller comparing two of these, or a `GalleryState` holding one, gets the answer it expects.
+ * Equality runs through the content-keyed set below, which is also what makes [contains] a lookup
+ * rather than a scan of every selected id per tile.
+ */
+class GallerySelection(
+    val active: Boolean = false,
+    val ids: List<ByteArray> = emptyList(),
+) {
+    private val keys: Set<List<Byte>> = ids.mapTo(LinkedHashSet()) { it.toList() }
+
+    val count: Int get() = ids.size
+
+    /**
+     * Whether [id] is selected. Compares by **content**: `ByteArray` equality is identity, so a tile
+     * asking about a freshly decoded id would never match an id selected a moment earlier.
+     */
+    fun contains(id: ByteArray): Boolean = id.toList() in keys
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is GallerySelection) return false
+        return active == other.active && keys == other.keys
+    }
+
+    override fun hashCode(): Int = 31 * active.hashCode() + keys.hashCode()
+
+    /** A count and a flag; never an id's bytes (hard rule #4). */
+    override fun toString(): String = "GallerySelection(active=$active, count=$count)"
 }
 
 /**

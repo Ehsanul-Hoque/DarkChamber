@@ -4,6 +4,7 @@ import dev.ehsanfahad.darkchamber.core.model.VaultItemKind
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -63,5 +64,48 @@ class GalleryContractTest {
 
         assertFalse(rendered.contains("passport-scan"), "the name must not appear in $rendered")
         assertFalse(rendered.contains("application/pdf"), "the mime must not appear in $rendered")
+    }
+
+    /**
+     * A selection compares by the ids it holds, not by the identity of the arrays holding them —
+     * the same `ByteArray` trap `GalleryItem` avoids one field further in. Nothing on today's paths
+     * rebuilds an identical selection, so this is the type's contract rather than a live bug: a
+     * caller comparing two selections, or two `GalleryState`s holding them, has to get the answer it
+     * expects.
+     */
+    @Test
+    fun two_selections_of_the_same_items_are_equal() {
+        val one = GallerySelection(active = true, ids = listOf(byteArrayOf(1), byteArrayOf(2)))
+        val two = GallerySelection(active = true, ids = listOf(byteArrayOf(1), byteArrayOf(2)))
+
+        assertEquals(one, two, "distinct arrays, the same selection")
+        assertEquals(one.hashCode(), two.hashCode(), "equal values must not land in different buckets")
+        assertEquals(
+            GalleryState(selection = one),
+            GalleryState(selection = two),
+            "and the state holding one compares the same way",
+        )
+    }
+
+    @Test
+    fun selections_differing_in_items_or_mode_are_not_equal() {
+        val selected = GallerySelection(active = true, ids = listOf(byteArrayOf(1)))
+
+        assertNotEquals(selected, GallerySelection(active = true, ids = listOf(byteArrayOf(2))))
+        assertNotEquals(selected, GallerySelection(active = true, ids = listOf(byteArrayOf(1), byteArrayOf(2))))
+        assertNotEquals(selected, GallerySelection(active = false, ids = listOf(byteArrayOf(1))), "the mode counts")
+    }
+
+    @Test
+    fun a_selection_finds_an_id_by_content_and_logs_only_a_count() {
+        val selection = GallerySelection(active = true, ids = listOf(byteArrayOf(0xDE.toByte(), 0xAD.toByte())))
+
+        assertTrue(selection.contains(byteArrayOf(0xDE.toByte(), 0xAD.toByte())), "a different array, the same id")
+        assertFalse(selection.contains(byteArrayOf(0xDE.toByte())))
+        assertEquals(1, selection.count)
+
+        val rendered = selection.toString()
+        assertFalse(rendered.lowercase().contains("dead"), "no id bytes in $rendered")
+        assertTrue(rendered.contains("count=1"), "a count is fine to log: $rendered")
     }
 }

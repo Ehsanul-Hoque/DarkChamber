@@ -44,6 +44,10 @@ fun VaultGalleryContent(
         onConfirmOriginalDelete = component::confirmOriginalDelete,
         onKeepOriginals = component::keepOriginals,
         onDismissError = component::dismissError,
+        onSelectItem = component::selectItem,
+        onToggleItem = component::toggleItem,
+        onSelectAll = component::selectAllItems,
+        onClearSelection = component::clearSelection,
         modifier = modifier,
     )
 }

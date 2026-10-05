@@ -141,6 +141,19 @@ class GalleryFormatTest {
         }
     }
 
+    /**
+     * The selection count has to read sensibly at zero, which is a state the user can reach without
+     * asking for it: a selected item can leave the listing — shredded, or moved out of the album
+     * being viewed — and the mode stays. "0 selected" reads like a malfunction where "None selected"
+     * reads like a fact.
+     */
+    @Test
+    fun the_selected_count_reads_sensibly_at_zero_and_one() {
+        assertEquals("None selected", GalleryFormat.selectedCount(0))
+        assertEquals("1 selected", GalleryFormat.selectedCount(1), "not '1 items'")
+        assertEquals("7 selected", GalleryFormat.selectedCount(7))
+    }
+
     /** Each named stage says something different, or the label is decoration rather than information. */
     @Test
     fun the_named_stages_are_told_apart() {

@@ -3,11 +3,13 @@ package dev.ehsanfahad.darkchamber.feature.vault.presentation
 import com.arkivanov.decompose.ComponentContext
 import com.arkivanov.decompose.value.MutableValue
 import com.arkivanov.decompose.value.Value
+import com.arkivanov.essenty.backhandler.BackCallback
 import com.arkivanov.essenty.lifecycle.doOnDestroy
 import dev.ehsanfahad.darkchamber.core.logging.logVaultError
 import dev.ehsanfahad.darkchamber.core.model.VaultError
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryError
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
+import dev.ehsanfahad.darkchamber.feature.vault.api.GallerySelection
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryState
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportStage
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportState
@@ -73,8 +75,31 @@ internal class DefaultVaultGalleryComponent(
     private val _state = MutableValue(GalleryState())
     override val state: Value<GalleryState> = _state
 
+    // Owned here rather than injected: a selection is this screen's own transient mode, and it must
+    // die with the screen on lock like everything else holding item ids.
+    private val selection = ItemSelection()
+
+    /**
+     * Back leaves selecting mode, and only then — enabled follows the mode, so when nothing is
+     * selected back belongs to whoever is navigating.
+     */
+    private val selectionBack = BackCallback(isEnabled = false) { selection.clear() }
+
     init {
         doOnDestroy { scope.cancel() }
+
+        backHandler.register(selectionBack)
+
+        // One subscription rather than a copy after each intent: every path that changes the
+        // selection publishes through here, including the live-list intersection, which no intent
+        // triggers at all. A copy per intent would be one forgotten call away from a stale count.
+        val subscription = selection.state.subscribe { selected ->
+            selectionBack.isEnabled = selected.active
+            _state.value = _state.value.copy(
+                selection = GallerySelection(active = selected.active, ids = selection.selectedIds()),
+            )
+        }
+        doOnDestroy(subscription::cancel)
 
         observeGallery()
             // A catalog failure arrives as an exception in the flow, not an Outcome (core:vault's
@@ -117,6 +142,28 @@ internal class DefaultVaultGalleryComponent(
     override fun confirmOriginalDelete() = imports.confirmOriginalDelete()
 
     override fun keepOriginals() = imports.keepOriginals()
+
+    /**
+     * **Refused while a batch is running**, which is the one rule selecting has beyond the selection
+     * itself. The grid grows underneath an import, so a selection made then is a selection of a
+     * moving target — and the bottom area is already showing the progress card, so a selection bar
+     * would have to stack on top of it.
+     *
+     * Deliberately the simpler rule rather than a two-bar layout nobody asked for; reversible if it
+     * reads wrong on a device. Nothing guards the other direction, because it cannot happen: the
+     * import affordances are what the selection bar replaces, so there is no way to start a batch
+     * while selecting.
+     */
+    override fun selectItem(id: ByteArray) {
+        if (_state.value.importing) return
+        selection.start(id)
+    }
+
+    override fun toggleItem(id: ByteArray) = selection.toggle(id)
+
+    override fun selectAllItems() = selection.selectAll()
+
+    override fun clearSelection() = selection.clear()
 
     override fun dismissError() {
         _state.value = _state.value.copy(error = null)
@@ -247,6 +294,11 @@ internal class DefaultVaultGalleryComponent(
     }
 
     private fun onItems(items: List<GalleryItem>) {
+        // Before publishing the list, not after: items can be shredded or moved out of the album
+        // being viewed while selected, and a selection holding ids the grid no longer shows would
+        // count things that are gone and then act on them. The intersection publishes its own state
+        // change through the subscription above.
+        selection.onItems(items)
         // A successful emission clears a stale listing error; an import error is the user's to
         // dismiss, so it survives.
         val error = _state.value.error.takeIf { it != GalleryError.ListingFailed }

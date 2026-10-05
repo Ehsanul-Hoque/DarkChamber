@@ -3,6 +3,7 @@ package dev.ehsanfahad.darkchamber.feature.vault.presentation
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -50,6 +51,7 @@ import dev.ehsanfahad.darkchamber.core.designsystem.prefersReducedMotion
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryError
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
+import dev.ehsanfahad.darkchamber.feature.vault.api.GallerySelection
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryState
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportState
 import dev.ehsanfahad.darkchamber.feature.vault.api.OriginalDelete
@@ -76,6 +78,10 @@ internal fun GalleryScreen(
     onConfirmOriginalDelete: () -> Unit,
     onKeepOriginals: () -> Unit,
     onDismissError: () -> Unit,
+    onSelectItem: (ByteArray) -> Unit,
+    onToggleItem: (ByteArray) -> Unit,
+    onSelectAll: () -> Unit,
+    onClearSelection: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spacing = DarkChamberTheme.spacing
@@ -99,7 +105,15 @@ internal fun GalleryScreen(
             when {
                 state.loading -> CenteredMessage("Opening the vault…", showSpinner = true)
                 state.items.isEmpty() -> EmptyVault()
-                else -> ItemGrid(items = state.items, now = now, imageLoader = imageLoader, bottomInset = barHeight)
+                else -> ItemGrid(
+                    items = state.items,
+                    now = now,
+                    imageLoader = imageLoader,
+                    bottomInset = barHeight,
+                    selection = state.selection,
+                    onSelectItem = onSelectItem,
+                    onToggleItem = onToggleItem,
+                )
             }
         }
 
@@ -115,7 +129,16 @@ internal fun GalleryScreen(
                 .bottomBarScrim()
                 .padding(spacing.spaceLg),
         ) {
-            when (val batch = state.batch) {
+            // Selecting takes the bottom area over entirely, ahead of any batch state. That is also
+            // why nothing guards against starting an import mid-selection: the buttons that would
+            // start one are not on screen while this is.
+            if (state.selection.active) {
+                SelectionBar(
+                    count = state.selection.count,
+                    onSelectAll = onSelectAll,
+                    onClear = onClearSelection,
+                )
+            } else when (val batch = state.batch) {
                 is ImportState.Running -> ImportProgressCard(batch = batch, onCancel = onCancelImport)
                 // Not "Choose what to add…" any more. This card is held back until a pick is taking
                 // long enough to be worth explaining, and by then the likeliest reason it is showing
@@ -280,6 +303,45 @@ private fun ImportActions(onAddPhotos: () -> Unit, onAddFiles: () -> Unit) {
             shape = DarkChamberTheme.shapes.large,
         ) {
             Text(text = "Add photos", style = DarkChamberTheme.typography.label)
+        }
+    }
+}
+
+/**
+ * The selection bar: how many are selected, and the two ways to change that wholesale.
+ *
+ * It replaces the import affordances rather than sitting beside them — one bottom bar at a time, as
+ * the batch states already are. No action buttons yet: filing arrives with the album surface, and
+ * shredding belongs to the cycle that owns shredding and its own disclosure, so offering either here
+ * would be offering something that cannot happen.
+ *
+ * The count is the whole message. It is also the one honest thing to say while the selection is
+ * being intersected against a listing that can change underneath it.
+ */
+@Composable
+private fun SelectionBar(count: Int, onSelectAll: () -> Unit, onClear: () -> Unit) {
+    val spacing = DarkChamberTheme.spacing
+
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = GalleryFormat.selectedCount(count),
+            style = DarkChamberTheme.typography.label,
+            color = DarkChamberTheme.colors.textPrimary,
+        )
+        Spacer(Modifier.width(spacing.spaceMd))
+        TextButton(onClick = onSelectAll) {
+            Text(
+                text = "Select all",
+                style = DarkChamberTheme.typography.label,
+                color = DarkChamberTheme.colors.accent,
+            )
+        }
+        TextButton(onClick = onClear) {
+            Text(
+                text = "Done",
+                style = DarkChamberTheme.typography.label,
+                color = DarkChamberTheme.colors.accent,
+            )
         }
     }
 }
@@ -510,7 +572,15 @@ private fun ImportSummaryCard(
 }
 
 @Composable
-private fun ItemGrid(items: List<GalleryItem>, now: Long, imageLoader: ImageLoader, bottomInset: Dp) {
+private fun ItemGrid(
+    items: List<GalleryItem>,
+    now: Long,
+    imageLoader: ImageLoader,
+    bottomInset: Dp,
+    selection: GallerySelection,
+    onSelectItem: (ByteArray) -> Unit,
+    onToggleItem: (ByteArray) -> Unit,
+) {
     val spacing = DarkChamberTheme.spacing
     val arrival = tileArrival(DarkChamberTheme.motion, prefersReducedMotion())
     LazyVerticalGrid(
@@ -536,6 +606,10 @@ private fun ItemGrid(items: List<GalleryItem>, now: Long, imageLoader: ImageLoad
                 item = item,
                 now = now,
                 imageLoader = imageLoader,
+                selecting = selection.active,
+                selected = selection.contains(item.id),
+                onLongPress = { onSelectItem(item.id) },
+                onTap = { onToggleItem(item.id) },
                 modifier = Modifier.animateItem(
                     fadeInSpec = tween(arrival.fadeIn),
                     placementSpec = arrival.placement?.let { tween<IntOffset>(it) },
@@ -547,12 +621,33 @@ private fun ItemGrid(items: List<GalleryItem>, now: Long, imageLoader: ImageLoad
 }
 
 @Composable
-private fun ItemTile(item: GalleryItem, now: Long, imageLoader: ImageLoader, modifier: Modifier = Modifier) {
+private fun ItemTile(
+    item: GalleryItem,
+    now: Long,
+    imageLoader: ImageLoader,
+    selecting: Boolean,
+    selected: Boolean,
+    onLongPress: () -> Unit,
+    onTap: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val colors = DarkChamberTheme.colors
     val spacing = DarkChamberTheme.spacing
     val damaged = item.meta is GalleryItemMeta.Unreadable
 
-    Column(modifier = modifier.fillMaxWidth()) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            // The whole tile is the target, caption included: a thumbnail is a small thing to hit,
+            // and the name under it is part of what the user is pointing at.
+            //
+            // A tap does nothing outside selecting mode. Opening an item is the viewers' cycle, and
+            // wiring a tap to anything now would be inventing a behaviour that has to be taken back.
+            .combinedClickable(
+                onClick = { if (selecting) onTap() },
+                onLongClick = onLongPress,
+            ),
+    ) {
         // The thumbnail's future home, reserved at its final size so images drop in without
         // relayout. Until then it carries a type badge derived from the MIME family.
         Box(
@@ -565,8 +660,14 @@ private fun ItemTile(item: GalleryItem, now: Long, imageLoader: ImageLoader, mod
                     shape = DarkChamberTheme.shapes.medium,
                 )
                 .border(
-                    width = TILE_BORDER,
-                    color = if (damaged) colors.danger else colors.outline,
+                    // Selected reads as a thicker accent frame, not a new shape: the slot keeps its
+                    // exact size, so selecting cannot reflow the grid under the user's finger.
+                    width = if (selected) TILE_SELECTED_BORDER else TILE_BORDER,
+                    color = when {
+                        selected -> colors.accent
+                        damaged -> colors.danger
+                        else -> colors.outline
+                    },
                     shape = DarkChamberTheme.shapes.medium,
                 ),
         ) {
@@ -630,6 +731,42 @@ private fun ItemTile(item: GalleryItem, now: Long, imageLoader: ImageLoader, mod
                     },
                     modifier = Modifier.fillMaxSize().clip(DarkChamberTheme.shapes.medium),
                 )
+            }
+
+            // Inside the media slot, which already reserves this square — **not** in the tile's own
+            // corner. A badge drawn into the tile corner is the bug a previous cycle shipped: the
+            // tile is a Column of slot plus two lines of text, so its corners are over the caption,
+            // and a corner-aligned overlay landed on the file name of the row below.
+            //
+            // Only while selecting: an unselected tile outside the mode carries no mark at all, so
+            // the ordinary grid is unchanged.
+            if (selecting) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(spacing.spaceXs)
+                        .size(SELECTION_MARK)
+                        .background(
+                            color = if (selected) colors.accent else colors.surface.copy(alpha = MARK_UNSELECTED_ALPHA),
+                            // Rounded, never a circle: the full-circle radius is the aperture's
+                            // alone (docs/DESIGN.md §4), and a tick in a circle would read as one.
+                            shape = DarkChamberTheme.shapes.small,
+                        )
+                        .border(
+                            width = TILE_BORDER,
+                            color = if (selected) colors.accent else colors.outline,
+                            shape = DarkChamberTheme.shapes.small,
+                        ),
+                ) {
+                    if (selected) {
+                        Text(
+                            text = "✓",
+                            style = DarkChamberTheme.typography.label,
+                            color = colors.onAccent,
+                        )
+                    }
+                }
             }
         }
 
@@ -743,3 +880,12 @@ private const val STOPPING_NOTICE =
 /** Wide enough for a name to read at two columns on a phone, narrow enough for three on a tablet. */
 private val TILE_MIN_WIDTH = 132.dp
 private val TILE_BORDER = 1.dp
+
+/** The selected frame. Thicker than [TILE_BORDER] so selection is legible without colour alone. */
+private val TILE_SELECTED_BORDER = 2.dp
+
+/** The tick's box, inside the media slot. Large enough to read, small enough not to cover a preview. */
+private val SELECTION_MARK = 22.dp
+
+/** The unselected mark sits over a thumbnail, so it needs to be visible without hiding it. */
+private const val MARK_UNSELECTED_ALPHA = 0.6f

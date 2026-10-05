@@ -24,6 +24,21 @@ internal object GalleryFormat {
         }
 
     /**
+     * How many items are selected.
+     *
+     * Says "None selected" rather than "0 selected", because zero is a state the user can arrive at
+     * without asking: an item selected a moment ago can leave the listing — shredded, or moved out
+     * of the album being viewed — and the selection is intersected with what is on screen. The mode
+     * stays, so the bar has to read sensibly with nothing in it.
+     */
+    fun selectedCount(count: Int): String =
+        when (count) {
+            0 -> "None selected"
+            1 -> "1 selected"
+            else -> "$count selected"
+        }
+
+    /**
      * What to say about the stage an import is in, or **null** when there is nothing worth saying.
      *
      * Two of the four stages get no label. The encrypt is the ordinary case and the card's heading
