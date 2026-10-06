@@ -26,6 +26,7 @@ fun VaultAlbumsContent(
         state = state,
         imageLoader = imageLoader,
         onOpenAlbum = component::openAlbum,
+        onOpenUnfiled = component::openUnfiled,
         onDismissError = component::dismissError,
         modifier = modifier,
     )

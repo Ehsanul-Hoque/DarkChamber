@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material3.Text
@@ -42,6 +43,7 @@ internal fun AlbumsScreen(
     state: AlbumsState,
     imageLoader: ImageLoader,
     onOpenAlbum: (ByteArray) -> Unit,
+    onOpenUnfiled: () -> Unit,
     onDismissError: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -52,10 +54,15 @@ internal fun AlbumsScreen(
 
         when {
             state.loading -> CenteredNotice("Reading your albums…")
-            // The empty state is the next item's work, along with the Unfiled entry that belongs
-            // beside it — both surfaces want the same treatment, so they are written together.
-            state.albums.isEmpty() -> Unit
-            else -> AlbumGrid(albums = state.albums, imageLoader = imageLoader, onOpenAlbum = onOpenAlbum)
+            // No albums is not an empty screen: Unfiled still leads somewhere, because files
+            // imported before any album existed are exactly what a user arriving here is looking
+            // for. So the grid renders either way and the explanation sits above it.
+            else -> AlbumGrid(
+                albums = state.albums,
+                imageLoader = imageLoader,
+                onOpenAlbum = onOpenAlbum,
+                onOpenUnfiled = onOpenUnfiled,
+            )
         }
     }
 }
@@ -65,6 +72,7 @@ private fun AlbumGrid(
     albums: List<AlbumTile>,
     imageLoader: ImageLoader,
     onOpenAlbum: (ByteArray) -> Unit,
+    onOpenUnfiled: () -> Unit,
 ) {
     val spacing = DarkChamberTheme.spacing
     LazyVerticalGrid(
@@ -74,12 +82,86 @@ private fun AlbumGrid(
         verticalArrangement = Arrangement.spacedBy(spacing.spaceSm),
         modifier = Modifier.fillMaxSize(),
     ) {
+        if (albums.isEmpty()) {
+            // Spans the row, above the Unfiled entry: a grid with one cell in it and no explanation
+            // teaches nothing about what albums are for.
+            item(span = { GridItemSpan(maxLineSpan) }, key = NO_ALBUMS_KEY) {
+                Text(
+                    text = GalleryFormat.noAlbums(),
+                    style = DarkChamberTheme.typography.body,
+                    color = DarkChamberTheme.colors.textSecondary,
+                    modifier = Modifier.padding(bottom = spacing.spaceSm),
+                )
+            }
+        }
+
+        // **Unfiled leads the grid, and is not an album.** Its own cell rather than a synthetic
+        // AlbumTile: a tile would need an id, and an invented one is a lie every later surface would
+        // have to keep — the rename and delete actions would have to learn to exclude it, and
+        // whichever forgot would offer to rename a view.
+        item(key = UNFILED_KEY) {
+            UnfiledTileView(onOpen = onOpenUnfiled)
+        }
+
         // Keyed by the album id, never by position: the grid is alphabetical, so creating or
         // renaming an album moves everything after it, and an index key would tell Compose that
         // every tile changed.
         items(albums, key = { it.id.toAlbumKey() }) { album ->
             AlbumTileView(album = album, imageLoader = imageLoader, onOpen = { onOpenAlbum(album.id) })
         }
+    }
+}
+
+/**
+ * The entry to everything not filed.
+ *
+ * **Carries no count**, deliberately: the album listing does not have one, and inventing a query for
+ * it is a change to the catalog this screen does not need. A number that might be stale is worse
+ * than no number, and tapping through answers the question exactly.
+ *
+ * It looks like a tile and is not one: no cover, no name to edit, and no badge saying "Album",
+ * because it is not an album.
+ */
+@Composable
+private fun UnfiledTileView(onOpen: () -> Unit, modifier: Modifier = Modifier) {
+    val colors = DarkChamberTheme.colors
+    val spacing = DarkChamberTheme.spacing
+
+    Column(modifier = modifier.fillMaxWidth().clickable(onClick = onOpen)) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(1f)
+                .background(color = colors.surface, shape = DarkChamberTheme.shapes.medium)
+                .border(
+                    width = ALBUM_BORDER,
+                    color = colors.outline,
+                    shape = DarkChamberTheme.shapes.medium,
+                ),
+        ) {
+            Text(
+                text = "Unfiled",
+                style = DarkChamberTheme.typography.label,
+                color = colors.textSecondary,
+            )
+        }
+
+        Text(
+            text = "Unfiled",
+            style = DarkChamberTheme.typography.body,
+            color = colors.textPrimary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = spacing.spaceXs),
+        )
+
+        Text(
+            text = "Not in an album",
+            style = DarkChamberTheme.typography.caption,
+            color = colors.textSecondary,
+            maxLines = 1,
+        )
     }
 }
 
@@ -252,3 +334,8 @@ private const val HEX_DIGITS = "0123456789abcdef"
 private val ALBUM_MIN_WIDTH = 150.dp
 
 private val ALBUM_BORDER = 1.dp
+
+// Stable keys for the two cells that are not albums. Prefixed so they can never collide with an
+// album's hex id, which is only ever the digits 0-9 and a-f.
+private const val UNFILED_KEY = "entry:unfiled"
+private const val NO_ALBUMS_KEY = "notice:no-albums"

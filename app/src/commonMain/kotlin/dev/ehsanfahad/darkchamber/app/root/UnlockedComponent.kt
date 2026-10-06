@@ -258,6 +258,7 @@ class DefaultUnlockedComponent(
                     onOpenAlbum = { id ->
                         navigation.pushNew(Config.Gallery(Config.Filter.Album(id.toHex())))
                     },
+                    onOpenUnfiled = { navigation.pushNew(Config.Gallery(Config.Filter.Unfiled)) },
                 ),
             )
         }

@@ -102,12 +102,14 @@ fun vaultAlbumsComponent(
     vaultObjects: VaultObjects,
     mainContext: CoroutineContext = Dispatchers.Main,
     onOpenAlbum: (ByteArray) -> Unit,
+    onOpenUnfiled: () -> Unit,
 ): VaultAlbumsComponent =
     DefaultVaultAlbumsComponent(
         componentContext = componentContext,
         observeAlbums = ObserveAlbums(VaultObjectsItems(vaultObjects)),
         mainContext = mainContext,
         onOpenAlbum = onOpenAlbum,
+        onOpenUnfiled = onOpenUnfiled,
     )
 
 /**

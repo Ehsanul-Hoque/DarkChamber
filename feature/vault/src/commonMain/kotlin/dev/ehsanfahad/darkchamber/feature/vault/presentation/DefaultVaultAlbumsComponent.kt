@@ -35,6 +35,7 @@ internal class DefaultVaultAlbumsComponent(
     // Where opening an album goes. A callback rather than navigation performed here: a component
     // that pushed screens itself would have to know the shape of the stack it sits in.
     private val onOpenAlbum: (ByteArray) -> Unit,
+    private val onOpenUnfiled: () -> Unit,
 ) : VaultAlbumsComponent, ComponentContext by componentContext {
 
     // SupervisorJob parented to the caller's Job, exactly as the gallery's is: the app scopes
@@ -62,6 +63,8 @@ internal class DefaultVaultAlbumsComponent(
     }
 
     override fun openAlbum(id: ByteArray) = onOpenAlbum(id)
+
+    override fun openUnfiled() = onOpenUnfiled()
 
     override fun dismissError() {
         _state.value = _state.value.copy(error = null)

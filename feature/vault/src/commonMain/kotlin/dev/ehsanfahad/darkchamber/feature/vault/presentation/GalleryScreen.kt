@@ -51,6 +51,7 @@ import dev.ehsanfahad.darkchamber.core.designsystem.prefersReducedMotion
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryError
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
+import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryScope
 import dev.ehsanfahad.darkchamber.feature.vault.api.GallerySelection
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryState
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportState
@@ -104,7 +105,7 @@ internal fun GalleryScreen(
 
             when {
                 state.loading -> CenteredMessage("Opening the vault…", showSpinner = true)
-                state.items.isEmpty() -> EmptyVault()
+                state.items.isEmpty() -> EmptyListing(state.scope)
                 else -> ItemGrid(
                     items = state.items,
                     now = now,
@@ -794,9 +795,13 @@ private fun ItemTile(
     }
 }
 
+/**
+ * An empty listing, which is three different situations — see [GalleryFormat.emptyListing]. The same
+ * screen serves all of them, so the copy is the only thing that can tell them apart.
+ */
 @Composable
-private fun EmptyVault() {
-    CenteredMessage("Nothing in the vault yet.\nAdd a file to encrypt it.", showSpinner = false)
+private fun EmptyListing(scope: GalleryScope) {
+    CenteredMessage(GalleryFormat.emptyListing(scope), showSpinner = false)
 }
 
 @Composable

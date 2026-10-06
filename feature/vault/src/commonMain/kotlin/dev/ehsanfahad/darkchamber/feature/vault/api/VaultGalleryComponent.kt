@@ -70,9 +70,32 @@ data class GalleryState(
     val batch: ImportState = ImportState.Idle,
     val error: GalleryError? = null,
     val selection: GallerySelection = GallerySelection(),
+    val scope: GalleryScope = GalleryScope.WholeVault,
 ) {
     /** Whether a batch is between the user asking for one and it ending. */
     val importing: Boolean get() = batch is ImportState.Picking || batch is ImportState.Running
+}
+
+/**
+ * Which listing a gallery is showing — **not** the filter itself.
+ *
+ * It exists because an empty grid means three different things, and saying the wrong one is worse
+ * than saying nothing: a vault with no files at all wants to be told how to add some, an album with
+ * nothing in it is a perfectly ordinary album, and nothing unfiled means everything has been filed,
+ * which is a success rather than an absence.
+ *
+ * The album's id is deliberately absent. Copy does not need it — an album's name is already on the
+ * screen that led here — and a state that carried it would be holding an id for the sake of it.
+ */
+enum class GalleryScope {
+    /** Everything in the vault, filed or not. The listing a vault opens on. */
+    WholeVault,
+
+    /** One album's contents. */
+    Album,
+
+    /** The items in no album. */
+    Unfiled,
 }
 
 /**

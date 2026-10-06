@@ -10,6 +10,7 @@ import dev.ehsanfahad.darkchamber.core.model.ItemFilter
 import dev.ehsanfahad.darkchamber.core.model.VaultError
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryError
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
+import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryScope
 import dev.ehsanfahad.darkchamber.feature.vault.api.GallerySelection
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryState
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportStage
@@ -77,7 +78,11 @@ internal class DefaultVaultGalleryComponent(
     // cancelling that must cancel this too — before the session it runs against is zeroized.
     private val scope = CoroutineScope(mainContext + SupervisorJob(mainContext[Job]))
 
-    private val _state = MutableValue(GalleryState())
+    private val _state = MutableValue(
+        // The scope is published once, at construction, because that is when it is decided: this
+        // screen's identity is its filter, and changing it is a push rather than a state change.
+        GalleryState(scope = filter.toScope()),
+    )
     override val state: Value<GalleryState> = _state
 
     // Owned here rather than injected: a selection is this screen's own transient mode, and it must
@@ -309,6 +314,13 @@ internal class DefaultVaultGalleryComponent(
         val error = _state.value.error.takeIf { it != GalleryError.ListingFailed }
         _state.value = _state.value.copy(items = items, loading = false, error = error)
     }
+
+    private fun ItemFilter.toScope(): GalleryScope =
+        when (this) {
+            ItemFilter.All -> GalleryScope.WholeVault
+            ItemFilter.Unfiled -> GalleryScope.Unfiled
+            is ItemFilter.Album -> GalleryScope.Album
+        }
 
     private companion object {
         // Stage labels for the redaction boundary: event names only, never a name, path or id.

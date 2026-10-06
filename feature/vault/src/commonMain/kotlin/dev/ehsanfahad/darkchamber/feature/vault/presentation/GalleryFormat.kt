@@ -1,5 +1,6 @@
 package dev.ehsanfahad.darkchamber.feature.vault.presentation
 
+import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryScope
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportStage
 
 /**
@@ -22,6 +23,38 @@ internal object GalleryFormat {
             mime.startsWith("text/") -> "TXT"
             else -> "FILE"
         }
+
+    /**
+     * What to say when a listing has nothing in it. **Three situations, three answers**, because an
+     * empty grid is not one state:
+     *
+     * - A vault with no files is a new vault, and what it needs is to be told how to put something in.
+     * - An album with nothing in it is a perfectly ordinary album; the user filed nothing here yet,
+     *   and the way things get filed is from the item grid, so that is what it says.
+     * - Nothing unfiled means everything *has* been filed, which is a success rather than an absence
+     *   and should not read as one.
+     *
+     * Saying the first of these on an empty album would tell a user with five hundred files that
+     * their vault is empty.
+     */
+    fun emptyListing(scope: GalleryScope): String =
+        when (scope) {
+            GalleryScope.WholeVault -> "Nothing in the vault yet.\nAdd a file to encrypt it."
+            GalleryScope.Album -> "Nothing in this album yet.\nSelect items in your vault to file them here."
+            GalleryScope.Unfiled -> "Everything is filed.\nNothing is waiting to be sorted."
+        }
+
+    /**
+     * What to say when there are no albums.
+     *
+     * Says what an album is *for* and how to make one, because a blank grid teaches nothing. And it
+     * says what an album is **not**: grouping, not protection. Everything in the vault is already
+     * encrypted, and a user who reads "album" as "extra lock" has been misled by omission — the one
+     * place this screen could overstate what the app does (hard rule #6).
+     */
+    fun noAlbums(): String =
+        "No albums yet.\nAlbums group your files so they are easier to find — everything in the vault " +
+            "is encrypted either way."
 
     /**
      * What an album tile says under its name.

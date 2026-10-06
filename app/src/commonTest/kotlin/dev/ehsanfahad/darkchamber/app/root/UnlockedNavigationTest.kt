@@ -19,6 +19,7 @@ import dev.ehsanfahad.darkchamber.core.model.VaultItemKind
 import dev.ehsanfahad.darkchamber.core.storage.VaultStorage
 import dev.ehsanfahad.darkchamber.core.vault.VaultObjects
 import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
+import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryScope
 import dev.ehsanfahad.darkchamber.feature.vault.api.PhotoPicker
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -152,6 +153,68 @@ class UnlockedNavigationTest {
         val listed = child.component.state.value.items
         assertEquals(1, listed.size, "the filtered screen shows the album, not the vault")
         assertTrue(listed.single().id.contentEquals(filed), "and the id came back out of the config intact")
+    }
+
+    /**
+     * Unfiled is reachable, which is the whole reason the filter became three-state: `album_id = ?`
+     * cannot express "no album", so before this there was no way to look at the items nobody has
+     * filed — which is every item imported before albums existed.
+     */
+    @Test
+    fun opening_unfiled_pushes_a_gallery_showing_only_the_items_in_no_album() = runTest {
+        val open = openVault(UnconfinedTestDispatcher(testScheduler))
+        val component = component(open, UnconfinedTestDispatcher(testScheduler))
+        val objects = vaultObjects(open)
+        val albumId = (objects.createAlbum("Receipts") as Outcome.Ok).value
+        importInto(objects, albumId, "filed.txt")
+        val loose = importInto(objects, null, "loose.txt")
+        component.openAlbums()
+        val albums = assertIs<UnlockedChild.Albums>(component.stack.value.active.instance)
+
+        albums.component.openUnfiled()
+        advanceUntilIdle()
+
+        val child = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance)
+        assertTrue(!child.atHome, "a filtered gallery, so it offers no second way into albums")
+        val listed = child.component.state.value.items
+        assertEquals(1, listed.size, "only what is in no album")
+        assertTrue(listed.single().id.contentEquals(loose))
+        assertEquals(
+            GalleryScope.Unfiled,
+            child.component.state.value.scope,
+            "and it knows which listing it is, so an empty one can say the right thing",
+        )
+    }
+
+    @Test
+    fun opening_unfiled_twice_is_ignored_rather_than_fatal() = runTest {
+        val open = openVault(UnconfinedTestDispatcher(testScheduler))
+        val component = component(open, UnconfinedTestDispatcher(testScheduler))
+        component.openAlbums()
+        val albums = assertIs<UnlockedChild.Albums>(component.stack.value.active.instance)
+
+        albums.component.openUnfiled()
+        albums.component.openUnfiled()
+
+        assertEquals(3, component.stack.value.items.size, "grid, albums, unfiled — and no duplicate")
+    }
+
+    /** Each listing publishes which one it is, because the empty-state copy depends on it. */
+    @Test
+    fun the_scope_a_gallery_publishes_matches_the_filter_it_was_built_with() = runTest {
+        val open = openVault(UnconfinedTestDispatcher(testScheduler))
+        val component = component(open, UnconfinedTestDispatcher(testScheduler))
+        val albumId = (vaultObjects(open).createAlbum("Receipts") as Outcome.Ok).value
+
+        val home = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance)
+        assertEquals(GalleryScope.WholeVault, home.component.state.value.scope)
+
+        component.openAlbums()
+        val albums = assertIs<UnlockedChild.Albums>(component.stack.value.active.instance)
+        albums.component.openAlbum(albumId)
+        val inAlbum = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance)
+
+        assertEquals(GalleryScope.Album, inAlbum.component.state.value.scope)
     }
 
     @Test

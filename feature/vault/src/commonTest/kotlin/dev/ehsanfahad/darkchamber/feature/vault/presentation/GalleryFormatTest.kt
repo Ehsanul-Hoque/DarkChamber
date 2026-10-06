@@ -1,5 +1,6 @@
 package dev.ehsanfahad.darkchamber.feature.vault.presentation
 
+import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryScope
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportStage
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -138,6 +139,67 @@ class GalleryFormatTest {
         assertTrue("waiting" in copy, "it says what we know — that we are waiting — got: $copy")
         for (guess in listOf("download", "fetch", "cloud", "network", "server")) {
             assertFalse(guess in copy, "the label claims something we cannot know: $guess")
+        }
+    }
+
+    /**
+     * An empty grid is three situations, and the copy is the only thing that tells them apart. The
+     * failure this guards is specific: saying "nothing in the vault yet" inside an empty album tells
+     * someone with five hundred encrypted files that their vault is empty.
+     */
+    @Test
+    fun each_empty_listing_says_something_different() {
+        val vault = GalleryFormat.emptyListing(GalleryScope.WholeVault)
+        val album = GalleryFormat.emptyListing(GalleryScope.Album)
+        val unfiled = GalleryFormat.emptyListing(GalleryScope.Unfiled)
+
+        assertEquals(3, setOf(vault, album, unfiled).size, "three situations, three answers")
+        assertTrue(
+            "nothing in the vault" in vault.lowercase(),
+            "the empty vault is the only one that may say the vault is empty: $vault",
+        )
+        // Mentioning the vault is fine and useful — the album copy says where to select items from.
+        // What must not happen is either of these telling a user with a full vault that it is empty.
+        assertFalse("nothing in the vault" in album.lowercase(), "an empty album is not an empty vault: $album")
+        assertFalse("nothing in the vault" in unfiled.lowercase(), "nor is a fully filed one: $unfiled")
+        assertTrue("album" in album.lowercase(), "and it names what is actually empty: $album")
+    }
+
+    /**
+     * Nothing unfiled means everything **has** been filed. That is a success, so it must not read as
+     * a lack — "no items" there would make a tidy vault sound broken.
+     */
+    @Test
+    fun nothing_unfiled_reads_as_an_achievement_rather_than_an_absence() {
+        val copy = GalleryFormat.emptyListing(GalleryScope.Unfiled).lowercase()
+
+        assertTrue("filed" in copy, "it says what is true — everything is filed: $copy")
+        for (lack in listOf("no items", "nothing in", "empty")) {
+            assertFalse(lack in copy, "a fully filed vault is not a shortage: $copy")
+        }
+    }
+
+    /**
+     * The no-albums copy has to teach two things: what an album is for, and what it is **not**.
+     * Everything in the vault is encrypted either way, and a user who reads "album" as "extra lock"
+     * has been misled by omission — the one place this screen could overstate what the app does.
+     */
+    @Test
+    fun the_no_albums_copy_explains_grouping_and_does_not_promise_protection() {
+        val copy = GalleryFormat.noAlbums()
+        val lower = copy.lowercase()
+
+        assertTrue("album" in lower, "it names the thing: $copy")
+        assertTrue(
+            listOf("group", "find").any { it in lower },
+            "and says what one is for, since a blank grid teaches nothing: $copy",
+        )
+        assertTrue(
+            "encrypted either way" in lower,
+            "and that grouping is not what protects the files: $copy",
+        )
+        for (claim in listOf("lock", "protect", "secure", "password", "safer")) {
+            assertFalse(claim in lower, "an album is not a $claim: $copy")
         }
     }
 

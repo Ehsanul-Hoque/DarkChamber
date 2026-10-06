@@ -22,6 +22,16 @@ interface VaultAlbumsComponent {
      */
     fun openAlbum(id: ByteArray)
 
+    /**
+     * Open the items that are in no album.
+     *
+     * **Unfiled is not an album.** It has no row, no id, no name and no cover; it is a view of the
+     * items that have not been filed. So it is its own intent rather than an [openAlbum] with a
+     * reserved id — an id would be a lie the rest of the surface would have to keep, and it is the
+     * reason nothing here can rename or delete it.
+     */
+    fun openUnfiled()
+
     /** Clear a surfaced [AlbumsError] after the user acknowledges it. */
     fun dismissError()
 }
