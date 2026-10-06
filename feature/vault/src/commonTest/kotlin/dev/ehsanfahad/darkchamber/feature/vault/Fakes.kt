@@ -18,6 +18,7 @@ import kotlinx.coroutines.Runnable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.io.Buffer
@@ -365,6 +366,8 @@ internal class FakeVaultItems(
     private val onImport: (String) -> Unit = {},
     /** Stored previews by item id (as a list, so the map keys compare by content). */
     private val thumbnails: Map<List<Byte>, Outcome<ByteArray?>> = emptyMap(),
+    /** What a create answers. A failure here is the vault refusing, not a name being wrong. */
+    private val createResult: Outcome<ByteArray> = Outcome.Ok(byteArrayOf(42)),
 ) : VaultItems {
     var thumbnailCalls = 0
         private set
@@ -393,6 +396,21 @@ internal class FakeVaultItems(
     }
 
     override fun observeAlbums(): Flow<List<AlbumSummary>> = albums
+
+    /**
+     * Every name a create was asked for, in order. A list rather than a counter and a `lastName`:
+     * what has to be checkable is that a blank name never reached the vault at all, which a count
+     * alone cannot say.
+     */
+    val createdNames = mutableListOf<String>()
+
+    override fun createAlbum(name: String): Outcome<ByteArray> {
+        // The real vault treats a blank name as a caller bug and throws. The fake keeps that
+        // promise, so a use case that stopped validating is caught here rather than passing.
+        require(name.isNotBlank()) { "album name must not be blank" }
+        createdNames += name
+        return createResult
+    }
 
     override fun import(
         name: String,
@@ -436,11 +454,43 @@ internal class FakeVaultItems(
 /** Unknown ids answer "no preview", which is what the real seam does for an item without one. */
 private val NO_THUMBNAIL: Outcome<ByteArray?> = Outcome.Ok(null)
 
+/**
+ * A listing that fails the way a broken catalog does: by **throwing inside the flow**, which is
+ * `core:vault`'s documented contract for a listing that cannot be read.
+ *
+ * Shared by the gallery's and the album grid's tests: both screens have to turn that throw into a
+ * reported error rather than an empty list, and the two would otherwise keep their own copy of a fake
+ * whose one job is to get the failure shape right.
+ */
+internal class ExplodingVaultItems : VaultItems {
+    override fun observe(filter: ItemFilter): Flow<List<VaultItemSummary>> =
+        flow { throw IllegalStateException("catalog unreadable") }
+
+    override fun observeAlbums(): Flow<List<AlbumSummary>> =
+        flow { throw IllegalStateException("catalog unreadable") }
+
+    override fun createAlbum(name: String): Outcome<ByteArray> = Outcome.Ok(byteArrayOf(1))
+
+    override fun import(
+        name: String,
+        mime: String,
+        albumId: ByteArray?,
+        onProgress: (ImportPhase, Long) -> Unit,
+        isActive: () -> Boolean,
+        first: RawSource?,
+        openSource: () -> RawSource,
+    ): Outcome<ByteArray> = Outcome.Ok(byteArrayOf(1))
+
+    override fun thumbnail(id: ByteArray): Outcome<ByteArray?> = Outcome.Ok(null)
+}
+
 /** A seam whose import blows up rather than returning — the "should never happen" path. */
 internal class ThrowingVaultItems : VaultItems {
     override fun observe(filter: ItemFilter): Flow<List<VaultItemSummary>> = MutableStateFlow(emptyList())
 
     override fun observeAlbums(): Flow<List<AlbumSummary>> = MutableStateFlow(emptyList())
+
+    override fun createAlbum(name: String): Outcome<ByteArray> = throw IllegalStateException("create exploded")
 
     override fun import(
         name: String,
@@ -460,6 +510,9 @@ internal class CancellingVaultItems : VaultItems {
     override fun observe(filter: ItemFilter): Flow<List<VaultItemSummary>> = MutableStateFlow(emptyList())
 
     override fun observeAlbums(): Flow<List<AlbumSummary>> = MutableStateFlow(emptyList())
+
+    override fun createAlbum(name: String): Outcome<ByteArray> =
+        throw CancellationException("the session was torn down mid-create")
 
     override fun import(
         name: String,

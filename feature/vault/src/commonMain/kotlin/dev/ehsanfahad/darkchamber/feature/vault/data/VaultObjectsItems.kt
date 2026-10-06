@@ -27,6 +27,8 @@ internal class VaultObjectsItems(private val objects: VaultObjects) : VaultItems
 
     override fun observeAlbums(): Flow<List<AlbumSummary>> = objects.observeAlbums()
 
+    override fun createAlbum(name: String): Outcome<ByteArray> = objects.createAlbum(name)
+
     override fun import(
         name: String,
         mime: String,

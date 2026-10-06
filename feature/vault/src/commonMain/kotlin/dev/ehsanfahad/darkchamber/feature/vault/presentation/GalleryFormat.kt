@@ -1,5 +1,6 @@
 package dev.ehsanfahad.darkchamber.feature.vault.presentation
 
+import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumDraftProblem
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryScope
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportStage
 
@@ -47,7 +48,8 @@ internal object GalleryFormat {
     /**
      * What to say when there are no albums.
      *
-     * Says what an album is *for* and how to make one, because a blank grid teaches nothing. And it
+     * Says what an album is *for*, because a blank grid teaches nothing — and only that, since the
+     * create affordance is on the same screen and does not need describing in prose. And it
      * says what an album is **not**: grouping, not protection. Everything in the vault is already
      * encrypted, and a user who reads "album" as "extra lock" has been misled by omission — the one
      * place this screen could overstate what the app does (hard rule #6).
@@ -55,6 +57,35 @@ internal object GalleryFormat {
     fun noAlbums(): String =
         "No albums yet.\nAlbums group your files so they are easier to find — everything in the vault " +
             "is encrypted either way."
+
+    /**
+     * What the create affordance and its dialog say.
+     *
+     * "New album" in both places, deliberately the same words: a button and the dialog it opens that
+     * disagree about what is happening make the user check which one they are in.
+     */
+    fun newAlbum(): String = "New album"
+
+    /** The field's label. Says what is being named, since the dialog's title is the only other clue. */
+    fun albumNameLabel(): String = "Album name"
+
+    /**
+     * Why a draft is not an album yet, said next to the field rather than as a banner.
+     *
+     * Both lines say what the state of the world is, because that is the question someone staring at
+     * a dialog that did not close actually has:
+     *
+     * - A missing name is not a failure and must not read as one — nothing was attempted, and the fix
+     *   is one word in the field above.
+     * - A refused create says **nothing was created**, which is true: the vault seals the name before
+     *   it writes the row, so a create that fails leaves no half-made album behind. Saying so is what
+     *   stops the user hunting the grid for something that might be there (hard rule 6).
+     */
+    fun albumDraftProblem(problem: AlbumDraftProblem): String =
+        when (problem) {
+            AlbumDraftProblem.NameMissing -> "Give the album a name first."
+            AlbumDraftProblem.CreateFailed -> "Couldn't create the album. Nothing was created — try again."
+        }
 
     /**
      * What an album tile says under its name.

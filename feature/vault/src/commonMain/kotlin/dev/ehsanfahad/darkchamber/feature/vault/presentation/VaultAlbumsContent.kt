@@ -27,6 +27,10 @@ fun VaultAlbumsContent(
         imageLoader = imageLoader,
         onOpenAlbum = component::openAlbum,
         onOpenUnfiled = component::openUnfiled,
+        onStartCreate = component::startCreate,
+        onEditAlbumName = component::editAlbumName,
+        onConfirmCreate = component::confirmCreate,
+        onCancelCreate = component::cancelCreate,
         onDismissError = component::dismissError,
         modifier = modifier,
     )

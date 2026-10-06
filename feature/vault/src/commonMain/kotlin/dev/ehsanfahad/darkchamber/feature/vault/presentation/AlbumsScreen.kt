@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -15,17 +16,33 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import coil3.ImageLoader
 import coil3.compose.SubcomposeAsyncImage
 import dev.ehsanfahad.darkchamber.core.designsystem.DarkChamberTheme
+import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumDraft
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTile
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumsError
@@ -34,9 +51,9 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumsState
 /**
  * The album grid.
  *
- * Deliberately plainer than the item grid: albums are few, they have no import affordance of their
- * own and nothing here animates on arrival, because an album list is something a user returns to
- * rather than watches fill.
+ * Deliberately plainer than the item grid: albums are few, nothing here animates on arrival, and the
+ * one affordance makes an album rather than importing a file — an album list is something a user
+ * returns to rather than watches fill.
  */
 @Composable
 internal fun AlbumsScreen(
@@ -44,25 +61,159 @@ internal fun AlbumsScreen(
     imageLoader: ImageLoader,
     onOpenAlbum: (ByteArray) -> Unit,
     onOpenUnfiled: () -> Unit,
+    onStartCreate: () -> Unit,
+    onEditAlbumName: (String) -> Unit,
+    onConfirmCreate: () -> Unit,
+    onCancelCreate: () -> Unit,
     onDismissError: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier = modifier.fillMaxSize()) {
-        state.error?.let { error ->
-            AlbumsErrorBanner(error = error, onDismiss = onDismissError)
+    val spacing = DarkChamberTheme.spacing
+    val density = LocalDensity.current
+
+    // The affordance floats over the grid, so the grid has to know how tall it is — measured rather
+    // than guessed at, for the reason the gallery's bar is: the button grows with the OS text size,
+    // and a constant that fits it at the default setting hides the last row at a larger one.
+    var barHeight by remember { mutableStateOf(0.dp) }
+
+    // No insets here: the host applies them once for the whole unlocked subtree.
+    Box(modifier = modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            state.error?.let { error ->
+                AlbumsErrorBanner(error = error, onDismiss = onDismissError)
+            }
+
+            when {
+                state.loading -> CenteredNotice("Reading your albums…")
+                // No albums is not an empty screen: Unfiled still leads somewhere, because files
+                // imported before any album existed are exactly what a user arriving here is looking
+                // for. So the grid renders either way and the explanation sits above it.
+                else -> AlbumGrid(
+                    albums = state.albums,
+                    imageLoader = imageLoader,
+                    bottomInset = barHeight,
+                    onOpenAlbum = onOpenAlbum,
+                    onOpenUnfiled = onOpenUnfiled,
+                )
+            }
         }
 
-        when {
-            state.loading -> CenteredNotice("Reading your albums…")
-            // No albums is not an empty screen: Unfiled still leads somewhere, because files
-            // imported before any album existed are exactly what a user arriving here is looking
-            // for. So the grid renders either way and the explanation sits above it.
-            else -> AlbumGrid(
-                albums = state.albums,
-                imageLoader = imageLoader,
-                onOpenAlbum = onOpenAlbum,
-                onOpenUnfiled = onOpenUnfiled,
+        // Always offered, including while the listing is still loading or has failed: creating an
+        // album does not depend on reading the existing ones, and a surface that hides its one action
+        // behind a catalog error leaves the user with a screen that can only be left.
+        Box(
+            contentAlignment = Alignment.BottomEnd,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .fillMaxWidth()
+                .onSizeChanged { barHeight = with(density) { it.height.toDp() } }
+                .padding(spacing.spaceLg),
+        ) {
+            ExtendedFloatingActionButton(
+                onClick = onStartCreate,
+                containerColor = DarkChamberTheme.colors.accent,
+                contentColor = DarkChamberTheme.colors.onAccent,
+                // Rounded, never a circle: the full-circle radius belongs to the aperture
+                // (docs/DESIGN.md §4).
+                shape = DarkChamberTheme.shapes.large,
+            ) {
+                Text(text = GalleryFormat.newAlbum(), style = DarkChamberTheme.typography.label)
+            }
+        }
+
+        state.draft?.let { draft ->
+            NewAlbumDialog(
+                draft = draft,
+                onNameChange = onEditAlbumName,
+                onConfirm = onConfirmCreate,
+                onCancel = onCancelCreate,
             )
+        }
+    }
+}
+
+/**
+ * Name the new album.
+ *
+ * Dismissable by back and by tapping outside, unlike the import disclosure: there is nothing here a
+ * user has to be told before they can act, and the worst a stray dismissal costs is a name worth
+ * retyping. **Except while the create runs** — then neither gesture is honoured, because the vault is
+ * already writing and a dialog that vanished would be claiming otherwise.
+ */
+@Composable
+private fun NewAlbumDialog(
+    draft: AlbumDraft,
+    onNameChange: (String) -> Unit,
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    val colors = DarkChamberTheme.colors
+    val spacing = DarkChamberTheme.spacing
+
+    Dialog(
+        onDismissRequest = onCancel,
+        properties = DialogProperties(
+            dismissOnBackPress = !draft.saving,
+            dismissOnClickOutside = !draft.saving,
+        ),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(color = colors.surface, shape = DarkChamberTheme.shapes.large)
+                .padding(spacing.spaceLg),
+        ) {
+            Text(
+                text = GalleryFormat.newAlbum(),
+                style = DarkChamberTheme.typography.title,
+                color = colors.textPrimary,
+            )
+
+            OutlinedTextField(
+                value = draft.name,
+                onValueChange = onNameChange,
+                label = { Text(GalleryFormat.albumNameLabel()) },
+                singleLine = true,
+                // The field is the whole dialog, so the keyboard's action is the dialog's: a user who
+                // typed a name and pressed Done meant to create it.
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { onConfirm() }),
+                isError = draft.problem != null,
+                enabled = !draft.saving,
+                modifier = Modifier.fillMaxWidth().padding(top = spacing.spaceMd),
+            )
+
+            draft.problem?.let { problem ->
+                Text(
+                    text = GalleryFormat.albumDraftProblem(problem),
+                    style = DarkChamberTheme.typography.caption,
+                    color = colors.danger,
+                    modifier = Modifier.padding(top = spacing.spaceXs),
+                )
+            }
+
+            Row(
+                horizontalArrangement = Arrangement.End,
+                modifier = Modifier.fillMaxWidth().padding(top = spacing.spaceMd),
+            ) {
+                TextButton(onClick = onCancel, enabled = !draft.saving) {
+                    Text(
+                        text = "Cancel",
+                        style = DarkChamberTheme.typography.label,
+                        color = if (draft.saving) colors.textSecondary else colors.textPrimary,
+                    )
+                }
+                TextButton(onClick = onConfirm, enabled = !draft.saving) {
+                    // Its own past tense while the write runs: it is the only thing on screen saying
+                    // why the dialog stopped responding. Nothing destructive happens here, so neither
+                    // button takes the danger role.
+                    Text(
+                        text = if (draft.saving) "Creating…" else "Create",
+                        style = DarkChamberTheme.typography.label,
+                        color = if (draft.saving) colors.textSecondary else colors.accent,
+                    )
+                }
+            }
         }
     }
 }
@@ -71,13 +222,20 @@ internal fun AlbumsScreen(
 private fun AlbumGrid(
     albums: List<AlbumTile>,
     imageLoader: ImageLoader,
+    bottomInset: Dp,
     onOpenAlbum: (ByteArray) -> Unit,
     onOpenUnfiled: () -> Unit,
 ) {
     val spacing = DarkChamberTheme.spacing
     LazyVerticalGrid(
         columns = GridCells.Adaptive(minSize = ALBUM_MIN_WIDTH),
-        contentPadding = PaddingValues(spacing.spaceMd),
+        contentPadding = PaddingValues(
+            start = spacing.spaceMd,
+            end = spacing.spaceMd,
+            top = spacing.spaceMd,
+            // Room for the floating affordance, so the last row can be scrolled clear of it.
+            bottom = spacing.spaceMd + bottomInset,
+        ),
         horizontalArrangement = Arrangement.spacedBy(spacing.spaceSm),
         verticalArrangement = Arrangement.spacedBy(spacing.spaceSm),
         modifier = Modifier.fillMaxSize(),

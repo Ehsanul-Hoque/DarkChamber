@@ -32,6 +32,30 @@ interface VaultAlbumsComponent {
      */
     fun openUnfiled()
 
+    /**
+     * Open the name-entry dialog for a new album.
+     *
+     * Called again while it is already open this **keeps what was typed** rather than resetting it:
+     * the second call can only be a stray tap on an affordance the dialog is covering, and throwing
+     * away a half-typed name is a worse answer to it than doing nothing.
+     */
+    fun startCreate()
+
+    /** What the user has typed so far. Clears a shown [AlbumDraftProblem] — they are fixing it. */
+    fun editAlbumName(name: String)
+
+    /**
+     * Create the album from the current draft.
+     *
+     * Ignored while one is already being created, so a double tap makes one album rather than two.
+     * Nothing else would catch that: duplicate names are allowed by design, so two albums called
+     * "Holiday" is a state the vault is perfectly happy with.
+     */
+    fun confirmCreate()
+
+    /** Abandon the draft. Ignored while a create is in flight — that one cannot be called back. */
+    fun cancelCreate()
+
     /** Clear a surfaced [AlbumsError] after the user acknowledges it. */
     fun dismissError()
 }
@@ -46,7 +70,33 @@ data class AlbumsState(
     val albums: List<AlbumTile> = emptyList(),
     val loading: Boolean = true,
     val error: AlbumsError? = null,
+    /** The new-album draft, present only while the dialog is open. */
+    val draft: AlbumDraft? = null,
 )
+
+/**
+ * A new album being named.
+ *
+ * The typed [name] lives in state rather than in the composable because the problem shown next to it
+ * has to clear as it is edited, and two owners of one field is how that ends up stale. Like every
+ * other album name on this screen it is plaintext in memory and nowhere else — it dies with the
+ * unlocked subtree, and no log line ever carries it (hard rule 4).
+ */
+data class AlbumDraft(
+    val name: String = "",
+    val problem: AlbumDraftProblem? = null,
+    /** True only while the create is actually running: it disables the dialog and guards a second tap. */
+    val saving: Boolean = false,
+)
+
+/** Why a draft has not become an album. Stated next to the field, not as a banner over the grid. */
+enum class AlbumDraftProblem {
+    /** Nothing usable was typed. Nothing was attempted, so there is nothing to undo. */
+    NameMissing,
+
+    /** The vault refused the create. No album was made, and the typed name is still there to retry. */
+    CreateFailed,
+}
 
 /** A recoverable album-surface failure, surfaced as honest copy (hard rule #6). */
 enum class AlbumsError {

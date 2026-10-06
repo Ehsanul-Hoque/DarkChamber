@@ -39,6 +39,19 @@ internal interface VaultItems {
     fun observeAlbums(): Flow<List<AlbumSummary>>
 
     /**
+     * Create an album named [name], returning its new id.
+     *
+     * **[name] must already be usable** — non-blank, and whatever else the surface decided a name
+     * has to be. The vault treats a blank one as a caller bug and throws, deliberately: deciding
+     * what to do about what the user typed belongs to the layer that can say so on screen, which is
+     * why [CreateAlbum] exists rather than this being called from a component.
+     *
+     * Duplicate names are allowed — the id is identity and the name is a label — so this never fails
+     * for a name that is already taken.
+     */
+    fun createAlbum(name: String): Outcome<ByteArray>
+
+    /**
      * Stream-encrypt a payload into the vault, returning the new object's id.
      *
      * [onProgress] receives the phase the import is in and the bytes read so far within it. The

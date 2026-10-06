@@ -12,6 +12,7 @@ import dev.ehsanfahad.darkchamber.core.vault.ImportPhase
 import dev.ehsanfahad.darkchamber.core.vault.VaultItemSummary
 import dev.ehsanfahad.darkchamber.feature.vault.FakeFilePicker
 import dev.ehsanfahad.darkchamber.feature.vault.FakePickedFile
+import dev.ehsanfahad.darkchamber.feature.vault.ExplodingVaultItems
 import dev.ehsanfahad.darkchamber.feature.vault.FakeVaultItems
 import dev.ehsanfahad.darkchamber.feature.vault.api.FailedImport
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryError
@@ -534,23 +535,3 @@ private class FakeImports : VaultImports {
     }
 }
 
-/** A listing that fails the way a broken catalog does: by throwing inside the flow. */
-private class ExplodingVaultItems : VaultItems {
-    override fun observe(filter: ItemFilter): Flow<List<VaultItemSummary>> =
-        flow { throw IllegalStateException("catalog unreadable") }
-
-    override fun observeAlbums(): Flow<List<AlbumSummary>> =
-        flow { throw IllegalStateException("catalog unreadable") }
-
-    override fun import(
-        name: String,
-        mime: String,
-        albumId: ByteArray?,
-        onProgress: (ImportPhase, Long) -> Unit,
-        isActive: () -> Boolean,
-        first: RawSource?,
-        openSource: () -> RawSource,
-    ): Outcome<ByteArray> = Outcome.Ok(byteArrayOf(1))
-
-    override fun thumbnail(id: ByteArray): Outcome<ByteArray?> = Outcome.Ok(null)
-}

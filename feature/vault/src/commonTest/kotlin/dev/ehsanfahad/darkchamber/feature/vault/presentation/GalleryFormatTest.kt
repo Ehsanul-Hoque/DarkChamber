@@ -1,5 +1,6 @@
 package dev.ehsanfahad.darkchamber.feature.vault.presentation
 
+import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumDraftProblem
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryScope
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportStage
 import kotlin.test.Test
@@ -201,6 +202,41 @@ class GalleryFormatTest {
         for (claim in listOf("lock", "protect", "secure", "password", "safer")) {
             assertFalse(claim in lower, "an album is not a $claim: $copy")
         }
+    }
+
+    /**
+     * The two draft problems read as what they are: one is something to finish, the other is
+     * something that did not happen.
+     *
+     * The failure line has to say **nothing was created**, because that is the question someone
+     * staring at a dialog that did not close actually has — and it is true: the vault seals the name
+     * before it writes the row, so a refused create leaves no half-made album in the grid to hunt for.
+     * Neither line may read as destruction, since nothing here destroys anything.
+     */
+    @Test
+    fun the_draft_problems_say_what_the_state_of_the_world_is() {
+        val missing = GalleryFormat.albumDraftProblem(AlbumDraftProblem.NameMissing)
+        val failed = GalleryFormat.albumDraftProblem(AlbumDraftProblem.CreateFailed)
+
+        assertTrue("name" in missing.lowercase(), "it names what is missing: $missing")
+        for (blame in listOf("error", "failed", "invalid", "wrong")) {
+            assertFalse(blame in missing.lowercase(), "an unfinished field is not a fault: $missing")
+        }
+
+        assertTrue(
+            "nothing was created" in failed.lowercase(),
+            "the user needs to know there is no half-made album: $failed",
+        )
+        for (claim in listOf("deleted", "lost", "removed", "corrupt")) {
+            assertFalse(claim in failed.lowercase(), "a refused create destroys nothing: $failed")
+        }
+    }
+
+    /** The affordance and the dialog it opens use one name for one thing. */
+    @Test
+    fun the_create_affordance_and_its_dialog_agree() {
+        assertTrue("album" in GalleryFormat.newAlbum().lowercase(), GalleryFormat.newAlbum())
+        assertTrue("album" in GalleryFormat.albumNameLabel().lowercase(), GalleryFormat.albumNameLabel())
     }
 
     /**

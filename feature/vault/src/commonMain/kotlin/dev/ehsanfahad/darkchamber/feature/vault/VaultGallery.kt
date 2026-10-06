@@ -9,6 +9,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.VaultAlbumsComponent
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultGalleryComponent
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultImports
 import dev.ehsanfahad.darkchamber.feature.vault.data.VaultObjectsItems
+import dev.ehsanfahad.darkchamber.feature.vault.domain.CreateAlbum
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ImportCoordinator
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ImportFile
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ImportQueue
@@ -101,16 +102,22 @@ fun vaultAlbumsComponent(
     componentContext: ComponentContext,
     vaultObjects: VaultObjects,
     mainContext: CoroutineContext = Dispatchers.Main,
+    // Where a create runs: it seals a name and writes a catalog row, which is small but blocking, and
+    // the thread it must not run on is the one drawing the grid it will change.
+    ioContext: CoroutineContext = Dispatchers.Default,
     onOpenAlbum: (ByteArray) -> Unit,
     onOpenUnfiled: () -> Unit,
-): VaultAlbumsComponent =
-    DefaultVaultAlbumsComponent(
+): VaultAlbumsComponent {
+    val items = VaultObjectsItems(vaultObjects)
+    return DefaultVaultAlbumsComponent(
         componentContext = componentContext,
-        observeAlbums = ObserveAlbums(VaultObjectsItems(vaultObjects)),
+        observeAlbums = ObserveAlbums(items),
+        createAlbum = CreateAlbum(vault = items, ioContext = ioContext),
         mainContext = mainContext,
         onOpenAlbum = onOpenAlbum,
         onOpenUnfiled = onOpenUnfiled,
     )
+}
 
 /**
  * Build the gallery's image loader for one unlocked session.
