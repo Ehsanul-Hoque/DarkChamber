@@ -80,3 +80,12 @@ detekt version note: pick the line built against the project's Kotlin version at
 ./gradlew koverVerify                        # coverage gate
 ./gradlew migrationTest                      # fixture-vault upgrade gate
 ```
+
+## 7. What only a device can show
+
+Some guarantees are not expressible as a unit test: that a real picker returns what we think it does,
+that a platform decoder produces a sensible image, that a screenshot is actually blocked, and that
+plaintext is absent from a real database file on real storage. Those live as checklists in
+[`../verification/`](../verification) — one per area, each stating **what must be true** rather than how
+a particular run happened to check it, with the release-blocking lines marked. They are run at release
+and whenever the area they cover changes.

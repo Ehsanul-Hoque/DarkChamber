@@ -107,17 +107,28 @@ The complete free product. Everything here ships open source and free.
 >   rest of the download. The transfer itself carries on in the other app, because nothing can call
 >   it off, and what it eventually hands over is thrown away unread.
 >
-> Still to come before v1.0: albums and folders with sort/search, the private camera, the in-app
+> - **Organise it into albums.** A grid of albums with their contents previewed, plus a view of
+>   everything in no album. You can create, rename and delete an album, move a selection into one or
+>   take it out again, and import straight into the album you are looking at. Two things are worth
+>   stating plainly, because both are the opposite of what the words suggest: **deleting an album keeps
+>   every file in it** — they become unfiled, and the confirmation says so before you commit — and an
+>   item is in **one album at a time**, so filing it moves it rather than making a second copy. An
+>   album organises; it is not a second lock, and nothing in the app implies that it is.
+>
+> Still to come before v1.0: sorting and search over the listing, the private camera, the in-app
 > viewers and the seekable reads they need, export with metadata scrubbing, the settings screen and
 > recovery-key entry, and the release-readiness tooling.
 >
 > **Verified on Android hardware.** The iOS side is built and passes on the simulator, but the
 > platform-specific paths — the pickers and the preview encoder — have not yet been run on a device.
-> That is a pre-release gate, and it is stated here rather than implied away.
+> That is a pre-release gate, and it is stated here rather than implied away. The album surface's own
+> on-device pass is a gate of the same kind: what the automated tests cannot show is that an album name
+> never reaches the catalog file or a log line, which is checked on a device against
+> [`docs/verification/albums-manual.md`](./docs/verification/albums-manual.md).
 
 | Feature                                | Notes                                                                                                                                                                                               |
 |----------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Encrypted vault with albums/folders    | Import from gallery & file picker; batch import; sort/search on encrypted metadata                                                                                                                  |
+| Encrypted vault with albums             | Import from gallery & file picker; batch import; albums as labels (one per item, deleting an album keeps its files); sort/search on encrypted metadata                                               |
 | **Private camera** (photo + video)     | CameraX / AVFoundation → encrypting sink → app-private storage. Plaintext never persisted                                                                                                           |
 | In-app viewers                         | Images (in-memory decode), video & audio (streaming decrypt via ExoPlayer custom DataSource / AVAssetResourceLoaderDelegate), PDF (PDFKit in-memory on iOS; private-cache temp or memfd on Android) |
 | "Decrypt & open in…" fallback          | Share-sheet export for docx/zip/other, with explicit "file is leaving the vault" warning + cleanup action                                                                                           |
@@ -138,7 +149,7 @@ The complete free product. Everything here ships open source and free.
 | **Secure file shredder**                     | Two honest modes: (a) **crypto-shred** vault items (destroy DEK — instant, genuinely irreversible); (b) best-effort overwrite+delete for external files, with an unavoidable explanation that flash wear-leveling means recovery may still be possible. No "DoD 7-pass" theater |
 | Decoy / duress PIN                           | Opens a separate, plausible fake vault                                                                                                                                                                                                                                          |
 | Intruder selfie + break-in log               | After N failed unlocks (front camera, stored encrypted)                                                                                                                                                                                                                         |
-| Per-album passwords                          | Independent KEKs per album                                                                                                                                                                                                                                                      |
+| Per-album passwords                          | Independent KEKs per album. **Not built in v1**, and the album surface says nothing that implies it is: today every album's name is sealed under the master key like item metadata, and an album is organisation rather than a boundary. The catalog records which variant wrapped an album so that this can arrive without a migration |
 | Panic wipe                                   | Long-press gesture / duress PIN variant → crypto-shred everything                                                                                                                                                                                                               |
 | Localization + accessibility pass            | TalkBack/VoiceOver coverage                                                                                                                                                                                                                                                     |
 

@@ -34,17 +34,22 @@ Package root: `dev.ehsanfahad.darkchamber`.
 >   Android `FragmentActivity` (`:androidApp`) and an iOS `ComposeUIViewController` linking the
 >   `Shared` umbrella framework (`:iosApp`).
 > - **`:feature:vault`** — the gallery (adaptive grid over `observeItems`, newest first, encrypted
->   previews in the media slot) and import: multi-select file + photo pickers behind `FilePicker` /
+>   previews in the media slot), import (multi-select file + photo pickers behind `FilePicker` /
 >   `PhotoPicker` seams the app implements, a sequential batch with two-level progress,
 >   continue-on-error and a stop that lands **within** a file, thumbnails generated inline at import
->   under their own DEK, and the original-delete offer behind its non-dismissable disclosure. Public
->   surface is one factory plus the `api` package; everything else is `internal`. Reaches the vault
->   through `core:vault` only.
+>   under their own DEK, and the original-delete offer behind its non-dismissable disclosure) and the
+>   **album surface**: one item grid serving three listings (whole vault / one album / unfiled), the
+>   album grid, create/rename/delete, a multi-select that moves items in and out, and imports landing in
+>   the album being viewed. An album is a **label, not a container** — deleting one keeps its items
+>   (they become unfiled) and an item is in one album at a time, so filing is a move; see
+>   `docs/ARCHITECTURE.md` §5.1. Public surface is two factories plus the `api` package; everything else
+>   is `internal`. Reaches the vault through `core:vault` only, and navigates only through callbacks the
+>   host supplies.
 > - **`:konsist`** — the architecture + **security-invariant** rules, running in CI on every PR.
 >
-> Still a stub (marker + smoke test): `:core:testing`. **In progress: Phase 1** — the import plumbing
-> the pickers exposed, then albums/browse, camera, the seek primitive and the in-app viewers
-> (deferred from Phase 0). **Planned, not yet wired:** ktlint/detekt/Kover, Lefthook and
+> Still a stub (marker + smoke test): `:core:testing`. **In progress: Phase 1** — albums are in; next
+> are sort/search over the listing, the camera, the seek primitive and the in-app viewers (deferred
+> from Phase 0). **Planned, not yet wired:** ktlint/detekt/Kover, Lefthook and
 > `migrationTest` — verify a Gradle task exists before assuming it runs. CI:
 > `pr.yml` is enabled (build + commit-message check + gated iOS compile); its `quality` job stays
 > commented out until those plugins land, and `nightly`/`release`/`test-build` stay committed

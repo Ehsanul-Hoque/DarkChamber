@@ -24,9 +24,13 @@ A Kotlin Multiplatform app for **Android** and **iOS** that encrypts, stores, an
 > - **encrypted previews**, generated as a file is imported and sealed under their own key. No
 >   decrypted image is ever written to storage, and the in-memory cache is emptied when you lock;
 > - the option to **delete the original** after importing it, where the system allows it, behind a
->   disclosure you have to answer that says what deleting on flash storage can and cannot promise.
+>   disclosure you have to answer that says what deleting on flash storage can and cannot promise;
+> - **albums** — group what you have put in, see what is in no album, move a selection in or out, and
+>   import straight into the album you are looking at. An album is a label, not a container: deleting
+>   one keeps every file in it, and an item is in one album at a time, so filing it moves it. Albums
+>   organise — they are not a second lock, and nothing in the app pretends otherwise.
 >
-> What's left before the vault is usable: **albums and search**, the **private camera**, and the
+> What's left before the vault is usable: **sorting and search**, the **private camera**, and the
 > **in-app viewers** — tapping an item is deliberately inert until those land — then export with
 > metadata scrubbing and the settings screen. The documents under [`docs/`](./docs) describe the
 > target design.

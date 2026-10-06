@@ -150,11 +150,19 @@ Standard decelerate easing; **lock is never animated slower than `motionBase`** 
 - **Exposure moments** (export, open-in, share): amber banner + explicit verb ("Decrypt and share") — never a generic "OK".
 - **Empty states:** an invitation to act ("Take your first photo" / "Import files"), display type, quiet illustration at most.
 - **Vault tiles without a preview:** a tile showing only its type badge is an **ordinary tile, not a broken one**. Only images get a preview; a PDF, a note, an audio file and an image the platform's decoder declines all look the same, and they are all fine. So the badge carries no warning colour, no placeholder frame and no retry — it is simply what that item looks like. (The one tile that *does* say something is wrong is the unverifiable one, whose metadata would not open; that is a separate state and reads as such.)
+- **Album tiles:** the same square media slot an item tile uses, carrying the album's newest item as a cover, with the name and a count beneath it. The "Album" marker sits inside the **media slot's** corner, not the tile's — the tile's corner is over the caption. It says that and nothing else: **no padlock and no shield**, because an album organises and does not protect, and a tile implying otherwise is the easiest way to break the honesty rules by accident. Existing token roles cover all of it; no new role was needed. An album whose name will not open takes the `danger` outline and the same wording an unverifiable item uses.
+- **The unfiled entry is not an album tile.** It leads to the items in no album, so it has no cover, no count and no marker — it looks like a tile and is deliberately not one, because it is a view rather than a thing that can be renamed or deleted.
+- **Nothing in the album surface takes the destructive styling.** Deleting an album destroys no files — they become unfiled — so colouring that action as destruction would frighten someone away from a harmless one, which is the honesty rule broken in the less obvious direction. The styling is reserved for what is genuinely irreversible: shredding.
 - **Recovery-key screen:** `monoKey` groups on `surfaceRaised`, one screen, no competing actions; the copy states plainly that loss is unrecoverable.
 
 ## 11. Voice
 
 Sentence case everywhere, including buttons. Plain verbs that say what happens: "Encrypt 3 files", "Shred forever", "Unlock". Errors state what happened and what to do next; they never apologize and never say "oops". Honesty rules from the threat model apply to microcopy: the shredder's external-file mode says "reduces the chance of recovery", never "permanently erases".
+
+Two more of those rules come from how albums actually work, and both are about a verb that would be wrong by one word:
+
+- **Filing is a "move", never an "add".** An item is in one album at a time, so filing something already filed takes it out of where it was. "Add to album" implies a second copy — of an encrypted file, in a vault — which is a claim about what the user possesses rather than a loose word.
+- **Taking an item out of an album is not "removing" it.** "Remove" is what most apps' delete buttons say, and that control sits on a screen full of selected files. The copy names where the items end up instead, and the same discipline applies to the report afterwards: deleting an album says the items are kept and where they went, and never that it frees space or deletes anything.
 
 ## 12. Accessibility floor
 
