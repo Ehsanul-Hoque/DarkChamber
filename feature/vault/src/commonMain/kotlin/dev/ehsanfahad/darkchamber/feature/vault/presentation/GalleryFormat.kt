@@ -24,6 +24,22 @@ internal object GalleryFormat {
         }
 
     /**
+     * What an album tile says under its name.
+     *
+     * A count and nothing more. **No wording that implies an album protects anything** — no "locked",
+     * no "secured", no padlock to caption: an album organises, and a separate security boundary is
+     * something this app does not have (hard rule #6). "Empty" rather than "0 items" for the same
+     * reason the selection count avoids zero — a fresh album is the ordinary state of one just
+     * created, and it should read as a fact rather than a fault.
+     */
+    fun albumSubtitle(itemCount: Int): String =
+        when (itemCount) {
+            0 -> "Empty"
+            1 -> "1 item"
+            else -> "$itemCount items"
+        }
+
+    /**
      * How many items are selected.
      *
      * Says "None selected" rather than "0 selected", because zero is a state the user can arrive at

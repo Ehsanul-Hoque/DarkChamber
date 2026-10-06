@@ -142,6 +142,35 @@ class GalleryFormatTest {
     }
 
     /**
+     * An album tile's caption reads sensibly at zero and one, and "Empty" rather than "0 items" —
+     * a freshly created album is the ordinary state of one, so it should read as a fact rather than
+     * a fault.
+     */
+    @Test
+    fun an_album_subtitle_counts_items_and_names_the_empty_case() {
+        assertEquals("Empty", GalleryFormat.albumSubtitle(0))
+        assertEquals("1 item", GalleryFormat.albumSubtitle(1), "not '1 items'")
+        assertEquals("12 items", GalleryFormat.albumSubtitle(12))
+    }
+
+    /**
+     * **An album is never a lock.** No padlock, no "protected", nothing implying a security boundary
+     * that does not exist: per-album keys are not in this app, and a caption suggesting otherwise is
+     * the easiest way to break the honesty rule by accident. Checked as a rule rather than trusted
+     * to review, because this caption is the one a later change is most likely to embellish.
+     */
+    @Test
+    fun an_album_subtitle_never_claims_the_album_protects_anything() {
+        val captions = listOf(0, 1, 2, 99).map { GalleryFormat.albumSubtitle(it).lowercase() }
+
+        for (caption in captions) {
+            for (claim in listOf("lock", "protect", "secure", "private", "encrypt", "safe", "hidden")) {
+                assertFalse(claim in caption, "an album organises; it does not $claim: $caption")
+            }
+        }
+    }
+
+    /**
      * The selection count has to read sensibly at zero, which is a state the user can reach without
      * asking for it: a selected item can leave the listing — shredded, or moved out of the album
      * being viewed — and the mode stays. "0 selected" reads like a malfunction where "None selected"

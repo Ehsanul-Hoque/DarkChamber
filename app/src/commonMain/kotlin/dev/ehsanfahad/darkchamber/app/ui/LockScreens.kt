@@ -40,6 +40,7 @@ import dev.ehsanfahad.darkchamber.app.root.UnlockedComponent
 import dev.ehsanfahad.darkchamber.core.designsystem.Aperture
 import dev.ehsanfahad.darkchamber.core.designsystem.ApertureState
 import dev.ehsanfahad.darkchamber.core.designsystem.DarkChamberTheme
+import dev.ehsanfahad.darkchamber.feature.vault.presentation.VaultAlbumsContent
 import dev.ehsanfahad.darkchamber.feature.vault.presentation.VaultGalleryContent
 
 /**
@@ -242,11 +243,12 @@ private fun UnlockedContent(component: UnlockedComponent) {
                     component.imageLoader?.let { loader ->
                         VaultGalleryContent(child.component, loader)
                     }
-                // The album grid itself is the next item's work. The destination, its component and
-                // its place in the stack are wired and tested here; what draws into this box is not
-                // written yet, so for the moment the screen is blank rather than carrying a
-                // placeholder that would only be deleted.
-                is UnlockedChild.Albums -> Unit
+                // The same loader, for the same reason: an album's cover is one of its items, so it
+                // is drawn through the session's encrypted-preview path rather than a second one.
+                is UnlockedChild.Albums ->
+                    component.imageLoader?.let { loader ->
+                        VaultAlbumsContent(child.component, loader)
+                    }
             }
         }
     }

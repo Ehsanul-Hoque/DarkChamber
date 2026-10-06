@@ -1,0 +1,254 @@
+package dev.ehsanfahad.darkchamber.feature.vault.presentation
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import coil3.ImageLoader
+import coil3.compose.SubcomposeAsyncImage
+import dev.ehsanfahad.darkchamber.core.designsystem.DarkChamberTheme
+import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTile
+import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
+import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumsError
+import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumsState
+
+/**
+ * The album grid.
+ *
+ * Deliberately plainer than the item grid: albums are few, they have no import affordance of their
+ * own and nothing here animates on arrival, because an album list is something a user returns to
+ * rather than watches fill.
+ */
+@Composable
+internal fun AlbumsScreen(
+    state: AlbumsState,
+    imageLoader: ImageLoader,
+    onOpenAlbum: (ByteArray) -> Unit,
+    onDismissError: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier.fillMaxSize()) {
+        state.error?.let { error ->
+            AlbumsErrorBanner(error = error, onDismiss = onDismissError)
+        }
+
+        when {
+            state.loading -> CenteredNotice("Reading your albums…")
+            // The empty state is the next item's work, along with the Unfiled entry that belongs
+            // beside it — both surfaces want the same treatment, so they are written together.
+            state.albums.isEmpty() -> Unit
+            else -> AlbumGrid(albums = state.albums, imageLoader = imageLoader, onOpenAlbum = onOpenAlbum)
+        }
+    }
+}
+
+@Composable
+private fun AlbumGrid(
+    albums: List<AlbumTile>,
+    imageLoader: ImageLoader,
+    onOpenAlbum: (ByteArray) -> Unit,
+) {
+    val spacing = DarkChamberTheme.spacing
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(minSize = ALBUM_MIN_WIDTH),
+        contentPadding = PaddingValues(spacing.spaceMd),
+        horizontalArrangement = Arrangement.spacedBy(spacing.spaceSm),
+        verticalArrangement = Arrangement.spacedBy(spacing.spaceSm),
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        // Keyed by the album id, never by position: the grid is alphabetical, so creating or
+        // renaming an album moves everything after it, and an index key would tell Compose that
+        // every tile changed.
+        items(albums, key = { it.id.toAlbumKey() }) { album ->
+            AlbumTileView(album = album, imageLoader = imageLoader, onOpen = { onOpenAlbum(album.id) })
+        }
+    }
+}
+
+/**
+ * One album: what is in it, what it is called, and how much.
+ *
+ * The cover is the newest item's preview, which keeps itself current and needs no state of its own.
+ * An album whose newest items have no preview falls back to the same neutral slot an item tile with
+ * no preview shows — nothing is invented to fill it.
+ */
+@Composable
+private fun AlbumTileView(
+    album: AlbumTile,
+    imageLoader: ImageLoader,
+    onOpen: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = DarkChamberTheme.colors
+    val spacing = DarkChamberTheme.spacing
+    val damaged = album.name is AlbumTileName.Unreadable
+
+    Column(modifier = modifier.fillMaxWidth().clickable(onClick = onOpen)) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(1f)
+                .background(
+                    color = if (damaged) colors.surface else colors.surfaceRaised,
+                    shape = DarkChamberTheme.shapes.medium,
+                )
+                .border(
+                    width = ALBUM_BORDER,
+                    color = if (damaged) colors.danger else colors.outline,
+                    shape = DarkChamberTheme.shapes.medium,
+                ),
+        ) {
+            val cover = album.coverItemId
+            if (cover == null) {
+                // Nothing in the album, or nothing in it with a preview. The slot stays as it is —
+                // the badge below already says what this tile is.
+                Text(
+                    text = if (damaged) "!" else "",
+                    style = DarkChamberTheme.typography.label,
+                    color = colors.danger,
+                )
+            } else {
+                SubcomposeAsyncImage(
+                    // The same key an item tile uses, with the cover item's id: an album's cover is
+                    // one of its items, so it resolves through the one encrypted-preview loader
+                    // rather than a second path that would have to be kept honest separately.
+                    model = VaultThumbnailKey(cover),
+                    imageLoader = imageLoader,
+                    // Decorative: the album's name is spelled out directly below.
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    // No spinner and no mark while it loads or if it fails: a cover is decoration,
+                    // and an album with an unreadable *preview* is not a damaged album. Saying
+                    // otherwise would claim something about the album that is not true.
+                    loading = {},
+                    error = {},
+                    modifier = Modifier.fillMaxSize().clip(DarkChamberTheme.shapes.medium),
+                )
+            }
+
+            // **The album marker.** Inside the media slot's own corner — not the tile's, which is
+            // over the caption: that is the bug a previous cycle shipped. A new component rather
+            // than a reuse of the item tile's badge, which is centred in the slot as the no-preview
+            // fallback; this one sits on top of a drawn preview and has to read against it.
+            //
+            // It says "this is an album" and nothing else. No padlock and no shield: an album
+            // organises and does not protect, and a tile implying otherwise is the easiest way to
+            // break the honesty rule by accident (hard rule #6).
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(spacing.spaceXs)
+                    .background(
+                        color = colors.surface,
+                        // Rounded, never a circle: the full-circle radius belongs to the aperture
+                        // alone (docs/DESIGN.md §4).
+                        shape = DarkChamberTheme.shapes.small,
+                    )
+                    .border(
+                        width = ALBUM_BORDER,
+                        color = colors.outline,
+                        shape = DarkChamberTheme.shapes.small,
+                    )
+                    .padding(horizontal = spacing.spaceXs),
+            ) {
+                Text(
+                    text = "Album",
+                    style = DarkChamberTheme.typography.caption,
+                    color = colors.textSecondary,
+                    maxLines = 1,
+                )
+            }
+        }
+
+        Text(
+            text = when (val name = album.name) {
+                is AlbumTileName.Readable -> name.value
+                // The same wording an item whose metadata will not open carries, and for the same
+                // reason: we know the name did not verify, not whether it was tampered with or
+                // merely corrupted (hard rule #6).
+                AlbumTileName.Unreadable -> "Can't be verified"
+            },
+            style = DarkChamberTheme.typography.body,
+            color = if (damaged) colors.danger else colors.textPrimary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = spacing.spaceXs),
+        )
+
+        Text(
+            text = GalleryFormat.albumSubtitle(album.itemCount),
+            style = DarkChamberTheme.typography.caption,
+            color = colors.textSecondary,
+            maxLines = 1,
+        )
+    }
+}
+
+@Composable
+private fun CenteredNotice(text: String) {
+    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+        Text(
+            text = text,
+            style = DarkChamberTheme.typography.body,
+            color = DarkChamberTheme.colors.textSecondary,
+        )
+    }
+}
+
+/**
+ * A catalog that would not read, said plainly. The albums may exist; this screen could not list
+ * them, and claiming the user has none would be the fail-closed rule's exact target.
+ */
+@Composable
+private fun AlbumsErrorBanner(error: AlbumsError, onDismiss: () -> Unit) {
+    val colors = DarkChamberTheme.colors
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(colors.surface)
+            .clickable(onClick = onDismiss)
+            .padding(DarkChamberTheme.spacing.spaceMd),
+    ) {
+        Text(
+            text = when (error) {
+                AlbumsError.ListingFailed -> "Couldn't read your albums. Tap to dismiss."
+            },
+            style = DarkChamberTheme.typography.body,
+            color = colors.danger,
+        )
+    }
+}
+
+/** Hex, for the grid's stable keys: a `ByteArray` is not usable as one — its equality is identity. */
+private fun ByteArray.toAlbumKey(): String =
+    joinToString("") { byte ->
+        val value = byte.toInt() and 0xFF
+        "${HEX_DIGITS[value shr 4]}${HEX_DIGITS[value and 0x0F]}"
+    }
+
+private const val HEX_DIGITS = "0123456789abcdef"
+
+/** Wider than an item tile: an album carries a name and a count, and few of them fit badly. */
+private val ALBUM_MIN_WIDTH = 150.dp
+
+private val ALBUM_BORDER = 1.dp
