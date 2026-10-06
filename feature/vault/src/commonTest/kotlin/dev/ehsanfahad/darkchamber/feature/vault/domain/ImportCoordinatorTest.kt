@@ -40,6 +40,13 @@ class ImportCoordinatorTest {
      * dispatcher instead, because the state is a `StateFlow`: run inline, every intermediate value
      * is conflated away before anything can collect it.
      */
+    /**
+     * Unfiled, which is what an import from the whole-vault listing asks for and what every test here
+     * but the destination ones wants. Named rather than a bare `null` at thirty call sites, so the
+     * reader is not left wondering which argument the null is.
+     */
+    private val unfiled: ByteArray? = null
+
     private fun TestScope.coordinator(
         vault: FakeVaultItems,
         photos: FakePhotoPicker = FakePhotoPicker(),
@@ -66,6 +73,80 @@ class ImportCoordinatorTest {
         )
     }
 
+    /**
+     * The destination given at the pick reaches **every** file in the batch.
+     *
+     * Checked per file rather than once: the album belongs to the pick, so a batch that filed its first
+     * file and forgot for the rest would be the exact failure this is built to prevent.
+     */
+    @Test
+    fun the_destination_given_at_the_pick_is_where_every_file_lands() = runTest {
+        val album = byteArrayOf(4, 2)
+        val vault = FakeVaultItems()
+        val photos = FakePhotoPicker(listOf(FakePickedFile(name = "a.jpg"), FakePickedFile(name = "b.jpg")))
+        val subject = coordinator(vault, photos = photos)
+
+        subject.importPhotos(album)
+        advanceUntilIdle()
+
+        assertEquals(2, vault.importedAlbums.size, "both files, or this proves nothing about the second")
+        assertTrue(
+            vault.importedAlbums.all { it?.contentEquals(album) == true },
+            "every file in one batch goes to the same album",
+        )
+    }
+
+    /** A document pick carries its destination the same way, since it is the same batch underneath. */
+    @Test
+    fun a_file_pick_carries_its_destination_too() = runTest {
+        val album = byteArrayOf(4, 2)
+        val vault = FakeVaultItems()
+        val files = FakeFilePicker(FakePickedFile(name = "notes.pdf"))
+        val subject = coordinator(vault, files = files)
+
+        subject.importFiles(album)
+        advanceUntilIdle()
+
+        assertTrue(vault.importedAlbums.single()?.contentEquals(album) == true)
+    }
+
+    /** No destination means unfiled, which is what a whole-vault or Unfiled import asks for. */
+    @Test
+    fun a_pick_with_no_destination_leaves_the_batch_unfiled() = runTest {
+        val vault = FakeVaultItems()
+        val photos = FakePhotoPicker(listOf(FakePickedFile(name = "a.jpg")))
+        val subject = coordinator(vault, photos = photos)
+
+        subject.importPhotos(unfiled)
+        advanceUntilIdle()
+
+        assertEquals(listOf<ByteArray?>(null), vault.importedAlbums)
+    }
+
+    /**
+     * A second batch does not inherit the first one's destination.
+     *
+     * The destination lives in the call rather than on the coordinator, which is what makes this true —
+     * a field would be one more thing a later batch could find stale, and the symptom would be photos
+     * silently landing in an album the user had left.
+     */
+    @Test
+    fun a_later_batch_does_not_inherit_the_earlier_destination() = runTest {
+        val album = byteArrayOf(4, 2)
+        val vault = FakeVaultItems()
+        val photos = FakePhotoPicker(listOf(FakePickedFile(name = "a.jpg")))
+        val subject = coordinator(vault, photos = photos)
+
+        subject.importPhotos(album)
+        advanceUntilIdle()
+        subject.importPhotos(unfiled)
+        advanceUntilIdle()
+
+        assertEquals(2, vault.importedAlbums.size)
+        assertTrue(vault.importedAlbums[0]?.contentEquals(album) == true, "the first went to the album")
+        assertEquals(null, vault.importedAlbums[1], "the second went nowhere, as it was asked to")
+    }
+
     @Test
     fun a_batch_runs_from_idle_through_picking_and_running_to_finished() = runTest {
         val vault = FakeVaultItems()
@@ -75,7 +156,7 @@ class ImportCoordinatorTest {
         subject.state.test {
             assertEquals(ImportState.Idle, awaitItem(), "nothing is happening until asked")
 
-            subject.importPhotos()
+            subject.importPhotos(unfiled)
 
             assertEquals(ImportState.Picking, awaitItem(), "the picker is up")
 
@@ -102,7 +183,7 @@ class ImportCoordinatorTest {
         subject.state.test {
             assertEquals(ImportState.Idle, awaitItem())
 
-            subject.importPhotos()
+            subject.importPhotos(unfiled)
 
             assertEquals(ImportState.Picking, awaitItem())
             // Back to Idle, *not* Finished(0): a batch that never started has nothing to report, and
@@ -121,7 +202,7 @@ class ImportCoordinatorTest {
         )
         val subject = coordinator(vault, files = files)
 
-        subject.importFiles()
+        subject.importFiles(unfiled)
 
         val state = subject.state.value
         assertIs<ImportState.Finished>(state)
@@ -144,7 +225,7 @@ class ImportCoordinatorTest {
             photos = FakePhotoPicker(failure = IllegalStateException("no view controller")),
         )
 
-        subject.importPhotos()
+        subject.importPhotos(unfiled)
 
         assertEquals(ImportState.PickerUnavailable, subject.state.value, "the tap must not vanish")
         assertFalse(subject.isRunning, "and it left nothing running")
@@ -158,7 +239,7 @@ class ImportCoordinatorTest {
             files = FakeFilePicker(failure = IllegalStateException("no activity")),
         )
 
-        subject.importFiles()
+        subject.importFiles(unfiled)
         assertEquals(ImportState.PickerUnavailable, subject.state.value)
 
         subject.acknowledge()
@@ -172,12 +253,12 @@ class ImportCoordinatorTest {
         val photos = FakePhotoPicker(failure = IllegalStateException("no view controller"))
         val subject = coordinator(vault, photos = photos)
 
-        subject.importPhotos()
+        subject.importPhotos(unfiled)
         assertEquals(ImportState.PickerUnavailable, subject.state.value)
 
         // The notice is not a running batch, so it must not block the next attempt — a picker that
         // failed once is the kind of thing a second tap fixes.
-        subject.importPhotos()
+        subject.importPhotos(unfiled)
 
         assertEquals(2, photos.calls, "the failure notice must not latch the affordance shut")
     }
@@ -190,7 +271,7 @@ class ImportCoordinatorTest {
     fun a_cancelled_pick_still_goes_quietly_to_idle() = runTest {
         val subject = coordinator(FakeVaultItems(), photos = FakePhotoPicker(emptyList()))
 
-        subject.importPhotos()
+        subject.importPhotos(unfiled)
 
         assertEquals(ImportState.Idle, subject.state.value, "changing your mind is not a failure")
     }
@@ -204,15 +285,15 @@ class ImportCoordinatorTest {
 
         // Two taps before anything has run. Two pickers would be two batches against one vault —
         // and on Android, two activity-result registrations racing for the same screen.
-        subject.importPhotos()
-        subject.importPhotos()
+        subject.importPhotos(unfiled)
+        subject.importPhotos(unfiled)
         advanceUntilIdle()
 
         assertEquals(1, photos.calls, "the second tap does not open a second picker")
         assertEquals(1, vault.importCalls)
 
         // Once it has finished, though, the user can import again.
-        subject.importPhotos()
+        subject.importPhotos(unfiled)
         advanceUntilIdle()
         assertEquals(2, photos.calls, "a finished batch does not block the next one")
     }
@@ -222,7 +303,7 @@ class ImportCoordinatorTest {
         val vault = FakeVaultItems()
         val subject = coordinator(vault, photos = FakePhotoPicker(listOf(FakePickedFile())))
 
-        subject.importPhotos()
+        subject.importPhotos(unfiled)
         assertIs<ImportState.Finished>(subject.state.value)
 
         subject.acknowledge()
@@ -256,7 +337,7 @@ class ImportCoordinatorTest {
         )
         subject = coordinator(vault, files = FakeFilePicker(listOf(FakePickedFile(name = "slow.mov"))))
 
-        subject.importFiles()
+        subject.importFiles(unfiled)
 
         val duringImport = assertIs<ImportState.Running>(seen.single())
         assertTrue(duringImport.stopping, "the tap must be visible while the batch is still running")
@@ -270,7 +351,7 @@ class ImportCoordinatorTest {
         val vault = FakeVaultItems(onImport = { seen += subject.state.value })
         subject = coordinator(vault, files = FakeFilePicker(listOf(FakePickedFile(name = "quick.jpg"))))
 
-        subject.importFiles()
+        subject.importFiles(unfiled)
 
         assertFalse(
             assertIs<ImportState.Running>(seen.single()).stopping,
@@ -290,7 +371,7 @@ class ImportCoordinatorTest {
         val files = FakeFilePicker(picked)
         subject = coordinator(vault, files = files)
 
-        subject.importFiles()
+        subject.importFiles(unfiled)
 
         val state = subject.state.value
         assertIs<ImportState.Finished>(state)
@@ -320,7 +401,7 @@ class ImportCoordinatorTest {
         )
         val subject = coordinator(vault, files = FakeFilePicker(picked))
 
-        subject.importFiles()
+        subject.importFiles(unfiled)
 
         val state = assertIs<ImportState.Finished>(subject.state.value)
         assertEquals(3, state.imported)
@@ -336,7 +417,7 @@ class ImportCoordinatorTest {
     fun a_batch_with_nothing_deletable_offers_none() = runTest {
         val subject = coordinator(FakeVaultItems(), files = FakeFilePicker(listOf(FakePickedFile())))
 
-        subject.importFiles()
+        subject.importFiles(unfiled)
 
         // The ordinary case: every photo-library item, every iOS item, most cloud documents. Zero
         // has to mean "no offer at all" — not an offer of nothing.
@@ -348,7 +429,7 @@ class ImportCoordinatorTest {
     fun acknowledging_the_summary_discards_the_retained_handles() = runTest {
         val picked = FakePickedFile(name = "from-downloads.pdf", deletable = true)
         val subject = coordinator(FakeVaultItems(), files = FakeFilePicker(listOf(picked)))
-        subject.importFiles()
+        subject.importFiles(unfiled)
 
         subject.acknowledge()
 
@@ -376,10 +457,10 @@ class ImportCoordinatorTest {
             photos = FakePhotoPicker(listOf(FakePickedFile(name = "from-downloads.pdf", deletable = true))),
             files = FakeFilePicker(listOf(FakePickedFile(name = "from-the-library.jpg", deletable = false))),
         )
-        subject.importPhotos()
+        subject.importPhotos(unfiled)
         assertEquals(1, subject.deletableOriginals.size, "the first batch left an offer")
 
-        subject.importFiles()
+        subject.importFiles(unfiled)
 
         assertEquals(0, heldWhileTheSecondBatchRan, "starting a batch drops the previous offer")
         assertEquals(emptyList(), subject.deletableOriginals)
@@ -404,7 +485,7 @@ class ImportCoordinatorTest {
             scope = CoroutineScope(dispatcher),
         )
 
-        subject.importFiles()
+        subject.importFiles(unfiled)
 
         assertEquals(emptyList(), subject.deletableOriginals, "a locked batch leaves nothing to delete by")
         assertFalse(subject.state.value is ImportState.Finished, "and no summary to offer it from")
@@ -422,7 +503,7 @@ class ImportCoordinatorTest {
     fun asking_to_delete_opens_the_disclosure_and_deletes_nothing_yet() = runTest {
         val picked = FakePickedFile(name = "from-downloads.pdf", deletable = true)
         val subject = coordinator(FakeVaultItems(), files = FakeFilePicker(listOf(picked)))
-        subject.importFiles()
+        subject.importFiles(unfiled)
 
         subject.requestOriginalDelete()
 
@@ -434,7 +515,7 @@ class ImportCoordinatorTest {
     fun there_is_nothing_to_ask_about_when_nothing_can_be_deleted() = runTest {
         val picked = FakePickedFile(name = "from-the-library.jpg", deletable = false)
         val subject = coordinator(FakeVaultItems(), files = FakeFilePicker(listOf(picked)))
-        subject.importFiles()
+        subject.importFiles(unfiled)
 
         subject.requestOriginalDelete()
 
@@ -451,7 +532,7 @@ class ImportCoordinatorTest {
             FakePickedFile(name = "two.pdf", deletable = true),
         )
         val subject = coordinator(FakeVaultItems(), files = FakeFilePicker(picked))
-        subject.importFiles()
+        subject.importFiles(unfiled)
         subject.requestOriginalDelete()
 
         subject.confirmOriginalDelete()
@@ -473,7 +554,7 @@ class ImportCoordinatorTest {
             FakePickedFile(name = "three.pdf", deletable = true),
         )
         val subject = coordinator(FakeVaultItems(), files = FakeFilePicker(picked))
-        subject.importFiles()
+        subject.importFiles(unfiled)
         subject.requestOriginalDelete()
 
         subject.confirmOriginalDelete()
@@ -485,7 +566,7 @@ class ImportCoordinatorTest {
     fun confirming_without_the_disclosure_deletes_nothing() = runTest {
         val picked = FakePickedFile(name = "from-downloads.pdf", deletable = true)
         val subject = coordinator(FakeVaultItems(), files = FakeFilePicker(listOf(picked)))
-        subject.importFiles()
+        subject.importFiles(unfiled)
 
         subject.confirmOriginalDelete() // no requestOriginalDelete() first
 
@@ -497,7 +578,7 @@ class ImportCoordinatorTest {
     fun keeping_the_originals_is_an_explicit_choice_that_deletes_nothing() = runTest {
         val picked = FakePickedFile(name = "from-downloads.pdf", deletable = true)
         val subject = coordinator(FakeVaultItems(), files = FakeFilePicker(listOf(picked)))
-        subject.importFiles()
+        subject.importFiles(unfiled)
         subject.requestOriginalDelete()
 
         subject.keepOriginals()
@@ -513,7 +594,7 @@ class ImportCoordinatorTest {
     fun confirming_twice_deletes_each_original_once() = runTest {
         val picked = FakePickedFile(name = "from-downloads.pdf", deletable = true)
         val subject = coordinator(FakeVaultItems(), files = FakeFilePicker(listOf(picked)))
-        subject.importFiles()
+        subject.importFiles(unfiled)
         subject.requestOriginalDelete()
 
         subject.confirmOriginalDelete()
@@ -527,7 +608,7 @@ class ImportCoordinatorTest {
     fun a_summary_whose_originals_were_deleted_is_still_dismissible() = runTest {
         val picked = FakePickedFile(name = "from-downloads.pdf", deletable = true)
         val subject = coordinator(FakeVaultItems(), files = FakeFilePicker(listOf(picked)))
-        subject.importFiles()
+        subject.importFiles(unfiled)
         subject.requestOriginalDelete()
         subject.confirmOriginalDelete()
 
@@ -554,7 +635,7 @@ class ImportCoordinatorTest {
             files = FakeFilePicker(listOf(picked)),
             deleteDispatcher = StandardTestDispatcher(testScheduler),
         )
-        subject.importFiles()
+        subject.importFiles(unfiled)
         subject.requestOriginalDelete()
         subject.confirmOriginalDelete() // launched, not yet run
 
@@ -579,7 +660,7 @@ class ImportCoordinatorTest {
             files = FakeFilePicker(listOf(picked)),
             deleteDispatcher = StandardTestDispatcher(testScheduler),
         )
-        subject.importFiles()
+        subject.importFiles(unfiled)
         subject.requestOriginalDelete()
         subject.confirmOriginalDelete()
 
@@ -600,7 +681,7 @@ class ImportCoordinatorTest {
             files = FakeFilePicker(listOf(picked)),
             deleteDispatcher = StandardTestDispatcher(testScheduler),
         )
-        subject.importFiles()
+        subject.importFiles(unfiled)
         subject.requestOriginalDelete()
         subject.confirmOriginalDelete()
 

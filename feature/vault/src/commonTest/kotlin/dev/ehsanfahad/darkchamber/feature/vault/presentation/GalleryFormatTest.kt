@@ -62,10 +62,25 @@ class GalleryFormatTest {
         assertEquals("Nothing was added.", GalleryFormat.importedCount(0))
     }
 
+    /**
+     * Failed files are counted **without naming a cause**.
+     *
+     * This line used to say "couldn't be read", which was true while an unreadable source was the only
+     * way an import could fail. An import can now be filed into an album as it is created, so a
+     * destination that disappeared mid-batch fails the file as well — and blaming the file for that
+     * would send someone hunting for corruption that is not there.
+     */
     @Test
-    fun unreadable_files_are_counted_without_claiming_why() {
-        assertEquals("1 file couldn't be read.", GalleryFormat.failedCount(1))
-        assertEquals("2 files couldn't be read.", GalleryFormat.failedCount(2))
+    fun failed_files_are_counted_without_claiming_why() {
+        assertEquals("1 file wasn't added.", GalleryFormat.failedCount(1))
+        assertEquals("2 files weren't added.", GalleryFormat.failedCount(2))
+
+        for (count in listOf(1, 3)) {
+            val copy = GalleryFormat.failedCount(count).lowercase()
+            for (cause in listOf("read", "corrupt", "album", "too big")) {
+                assertFalse(cause in copy, "it does not name a cause it cannot know: $copy")
+            }
+        }
     }
 
     @Test

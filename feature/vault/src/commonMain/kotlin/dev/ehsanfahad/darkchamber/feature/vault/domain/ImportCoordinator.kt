@@ -77,9 +77,9 @@ internal class ImportCoordinator(
         private set
 
 
-    override fun importPhotos() = start { photoPicker.pickPhotos() }
+    override fun importPhotos(albumId: ByteArray?) = start(albumId) { photoPicker.pickPhotos() }
 
-    override fun importFiles() = start { filePicker.pickFiles() }
+    override fun importFiles(albumId: ByteArray?) = start(albumId) { filePicker.pickFiles() }
 
     /** Stop the batch. What has already been imported stays imported. */
     override fun cancel() {
@@ -155,7 +155,12 @@ internal class ImportCoordinator(
         _state.value = finished.copy(originalDelete = OriginalDelete.NotAsked)
     }
 
-    private fun start(pick: suspend () -> List<PickedFile>) {
+    /**
+     * [albumId] is where this batch lands. Captured in the parameter and used once below rather than
+     * stored on this object: a field would be a second thing a later batch could leave stale, and the
+     * destination has exactly one life — this pick.
+     */
+    private fun start(albumId: ByteArray?, pick: suspend () -> List<PickedFile>) {
         // Set before the coroutine is even scheduled, so a double tap cannot open two pickers.
         if (isRunning) return
         cancelled = false
@@ -189,6 +194,7 @@ internal class ImportCoordinator(
 
             val summary = queue(
                 files = picked,
+                albumId = albumId,
                 isActive = { !cancelled },
                 onProgress = { progress ->
                     _state.value = ImportState.Running(

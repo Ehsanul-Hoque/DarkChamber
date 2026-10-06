@@ -153,6 +153,54 @@ class DefaultVaultGalleryComponentTest {
         assertEquals(1, imports.acknowledged)
     }
 
+    /**
+     * **An import started inside an album lands in it.** The screen's filter is the destination, decided
+     * once at construction, so it cannot drift mid-batch.
+     */
+    @Test
+    fun an_import_started_inside_an_album_is_filed_there() = runTest {
+        val imports = FakeImports()
+        val album = byteArrayOf(3, 3)
+        val component = component(
+            FakeVaultItems(),
+            imports = imports,
+            // A copy, as a navigation config would produce: the id reaching the batch has to be the
+            // album's content, and handing the same instance to both would hide a comparison bug.
+            filter = ItemFilter.Album(album.copyOf()),
+        )
+
+        component.importPhotos()
+        component.importFiles()
+
+        assertEquals(listOf<List<Byte>?>(album.toList()), imports.photoDestinations)
+        assertEquals(listOf<List<Byte>?>(album.toList()), imports.fileDestinations)
+    }
+
+    /** From the whole vault there is no album to land in, so the batch is told so explicitly. */
+    @Test
+    fun an_import_started_from_the_whole_vault_is_left_unfiled() = runTest {
+        val imports = FakeImports()
+        val component = component(FakeVaultItems(), imports = imports, filter = ItemFilter.All)
+
+        component.importPhotos()
+
+        assertEquals(listOf<List<Byte>?>(null), imports.photoDestinations)
+    }
+
+    /**
+     * Nor does Unfiled file anything: it is a view of the items in no album, so landing there *is*
+     * landing nowhere — and an import that filed itself into a reserved id would be inventing an album.
+     */
+    @Test
+    fun an_import_started_from_unfiled_is_left_unfiled() = runTest {
+        val imports = FakeImports()
+        val component = component(FakeVaultItems(), imports = imports, filter = ItemFilter.Unfiled)
+
+        component.importPhotos()
+
+        assertEquals(listOf<List<Byte>?>(null), imports.photoDestinations)
+    }
+
     @Test
     fun the_running_state_reaches_the_screen_whole() = runTest {
         val imports = FakeImports()
@@ -525,12 +573,24 @@ private class FakeImports : VaultImports {
         _state.value = next
     }
 
-    override fun importPhotos() {
+    /**
+     * Every destination a pick was started with, in order — `null` meaning unfiled.
+     *
+     * Recorded rather than counted, because the thing worth checking is *where* the batch was told to
+     * land: a count cannot tell an import into the album being viewed from one that quietly went
+     * nowhere.
+     */
+    val photoDestinations = mutableListOf<List<Byte>?>()
+    val fileDestinations = mutableListOf<List<Byte>?>()
+
+    override fun importPhotos(albumId: ByteArray?) {
         photoRequests++
+        photoDestinations += albumId?.toList()
     }
 
-    override fun importFiles() {
+    override fun importFiles(albumId: ByteArray?) {
         fileRequests++
+        fileDestinations += albumId?.toList()
     }
 
     override fun cancel() {

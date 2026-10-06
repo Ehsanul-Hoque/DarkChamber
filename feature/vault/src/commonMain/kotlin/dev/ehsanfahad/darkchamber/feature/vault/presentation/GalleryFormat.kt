@@ -299,11 +299,16 @@ internal object GalleryFormat {
     }
 
     /**
-     * How many could not be read. Says only that — not why, and not that they were skipped "safely"
+     * How many did not make it in. Says only that — not why, and not that they were skipped "safely"
      * or anything else we cannot stand behind (hard rule #6).
+     *
+     * It used to say "couldn't be read", which named a cause. That was true while an unreadable source
+     * was the only way a file could fail; now that an import can be filed into an album as it is
+     * created, a destination that disappeared mid-batch fails the file too — and blaming the file for
+     * that would send someone looking for corruption that is not there.
      */
     fun failedCount(failed: Int): String =
-        if (failed == 1) "1 file couldn't be read." else "$failed files couldn't be read."
+        if (failed == 1) "1 file wasn't added." else "$failed files weren't added."
 
     /** The action on the summary. Says how many, because "Delete originals" hides the scale. */
     fun deleteOriginals(count: Int): String =

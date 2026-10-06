@@ -506,9 +506,9 @@ class GalleryAlbumActionsTest {
 private class IdleImports : VaultImports {
     override val state: StateFlow<ImportState> = MutableStateFlow(ImportState.Idle)
 
-    override fun importPhotos() = Unit
+    override fun importPhotos(albumId: ByteArray?) = Unit
 
-    override fun importFiles() = Unit
+    override fun importFiles(albumId: ByteArray?) = Unit
 
     override fun cancel() = Unit
 

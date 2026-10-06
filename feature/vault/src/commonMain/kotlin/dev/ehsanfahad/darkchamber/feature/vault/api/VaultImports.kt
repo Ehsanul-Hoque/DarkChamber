@@ -16,11 +16,21 @@ import kotlinx.coroutines.flow.StateFlow
 interface VaultImports {
     val state: StateFlow<ImportState>
 
-    /** Present the photo library and import what comes back. */
-    fun importPhotos()
+    /**
+     * Present the photo library and import what comes back into [albumId], or leave it unfiled when
+     * that is `null`.
+     *
+     * **The destination belongs to the pick, not to the screen.** It is taken here, once, and every
+     * file in the batch goes to the same place — a batch outlives the screen that started it, so one
+     * read per file would let a navigation in the middle of fifty photos split them across two albums.
+     *
+     * No default, deliberately: a caller that forgets where its files should go would otherwise file
+     * them nowhere and nothing would say so.
+     */
+    fun importPhotos(albumId: ByteArray?)
 
-    /** Present the document picker and import what comes back. */
-    fun importFiles()
+    /** Present the document picker and import what comes back. Same destination rule as [importPhotos]. */
+    fun importFiles(albumId: ByteArray?)
 
     /** Stop the batch. What has already been imported stays imported. */
     fun cancel()

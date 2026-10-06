@@ -214,9 +214,18 @@ internal class DefaultVaultGalleryComponent(
 
     // The coordinator holds the double-tap guard: it is the thing that knows whether a batch is
     // already running, and it stays right whether or not this screen was rebuilt in between.
-    override fun importPhotos() = imports.importPhotos()
+    /**
+     * **Imports land where the screen is looking.** Inside an album they are filed as they are created,
+     * so the album they appear in is the one they were added from; from the whole vault or from Unfiled
+     * they land unfiled, because neither of those is a place.
+     *
+     * Filed at creation rather than imported and then moved: a second write would mean the item exists
+     * unfiled for a moment, visible in a listing it does not belong in, and a failure between the two
+     * would leave it there permanently.
+     */
+    override fun importPhotos() = imports.importPhotos(albumId)
 
-    override fun importFiles() = imports.importFiles()
+    override fun importFiles() = imports.importFiles(albumId)
 
     override fun cancelImport() = imports.cancel()
 

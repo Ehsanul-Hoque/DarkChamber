@@ -247,9 +247,9 @@ private class StubImports : VaultImports {
         _state.value = next
     }
 
-    override fun importPhotos() = Unit
+    override fun importPhotos(albumId: ByteArray?) = Unit
 
-    override fun importFiles() = Unit
+    override fun importFiles(albumId: ByteArray?) = Unit
 
     override fun cancel() = Unit
 
