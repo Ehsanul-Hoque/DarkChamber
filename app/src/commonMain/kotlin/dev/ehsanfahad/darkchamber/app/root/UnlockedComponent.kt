@@ -4,6 +4,7 @@ import com.arkivanov.decompose.ComponentContext
 import com.arkivanov.decompose.router.stack.ChildStack
 import com.arkivanov.decompose.router.stack.StackNavigation
 import com.arkivanov.decompose.router.stack.childStack
+import com.arkivanov.decompose.router.stack.pop
 import com.arkivanov.decompose.router.stack.pushNew
 import com.arkivanov.decompose.value.Value
 import com.arkivanov.essenty.lifecycle.doOnDestroy
@@ -240,7 +241,15 @@ class DefaultUnlockedComponent(
                     vaultObjects = scope.get(),
                     imports = imports,
                     mainContext = mainContext + featureWork,
+                    // The same dispatcher the import's encrypt uses, for the same reason: an album
+                    // rename or delete is a blocking write, and the main thread is where it would be
+                    // felt.
+                    ioContext = ioContext,
                     filter = config.filter.toItemFilter(),
+                    // An album that has been deleted, or that disappeared while being looked at, has
+                    // no screen left to be. `pop`, not a push: this child *is* the album, so leaving
+                    // it means going back to whatever opened it — which is the album grid.
+                    onLeaveAlbum = { navigation.pop() },
                 ),
                 atHome = config.filter == Config.Filter.All,
             )

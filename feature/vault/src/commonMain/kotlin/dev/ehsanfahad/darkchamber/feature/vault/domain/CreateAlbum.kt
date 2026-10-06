@@ -19,13 +19,8 @@ import kotlin.coroutines.CoroutineContext
  * So a blank name is an ordinary answer here ([CreateAlbumResult.NameMissing]) and a crash one layer
  * down. Both are the same rule, stated once in each place it means something different.
  *
- * ### Trimmed, not merely rejected
- *
- * Surrounding whitespace is removed before the name is stored. An album called `"Holiday "` is
- * indistinguishable on screen from `"Holiday"` and sorts away from it, which is a difference the user
- * cannot see and did not ask for. A name of nothing *but* whitespace therefore reduces to nothing and
- * is refused — three spaces is not a name, and an album wearing one cannot be identified or described
- * to anyone.
+ * The text itself goes through [usableAlbumName], which renaming shares: both ask the same question
+ * of the same kind of input, and the vault asks neither.
  */
 internal class CreateAlbum(
     private val vault: VaultItems,
@@ -35,8 +30,7 @@ internal class CreateAlbum(
     private val ioContext: CoroutineContext = Dispatchers.Default,
 ) {
     suspend operator fun invoke(name: String): CreateAlbumResult {
-        val usable = name.trim()
-        if (usable.isEmpty()) return CreateAlbumResult.NameMissing
+        val usable = usableAlbumName(name) ?: return CreateAlbumResult.NameMissing
 
         return when (val made = withContext(ioContext) { vault.createAlbum(usable) }) {
             is Outcome.Ok -> CreateAlbumResult.Created(made.value)

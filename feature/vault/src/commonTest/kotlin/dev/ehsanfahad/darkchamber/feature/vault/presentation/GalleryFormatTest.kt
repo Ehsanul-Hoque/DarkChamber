@@ -230,6 +230,84 @@ class GalleryFormatTest {
         for (claim in listOf("deleted", "lost", "removed", "corrupt")) {
             assertFalse(claim in failed.lowercase(), "a refused create destroys nothing: $failed")
         }
+
+        // A refused rename is a different statement of fact: the album is still there, under the name
+        // it had. "Nothing was created" would be true and useless; this has to name the old name.
+        val renameFailed = GalleryFormat.albumDraftProblem(AlbumDraftProblem.RenameFailed).lowercase()
+        assertTrue("old name" in renameFailed, "it says what the album answers to now: $renameFailed")
+        assertFalse("nothing was created" in renameFailed, "nothing was being created: $renameFailed")
+    }
+
+    /**
+     * The delete confirmation is the one piece of copy on the album surface that has to **correct** an
+     * expectation rather than confirm one.
+     *
+     * Folder semantics say: delete the folder, lose what is in it. The opposite happens — an album is a
+     * label, so every file survives and becomes unfiled. So the copy has to say the items stay *and*
+     * where they go, and must never imply deletion of files, freeing of space, or permanence of
+     * anything but the album.
+     */
+    @Test
+    fun the_delete_confirmation_corrects_the_folder_expectation() {
+        for (count in listOf(1, 2, 37)) {
+            val copy = GalleryFormat.deleteAlbumExplanation(count)
+            val lower = copy.lowercase()
+
+            assertTrue("stay" in lower, "it says the items are kept: $copy")
+            assertTrue("unfiled" in lower, "and where they go, or they look lost: $copy")
+            assertTrue("only the album" in lower, "and what is actually deleted: $copy")
+            for (claim in listOf("space", "free up", "permanent", "forever", "can't be undone")) {
+                assertFalse(claim in lower, "deleting an album is none of that: $copy")
+            }
+        }
+
+        assertTrue("37 items" in GalleryFormat.deleteAlbumExplanation(37), "it says how many")
+        assertFalse("1 items" in GalleryFormat.deleteAlbumExplanation(1), "not '1 items'")
+    }
+
+    /**
+     * An empty album gets the short version. There is nothing in it to reassure anyone about, and copy
+     * insisting on safety where no risk exists reads as a warning.
+     */
+    @Test
+    fun an_empty_album_is_not_reassured_about_its_contents() {
+        val copy = GalleryFormat.deleteAlbumExplanation(0).lowercase()
+
+        assertTrue("empty" in copy, copy)
+        assertFalse("unfiled" in copy, "nothing to move, so nothing to say about where: $copy")
+    }
+
+    /**
+     * A failed delete must **not** claim nothing changed.
+     *
+     * The vault unfiles the items and then deletes the album row, with no transaction spanning the two,
+     * so "nothing changed" might be false: interrupted between them, the items are already unfiled. The
+     * copy says the one thing that is certainly still true — every file is still in the vault — and
+     * admits the rest.
+     */
+    @Test
+    fun a_failed_delete_does_not_promise_that_nothing_changed() {
+        val copy = GalleryFormat.deleteAlbumFailed().lowercase()
+
+        assertFalse("nothing was changed" in copy, "it cannot promise that: $copy")
+        assertFalse("nothing changed" in copy, "it cannot promise that: $copy")
+        assertTrue("still in your vault" in copy, "it says what is certainly true: $copy")
+        assertTrue("may already" in copy, "and admits what it cannot be sure of: $copy")
+    }
+
+    /**
+     * An album that has disappeared says where its contents went, for the same reason the confirmation
+     * does: the grid the user is looking at has just emptied, which is what losing them would look like.
+     */
+    @Test
+    fun the_missing_album_notice_says_where_the_items_went() {
+        val copy = GalleryFormat.albumGone().lowercase()
+
+        assertTrue("unfiled" in copy, copy)
+        for (claim in listOf("deleted", "lost", "gone for good")) {
+            assertFalse(claim in copy, "the files are none of those: $copy")
+        }
+        assertTrue("album" in GalleryFormat.backToAlbums().lowercase(), "the way out says where it leads")
     }
 
     /** The affordance and the dialog it opens use one name for one thing. */

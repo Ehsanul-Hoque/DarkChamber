@@ -85,7 +85,75 @@ internal object GalleryFormat {
         when (problem) {
             AlbumDraftProblem.NameMissing -> "Give the album a name first."
             AlbumDraftProblem.CreateFailed -> "Couldn't create the album. Nothing was created — try again."
+            // Not "nothing changed": what is true, and what the user needs, is that the album still
+            // answers to the name it had.
+            AlbumDraftProblem.RenameFailed -> "Couldn't rename the album. It still has its old name."
         }
+
+    /** The rename dialog's heading. */
+    fun renameAlbum(): String = "Rename album"
+
+    /** The two actions on an album's own screen. */
+    fun deleteAlbum(): String = "Delete album"
+
+    /**
+     * The delete confirmation's heading and body — **the most load-bearing copy in the album
+     * surface**.
+     *
+     * A user arriving here expects folder semantics: delete the folder, lose what is in it. The
+     * opposite happens. An album is a label on an item, not a container that owns it, so deleting one
+     * keeps every file and leaves them unfiled. Someone who assumed otherwise would either be
+     * terrified of a harmless action or, worse, delete an album *in order* to delete its contents and
+     * believe the files were gone.
+     *
+     * So the body states the outcome first and in plain words, and says where the items go — because
+     * "kept" without "where" sends someone hunting an empty album grid for five hundred files.
+     *
+     * What it must never say (hard rule 6, and the honesty rules in docs/DESIGN.md):
+     *
+     * - that it frees space — it frees one small row and nothing else;
+     * - that it deletes, removes or clears files — it does not touch a single one;
+     * - that it is permanent or irreversible in any way that implies data loss. The album is gone for
+     *   good; the files are not, and conflating the two is the misreading this dialog exists to stop.
+     *
+     * The empty case says so plainly rather than reciting the reassurance: there is nothing in it to
+     * reassure anyone about, and copy that insists on safety where no risk exists reads as a warning.
+     */
+    fun deleteAlbumQuestion(): String = "Delete this album?"
+
+    fun deleteAlbumExplanation(itemCount: Int): String =
+        when (itemCount) {
+            0 -> "This album is empty. Only the album is deleted."
+            1 -> "The item in this album stays in your vault. It moves to Unfiled, and only the " +
+                "album itself is deleted."
+            else -> "The $itemCount items in this album stay in your vault. They move to Unfiled, and " +
+                "only the album itself is deleted."
+        }
+
+    /**
+     * A delete that failed, said without the reassurance the create's failure can honestly give.
+     *
+     * The vault unfiles the items and then deletes the album row, with no transaction spanning the
+     * two. So "nothing changed" **might be false**: interrupted between the writes, the items are
+     * already unfiled and the album is still there, holding nothing. The copy says what the user can
+     * then see with their own eyes, and tells them the one thing that is certainly still true — the
+     * files are all still in the vault.
+     */
+    fun deleteAlbumFailed(): String =
+        "Couldn't delete the album. Everything that was in it is still in your vault, but some of it " +
+            "may already have moved to Unfiled."
+
+    /**
+     * The album is not there any more — deleted from another screen while this one was open.
+     *
+     * Says where the items went, for the same reason the confirmation does: the grid in front of the
+     * user has just emptied, and an empty grid with no explanation reads as files that are gone.
+     */
+    fun albumGone(): String =
+        "This album isn't in your vault any more.\nAnything that was in it is still there, under Unfiled."
+
+    /** The one way out of that notice. Says where it leads rather than just "OK". */
+    fun backToAlbums(): String = "Back to albums"
 
     /**
      * What an album tile says under its name.

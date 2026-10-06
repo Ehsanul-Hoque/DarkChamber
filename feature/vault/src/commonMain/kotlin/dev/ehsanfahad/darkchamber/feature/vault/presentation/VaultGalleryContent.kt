@@ -48,6 +48,14 @@ fun VaultGalleryContent(
         onToggleItem = component::toggleItem,
         onSelectAll = component::selectAllItems,
         onClearSelection = component::clearSelection,
+        onStartAlbumRename = component::startAlbumRename,
+        onEditAlbumName = component::editAlbumName,
+        onConfirmAlbumRename = component::confirmAlbumRename,
+        onCancelAlbumRename = component::cancelAlbumRename,
+        onRequestAlbumDelete = component::requestAlbumDelete,
+        onConfirmAlbumDelete = component::confirmAlbumDelete,
+        onCancelAlbumDelete = component::cancelAlbumDelete,
+        onLeaveAlbum = component::leaveAlbum,
         modifier = modifier,
     )
 }

@@ -52,6 +52,21 @@ internal interface VaultItems {
     fun createAlbum(name: String): Outcome<ByteArray>
 
     /**
+     * Rename the album with [id]. Same contract as [createAlbum] for [name]: already usable, or the
+     * vault throws. An album that is not there is a failure rather than a create.
+     */
+    fun renameAlbum(id: ByteArray, name: String): Outcome<Unit>
+
+    /**
+     * Delete the album with [id]. **Its items are kept** — they become unfiled, and nothing of theirs
+     * is touched: an album is a label on an item, not a container that owns it.
+     *
+     * Not idempotent-but-silent: an id that is not there succeeds, because the user's intent is
+     * already true and nothing was falsely reported as destroyed.
+     */
+    fun deleteAlbum(id: ByteArray): Outcome<Unit>
+
+    /**
      * Stream-encrypt a payload into the vault, returning the new object's id.
      *
      * [onProgress] receives the phase the import is in and the bytes read so far within it. The

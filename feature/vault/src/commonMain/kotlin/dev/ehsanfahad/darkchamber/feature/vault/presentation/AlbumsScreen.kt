@@ -122,98 +122,15 @@ internal fun AlbumsScreen(
         }
 
         state.draft?.let { draft ->
-            NewAlbumDialog(
+            AlbumNameDialog(
+                title = GalleryFormat.newAlbum(),
                 draft = draft,
+                confirmLabel = "Create",
+                savingLabel = "Creating…",
                 onNameChange = onEditAlbumName,
                 onConfirm = onConfirmCreate,
                 onCancel = onCancelCreate,
             )
-        }
-    }
-}
-
-/**
- * Name the new album.
- *
- * Dismissable by back and by tapping outside, unlike the import disclosure: there is nothing here a
- * user has to be told before they can act, and the worst a stray dismissal costs is a name worth
- * retyping. **Except while the create runs** — then neither gesture is honoured, because the vault is
- * already writing and a dialog that vanished would be claiming otherwise.
- */
-@Composable
-private fun NewAlbumDialog(
-    draft: AlbumDraft,
-    onNameChange: (String) -> Unit,
-    onConfirm: () -> Unit,
-    onCancel: () -> Unit,
-) {
-    val colors = DarkChamberTheme.colors
-    val spacing = DarkChamberTheme.spacing
-
-    Dialog(
-        onDismissRequest = onCancel,
-        properties = DialogProperties(
-            dismissOnBackPress = !draft.saving,
-            dismissOnClickOutside = !draft.saving,
-        ),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(color = colors.surface, shape = DarkChamberTheme.shapes.large)
-                .padding(spacing.spaceLg),
-        ) {
-            Text(
-                text = GalleryFormat.newAlbum(),
-                style = DarkChamberTheme.typography.title,
-                color = colors.textPrimary,
-            )
-
-            OutlinedTextField(
-                value = draft.name,
-                onValueChange = onNameChange,
-                label = { Text(GalleryFormat.albumNameLabel()) },
-                singleLine = true,
-                // The field is the whole dialog, so the keyboard's action is the dialog's: a user who
-                // typed a name and pressed Done meant to create it.
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { onConfirm() }),
-                isError = draft.problem != null,
-                enabled = !draft.saving,
-                modifier = Modifier.fillMaxWidth().padding(top = spacing.spaceMd),
-            )
-
-            draft.problem?.let { problem ->
-                Text(
-                    text = GalleryFormat.albumDraftProblem(problem),
-                    style = DarkChamberTheme.typography.caption,
-                    color = colors.danger,
-                    modifier = Modifier.padding(top = spacing.spaceXs),
-                )
-            }
-
-            Row(
-                horizontalArrangement = Arrangement.End,
-                modifier = Modifier.fillMaxWidth().padding(top = spacing.spaceMd),
-            ) {
-                TextButton(onClick = onCancel, enabled = !draft.saving) {
-                    Text(
-                        text = "Cancel",
-                        style = DarkChamberTheme.typography.label,
-                        color = if (draft.saving) colors.textSecondary else colors.textPrimary,
-                    )
-                }
-                TextButton(onClick = onConfirm, enabled = !draft.saving) {
-                    // Its own past tense while the write runs: it is the only thing on screen saying
-                    // why the dialog stopped responding. Nothing destructive happens here, so neither
-                    // button takes the danger role.
-                    Text(
-                        text = if (draft.saving) "Creating…" else "Create",
-                        style = DarkChamberTheme.typography.label,
-                        color = if (draft.saving) colors.textSecondary else colors.accent,
-                    )
-                }
-            }
         }
     }
 }

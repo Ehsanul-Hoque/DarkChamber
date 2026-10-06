@@ -10,10 +10,13 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.VaultGalleryComponent
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultImports
 import dev.ehsanfahad.darkchamber.feature.vault.data.VaultObjectsItems
 import dev.ehsanfahad.darkchamber.feature.vault.domain.CreateAlbum
+import dev.ehsanfahad.darkchamber.feature.vault.domain.DeleteAlbum
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ImportCoordinator
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ImportFile
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ImportQueue
+import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveAlbum
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveAlbums
+import dev.ehsanfahad.darkchamber.feature.vault.domain.RenameAlbum
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveGallery
 import coil3.ImageLoader
 import coil3.PlatformContext
@@ -76,18 +79,28 @@ fun vaultGalleryComponent(
     vaultObjects: VaultObjects,
     imports: VaultImports,
     mainContext: CoroutineContext = Dispatchers.Main,
+    // Where an album rename or delete runs. Small writes, but blocking ones, and the thread they must
+    // not run on is the one drawing the screen they change.
+    ioContext: CoroutineContext = Dispatchers.Default,
     // What this instance of the gallery lists: the whole vault, one album, or the unfiled items.
     // A construction parameter rather than an intent, because it is the screen's identity — the
     // host pushes a new child to change it, and nothing on screen can.
     filter: ItemFilter = ItemFilter.All,
+    // Where leaving an album goes: a successful delete, or the notice shown when the album disappeared
+    // from somewhere else. Unused by the other two listings, which have no album to leave.
+    onLeaveAlbum: () -> Unit = {},
 ): VaultGalleryComponent {
     val items = VaultObjectsItems(vaultObjects)
     return DefaultVaultGalleryComponent(
         componentContext = componentContext,
         observeGallery = ObserveGallery(items),
         imports = imports,
+        observeAlbum = ObserveAlbum(items),
+        renameAlbum = RenameAlbum(vault = items, ioContext = ioContext),
+        deleteAlbum = DeleteAlbum(vault = items, ioContext = ioContext),
         mainContext = mainContext,
         filter = filter,
+        onLeaveAlbum = onLeaveAlbum,
     )
 }
 

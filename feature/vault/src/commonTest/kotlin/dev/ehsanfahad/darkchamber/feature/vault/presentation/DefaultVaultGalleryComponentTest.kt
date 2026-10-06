@@ -21,7 +21,10 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.ImportStage
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportState
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultImports
 import dev.ehsanfahad.darkchamber.feature.vault.damagedMeta
+import dev.ehsanfahad.darkchamber.feature.vault.domain.DeleteAlbum
+import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveAlbum
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveGallery
+import dev.ehsanfahad.darkchamber.feature.vault.domain.RenameAlbum
 import dev.ehsanfahad.darkchamber.feature.vault.domain.VaultItems
 import dev.ehsanfahad.darkchamber.feature.vault.readableMeta
 import dev.ehsanfahad.darkchamber.feature.vault.summary
@@ -39,6 +42,7 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.io.RawSource
+import kotlin.coroutines.CoroutineContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -57,17 +61,26 @@ class DefaultVaultGalleryComponentTest {
         progressInterval: Duration = Duration.ZERO,
         pickingDelay: Duration = Duration.ZERO,
         stageGrace: Duration = Duration.ZERO,
+        filter: ItemFilter = ItemFilter.All,
+        // Where the album writes run. Held by the tests that need to stand inside one.
+        ioContext: CoroutineContext = UnconfinedTestDispatcher(testScheduler),
+        onLeaveAlbum: () -> Unit = {},
     ): DefaultVaultGalleryComponent {
         val dispatcher = UnconfinedTestDispatcher(testScheduler)
         return DefaultVaultGalleryComponent(
             componentContext = DefaultComponentContext(lifecycle),
             observeGallery = ObserveGallery(vault),
             imports = imports,
+            observeAlbum = ObserveAlbum(vault),
+            renameAlbum = RenameAlbum(vault, ioContext = ioContext),
+            deleteAlbum = DeleteAlbum(vault, ioContext = ioContext),
             mainContext = dispatcher,
             // No throttling by default: these tests are about which states arrive, not how often.
             progressInterval = progressInterval,
             pickingDelay = pickingDelay,
             stageGrace = stageGrace,
+            filter = filter,
+            onLeaveAlbum = onLeaveAlbum,
         )
     }
 

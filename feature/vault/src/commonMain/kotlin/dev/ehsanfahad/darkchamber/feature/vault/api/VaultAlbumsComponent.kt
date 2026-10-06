@@ -75,7 +75,7 @@ data class AlbumsState(
 )
 
 /**
- * A new album being named.
+ * An album name being typed — a new album's here, or a rename's on the screen showing one album.
  *
  * The typed [name] lives in state rather than in the composable because the problem shown next to it
  * has to clear as it is edited, and two owners of one field is how that ends up stale. Like every
@@ -96,6 +96,12 @@ enum class AlbumDraftProblem {
 
     /** The vault refused the create. No album was made, and the typed name is still there to retry. */
     CreateFailed,
+
+    /**
+     * The vault refused a rename. The album keeps the name it had — which is a different thing to say
+     * than [CreateFailed]'s "nothing was created", and the reason this is its own case.
+     */
+    RenameFailed,
 }
 
 /** A recoverable album-surface failure, surfaced as honest copy (hard rule #6). */

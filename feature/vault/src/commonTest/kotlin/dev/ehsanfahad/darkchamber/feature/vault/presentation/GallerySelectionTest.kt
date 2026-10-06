@@ -8,7 +8,10 @@ import dev.ehsanfahad.darkchamber.feature.vault.FakeVaultItems
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportStage
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportState
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultImports
+import dev.ehsanfahad.darkchamber.feature.vault.domain.DeleteAlbum
+import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveAlbum
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveGallery
+import dev.ehsanfahad.darkchamber.feature.vault.domain.RenameAlbum
 import dev.ehsanfahad.darkchamber.feature.vault.readableMeta
 import dev.ehsanfahad.darkchamber.feature.vault.summary
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -44,6 +47,11 @@ class GallerySelectionTest {
             componentContext = DefaultComponentContext(lifecycle, backHandler = backDispatcher),
             observeGallery = ObserveGallery(vault),
             imports = imports,
+            // Album editing, unused by these tests: this component is the whole-vault listing, which
+            // has no album behind it.
+            observeAlbum = ObserveAlbum(vault),
+            renameAlbum = RenameAlbum(vault, ioContext = UnconfinedTestDispatcher(testScheduler)),
+            deleteAlbum = DeleteAlbum(vault, ioContext = UnconfinedTestDispatcher(testScheduler)),
             mainContext = UnconfinedTestDispatcher(testScheduler),
             progressInterval = Duration.ZERO,
             pickingDelay = Duration.ZERO,

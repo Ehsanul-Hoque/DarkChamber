@@ -29,6 +29,10 @@ internal class VaultObjectsItems(private val objects: VaultObjects) : VaultItems
 
     override fun createAlbum(name: String): Outcome<ByteArray> = objects.createAlbum(name)
 
+    override fun renameAlbum(id: ByteArray, name: String): Outcome<Unit> = objects.renameAlbum(id, name)
+
+    override fun deleteAlbum(id: ByteArray): Outcome<Unit> = objects.deleteAlbum(id)
+
     override fun import(
         name: String,
         mime: String,

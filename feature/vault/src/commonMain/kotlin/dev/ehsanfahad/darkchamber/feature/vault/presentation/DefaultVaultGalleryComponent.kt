@@ -7,7 +7,13 @@ import com.arkivanov.essenty.backhandler.BackCallback
 import com.arkivanov.essenty.lifecycle.doOnDestroy
 import dev.ehsanfahad.darkchamber.core.logging.logVaultError
 import dev.ehsanfahad.darkchamber.core.model.ItemFilter
+import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
+import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumDelete
+import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumDraft
+import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumDraftProblem
+import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumState
+import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryError
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryScope
@@ -17,7 +23,12 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.ImportStage
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportState
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultGalleryComponent
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultImports
+import dev.ehsanfahad.darkchamber.feature.vault.domain.AlbumPresence
+import dev.ehsanfahad.darkchamber.feature.vault.domain.DeleteAlbum
+import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveAlbum
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveGallery
+import dev.ehsanfahad.darkchamber.feature.vault.domain.RenameAlbum
+import dev.ehsanfahad.darkchamber.feature.vault.domain.RenameAlbumResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -30,6 +41,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.launch
 import kotlin.coroutines.CoroutineContext
 import kotlin.time.Duration
 import kotlin.time.TimeMark
@@ -49,6 +61,12 @@ internal class DefaultVaultGalleryComponent(
     componentContext: ComponentContext,
     observeGallery: ObserveGallery,
     private val imports: VaultImports,
+    // Album editing. Handed in unconditionally even though only an album-scoped screen can use any of
+    // it: what decides that is the filter below, so making these nullable would put the same question
+    // in two places and leave a null check at every call site.
+    observeAlbum: ObserveAlbum,
+    private val renameAlbum: RenameAlbum,
+    private val deleteAlbum: DeleteAlbum,
     mainContext: CoroutineContext = Dispatchers.Main,
     // How often a *running* batch is allowed to redraw. The batch reports every buffered read —
     // kilobytes apart — which is far finer than a screen can show or a user can perceive, and
@@ -71,7 +89,20 @@ internal class DefaultVaultGalleryComponent(
     // different child from the one showing the whole vault, so changing it is navigation rather than
     // a state change, and the selection below cannot straddle two listings.
     private val filter: ItemFilter = ItemFilter.All,
+    // Where leaving an album goes — a successful delete, or the notice shown when it disappeared from
+    // elsewhere. A callback rather than navigation performed here, like the album grid's openers: a
+    // component that popped the stack itself would have to know the shape of the stack it sits in.
+    private val onLeaveAlbum: () -> Unit = {},
 ) : VaultGalleryComponent, ComponentContext by componentContext {
+
+    /**
+     * The album this screen is showing, or `null` on the whole-vault and unfiled listings.
+     *
+     * The one place the filter is unpacked. Every album action below is guarded on it, which is also
+     * what makes those actions no-ops on the two listings that have no album behind them — rather than
+     * each needing to know which listing it is on.
+     */
+    private val albumId: ByteArray? = (filter as? ItemFilter.Album)?.id
 
     // SupervisorJob so one failed intent does not kill the component's other work, but parented to
     // whatever Job the caller passed: the app scopes feature work to the vault session, and
@@ -133,6 +164,23 @@ internal class DefaultVaultGalleryComponent(
             .holdBackUnmeasurableStages(stageGrace)
             .onEach(::onImportState)
             .launchIn(scope)
+
+        // Only an album-scoped screen watches an album. Nothing is subscribed on the other two, which
+        // is not an optimisation: there is no album to watch, and a listing emission that published an
+        // album state would put a heading on a screen that has no album.
+        albumId?.let { id ->
+            observeAlbum(id)
+                // A broken catalog is already reported by the item listing above, which fails at the
+                // same moment and for the same reason. Reporting it twice would put two banners on one
+                // screen; what this must not do is leave the heading showing a stale name as though
+                // nothing were wrong, so the album goes to Gone and the notice explains the exit.
+                .catch { cause ->
+                    logVaultError(ALBUM_STAGE, VaultError.Unexpected(cause))
+                    _state.value = _state.value.copy(album = AlbumState.Gone)
+                }
+                .onEach(::onAlbum)
+                .launchIn(scope)
+        }
     }
 
     // The coordinator holds the double-tap guard: it is the thing that knows whether a batch is
@@ -179,6 +227,152 @@ internal class DefaultVaultGalleryComponent(
         _state.value = _state.value.copy(error = null)
         // A summary the user has acknowledged must not come back the moment the state re-emits.
         imports.acknowledge()
+    }
+
+    /**
+     * Prefilled with the current name, and **only** when there is one to prefill: an unreadable name
+     * has nothing to start from, and offering to replace a name the user has never seen is offering an
+     * edit they cannot judge. Deleting such an album is still available, which is the action that
+     * actually helps there.
+     */
+    override fun startAlbumRename() {
+        val present = _state.value.album as? AlbumState.Present ?: return
+        if (present.rename != null || present.delete != null) return
+        val current = present.name as? AlbumTileName.Readable ?: return
+        publishAlbum(present.copy(rename = AlbumDraft(name = current.value)))
+    }
+
+    override fun editAlbumName(name: String) {
+        val present = _state.value.album as? AlbumState.Present ?: return
+        val draft = present.rename ?: return
+        // Nothing is editable while the write runs: accepting a keystroke would rename the album to
+        // one thing while the field showed another.
+        if (draft.saving) return
+        publishAlbum(present.copy(rename = draft.copy(name = name, problem = null)))
+    }
+
+    override fun confirmAlbumRename() {
+        val id = albumId ?: return
+        val present = _state.value.album as? AlbumState.Present ?: return
+        val draft = present.rename ?: return
+        // The double-submit guard. Two renames would both land, and the second would win — harmless
+        // here, unlike the create's duplicate album, but a second write for no reason either way.
+        if (draft.saving) return
+
+        publishAlbum(present.copy(rename = draft.copy(saving = true, problem = null)))
+
+        scope.launch {
+            when (val done = renameAlbum(id, draft.name)) {
+                // Closed. The new name arrives through the album listing, like every other change to
+                // the catalog — nothing here writes it into the heading.
+                is RenameAlbumResult.Renamed -> closeRename()
+                is RenameAlbumResult.NameMissing -> failRename(AlbumDraftProblem.NameMissing)
+                is RenameAlbumResult.Failed -> {
+                    // A stage name and an error code. Never the name being set, and never the old one
+                    // (hard rule 4).
+                    logVaultError(RENAME_STAGE, done.error)
+                    failRename(AlbumDraftProblem.RenameFailed)
+                }
+            }
+        }
+    }
+
+    override fun cancelAlbumRename() {
+        val present = _state.value.album as? AlbumState.Present ?: return
+        if (present.rename?.saving == true) return
+        publishAlbum(present.copy(rename = null))
+    }
+
+    /**
+     * Opens the confirmation and writes nothing.
+     *
+     * The confirmation is not ceremony here: deleting an album keeps every file in it, which is the
+     * **opposite** of what folder semantics lead people to expect, and this is the only place that
+     * expectation gets corrected before the fact.
+     */
+    override fun requestAlbumDelete() {
+        val present = _state.value.album as? AlbumState.Present ?: return
+        // Not over a rename, and not over a delete already running.
+        if (present.rename != null || present.delete == AlbumDelete.Deleting) return
+        publishAlbum(present.copy(delete = AlbumDelete.Confirming))
+    }
+
+    override fun confirmAlbumDelete() {
+        val id = albumId ?: return
+        val present = _state.value.album as? AlbumState.Present ?: return
+        // Only from the confirmation, so nothing can delete an album without the copy having been on
+        // screen — and never twice, which would run the second delete against an id already gone.
+        if (present.delete != AlbumDelete.Confirming && present.delete != AlbumDelete.Failed) return
+
+        publishAlbum(present.copy(delete = AlbumDelete.Deleting))
+
+        scope.launch {
+            when (val done = deleteAlbum(id)) {
+                // Leave at once. The album listing this screen watches would reach Gone a moment later
+                // anyway, but showing the "no longer here" notice for an album the user just deleted on
+                // purpose would be explaining their own action back to them.
+                is Outcome.Ok -> onLeaveAlbum()
+                is Outcome.Err -> {
+                    logVaultError(DELETE_STAGE, done.error)
+                    failDelete()
+                }
+            }
+        }
+    }
+
+    override fun cancelAlbumDelete() {
+        val present = _state.value.album as? AlbumState.Present ?: return
+        if (present.delete == AlbumDelete.Deleting) return
+        publishAlbum(present.copy(delete = null))
+    }
+
+    override fun leaveAlbum() = onLeaveAlbum()
+
+    private fun publishAlbum(album: AlbumState) {
+        _state.value = _state.value.copy(album = album)
+    }
+
+    private fun closeRename() {
+        val present = _state.value.album as? AlbumState.Present ?: return
+        publishAlbum(present.copy(rename = null))
+    }
+
+    /**
+     * Read back out of state rather than copying the value captured before the write: the album
+     * listing can have re-emitted a new name in the meantime, and reinstating the old one would
+     * silently undo a rename on the heading.
+     */
+    private fun failDelete() {
+        val present = _state.value.album as? AlbumState.Present ?: return
+        publishAlbum(present.copy(delete = AlbumDelete.Failed))
+    }
+
+    private fun failRename(problem: AlbumDraftProblem) {
+        val present = _state.value.album as? AlbumState.Present ?: return
+        val draft = present.rename ?: return
+        // The dialog stays open holding what was typed: both problems are ones the user can act on,
+        // and closing it would throw the text away in order to say so.
+        publishAlbum(present.copy(rename = draft.copy(saving = false, problem = problem)))
+    }
+
+    /**
+     * What the album listing says about the album, folded into whatever this screen is doing to it.
+     *
+     * A rename in progress survives an emission — the listing re-emits for reasons that have nothing
+     * to do with this album — but a rename over an album that has **gone** does not: there is nothing
+     * left to rename, and a dialog over the notice would be offering an edit that cannot land.
+     */
+    private fun onAlbum(presence: AlbumPresence) {
+        _state.value = _state.value.copy(
+            album = when (presence) {
+                is AlbumPresence.Gone -> AlbumState.Gone
+                is AlbumPresence.Present -> when (val current = _state.value.album) {
+                    is AlbumState.Present -> current.copy(name = presence.name)
+                    // First emission, or an album that came back — neither carries an action.
+                    else -> AlbumState.Present(name = presence.name)
+                }
+            },
+        )
     }
 
     /**
@@ -325,6 +519,9 @@ internal class DefaultVaultGalleryComponent(
     private companion object {
         // Stage labels for the redaction boundary: event names only, never a name, path or id.
         const val LISTING_STAGE = "vault-gallery-listing"
+        const val ALBUM_STAGE = "vault-gallery-album"
+        const val RENAME_STAGE = "vault-album-rename"
+        const val DELETE_STAGE = "vault-album-delete"
 
         /** Roughly six frames at 60 Hz: fast enough to look continuous, slow enough to be free. */
         val PROGRESS_INTERVAL: Duration = 100.milliseconds

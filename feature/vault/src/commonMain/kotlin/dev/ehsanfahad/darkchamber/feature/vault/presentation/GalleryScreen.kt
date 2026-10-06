@@ -48,6 +48,9 @@ import coil3.compose.AsyncImagePainter
 import coil3.compose.SubcomposeAsyncImage
 import dev.ehsanfahad.darkchamber.core.designsystem.DarkChamberTheme
 import dev.ehsanfahad.darkchamber.core.designsystem.prefersReducedMotion
+import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumDelete
+import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumState
+import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryError
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
@@ -83,6 +86,14 @@ internal fun GalleryScreen(
     onToggleItem: (ByteArray) -> Unit,
     onSelectAll: () -> Unit,
     onClearSelection: () -> Unit,
+    onStartAlbumRename: () -> Unit,
+    onEditAlbumName: (String) -> Unit,
+    onConfirmAlbumRename: () -> Unit,
+    onCancelAlbumRename: () -> Unit,
+    onRequestAlbumDelete: () -> Unit,
+    onConfirmAlbumDelete: () -> Unit,
+    onCancelAlbumDelete: () -> Unit,
+    onLeaveAlbum: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spacing = DarkChamberTheme.spacing
@@ -97,13 +108,32 @@ internal fun GalleryScreen(
 
     // No insets here: the host applies them once for the whole unlocked subtree, so a screen that
     // added its own would inset twice.
+    val album = state.album
+
     Box(modifier = modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
             state.error?.let { error ->
                 ErrorBanner(error = error, onDismiss = onDismissError)
             }
 
+            // An album's own heading, with the two things that can be done to the album itself. Only
+            // ever present on an album-scoped screen: the whole vault cannot be renamed, and Unfiled
+            // is a view rather than a thing.
+            if (album is AlbumState.Present) {
+                AlbumHeader(
+                    name = album.name,
+                    // Nothing to rename when the name will not open, so the action is absent rather
+                    // than present and dead — but deleting stays, because a damaged album is the one
+                    // most likely to want deleting.
+                    onRename = onStartAlbumRename.takeIf { album.name is AlbumTileName.Readable },
+                    onDelete = onRequestAlbumDelete,
+                )
+            }
+
             when {
+                // Ahead of loading and of the grid: an album that is no longer there has nothing to
+                // list, and a spinner or an "empty album" message would both be lying about why.
+                album is AlbumState.Gone -> MissingAlbumNotice(onLeave = onLeaveAlbum)
                 state.loading -> CenteredMessage("Opening the vault…", showSpinner = true)
                 state.items.isEmpty() -> EmptyListing(state.scope)
                 else -> ItemGrid(
@@ -179,6 +209,202 @@ internal fun GalleryScreen(
                 onDelete = onConfirmOriginalDelete,
                 onKeep = onKeepOriginals,
             )
+        }
+
+        // The album's own two dialogs, above the grid they act on. Never both: each intent refuses
+        // while the other is open.
+        if (album is AlbumState.Present) {
+            album.rename?.let { draft ->
+                AlbumNameDialog(
+                    title = GalleryFormat.renameAlbum(),
+                    draft = draft,
+                    confirmLabel = "Rename",
+                    savingLabel = "Renaming…",
+                    onNameChange = onEditAlbumName,
+                    onConfirm = onConfirmAlbumRename,
+                    onCancel = onCancelAlbumRename,
+                )
+            }
+
+            album.delete?.let { delete ->
+                DeleteAlbumConfirmation(
+                    itemCount = state.items.size,
+                    delete = delete,
+                    onDelete = onConfirmAlbumDelete,
+                    onKeep = onCancelAlbumDelete,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * An album's heading: what it is called, and the two things that can be done to the album itself.
+ *
+ * The name is drawn from the listing rather than from the screen that led here, so a rename shows up
+ * on the heading without this screen being told about it.
+ *
+ * [onRename] is null for an album whose name will not open — absent rather than disabled, because a
+ * dead control invites a tap and explains nothing. Deleting stays available there on purpose: an album
+ * nobody can read the name of is the one most likely to want removing, and doing so destroys none of
+ * its contents.
+ */
+@Composable
+private fun AlbumHeader(name: AlbumTileName, onRename: (() -> Unit)?, onDelete: () -> Unit) {
+    val colors = DarkChamberTheme.colors
+    val spacing = DarkChamberTheme.spacing
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = spacing.spaceMd, vertical = spacing.spaceXs),
+    ) {
+        Text(
+            text = when (name) {
+                is AlbumTileName.Readable -> name.value
+                // The same wording the tile carries, for the same reason: we know the name did not
+                // verify, not whether it was tampered with or merely corrupted (hard rule #6).
+                AlbumTileName.Unreadable -> "Can't be verified"
+            },
+            style = DarkChamberTheme.typography.title,
+            color = if (name is AlbumTileName.Unreadable) colors.danger else colors.textPrimary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+
+        onRename?.let { rename ->
+            TextButton(onClick = rename) {
+                Text(
+                    text = GalleryFormat.renameAlbum(),
+                    style = DarkChamberTheme.typography.label,
+                    color = colors.accent,
+                )
+            }
+        }
+        TextButton(onClick = onDelete) {
+            // Not the danger role. Deleting an album destroys nothing, and colouring it as though it
+            // did would be the honesty rule broken in the other direction — frightening someone away
+            // from a harmless action (hard rule #6).
+            Text(
+                text = GalleryFormat.deleteAlbum(),
+                style = DarkChamberTheme.typography.label,
+                color = colors.accent,
+            )
+        }
+    }
+}
+
+/**
+ * The album is not there any more, said where the user is already looking — then one tap back to the
+ * grid.
+ *
+ * The notice comes **before** the exit rather than after it: a message shown on the screen being
+ * popped is a message nobody reads, and popping silently would leave someone wondering where their
+ * files went. The grid they are looking at has just emptied, which is exactly what losing them would
+ * look like.
+ */
+@Composable
+private fun MissingAlbumNotice(onLeave: () -> Unit) {
+    val spacing = DarkChamberTheme.spacing
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+        modifier = Modifier.fillMaxSize().padding(spacing.spaceLg),
+    ) {
+        Text(
+            text = GalleryFormat.albumGone(),
+            style = DarkChamberTheme.typography.body,
+            color = DarkChamberTheme.colors.textSecondary,
+            textAlign = TextAlign.Center,
+        )
+        TextButton(onClick = onLeave, modifier = Modifier.padding(top = spacing.spaceSm)) {
+            Text(
+                text = GalleryFormat.backToAlbums(),
+                style = DarkChamberTheme.typography.label,
+                color = DarkChamberTheme.colors.accent,
+            )
+        }
+    }
+}
+
+/**
+ * Deleting an album, and the one piece of copy on this screen that has to correct an expectation
+ * rather than confirm one.
+ *
+ * Dismissable, unlike the import disclosure: that one warns about something irreversible, while this
+ * one exists to explain that **nothing is lost**. Making it inescapable would imply the opposite of
+ * what it says.
+ *
+ * Neither button leads. Deleting is a perfectly ordinary thing to do to an album and keeping it is
+ * equally fine, so they read as two options rather than a default and an escape — and the delete does
+ * not take the danger role, because it destroys nothing.
+ */
+@Composable
+private fun DeleteAlbumConfirmation(
+    itemCount: Int,
+    delete: AlbumDelete,
+    onDelete: () -> Unit,
+    onKeep: () -> Unit,
+) {
+    val colors = DarkChamberTheme.colors
+    val spacing = DarkChamberTheme.spacing
+    val running = delete == AlbumDelete.Deleting
+
+    Dialog(
+        onDismissRequest = onKeep,
+        // While the two writes run there is nothing to dismiss *to*: the delete cannot be called back,
+        // and a dialog that vanished would be claiming it had been.
+        properties = DialogProperties(dismissOnBackPress = !running, dismissOnClickOutside = !running),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(color = colors.surface, shape = DarkChamberTheme.shapes.large)
+                .padding(spacing.spaceLg),
+        ) {
+            Text(
+                text = GalleryFormat.deleteAlbumQuestion(),
+                style = DarkChamberTheme.typography.title,
+                color = colors.textPrimary,
+            )
+            Text(
+                text = GalleryFormat.deleteAlbumExplanation(itemCount),
+                style = DarkChamberTheme.typography.body,
+                color = colors.textSecondary,
+                modifier = Modifier.padding(top = spacing.spaceSm),
+            )
+
+            if (delete == AlbumDelete.Failed) {
+                Text(
+                    text = GalleryFormat.deleteAlbumFailed(),
+                    style = DarkChamberTheme.typography.caption,
+                    color = colors.danger,
+                    modifier = Modifier.padding(top = spacing.spaceSm),
+                )
+            }
+
+            Row(
+                horizontalArrangement = Arrangement.End,
+                modifier = Modifier.fillMaxWidth().padding(top = spacing.spaceMd),
+            ) {
+                TextButton(onClick = onKeep, enabled = !running) {
+                    Text(
+                        text = "Keep it",
+                        style = DarkChamberTheme.typography.label,
+                        color = if (running) colors.textSecondary else colors.textPrimary,
+                    )
+                }
+                TextButton(onClick = onDelete, enabled = !running) {
+                    Text(
+                        text = if (running) "Deleting…" else GalleryFormat.deleteAlbum(),
+                        style = DarkChamberTheme.typography.label,
+                        color = if (running) colors.textSecondary else colors.accent,
+                    )
+                }
+            }
         }
     }
 }

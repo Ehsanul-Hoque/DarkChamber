@@ -53,6 +53,47 @@ interface VaultGalleryComponent {
     /** Leave selecting mode and drop the selection. Clear and back both land here. */
     fun clearSelection()
 
+    /**
+     * Open the rename dialog for the album being viewed, **prefilled with its current name**: a
+     * rename starts from what the thing is called, and an empty field would make the common edit —
+     * fixing a typo — a retype.
+     *
+     * A no-op on any other listing, and on an album whose name would not open: there is nothing to
+     * start from, and prefilling an unreadable name with a placeholder would offer to replace a name
+     * nobody has seen.
+     */
+    fun startAlbumRename()
+
+    /** What has been typed into the rename field. Clears a shown problem — they are fixing it. */
+    fun editAlbumName(name: String)
+
+    /** Rename the album to the current draft. Ignored while one rename is already running. */
+    fun confirmAlbumRename()
+
+    /** Abandon the rename. Ignored while the write is in flight — that cannot be called back. */
+    fun cancelAlbumRename()
+
+    /**
+     * Ask to delete the album being viewed. **Opens the confirmation; deletes nothing**, because what
+     * deleting an album does is the opposite of what users arrive expecting and the confirmation is
+     * where that gets corrected.
+     */
+    fun requestAlbumDelete()
+
+    /** Delete it, the confirmation having been shown. Its items are kept and become unfiled. */
+    fun confirmAlbumDelete()
+
+    /** Decline the confirmation. */
+    fun cancelAlbumDelete()
+
+    /**
+     * Leave an album that is no longer there — the one action offered on that notice.
+     *
+     * Navigation, so it leaves through the callback the host gave this component, like opening an
+     * album does from the grid.
+     */
+    fun leaveAlbum()
+
     /** Clear a surfaced [GalleryError] after the user acknowledges it. */
     fun dismissError()
 }
@@ -71,6 +112,14 @@ data class GalleryState(
     val error: GalleryError? = null,
     val selection: GallerySelection = GallerySelection(),
     val scope: GalleryScope = GalleryScope.WholeVault,
+    /**
+     * The album this screen is showing, or `null` on the two listings that are not an album.
+     *
+     * Separate from [scope] rather than folded into it: the scope is fixed at construction and is what
+     * the copy branches on, while this changes underneath the screen — an album can be renamed from
+     * here and can disappear from elsewhere.
+     */
+    val album: AlbumState? = null,
 ) {
     /** Whether a batch is between the user asking for one and it ending. */
     val importing: Boolean get() = batch is ImportState.Picking || batch is ImportState.Running
@@ -96,6 +145,54 @@ enum class GalleryScope {
 
     /** The items in no album. */
     Unfiled,
+}
+
+/**
+ * The album an album-scoped gallery is showing.
+ *
+ * Sealed, so [Gone] cannot be confused with "present but unnamed": the first has no actions at all
+ * and the second has all of them. A bag of nullable fields would let a screen offer to rename an
+ * album that is not there.
+ */
+sealed interface AlbumState {
+
+    /**
+     * It is there. [rename] and [delete] are the two things that can be in progress on it, and they
+     * are separate rather than one "current action" because neither can start while the other is
+     * open — the dialogs are modal, so the type does not need to enforce what the UI already does.
+     */
+    data class Present(
+        val name: AlbumTileName,
+        val rename: AlbumDraft? = null,
+        val delete: AlbumDelete? = null,
+    ) : AlbumState
+
+    /**
+     * It is not in the catalog any more — deleted here, or from somewhere else while this screen was
+     * open.
+     *
+     * This state exists because an album's disappearance is **invisible** in the item listing: its
+     * items are unfiled rather than destroyed, so the grid simply empties, which is indistinguishable
+     * from an album that was always empty. Without saying so, a user would be left on a grid that will
+     * never fill and never explain why.
+     */
+    data object Gone : AlbumState
+}
+
+/** How far a delete has got. The confirmation is a step of its own because the copy is the point. */
+enum class AlbumDelete {
+    /** The confirmation is up and nothing has been written. */
+    Confirming,
+
+    /** The two writes are running. Both buttons are spent — this cannot be called back. */
+    Deleting,
+
+    /**
+     * The vault refused. Deliberately **not** reported as "nothing changed": the vault unfiles the
+     * items and then deletes the album row, with no transaction spanning the two, so a failure may
+     * have left the items already unfiled.
+     */
+    Failed,
 }
 
 /**

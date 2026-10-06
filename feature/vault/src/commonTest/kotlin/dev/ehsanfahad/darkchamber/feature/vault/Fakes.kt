@@ -368,6 +368,10 @@ internal class FakeVaultItems(
     private val thumbnails: Map<List<Byte>, Outcome<ByteArray?>> = emptyMap(),
     /** What a create answers. A failure here is the vault refusing, not a name being wrong. */
     private val createResult: Outcome<ByteArray> = Outcome.Ok(byteArrayOf(42)),
+    /** What a rename answers. */
+    private val renameResult: Outcome<Unit> = Outcome.Ok(Unit),
+    /** What a delete answers. */
+    private val deleteResult: Outcome<Unit> = Outcome.Ok(Unit),
 ) : VaultItems {
     var thumbnailCalls = 0
         private set
@@ -404,12 +408,30 @@ internal class FakeVaultItems(
      */
     val createdNames = mutableListOf<String>()
 
+    /** Every `(id, name)` a rename was asked for, so a blank name reaching the vault is catchable. */
+    val renames = mutableListOf<Pair<List<Byte>, String>>()
+
+    /** Every id a delete was asked for. */
+    val deletedAlbums = mutableListOf<List<Byte>>()
+
     override fun createAlbum(name: String): Outcome<ByteArray> {
         // The real vault treats a blank name as a caller bug and throws. The fake keeps that
         // promise, so a use case that stopped validating is caught here rather than passing.
         require(name.isNotBlank()) { "album name must not be blank" }
         createdNames += name
         return createResult
+    }
+
+    override fun renameAlbum(id: ByteArray, name: String): Outcome<Unit> {
+        // The same precondition the vault has, for the same reason as [createAlbum]'s.
+        require(name.isNotBlank()) { "album name must not be blank" }
+        renames += id.toList() to name
+        return renameResult
+    }
+
+    override fun deleteAlbum(id: ByteArray): Outcome<Unit> {
+        deletedAlbums += id.toList()
+        return deleteResult
     }
 
     override fun import(
@@ -471,6 +493,10 @@ internal class ExplodingVaultItems : VaultItems {
 
     override fun createAlbum(name: String): Outcome<ByteArray> = Outcome.Ok(byteArrayOf(1))
 
+    override fun renameAlbum(id: ByteArray, name: String): Outcome<Unit> = Outcome.Ok(Unit)
+
+    override fun deleteAlbum(id: ByteArray): Outcome<Unit> = Outcome.Ok(Unit)
+
     override fun import(
         name: String,
         mime: String,
@@ -491,6 +517,11 @@ internal class ThrowingVaultItems : VaultItems {
     override fun observeAlbums(): Flow<List<AlbumSummary>> = MutableStateFlow(emptyList())
 
     override fun createAlbum(name: String): Outcome<ByteArray> = throw IllegalStateException("create exploded")
+
+    override fun renameAlbum(id: ByteArray, name: String): Outcome<Unit> =
+        throw IllegalStateException("rename exploded")
+
+    override fun deleteAlbum(id: ByteArray): Outcome<Unit> = throw IllegalStateException("delete exploded")
 
     override fun import(
         name: String,
@@ -513,6 +544,12 @@ internal class CancellingVaultItems : VaultItems {
 
     override fun createAlbum(name: String): Outcome<ByteArray> =
         throw CancellationException("the session was torn down mid-create")
+
+    override fun renameAlbum(id: ByteArray, name: String): Outcome<Unit> =
+        throw CancellationException("the session was torn down mid-rename")
+
+    override fun deleteAlbum(id: ByteArray): Outcome<Unit> =
+        throw CancellationException("the session was torn down mid-delete")
 
     override fun import(
         name: String,
