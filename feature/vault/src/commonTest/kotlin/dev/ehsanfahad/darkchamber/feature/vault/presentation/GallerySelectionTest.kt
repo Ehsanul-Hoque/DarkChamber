@@ -8,8 +8,11 @@ import dev.ehsanfahad.darkchamber.feature.vault.FakeVaultItems
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportStage
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportState
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultImports
+import dev.ehsanfahad.darkchamber.feature.vault.domain.CreateAlbum
 import dev.ehsanfahad.darkchamber.feature.vault.domain.DeleteAlbum
+import dev.ehsanfahad.darkchamber.feature.vault.domain.FileItems
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveAlbum
+import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveAlbums
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveGallery
 import dev.ehsanfahad.darkchamber.feature.vault.domain.RenameAlbum
 import dev.ehsanfahad.darkchamber.feature.vault.readableMeta
@@ -52,6 +55,9 @@ class GallerySelectionTest {
             observeAlbum = ObserveAlbum(vault),
             renameAlbum = RenameAlbum(vault, ioContext = UnconfinedTestDispatcher(testScheduler)),
             deleteAlbum = DeleteAlbum(vault, ioContext = UnconfinedTestDispatcher(testScheduler)),
+            observeAlbums = ObserveAlbums(vault),
+            createAlbum = CreateAlbum(vault, ioContext = UnconfinedTestDispatcher(testScheduler)),
+            fileItems = FileItems(vault, ioContext = UnconfinedTestDispatcher(testScheduler)),
             mainContext = UnconfinedTestDispatcher(testScheduler),
             progressInterval = Duration.ZERO,
             pickingDelay = Duration.ZERO,

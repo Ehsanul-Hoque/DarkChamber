@@ -5,6 +5,7 @@ import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
 import dev.ehsanfahad.darkchamber.core.model.VaultItemKind
 import dev.ehsanfahad.darkchamber.core.vault.AlbumSummary
+import dev.ehsanfahad.darkchamber.core.vault.AssignSummary
 import dev.ehsanfahad.darkchamber.core.vault.ImportPhase
 import dev.ehsanfahad.darkchamber.core.vault.ObjectMeta
 import dev.ehsanfahad.darkchamber.core.vault.VaultItemSummary
@@ -372,6 +373,14 @@ internal class FakeVaultItems(
     private val renameResult: Outcome<Unit> = Outcome.Ok(Unit),
     /** What a delete answers. */
     private val deleteResult: Outcome<Unit> = Outcome.Ok(Unit),
+    /**
+     * How many of a filing request actually move, as a function of how many were asked for. The default
+     * moves them all; a test about the partial path returns fewer, which is what the catalog does when
+     * an id has left it.
+     */
+    private val assignedOf: (Int) -> Int = { it },
+    /** A filing refused outright — a destination album that is no longer there, say. */
+    private val assignFailure: VaultError? = null,
 ) : VaultItems {
     var thumbnailCalls = 0
         private set
@@ -432,6 +441,21 @@ internal class FakeVaultItems(
     override fun deleteAlbum(id: ByteArray): Outcome<Unit> {
         deletedAlbums += id.toList()
         return deleteResult
+    }
+
+    /**
+     * Every filing call, as `(ids, destination)` — `null` being unfiled.
+     *
+     * Recorded rather than counted, because what the tests have to be able to say is *which* items went
+     * *where*: a move that filed the wrong ids, or filed them into the wrong album, is the failure mode
+     * a count cannot see.
+     */
+    val assignments = mutableListOf<Pair<List<List<Byte>>, List<Byte>?>>()
+
+    override fun assignItems(ids: List<ByteArray>, albumId: ByteArray?): Outcome<AssignSummary> {
+        assignments += ids.map { it.toList() } to albumId?.toList()
+        assignFailure?.let { return Outcome.Err(it) }
+        return Outcome.Ok(AssignSummary(requested = ids.size, assigned = assignedOf(ids.size)))
     }
 
     override fun import(
@@ -497,6 +521,9 @@ internal class ExplodingVaultItems : VaultItems {
 
     override fun deleteAlbum(id: ByteArray): Outcome<Unit> = Outcome.Ok(Unit)
 
+    override fun assignItems(ids: List<ByteArray>, albumId: ByteArray?): Outcome<AssignSummary> =
+        Outcome.Ok(AssignSummary(requested = ids.size, assigned = ids.size))
+
     override fun import(
         name: String,
         mime: String,
@@ -522,6 +549,9 @@ internal class ThrowingVaultItems : VaultItems {
         throw IllegalStateException("rename exploded")
 
     override fun deleteAlbum(id: ByteArray): Outcome<Unit> = throw IllegalStateException("delete exploded")
+
+    override fun assignItems(ids: List<ByteArray>, albumId: ByteArray?): Outcome<AssignSummary> =
+        throw IllegalStateException("filing exploded")
 
     override fun import(
         name: String,
@@ -550,6 +580,9 @@ internal class CancellingVaultItems : VaultItems {
 
     override fun deleteAlbum(id: ByteArray): Outcome<Unit> =
         throw CancellationException("the session was torn down mid-delete")
+
+    override fun assignItems(ids: List<ByteArray>, albumId: ByteArray?): Outcome<AssignSummary> =
+        throw CancellationException("the session was torn down mid-move")
 
     override fun import(
         name: String,

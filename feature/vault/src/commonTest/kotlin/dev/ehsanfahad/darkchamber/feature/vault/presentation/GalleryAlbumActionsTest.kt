@@ -15,8 +15,11 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumState
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportState
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultImports
+import dev.ehsanfahad.darkchamber.feature.vault.domain.CreateAlbum
 import dev.ehsanfahad.darkchamber.feature.vault.domain.DeleteAlbum
+import dev.ehsanfahad.darkchamber.feature.vault.domain.FileItems
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveAlbum
+import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveAlbums
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveGallery
 import dev.ehsanfahad.darkchamber.feature.vault.domain.RenameAlbum
 import dev.ehsanfahad.darkchamber.feature.vault.readableMeta
@@ -66,6 +69,9 @@ class GalleryAlbumActionsTest {
             observeAlbum = ObserveAlbum(vault),
             renameAlbum = RenameAlbum(vault, ioContext = ioContext),
             deleteAlbum = DeleteAlbum(vault, ioContext = ioContext),
+            observeAlbums = ObserveAlbums(vault),
+            createAlbum = CreateAlbum(vault, ioContext = ioContext),
+            fileItems = FileItems(vault, ioContext = ioContext),
             mainContext = UnconfinedTestDispatcher(testScheduler),
             progressInterval = Duration.ZERO,
             pickingDelay = Duration.ZERO,

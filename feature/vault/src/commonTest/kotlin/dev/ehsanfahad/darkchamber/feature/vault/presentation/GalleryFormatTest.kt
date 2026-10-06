@@ -1,6 +1,7 @@
 package dev.ehsanfahad.darkchamber.feature.vault.presentation
 
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumDraftProblem
+import dev.ehsanfahad.darkchamber.feature.vault.api.FilingDestination
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryScope
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportStage
 import kotlin.test.Test
@@ -236,6 +237,73 @@ class GalleryFormatTest {
         val renameFailed = GalleryFormat.albumDraftProblem(AlbumDraftProblem.RenameFailed).lowercase()
         assertTrue("old name" in renameFailed, "it says what the album answers to now: $renameFailed")
         assertFalse("nothing was created" in renameFailed, "nothing was being created: $renameFailed")
+    }
+
+    /**
+     * **The filing actions are moves, and the words have to say so.**
+     *
+     * An item is in at most one album, so filing something already filed takes it out of where it was.
+     * "Add to album" would imply a second copy — of an encrypted file, in a vault — which is a claim
+     * about what the user possesses, and the one this surface could most easily make by accident.
+     *
+     * The other direction must not read as deletion: that button sits where a shred button will
+     * eventually sit, on a screen full of selected files, so "remove" is avoided for being what every
+     * other app's delete button says.
+     */
+    @Test
+    fun the_filing_actions_read_as_moves_and_not_as_copies_or_deletions() {
+        val into = GalleryFormat.moveToAlbum().lowercase()
+        assertTrue("move" in into, "it is a move: $into")
+        assertFalse("add" in into, "'add' implies a second copy: $into")
+        assertFalse("copy" in into, into)
+
+        val out = GalleryFormat.unfileSelection().lowercase()
+        for (claim in listOf("delete", "remove", "shred", "erase")) {
+            assertFalse(claim in out, "taking an item out of an album destroys nothing: $out")
+        }
+        assertTrue("album" in out, "it says what it takes them out of: $out")
+    }
+
+    /**
+     * The chooser explains the one-album rule, because that is what makes this a move rather than an
+     * addition — and it is the only place the user is told.
+     */
+    @Test
+    fun the_chooser_explains_that_an_item_is_in_one_album() {
+        val copy = GalleryFormat.chooserExplanation(3).lowercase()
+
+        assertTrue("3 items" in copy, "it says how many are moving: $copy")
+        assertTrue("one album" in copy, "and the rule that makes this a move: $copy")
+        assertTrue("leaves" in copy, "and what happens to anything already filed: $copy")
+        assertFalse("copy" in copy, copy)
+
+        assertTrue("this item" in GalleryFormat.chooserExplanation(1).lowercase(), "not '1 items'")
+    }
+
+    /**
+     * The move's report follows the import's deleted-originals wording rather than inventing a third
+     * style for the same shape of news: "4 of 5" when some did not make it, and the reason stated rather
+     * than guessed at.
+     */
+    @Test
+    fun the_move_report_says_how_many_actually_moved() {
+        val partial = GalleryFormat.movedCount(4, 5, FilingDestination.Album).lowercase()
+        assertTrue("4 of 5" in partial, "both numbers, or a half-move reads as a clean one: $partial")
+        assertTrue("no longer in the vault" in partial, "and why the rest did not: $partial")
+
+        assertTrue("1 item" in GalleryFormat.movedCount(1, 1, FilingDestination.Album), "not '1 items'")
+        assertTrue(
+            "nothing" in GalleryFormat.movedCount(0, 2, FilingDestination.Album).lowercase(),
+            "zero reads as nothing happening, not as a count",
+        )
+
+        // The out-of-an-album wording stays clear of deletion here too, where it is reporting a
+        // completed action and a user skimming would most easily misread it.
+        val unfiled = GalleryFormat.movedCount(2, 2, FilingDestination.Unfiled).lowercase()
+        assertTrue("out of their album" in unfiled, unfiled)
+        for (claim in listOf("deleted", "removed", "gone")) {
+            assertFalse(claim in unfiled, "nothing was destroyed: $unfiled")
+        }
     }
 
     /**

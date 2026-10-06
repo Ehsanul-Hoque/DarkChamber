@@ -4,6 +4,7 @@ import dev.ehsanfahad.darkchamber.core.model.ItemFilter
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultItemKind
 import dev.ehsanfahad.darkchamber.core.vault.AlbumSummary
+import dev.ehsanfahad.darkchamber.core.vault.AssignSummary
 import dev.ehsanfahad.darkchamber.core.vault.ImportPhase
 import dev.ehsanfahad.darkchamber.core.vault.VaultItemSummary
 import dev.ehsanfahad.darkchamber.core.vault.VaultObjects
@@ -32,6 +33,9 @@ internal class VaultObjectsItems(private val objects: VaultObjects) : VaultItems
     override fun renameAlbum(id: ByteArray, name: String): Outcome<Unit> = objects.renameAlbum(id, name)
 
     override fun deleteAlbum(id: ByteArray): Outcome<Unit> = objects.deleteAlbum(id)
+
+    override fun assignItems(ids: List<ByteArray>, albumId: ByteArray?): Outcome<AssignSummary> =
+        objects.assignItems(ids, albumId)
 
     override fun import(
         name: String,

@@ -21,8 +21,11 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.ImportStage
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportState
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultImports
 import dev.ehsanfahad.darkchamber.feature.vault.damagedMeta
+import dev.ehsanfahad.darkchamber.feature.vault.domain.CreateAlbum
 import dev.ehsanfahad.darkchamber.feature.vault.domain.DeleteAlbum
+import dev.ehsanfahad.darkchamber.feature.vault.domain.FileItems
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveAlbum
+import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveAlbums
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveGallery
 import dev.ehsanfahad.darkchamber.feature.vault.domain.RenameAlbum
 import dev.ehsanfahad.darkchamber.feature.vault.domain.VaultItems
@@ -74,6 +77,9 @@ class DefaultVaultGalleryComponentTest {
             observeAlbum = ObserveAlbum(vault),
             renameAlbum = RenameAlbum(vault, ioContext = ioContext),
             deleteAlbum = DeleteAlbum(vault, ioContext = ioContext),
+            observeAlbums = ObserveAlbums(vault),
+            createAlbum = CreateAlbum(vault, ioContext = ioContext),
+            fileItems = FileItems(vault, ioContext = ioContext),
             mainContext = dispatcher,
             // No throttling by default: these tests are about which states arrive, not how often.
             progressInterval = progressInterval,

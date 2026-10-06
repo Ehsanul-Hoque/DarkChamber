@@ -1,6 +1,7 @@
 package dev.ehsanfahad.darkchamber.feature.vault.presentation
 
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumDraftProblem
+import dev.ehsanfahad.darkchamber.feature.vault.api.FilingDestination
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryScope
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportStage
 
@@ -89,6 +90,60 @@ internal object GalleryFormat {
             // answers to the name it had.
             AlbumDraftProblem.RenameFailed -> "Couldn't rename the album. It still has its old name."
         }
+
+    /**
+     * The selection bar's filing action, and the chooser's heading.
+     *
+     * **"Move to album", never "Add to album".** An item belongs to at most one album, so filing
+     * something already filed takes it out of where it was — and a user who read "add" and believes
+     * they now hold a second encrypted copy has been misled about what the vault contains (hard rule
+     * #6). "Move" is the same length and the truth.
+     */
+    fun moveToAlbum(): String = "Move to album"
+
+    /**
+     * Taking items out of an album.
+     *
+     * Worded so it **cannot** be read as deletion, which is the risk: this button sits where a shred
+     * button will eventually sit, on a screen full of selected files. "Remove" is avoided for the same
+     * reason — it is what every other app's delete button says. This names the state the items end up
+     * in, which is the one the vault actually has.
+     */
+    fun unfileSelection(): String = "Take out of album"
+
+    /** The chooser's one-line explanation of what choosing does. */
+    fun chooserExplanation(count: Int): String {
+        val subject = if (count == 1) "This item" else "These $count items"
+        return "$subject will move here. An item is in one album at a time, so anything already in " +
+            "another album leaves it."
+    }
+
+    /** What the chooser says when there is nothing to choose, which is also when creating is the way on. */
+    fun chooserEmpty(): String = "No albums yet. Name one and the selection moves into it."
+
+    /**
+     * What came of a move — and when some of it did not happen, it says so.
+     *
+     * "4 of 5" rather than "4" or "5", following the import's deleted-originals line rather than
+     * inventing a third style for the same shape of bad news. The first number alone loses that
+     * anything was skipped; the second would tell someone five items are filed when four are.
+     *
+     * The skipped ones are items that left the vault between being selected and being moved, which is
+     * why the reason is stated plainly instead of being guessed at.
+     */
+    fun movedCount(moved: Int, requested: Int, destination: FilingDestination): String {
+        val where = when (destination) {
+            FilingDestination.Album -> "moved into the album"
+            // Not "removed", and not "deleted": the items are in the vault, outside any album.
+            FilingDestination.Unfiled -> "taken out of their album"
+        }
+        return when {
+            moved == 0 -> "Nothing was $where."
+            moved < requested -> "$moved of $requested $where. The rest are no longer in the vault."
+            moved == 1 -> "1 item $where."
+            else -> "$moved items $where."
+        }
+    }
 
     /** The rename dialog's heading. */
     fun renameAlbum(): String = "Rename album"

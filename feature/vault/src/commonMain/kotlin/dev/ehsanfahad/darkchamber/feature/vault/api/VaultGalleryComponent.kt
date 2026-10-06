@@ -54,6 +54,47 @@ interface VaultGalleryComponent {
     fun clearSelection()
 
     /**
+     * Open the album chooser for the selected items.
+     *
+     * Choosing is a step of its own because the destination is a decision, and because the chooser is
+     * where "add" is shown for what it is: an item is in at most one album, so the list is a set of
+     * places to **move** things to.
+     *
+     * Ignored with nothing selected, and ignored while a move is already running.
+     */
+    fun startFiling()
+
+    /** Move the selected items into [albumId]. Only ever reached from the chooser. */
+    fun chooseAlbum(albumId: ByteArray)
+
+    /** Abandon the chooser without moving anything. */
+    fun cancelFiling()
+
+    /**
+     * Take the selected items out of the album they are in — they become unfiled, and **nothing is
+     * deleted**. No chooser: there is only one place to go.
+     */
+    fun unfileSelection()
+
+    /** Open the name field inside the chooser, for a vault with no album to choose yet. */
+    fun startFilingCreate()
+
+    /** What has been typed into the chooser's name field. */
+    fun editFilingAlbumName(name: String)
+
+    /**
+     * Create that album and move the selected items into it, in one step — the point of offering a
+     * create here at all is that the user already said where things should go.
+     */
+    fun confirmFilingCreate()
+
+    /** Close the name field, leaving the chooser open. */
+    fun cancelFilingCreate()
+
+    /** Dismiss the "moved" report. */
+    fun acknowledgeFiling()
+
+    /**
      * Open the rename dialog for the album being viewed, **prefilled with its current name**: a
      * rename starts from what the thing is called, and an empty field would make the common edit —
      * fixing a typo — a retype.
@@ -120,6 +161,8 @@ data class GalleryState(
      * here and can disappear from elsewhere.
      */
     val album: AlbumState? = null,
+    /** Where the selected items are being moved to, if that is happening. */
+    val filing: Filing? = null,
 ) {
     /** Whether a batch is between the user asking for one and it ending. */
     val importing: Boolean get() = batch is ImportState.Picking || batch is ImportState.Running
@@ -177,6 +220,74 @@ sealed interface AlbumState {
      * never fill and never explain why.
      */
     data object Gone : AlbumState
+}
+
+/**
+ * Moving selected items into an album, or out of one.
+ *
+ * Sealed, in the same shape as the import's states and for the same reason: the bottom of the screen
+ * shows exactly one of these at a time, and a bag of flags would let it show two.
+ */
+sealed interface Filing {
+
+    /**
+     * The chooser is open. [albums] is every album the items could go to — **never the one they are
+     * already in**, since moving them there is nothing.
+     *
+     * [creating] is the name field, present only once asked for. It exists because a vault with no
+     * albums would otherwise offer an empty list and no way forward, having just asked the user to
+     * choose.
+     */
+    data class Choosing(
+        val albums: List<AlbumChoice> = emptyList(),
+        val creating: AlbumDraft? = null,
+    ) : Filing
+
+    /** The write is running. Nothing here can be cancelled: it is one statement. */
+    data object Moving : Filing
+
+    /**
+     * It is done, and this says what actually happened.
+     *
+     * [moved] can be fewer than [requested]: an item shredded between selecting and moving is skipped
+     * rather than failing the batch, and reporting the request as though it were the result would be
+     * claiming a move that did not happen.
+     */
+    data class Moved(
+        val requested: Int,
+        val moved: Int,
+        val destination: FilingDestination,
+    ) : Filing
+}
+
+/** Which way the items went, which is all the report needs to know to word itself. */
+enum class FilingDestination {
+    /** Into an album. */
+    Album,
+
+    /** Out of one — unfiled, **not** deleted. */
+    Unfiled,
+}
+
+/**
+ * One row in the chooser: an album the selection can be moved to.
+ *
+ * Deliberately not [AlbumTile] — a chooser row has no cover and no count to draw, and handing it one
+ * would invite a tile's worth of decoration onto a list that is answering a question.
+ */
+class AlbumChoice(val id: ByteArray, val name: AlbumTileName) {
+    // Content equality, because [id] is a ByteArray and the generated one would compare it by identity:
+    // a chooser list rebuilt from an unchanged catalog would otherwise look like a change.
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is AlbumChoice) return false
+        return id.contentEquals(other.id) && name == other.name
+    }
+
+    override fun hashCode(): Int = 31 * id.contentHashCode() + name.hashCode()
+
+    /** An id length and whether the name opened — never the name itself (hard rule #4). */
+    override fun toString(): String = "AlbumChoice(id=${id.size}B, readable=${name is AlbumTileName.Readable})"
 }
 
 /** How far a delete has got. The confirmation is a step of its own because the copy is the point. */
@@ -302,4 +413,10 @@ enum class GalleryError {
 
     /** The listing itself failed; the vault is open but its catalog could not be read. */
     ListingFailed,
+
+    /**
+     * The move was refused outright — a destination album that is no longer there, or a catalog write
+     * that did not land. Nothing moved; the items are where they were.
+     */
+    FilingFailed,
 }

@@ -11,6 +11,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.VaultImports
 import dev.ehsanfahad.darkchamber.feature.vault.data.VaultObjectsItems
 import dev.ehsanfahad.darkchamber.feature.vault.domain.CreateAlbum
 import dev.ehsanfahad.darkchamber.feature.vault.domain.DeleteAlbum
+import dev.ehsanfahad.darkchamber.feature.vault.domain.FileItems
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ImportCoordinator
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ImportFile
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ImportQueue
@@ -98,6 +99,9 @@ fun vaultGalleryComponent(
         observeAlbum = ObserveAlbum(items),
         renameAlbum = RenameAlbum(vault = items, ioContext = ioContext),
         deleteAlbum = DeleteAlbum(vault = items, ioContext = ioContext),
+        observeAlbums = ObserveAlbums(items),
+        createAlbum = CreateAlbum(vault = items, ioContext = ioContext),
+        fileItems = FileItems(vault = items, ioContext = ioContext),
         mainContext = mainContext,
         filter = filter,
         onLeaveAlbum = onLeaveAlbum,

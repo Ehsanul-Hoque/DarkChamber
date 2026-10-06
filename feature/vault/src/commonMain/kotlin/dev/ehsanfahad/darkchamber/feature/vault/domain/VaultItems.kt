@@ -3,6 +3,7 @@ package dev.ehsanfahad.darkchamber.feature.vault.domain
 import dev.ehsanfahad.darkchamber.core.model.ItemFilter
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.vault.AlbumSummary
+import dev.ehsanfahad.darkchamber.core.vault.AssignSummary
 import dev.ehsanfahad.darkchamber.core.vault.ImportPhase
 import dev.ehsanfahad.darkchamber.core.vault.VaultItemSummary
 import kotlinx.coroutines.flow.Flow
@@ -65,6 +66,22 @@ internal interface VaultItems {
      * already true and nothing was falsely reported as destroyed.
      */
     fun deleteAlbum(id: ByteArray): Outcome<Unit>
+
+    /**
+     * File every id in [ids] into [albumId], or unfile them all when it is `null`.
+     *
+     * **A move, not a copy.** An item is in at most one album, so filing something already filed takes
+     * it out of where it was — there is no second copy of anything, encrypted or otherwise.
+     *
+     * One write for the whole set, which is why this is not a loop over a single-item call: every
+     * listing re-emits on any write to the items table and re-decrypts each row's metadata, so fifty
+     * separate writes would mean fifty re-decrypts of a list being looked at.
+     *
+     * The summary matters because ids can go missing between selecting and moving — an item shredded
+     * in between is an ordinary race, skipped rather than failed — and a caller that cannot see the
+     * difference can only report a half-move as a clean one.
+     */
+    fun assignItems(ids: List<ByteArray>, albumId: ByteArray?): Outcome<AssignSummary>
 
     /**
      * Stream-encrypt a payload into the vault, returning the new object's id.

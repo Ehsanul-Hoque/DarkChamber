@@ -9,11 +9,15 @@ import dev.ehsanfahad.darkchamber.core.logging.logVaultError
 import dev.ehsanfahad.darkchamber.core.model.ItemFilter
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
+import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumChoice
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumDelete
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumDraft
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumDraftProblem
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumState
+import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTile
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
+import dev.ehsanfahad.darkchamber.feature.vault.api.Filing
+import dev.ehsanfahad.darkchamber.feature.vault.api.FilingDestination
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryError
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryScope
@@ -24,8 +28,12 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.ImportState
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultGalleryComponent
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultImports
 import dev.ehsanfahad.darkchamber.feature.vault.domain.AlbumPresence
+import dev.ehsanfahad.darkchamber.feature.vault.domain.CreateAlbum
+import dev.ehsanfahad.darkchamber.feature.vault.domain.CreateAlbumResult
 import dev.ehsanfahad.darkchamber.feature.vault.domain.DeleteAlbum
+import dev.ehsanfahad.darkchamber.feature.vault.domain.FileItems
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveAlbum
+import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveAlbums
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveGallery
 import dev.ehsanfahad.darkchamber.feature.vault.domain.RenameAlbum
 import dev.ehsanfahad.darkchamber.feature.vault.domain.RenameAlbumResult
@@ -67,6 +75,11 @@ internal class DefaultVaultGalleryComponent(
     observeAlbum: ObserveAlbum,
     private val renameAlbum: RenameAlbum,
     private val deleteAlbum: DeleteAlbum,
+    // Filing, which every listing can do: items are selected from any of the three, and all three can
+    // move what they are showing into an album.
+    private val observeAlbums: ObserveAlbums,
+    private val createAlbum: CreateAlbum,
+    private val fileItems: FileItems,
     mainContext: CoroutineContext = Dispatchers.Main,
     // How often a *running* batch is allowed to redraw. The batch reports every buffered read —
     // kilobytes apart — which is far finer than a screen can show or a user can perceive, and
@@ -104,6 +117,15 @@ internal class DefaultVaultGalleryComponent(
      */
     private val albumId: ByteArray? = (filter as? ItemFilter.Album)?.id
 
+    /**
+     * The album listing's subscription, live only while the chooser is open.
+     *
+     * Cancelled when it closes rather than left running: every emission opens one small ciphertext per
+     * album, and the listing re-emits on every catalog change — including the move this chooser is
+     * about to make.
+     */
+    private var chooserWork: Job? = null
+
     // SupervisorJob so one failed intent does not kill the component's other work, but parented to
     // whatever Job the caller passed: the app scopes feature work to the vault session, and
     // cancelling that must cancel this too — before the session it runs against is zeroized.
@@ -139,6 +161,13 @@ internal class DefaultVaultGalleryComponent(
             _state.value = _state.value.copy(
                 selection = GallerySelection(active = selected.active, ids = selection.selectedIds()),
             )
+            // A chooser outlives its selection only as an empty question: everything it would have moved
+            // has gone — cleared by the user, or shredded out of the listing from elsewhere. Closed
+            // here, in the one place every change to the selection passes through.
+            if (!selected.active && _state.value.filing is Filing.Choosing) {
+                closeChooser()
+                publishFiling(null)
+            }
         }
         doOnDestroy(subscription::cancel)
 
@@ -227,6 +256,170 @@ internal class DefaultVaultGalleryComponent(
         _state.value = _state.value.copy(error = null)
         // A summary the user has acknowledged must not come back the moment the state re-emits.
         imports.acknowledge()
+    }
+
+    /**
+     * Open the chooser, and keep its list live while it is open.
+     *
+     * Subscribed here rather than for the life of the screen: an album name is a decrypt, the album
+     * listing re-emits on every catalog change, and three of the four gallery screens never open this
+     * at all. A snapshot would do for the choosing itself — but not for the create-in-flow, where the
+     * album that was just made has to appear in the list it was made from.
+     */
+    override fun startFiling() {
+        if (!_state.value.selection.active || _state.value.selection.count == 0) return
+        // Not over a move already running, and not over a rename dialog: the heading's actions stay on
+        // screen during selection, so both are reachable.
+        if (_state.value.filing is Filing.Moving) return
+        if ((_state.value.album as? AlbumState.Present)?.rename != null) return
+
+        publishFiling(Filing.Choosing())
+
+        chooserWork?.cancel()
+        chooserWork = observeAlbums()
+            // A chooser that cannot list the albums is still a chooser: creating one is the way forward
+            // from an empty list, and that is exactly the state a failed listing leaves behind.
+            .catch { cause -> logVaultError(CHOOSER_STAGE, VaultError.Unexpected(cause)) }
+            .onEach(::onChoices)
+            .launchIn(scope)
+    }
+
+    override fun chooseAlbum(albumId: ByteArray) {
+        if (_state.value.filing !is Filing.Choosing) return
+        move(albumId, FilingDestination.Album)
+    }
+
+    override fun cancelFiling() {
+        if (_state.value.filing !is Filing.Choosing) return
+        closeChooser()
+        publishFiling(null)
+    }
+
+    /**
+     * Out of the album, and nowhere else. No chooser and no confirmation: unfiling destroys nothing and
+     * is undone by filing the same items again, so a dialog would be asking permission for something
+     * that needs none.
+     */
+    override fun unfileSelection() {
+        if (!_state.value.selection.active || _state.value.selection.count == 0) return
+        if (_state.value.filing != null) return
+        move(albumId = null, destination = FilingDestination.Unfiled)
+    }
+
+    override fun startFilingCreate() {
+        val choosing = _state.value.filing as? Filing.Choosing ?: return
+        if (choosing.creating != null) return
+        publishFiling(choosing.copy(creating = AlbumDraft()))
+    }
+
+    override fun editFilingAlbumName(name: String) {
+        val choosing = _state.value.filing as? Filing.Choosing ?: return
+        val draft = choosing.creating ?: return
+        if (draft.saving) return
+        publishFiling(choosing.copy(creating = draft.copy(name = name, problem = null)))
+    }
+
+    /**
+     * Create the album, then move the selection into it.
+     *
+     * A failed **create** leaves the field open with its message, because the name is still worth
+     * retrying. A failed **move** after a successful create does not undo the album: it exists, the
+     * user asked for it, and deleting it to tidy up would destroy something they can see.
+     */
+    override fun confirmFilingCreate() {
+        val choosing = _state.value.filing as? Filing.Choosing ?: return
+        val draft = choosing.creating ?: return
+        // The double-tap guard, and the one thing between a double tap and two albums: duplicate names
+        // are allowed, so nothing further down would refuse the second create.
+        if (draft.saving) return
+
+        publishFiling(choosing.copy(creating = draft.copy(saving = true, problem = null)))
+
+        scope.launch {
+            when (val made = createAlbum(draft.name)) {
+                is CreateAlbumResult.Created -> move(made.id, FilingDestination.Album)
+                is CreateAlbumResult.NameMissing -> failFilingCreate(AlbumDraftProblem.NameMissing)
+                is CreateAlbumResult.Failed -> {
+                    // A stage name and an error code; never the album's name (hard rule 4).
+                    logVaultError(CREATE_STAGE, made.error)
+                    failFilingCreate(AlbumDraftProblem.CreateFailed)
+                }
+            }
+        }
+    }
+
+    override fun cancelFilingCreate() {
+        val choosing = _state.value.filing as? Filing.Choosing ?: return
+        if (choosing.creating?.saving == true) return
+        publishFiling(choosing.copy(creating = null))
+    }
+
+    override fun acknowledgeFiling() {
+        if (_state.value.filing !is Filing.Moved) return
+        publishFiling(null)
+    }
+
+    /**
+     * The one write both directions go through.
+     *
+     * The ids are read **before** the move, because clearing the selection afterwards is part of
+     * finishing: the items have gone where they were sent, and on an album screen they have left the
+     * listing entirely, so a selection still holding them would be a selection of things not on screen.
+     */
+    private fun move(albumId: ByteArray?, destination: FilingDestination) {
+        val ids = selection.selectedIds()
+        closeChooser()
+        publishFiling(Filing.Moving)
+
+        scope.launch {
+            when (val done = fileItems(ids, albumId)) {
+                is Outcome.Ok -> {
+                    selection.clear()
+                    publishFiling(
+                        Filing.Moved(
+                            requested = done.value.requested,
+                            moved = done.value.assigned,
+                            destination = destination,
+                        ),
+                    )
+                }
+                is Outcome.Err -> {
+                    logVaultError(FILING_STAGE, done.error)
+                    // The selection survives a refusal: nothing moved, so the user's next move is to
+                    // try again rather than to pick everything out of a grid a second time.
+                    publishFiling(null)
+                    _state.value = _state.value.copy(error = GalleryError.FilingFailed)
+                }
+            }
+        }
+    }
+
+    private fun onChoices(albums: List<AlbumTile>) {
+        val choosing = _state.value.filing as? Filing.Choosing ?: return
+        publishFiling(
+            choosing.copy(
+                albums = albums
+                    // Never the album being viewed. Moving items into the album they are already in is
+                    // nothing, and offering it invites a tap that reports a move that did not happen.
+                    .filterNot { tile -> albumId?.contentEquals(tile.id) == true }
+                    .map { tile -> AlbumChoice(id = tile.id, name = tile.name) },
+            ),
+        )
+    }
+
+    private fun closeChooser() {
+        chooserWork?.cancel()
+        chooserWork = null
+    }
+
+    private fun failFilingCreate(problem: AlbumDraftProblem) {
+        val choosing = _state.value.filing as? Filing.Choosing ?: return
+        val draft = choosing.creating ?: return
+        publishFiling(choosing.copy(creating = draft.copy(saving = false, problem = problem)))
+    }
+
+    private fun publishFiling(filing: Filing?) {
+        _state.value = _state.value.copy(filing = filing)
     }
 
     /**
@@ -522,6 +715,9 @@ internal class DefaultVaultGalleryComponent(
         const val ALBUM_STAGE = "vault-gallery-album"
         const val RENAME_STAGE = "vault-album-rename"
         const val DELETE_STAGE = "vault-album-delete"
+        const val CHOOSER_STAGE = "vault-album-chooser"
+        const val CREATE_STAGE = "vault-album-create"
+        const val FILING_STAGE = "vault-items-filing"
 
         /** Roughly six frames at 60 Hz: fast enough to look continuous, slow enough to be free. */
         val PROGRESS_INTERVAL: Duration = 100.milliseconds

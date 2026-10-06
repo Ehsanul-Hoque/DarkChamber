@@ -3,6 +3,7 @@ package dev.ehsanfahad.darkchamber.feature.vault.presentation
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,13 +16,19 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -36,6 +43,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -51,6 +59,7 @@ import dev.ehsanfahad.darkchamber.core.designsystem.prefersReducedMotion
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumDelete
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumState
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
+import dev.ehsanfahad.darkchamber.feature.vault.api.Filing
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryError
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
@@ -86,6 +95,15 @@ internal fun GalleryScreen(
     onToggleItem: (ByteArray) -> Unit,
     onSelectAll: () -> Unit,
     onClearSelection: () -> Unit,
+    onStartFiling: () -> Unit,
+    onChooseAlbum: (ByteArray) -> Unit,
+    onCancelFiling: () -> Unit,
+    onUnfileSelection: () -> Unit,
+    onStartFilingCreate: () -> Unit,
+    onEditFilingAlbumName: (String) -> Unit,
+    onConfirmFilingCreate: () -> Unit,
+    onCancelFilingCreate: () -> Unit,
+    onAcknowledgeFiling: () -> Unit,
     onStartAlbumRename: () -> Unit,
     onEditAlbumName: (String) -> Unit,
     onConfirmAlbumRename: () -> Unit,
@@ -160,12 +178,25 @@ internal fun GalleryScreen(
                 .bottomBarScrim()
                 .padding(spacing.spaceLg),
         ) {
-            // Selecting takes the bottom area over entirely, ahead of any batch state. That is also
-            // why nothing guards against starting an import mid-selection: the buttons that would
-            // start one are not on screen while this is.
-            if (state.selection.active) {
+            // A move in progress, or its report, takes the bottom area ahead of everything — including
+            // the selection bar, which is where it was started from and which has nothing left to say
+            // while it runs.
+            val filing = state.filing
+            if (filing is Filing.Moving || filing is Filing.Moved) {
+                FilingCard(filing = filing, onDismiss = onAcknowledgeFiling)
+            } else if (state.selection.active) {
+                // Selecting takes the bottom area over entirely, ahead of any batch state. That is also
+                // why nothing guards against starting an import mid-selection: the buttons that would
+                // start one are not on screen while this is.
                 SelectionBar(
                     count = state.selection.count,
+                    // Offered only where every selected item is in the album being viewed. On the whole
+                    // vault the selection is a mix of filed and unfiled items, so the button would
+                    // silently do nothing to some of them; from Unfiled there is nothing to take out.
+                    // No shredding here either — that is destructive, needs its own disclosure, and
+                    // belongs to the cycle that owns it.
+                    onUnfile = onUnfileSelection.takeIf { state.scope == GalleryScope.Album },
+                    onMoveToAlbum = onStartFiling,
                     onSelectAll = onSelectAll,
                     onClear = onClearSelection,
                 )
@@ -211,6 +242,20 @@ internal fun GalleryScreen(
             )
         }
 
+        // The chooser, above the grid the selection was made in.
+        (state.filing as? Filing.Choosing)?.let { choosing ->
+            AlbumChooser(
+                choosing = choosing,
+                selectedCount = state.selection.count,
+                onChoose = onChooseAlbum,
+                onCancel = onCancelFiling,
+                onStartCreate = onStartFilingCreate,
+                onEditName = onEditFilingAlbumName,
+                onConfirmCreate = onConfirmFilingCreate,
+                onCancelCreate = onCancelFilingCreate,
+            )
+        }
+
         // The album's own two dialogs, above the grid they act on. Never both: each intent refuses
         // while the other is open.
         if (album is AlbumState.Present) {
@@ -234,6 +279,203 @@ internal fun GalleryScreen(
                     onKeep = onCancelAlbumDelete,
                 )
             }
+        }
+    }
+}
+
+/**
+ * Where the selected items should go.
+ *
+ * A list of albums and nothing else — no covers, no counts: this is answering a question, and a grid of
+ * decorated tiles would make it look like somewhere to browse.
+ *
+ * The explanation above the list is not filler. It is the only place the user is told that an item lives
+ * in **one** album, which is what makes this a move: anything already filed leaves where it was. The
+ * word "add" is avoided throughout for that reason (hard rule #6).
+ *
+ * Creating is offered here, and it is the whole answer to an empty vault: having just been asked to
+ * choose, a user with no albums would otherwise face an empty list and a cancel button.
+ */
+@Composable
+private fun AlbumChooser(
+    choosing: Filing.Choosing,
+    selectedCount: Int,
+    onChoose: (ByteArray) -> Unit,
+    onCancel: () -> Unit,
+    onStartCreate: () -> Unit,
+    onEditName: (String) -> Unit,
+    onConfirmCreate: () -> Unit,
+    onCancelCreate: () -> Unit,
+) {
+    val colors = DarkChamberTheme.colors
+    val spacing = DarkChamberTheme.spacing
+    val creating = choosing.creating
+
+    Dialog(
+        onDismissRequest = onCancel,
+        // Dismissable: nothing has happened yet, and the worst a stray tap costs is reopening it.
+        properties = DialogProperties(
+            dismissOnBackPress = creating?.saving != true,
+            dismissOnClickOutside = creating?.saving != true,
+        ),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(color = colors.surface, shape = DarkChamberTheme.shapes.large)
+                .padding(spacing.spaceLg),
+        ) {
+            Text(
+                text = GalleryFormat.moveToAlbum(),
+                style = DarkChamberTheme.typography.title,
+                color = colors.textPrimary,
+            )
+            Text(
+                text = GalleryFormat.chooserExplanation(selectedCount),
+                style = DarkChamberTheme.typography.caption,
+                color = colors.textSecondary,
+                modifier = Modifier.padding(top = spacing.spaceXs),
+            )
+
+            if (creating != null) {
+                OutlinedTextField(
+                    value = creating.name,
+                    onValueChange = onEditName,
+                    label = { Text(GalleryFormat.albumNameLabel()) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { onConfirmCreate() }),
+                    isError = creating.problem != null,
+                    enabled = !creating.saving,
+                    modifier = Modifier.fillMaxWidth().padding(top = spacing.spaceMd),
+                )
+                creating.problem?.let { problem ->
+                    Text(
+                        text = GalleryFormat.albumDraftProblem(problem),
+                        style = DarkChamberTheme.typography.caption,
+                        color = colors.danger,
+                        modifier = Modifier.padding(top = spacing.spaceXs),
+                    )
+                }
+            } else if (choosing.albums.isEmpty()) {
+                Text(
+                    text = GalleryFormat.chooserEmpty(),
+                    style = DarkChamberTheme.typography.body,
+                    color = colors.textSecondary,
+                    modifier = Modifier.padding(top = spacing.spaceMd),
+                )
+            } else {
+                // Scrollable and height-capped: a vault with thirty albums must not push the buttons
+                // off the bottom of the screen.
+                LazyColumn(modifier = Modifier.heightIn(max = CHOOSER_LIST_MAX).padding(top = spacing.spaceSm)) {
+                    items(choosing.albums, key = { it.id.toChoiceKey() }) { choice ->
+                        Text(
+                            text = when (val name = choice.name) {
+                                is AlbumTileName.Readable -> name.value
+                                AlbumTileName.Unreadable -> "Can't be verified"
+                            },
+                            style = DarkChamberTheme.typography.body,
+                            color = if (choice.name is AlbumTileName.Unreadable) colors.danger else colors.textPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                // An album whose name will not open is still somewhere items can go: the
+                                // name is damaged, the album is not, and excluding it would strand the
+                                // only route back into it.
+                                .clickable { onChoose(choice.id) }
+                                .padding(vertical = spacing.spaceSm),
+                        )
+                    }
+                }
+            }
+
+            Row(
+                horizontalArrangement = Arrangement.End,
+                modifier = Modifier.fillMaxWidth().padding(top = spacing.spaceMd),
+            ) {
+                TextButton(
+                    onClick = if (creating == null) onCancel else onCancelCreate,
+                    enabled = creating?.saving != true,
+                ) {
+                    Text(
+                        text = if (creating == null) "Cancel" else "Back",
+                        style = DarkChamberTheme.typography.label,
+                        color = colors.textPrimary,
+                    )
+                }
+                TextButton(
+                    onClick = if (creating == null) onStartCreate else onConfirmCreate,
+                    enabled = creating?.saving != true,
+                ) {
+                    Text(
+                        // The create's label says what the whole step does, because it does both: the
+                        // album is made and the selection goes into it.
+                        text = when {
+                            creating == null -> GalleryFormat.newAlbum()
+                            creating.saving -> "Moving…"
+                            else -> "Create and move"
+                        },
+                        style = DarkChamberTheme.typography.label,
+                        color = if (creating?.saving == true) colors.textSecondary else colors.accent,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * A move running, or what came of it.
+ *
+ * Shaped like the import's cards rather than as a dialog: it is the same kind of news in the same place,
+ * and a modal over a finished action would ask for a tap to dismiss something nobody needs to read
+ * twice.
+ */
+@Composable
+private fun FilingCard(filing: Filing, onDismiss: () -> Unit) {
+    val colors = DarkChamberTheme.colors
+    val spacing = DarkChamberTheme.spacing
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(color = colors.surface, shape = DarkChamberTheme.shapes.large)
+            .padding(spacing.spaceMd),
+    ) {
+        when (filing) {
+            is Filing.Moving -> Row(verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(
+                    color = colors.accent,
+                    modifier = Modifier.size(DarkChamberTheme.spacing.spaceMd),
+                )
+                Text(
+                    text = "Moving…",
+                    style = DarkChamberTheme.typography.body,
+                    color = colors.textSecondary,
+                    modifier = Modifier.padding(start = spacing.spaceSm),
+                )
+            }
+
+            is Filing.Moved -> {
+                Text(
+                    text = GalleryFormat.movedCount(filing.moved, filing.requested, filing.destination),
+                    style = DarkChamberTheme.typography.body,
+                    color = colors.textPrimary,
+                )
+                Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                    TextButton(onClick = onDismiss) {
+                        Text(
+                            text = "OK",
+                            style = DarkChamberTheme.typography.label,
+                            color = colors.accent,
+                        )
+                    }
+                }
+            }
+
+            // The chooser is a dialog, so this card is never asked to draw it.
+            is Filing.Choosing -> Unit
         }
     }
 }
@@ -546,7 +788,13 @@ private fun ImportActions(onAddPhotos: () -> Unit, onAddFiles: () -> Unit) {
  * being intersected against a listing that can change underneath it.
  */
 @Composable
-private fun SelectionBar(count: Int, onSelectAll: () -> Unit, onClear: () -> Unit) {
+private fun SelectionBar(
+    count: Int,
+    onUnfile: (() -> Unit)?,
+    onMoveToAlbum: () -> Unit,
+    onSelectAll: () -> Unit,
+    onClear: () -> Unit,
+) {
     val spacing = DarkChamberTheme.spacing
 
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -556,6 +804,28 @@ private fun SelectionBar(count: Int, onSelectAll: () -> Unit, onClear: () -> Uni
             color = DarkChamberTheme.colors.textPrimary,
         )
         Spacer(Modifier.width(spacing.spaceMd))
+        onUnfile?.let { unfile ->
+            TextButton(onClick = unfile, enabled = count > 0) {
+                Text(
+                    text = GalleryFormat.unfileSelection(),
+                    style = DarkChamberTheme.typography.label,
+                    // Not the danger role: nothing is destroyed, and colouring it as though something
+                    // were is how a user comes to believe this button deletes their files.
+                    color = if (count > 0) DarkChamberTheme.colors.accent else DarkChamberTheme.colors.textSecondary,
+                )
+            }
+        }
+        TextButton(onClick = onMoveToAlbum, enabled = count > 0) {
+            Text(
+                text = GalleryFormat.moveToAlbum(),
+                style = DarkChamberTheme.typography.label,
+                // Disabled rather than absent at zero, unlike the album actions elsewhere: the mode
+                // itself persists with nothing in it (an item can leave the listing while selected), so
+                // a button vanishing and returning as the count changes would be the thing that reads
+                // as broken.
+                color = if (count > 0) DarkChamberTheme.colors.accent else DarkChamberTheme.colors.textSecondary,
+            )
+        }
         TextButton(onClick = onSelectAll) {
             Text(
                 text = "Select all",
@@ -1065,6 +1335,9 @@ private fun ErrorBanner(error: GalleryError, onDismiss: () -> Unit) {
             text = when (error) {
                 GalleryError.ImportFailed -> "That file couldn't be added to the vault."
                 GalleryError.ListingFailed -> "The vault's index couldn't be read. Your files are still encrypted."
+                // Says where they are rather than only what failed: the user is looking at a selection
+                // that did not move, and the one thing they need to know is that nothing was lost.
+                GalleryError.FilingFailed -> "Those items couldn't be moved. They are where they were."
             },
             style = DarkChamberTheme.typography.body,
             color = colors.textPrimary,
@@ -1107,6 +1380,20 @@ private const val KEEP_OPEN_NOTICE =
  */
 private const val STOPPING_NOTICE =
     "Stopping — this may take a moment. Everything already added stays in the vault."
+
+/**
+ * Hex, for the chooser's stable list keys: a `ByteArray` is not usable as one — its equality is identity.
+ */
+private fun ByteArray.toChoiceKey(): String =
+    joinToString("") { byte ->
+        val value = byte.toInt() and 0xFF
+        "${CHOICE_HEX[value shr 4]}${CHOICE_HEX[value and 0x0F]}"
+    }
+
+private const val CHOICE_HEX = "0123456789abcdef"
+
+/** Tall enough for several albums, short enough to leave the dialog's buttons on screen. */
+private val CHOOSER_LIST_MAX = 260.dp
 
 /** Wide enough for a name to read at two columns on a phone, narrow enough for three on a tablet. */
 private val TILE_MIN_WIDTH = 132.dp
