@@ -607,8 +607,8 @@ class VaultObjects(
      * is being looked at while it happens. The catalog defers its notification to the commit, so the
      * batch produces one.
      *
-     * That per-emission re-decrypt is a **known cost of its own**, recorded in the standing phase
-     * backlog; batching here keeps this call site from multiplying it, and does not fix it. An
+     * That per-emission re-decrypt is a **known cost of its own**, tracked separately; batching here
+     * keeps this call site from multiplying it, and does not fix it. An
      * album's own listing is cheap by construction and is not what this is about.
      *
      * Returns an [AssignSummary] rather than `Unit`: ids that are no longer in the catalog are

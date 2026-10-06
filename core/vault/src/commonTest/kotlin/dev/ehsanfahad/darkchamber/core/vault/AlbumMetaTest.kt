@@ -119,7 +119,7 @@ class AlbumMetaTest {
      * The reverse **fails closed**, which is the half that matters — an album name cannot be passed
      * off as an item's metadata, because `ObjectMeta` requires a `mime` the album blob never had.
      *
-     * If a later cycle gives metadata kinds separate AADs, the first assertion here is what tells
+     * If a later change gives metadata kinds separate AADs, the first assertion here is what tells
      * whoever did it that they have fixed this. Changing it to expect a failure is the correct
      * response to that; silently deleting it is not.
      */

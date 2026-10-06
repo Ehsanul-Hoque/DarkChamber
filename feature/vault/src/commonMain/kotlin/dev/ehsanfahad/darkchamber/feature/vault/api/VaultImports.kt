@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.StateFlow
  * The running import batch, as something a screen can watch and steer but does not own.
  *
  * It belongs to the **session**, not to a screen: navigating away from the gallery — which
- * the albums cycle introduces — must not cancel an import half way through fifty photos, while
+ * the album surface makes ordinary — must not cancel an import half way through fifty photos, while
  * locking still must, because locking ends the session.
  *
  * The consequence to be honest about: when a lock ends a batch, this object dies with the session

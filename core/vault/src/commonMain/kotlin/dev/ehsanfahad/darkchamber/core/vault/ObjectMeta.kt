@@ -81,7 +81,7 @@ internal fun ByteArray?.contentEqualsOrBothNull(other: ByteArray?): Boolean =
 // configuration into a wider shape; everything else goes through encodeMeta/decodeMeta.
 //
 // `ignoreUnknownKeys` is what makes the metadata model extensible on vaults that already exist: a
-// later cycle adds a field, and a build that predates it still reads those rows instead of failing
+// later release adds a field, and a build that predates it still reads those rows instead of failing
 // them as unverifiable. It is safe here and only here — enc_meta is a display record, not an
 // authenticity claim. The .dchm header stays strict, because an unexpected key there is tampering.
 @OptIn(ExperimentalSerializationApi::class)

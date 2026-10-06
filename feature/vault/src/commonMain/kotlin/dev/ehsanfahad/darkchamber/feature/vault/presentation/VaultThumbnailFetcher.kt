@@ -119,7 +119,7 @@ internal class VaultThumbnailFetcher(
  * rule is explicit that an integrity failure is never quietly rendered as something else — while
  * marking an intact item damaged because a decoder disliked its bytes would be the opposite lie.
  *
- * So the discrimination is exact: this cycle's fetcher is the only thing that throws
+ * So the discrimination is exact: this module's fetcher is the only thing that throws
  * [VaultThumbnailException], and only for an `Err` the vault itself reported.
  */
 internal fun previewFailedIntegrity(cause: Throwable?): Boolean =

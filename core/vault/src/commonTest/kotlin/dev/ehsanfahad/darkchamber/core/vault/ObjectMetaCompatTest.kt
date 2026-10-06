@@ -10,7 +10,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 /**
- * `ObjectMeta` as a later cycle might extend it: today's fields plus one that carries a default.
+ * `ObjectMeta` as a later release might extend it: today's fields plus one that carries a default.
  * Declared in the test source precisely because the point is to exercise a field `main` does not
  * have yet.
  */
@@ -28,7 +28,7 @@ private data class PreThumbnailMeta(val name: String, val mime: String)
 /**
  * The `enc_meta` blob is **versionless** — unlike `.dchm` it has no prelude, no format vector and
  * no field to bump — so the only thing standing between a metadata extension (dimensions, duration:
- * the richer model a later cycle adds once decoders exist) and every vault already on a device is
+ * the richer model a later release adds once decoders exist) and every vault already on a device is
  * the CBOR configuration. Both directions have to hold, and neither is exercised by the
  * round-trip tests, which only ever encode and decode the same shape:
  *

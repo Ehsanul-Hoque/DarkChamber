@@ -23,14 +23,14 @@ import kotlin.coroutines.cancellation.CancellationException
  * Owns the running import batch and publishes it as one [ImportState] a screen can render.
  *
  * **Bound to the session, not to a screen.** It runs on a scope the unlocked subtree owns,
- * so navigating away — which the albums cycle introduces — cannot cancel an import, while locking
+ * so navigating away — which the album surface makes ordinary — cannot cancel an import, while locking
  * still does, because locking cancels that scope. A component that owned the batch would make the
  * two indistinguishable.
  *
  * The consequence to be honest about: when a **lock** ends a batch, this object dies with the
  * session and the user can never be told what happened. Persisting batch state across a lock is not
  * something we will do, so the pre-import notice is the only warning there is — which is exactly why
- * it is load-bearing rather than decoration (spec §4.4).
+ * it is load-bearing rather than decoration.
  */
 internal class ImportCoordinator(
     private val photoPicker: PhotoPicker,

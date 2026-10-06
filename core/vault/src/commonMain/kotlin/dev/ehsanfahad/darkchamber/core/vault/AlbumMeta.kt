@@ -13,7 +13,7 @@ import kotlinx.serialization.encodeToByteArray
  * An album's secret: its name, sealed under MK into the catalog's `enc_name` column.
  *
  * **A struct rather than the bare string**, which [ObjectMeta] learned the hard way — it gained
- * `thumbnailKey` a cycle after it was written and needed the forward-compatibility guard below to do
+ * `thumbnailKey` after it was first written and needed the forward-compatibility guard below to do
  * it without breaking vaults already in the field. A raw sealed string has nowhere to grow: adding
  * anything beside it would be a format change on data that already exists.
  *
@@ -57,7 +57,7 @@ internal fun VaultSession.sealAlbumMeta(meta: AlbumMeta): ByteArray = sealMeta(e
  * one-directional, and both directions need write access to the catalog to arrange.
  *
  * Accepted rather than fixed here: separating the two domains means a new AAD for metadata kinds,
- * which belongs to `core:crypto` and to the format doc, not to a feature cycle inventing one at the
+ * which belongs to `core:crypto` and to the format doc, not to a feature inventing one at the
  * call site (hard rule #2). The effect is a wrong label on a screen, not a key or a plaintext
  * reaching anywhere it should not. Pinned by a test so that whoever adds the separation is told.
  */
