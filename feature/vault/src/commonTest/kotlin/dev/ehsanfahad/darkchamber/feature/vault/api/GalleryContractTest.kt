@@ -57,6 +57,27 @@ class GalleryContractTest {
         assertFalse(rendered.contains("application/pdf"), "the mime must not appear in $rendered")
     }
 
+    /**
+     * A name being typed is vault content too, and this one is reachable from two states — the album
+     * grid's and an album screen's — so printing either of those would carry it (hard rule #4).
+     */
+    @Test
+    fun a_draft_toString_never_leaks_the_name_being_typed() {
+        val draft = AlbumDraft(name = "Divorce papers", problem = AlbumDraftProblem.CreateFailed)
+
+        val rendered = draft.toString()
+        assertFalse(rendered.contains("Divorce"), "the typed name must not appear in $rendered")
+        assertFalse(
+            AlbumsState(draft = draft).toString().contains("Divorce"),
+            "nor through the state that holds it",
+        )
+        assertFalse(
+            AlbumState.Present(name = AlbumTileName.Unreadable, rename = draft).toString().contains("Divorce"),
+            "nor through an album's own rename state",
+        )
+        assertTrue(rendered.contains("CreateFailed"), "the problem is not content, and is worth keeping")
+    }
+
     /** The meta on its own is just as loggable as the tile that holds it, so it redacts too. */
     @Test
     fun readable_meta_toString_never_leaks_the_name_or_mime() {

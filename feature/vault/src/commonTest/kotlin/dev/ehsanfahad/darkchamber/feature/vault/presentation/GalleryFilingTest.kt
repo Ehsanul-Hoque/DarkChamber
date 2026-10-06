@@ -417,6 +417,33 @@ class GalleryFilingTest {
         assertNull(component.state.value.filing)
     }
 
+    /**
+     * **The chooser's listing is live only while the chooser is open.** Every emission of it opens one
+     * small ciphertext per album, and it re-emits on every catalog change — including the import or the
+     * move that happens after the chooser has closed. Left subscribed for the life of the screen it
+     * would keep decrypting names for a dialog nobody is looking at.
+     *
+     * Counted on the flow rather than on the state: once the chooser is closed, a stale emission
+     * changes no state either way, so state cannot tell a cancelled subscription from a live one.
+     */
+    @Test
+    fun the_chooser_only_listens_to_the_album_listing_while_it_is_open() = runTest {
+        val vault = FakeVaultItems()
+        vault.albums.value = listOf(album(otherAlbum, "Invoices"))
+        val component = component(vault)
+        advanceUntilIdle()
+        assertEquals(0, vault.albums.subscriptionCount.value, "the whole-vault gallery watches no albums")
+
+        component.selectTwo(vault)
+        component.startFiling()
+        advanceUntilIdle()
+        assertEquals(1, vault.albums.subscriptionCount.value, "the open chooser keeps its list current")
+
+        component.cancelFiling()
+        advanceUntilIdle()
+        assertEquals(0, vault.albums.subscriptionCount.value, "and lets go of it when it closes")
+    }
+
     @Test
     fun cancelling_the_chooser_moves_nothing() = runTest {
         val vault = FakeVaultItems()

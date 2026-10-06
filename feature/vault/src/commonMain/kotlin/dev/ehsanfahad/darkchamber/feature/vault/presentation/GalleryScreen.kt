@@ -153,7 +153,14 @@ internal fun GalleryScreen(
                 // list, and a spinner or an "empty album" message would both be lying about why.
                 album is AlbumState.Gone -> MissingAlbumNotice(onLeave = onLeaveAlbum)
                 state.loading -> CenteredMessage("Opening the vault…", showSpinner = true)
-                state.items.isEmpty() -> EmptyListing(state.scope)
+                // The listing failing and the listing being empty look identical from here — both are
+                // an empty list with loading over — so the screen is told which it is rather than
+                // letting the copy assert an absence nobody established. Not the banner's error, which
+                // the user can dismiss: the reason the grid is empty outlives the acknowledgement.
+                state.items.isEmpty() -> EmptyListing(
+                    scope = state.scope,
+                    unreadable = state.listingUnreadable,
+                )
                 else -> ItemGrid(
                     items = state.items,
                     now = now,
@@ -194,7 +201,7 @@ internal fun GalleryScreen(
                     // vault the selection is a mix of filed and unfiled items, so the button would
                     // silently do nothing to some of them; from Unfiled there is nothing to take out.
                     // No shredding here either — that is destructive, needs its own disclosure, and
-                    // belongs to the cycle that owns it.
+                    // belongs to the work that owns it.
                     onUnfile = onUnfileSelection.takeIf { state.scope == GalleryScope.Album },
                     onMoveToAlbum = onStartFiling,
                     onSelectAll = onSelectAll,
@@ -232,7 +239,7 @@ internal fun GalleryScreen(
         val deleteState = (batch as? ImportState.Finished)?.originalDelete
         if (deleteState == OriginalDelete.Confirming || deleteState == OriginalDelete.Deleting) {
             DeleteOriginalsDisclosure(
-                count = (batch as ImportState.Finished).deletableOriginals,
+                count = batch.deletableOriginals,
                 // The dialog stays up while the deletes run, with both buttons spent. The coordinator
                 // refuses either intent in that state anyway; disabling them is so the dialog stops
                 // *offering* a choice that has already been made and cannot be taken back.
@@ -273,7 +280,10 @@ internal fun GalleryScreen(
 
             album.delete?.let { delete ->
                 DeleteAlbumConfirmation(
-                    itemCount = state.items.size,
+                    // Null while the listing has not arrived: the heading this dialog opens from
+                    // appears as soon as the album is known, which is independent of the item
+                    // listing, so an empty list here can mean "not read yet" rather than "empty".
+                    itemCount = state.items.size.takeIf { !state.loading && !state.listingUnreadable },
                     delete = delete,
                     onDelete = onConfirmAlbumDelete,
                     onKeep = onCancelAlbumDelete,
@@ -368,7 +378,7 @@ private fun AlbumChooser(
                 // Scrollable and height-capped: a vault with thirty albums must not push the buttons
                 // off the bottom of the screen.
                 LazyColumn(modifier = Modifier.heightIn(max = CHOOSER_LIST_MAX).padding(top = spacing.spaceSm)) {
-                    items(choosing.albums, key = { it.id.toChoiceKey() }) { choice ->
+                    items(choosing.albums, key = { it.id.toListKey() }) { choice ->
                         Text(
                             text = when (val name = choice.name) {
                                 is AlbumTileName.Readable -> name.value
@@ -586,7 +596,8 @@ private fun MissingAlbumNotice(onLeave: () -> Unit) {
  */
 @Composable
 private fun DeleteAlbumConfirmation(
-    itemCount: Int,
+    /** How many items are in the album, or `null` if that is not known yet — which is not zero. */
+    itemCount: Int?,
     delete: AlbumDelete,
     onDelete: () -> Unit,
     onKeep: () -> Unit,
@@ -777,15 +788,16 @@ private fun ImportActions(onAddPhotos: () -> Unit, onAddFiles: () -> Unit) {
 }
 
 /**
- * The selection bar: how many are selected, and the two ways to change that wholesale.
+ * The selection bar: how many are selected, the two ways to change that wholesale, and what can be
+ * done with it.
  *
  * It replaces the import affordances rather than sitting beside them — one bottom bar at a time, as
- * the batch states already are. No action buttons yet: filing arrives with the album surface, and
- * shredding belongs to the cycle that owns shredding and its own disclosure, so offering either here
- * would be offering something that cannot happen.
+ * the batch states already are. Filing is the only action here: shredding is destructive and needs a
+ * disclosure of its own, so it arrives with the work that owns shredding rather than being offered
+ * before it can honestly be explained.
  *
- * The count is the whole message. It is also the one honest thing to say while the selection is
- * being intersected against a listing that can change underneath it.
+ * The count is the whole message when nothing can be acted on. It is also the one honest thing to
+ * say while the selection is being intersected against a listing that can change underneath it.
  */
 @Composable
 private fun SelectionBar(
@@ -1098,7 +1110,7 @@ private fun ItemGrid(
         // Keyed by the object id, never by position. With newest-first ordering every existing tile
         // shifts down on each import, so an index key would tell Compose that every row changed —
         // animating the whole grid instead of the one tile that actually arrived.
-        items(items, key = { it.id.toHexKey() }) { item ->
+        items(items, key = { it.id.toListKey() }) { item ->
             ItemTile(
                 item = item,
                 now = now,
@@ -1138,7 +1150,7 @@ private fun ItemTile(
             // The whole tile is the target, caption included: a thumbnail is a small thing to hit,
             // and the name under it is part of what the user is pointing at.
             //
-            // A tap does nothing outside selecting mode. Opening an item is the viewers' cycle, and
+            // A tap does nothing outside selecting mode. Opening an item is the viewers' work, and
             // wiring a tap to anything now would be inventing a behaviour that has to be taken back.
             .combinedClickable(
                 onClick = { if (selecting) onTap() },
@@ -1223,7 +1235,12 @@ private fun ItemTile(
                         // badge an audio file gets would be the silent rendering the error-handling
                         // rule forbids. Everything else here — an image Coil could not decode, a
                         // preview that would not read — leaves the tile exactly as it was.
-                        val cause = (painter.state as? AsyncImagePainter.State.Error)?.result?.throwable
+                        // `.value`: the painter's state is a StateFlow, not a State. Casting the flow
+                        // itself compiles — it is a cast between unrelated types the compiler will only
+                        // warn about — and then always yields null, which silently turned this whole
+                        // branch into the ordinary badge. The slot is composed only while the state *is*
+                        // Error, so reading the current value here is right.
+                        val cause = (painter.state.value as? AsyncImagePainter.State.Error)?.result?.throwable
                         badge(previewFailedIntegrity(cause))
                     },
                     modifier = Modifier.fillMaxSize().clip(DarkChamberTheme.shapes.medium),
@@ -1231,7 +1248,7 @@ private fun ItemTile(
             }
 
             // Inside the media slot, which already reserves this square — **not** in the tile's own
-            // corner. A badge drawn into the tile corner is the bug a previous cycle shipped: the
+            // corner. A badge drawn into the tile corner is the bug an earlier release shipped: the
             // tile is a Column of slot plus two lines of text, so its corners are over the caption,
             // and a corner-aligned overlay landed on the file name of the row below.
             //
@@ -1292,12 +1309,13 @@ private fun ItemTile(
 }
 
 /**
- * An empty listing, which is three different situations — see [GalleryFormat.emptyListing]. The same
- * screen serves all of them, so the copy is the only thing that can tell them apart.
+ * An empty listing, which is four different situations — see [GalleryFormat.emptyListing]. The same
+ * screen serves all of them, so the copy is the only thing that can tell them apart, and one of the
+ * four is the grid being empty because it could not be read at all.
  */
 @Composable
-private fun EmptyListing(scope: GalleryScope) {
-    CenteredMessage(GalleryFormat.emptyListing(scope), showSpinner = false)
+private fun EmptyListing(scope: GalleryScope, unreadable: Boolean) {
+    CenteredMessage(GalleryFormat.emptyListing(scope, unreadable), showSpinner = false)
 }
 
 @Composable
@@ -1349,16 +1367,8 @@ private fun ErrorBanner(error: GalleryError, onDismiss: () -> Unit) {
     }
 }
 
-// Stable list key. The id is opaque bytes, so hex is just an identity — never content.
-private fun ByteArray.toHexKey(): String = joinToString("") { byte ->
-    val v = byte.toInt() and 0xFF
-    HEX[v shr 4].toString() + HEX[v and 0x0F]
-}
-
-private const val HEX = "0123456789abcdef"
-
 /**
- * The load-bearing sentence of this screen (spec §4.4). A lock or a background ends a batch, and
+ * The load-bearing sentence of this screen. A lock or a background ends a batch, and
  * afterwards there is nobody left to tell — the state died with the session. Warning beforehand is
  * the only chance there is, so it stays visible for the whole import, not just at the start.
  */
@@ -1380,17 +1390,6 @@ private const val KEEP_OPEN_NOTICE =
  */
 private const val STOPPING_NOTICE =
     "Stopping — this may take a moment. Everything already added stays in the vault."
-
-/**
- * Hex, for the chooser's stable list keys: a `ByteArray` is not usable as one — its equality is identity.
- */
-private fun ByteArray.toChoiceKey(): String =
-    joinToString("") { byte ->
-        val value = byte.toInt() and 0xFF
-        "${CHOICE_HEX[value shr 4]}${CHOICE_HEX[value and 0x0F]}"
-    }
-
-private const val CHOICE_HEX = "0123456789abcdef"
 
 /** Tall enough for several albums, short enough to leave the dialog's buttons on screen. */
 private val CHOOSER_LIST_MAX = 260.dp

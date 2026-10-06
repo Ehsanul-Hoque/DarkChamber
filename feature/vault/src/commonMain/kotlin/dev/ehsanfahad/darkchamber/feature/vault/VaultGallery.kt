@@ -17,8 +17,8 @@ import dev.ehsanfahad.darkchamber.feature.vault.domain.ImportFile
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ImportQueue
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveAlbum
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveAlbums
-import dev.ehsanfahad.darkchamber.feature.vault.domain.RenameAlbum
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveGallery
+import dev.ehsanfahad.darkchamber.feature.vault.domain.RenameAlbum
 import coil3.ImageLoader
 import coil3.PlatformContext
 import dev.ehsanfahad.darkchamber.feature.vault.presentation.DefaultVaultAlbumsComponent

@@ -133,6 +133,23 @@ class DefaultVaultGalleryComponentTest {
         assertEquals(GalleryError.ListingFailed, state.error, "a broken catalog is reported, not hidden")
         assertFalse(state.loading, "the listing settled, unsuccessfully")
         assertEquals(emptyList(), state.items)
+        assertTrue(state.listingUnreadable, "and the grid knows why it is empty")
+    }
+
+    /**
+     * **Dismissing the banner does not make the vault empty.** The failure ends the flow underneath, so
+     * no listing will arrive afterwards; if acknowledging the banner were all that recorded it, the
+     * screen would go back to an empty list indistinguishable from a vault with nothing in it — and the
+     * copy for that says "Nothing in the vault yet", to someone whose files are all still there.
+     */
+    @Test
+    fun acknowledging_a_listing_failure_does_not_turn_it_into_an_empty_vault() = runTest {
+        val component = component(ExplodingVaultItems())
+
+        component.dismissError()
+
+        assertNull(component.state.value.error, "the banner is the user's to dismiss")
+        assertTrue(component.state.value.listingUnreadable, "why the grid is empty is not")
     }
 
     @Test
@@ -508,6 +525,47 @@ class DefaultVaultGalleryComponentTest {
         assertEquals(1, imports.acknowledged)
     }
 
+    /**
+     * **Dismissing a filing failure must not acknowledge the batch.** One banner serves three errors
+     * now, and only one of them is the import's: acknowledging drops a finished summary along with its
+     * `deletableOriginals` count and the one-time offer to delete the originals, which is the single
+     * moment that offer is ever made.
+     *
+     * The window is real rather than theoretical: a finished batch stays on screen until it is
+     * acknowledged, nothing stops a selection being made while it is there, and a move that fails
+     * raises the same banner. Dismissing it took the offer with it.
+     */
+    @Test
+    fun dismissing_a_filing_failure_leaves_the_finished_batch_alone() = runTest {
+        val imports = FakeImports()
+        val vault = FakeVaultItems(assignFailure = VaultError.Crypto.IntegrityFailure)
+        val album = byteArrayOf(2, 2)
+        vault.albums.value = listOf(
+            AlbumSummary(album.copyOf(), Outcome.Ok("Invoices"), itemCount = 0, coverItemId = null, createdAt = 1L),
+        )
+        val component = component(vault, imports = imports)
+        advanceUntilIdle()
+
+        // A clean batch, finished and waiting to be acknowledged, with originals still deletable.
+        imports.emit(ImportState.Finished(imported = 2, failed = emptyList(), deletableOriginals = 2))
+        assertNull(component.state.value.error, "a clean batch raises no banner of its own")
+
+        vault.summaries.value = listOf(summary(byteArrayOf(5), readableMeta()))
+        component.selectItem(byteArrayOf(5))
+        component.startFiling()
+        advanceUntilIdle()
+        component.chooseAlbum(album)
+        advanceUntilIdle()
+        assertEquals(GalleryError.FilingFailed, component.state.value.error, "the move was refused")
+
+        component.dismissError()
+
+        assertNull(component.state.value.error, "the banner clears")
+        assertEquals(0, imports.acknowledged, "but the batch was never the thing being dismissed")
+        val batch = assertIs<ImportState.Finished>(component.state.value.batch)
+        assertEquals(2, batch.deletableOriginals, "so the offer to delete the originals survives")
+    }
+
     @Test
     fun a_cancelled_picker_leaves_no_error_behind() = runTest {
         val imports = FakeImports()
@@ -522,7 +580,7 @@ class DefaultVaultGalleryComponentTest {
 
     /**
      * The component watches the batch; it does not own it. A screen that is destroyed
-     * mid-import — which the albums cycle makes ordinary — must not take fifty photos down with it.
+     * mid-import — which the album surface makes ordinary — must not take fifty photos down with it.
      */
     @Test
     fun destroying_the_screen_does_not_end_the_batch() = runTest {

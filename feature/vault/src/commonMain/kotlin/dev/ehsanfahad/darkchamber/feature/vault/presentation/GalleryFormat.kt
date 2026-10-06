@@ -38,26 +38,51 @@ internal object GalleryFormat {
      *
      * Saying the first of these on an empty album would tell a user with five hundred files that
      * their vault is empty.
+     *
+     * **And a fourth situation that is none of those: [unreadable], the listing could not be read.**
+     * The grid is equally empty then, but all three answers above assert something about what is in
+     * the vault, which is the one thing a failed read cannot know — "Nothing in the vault yet" after
+     * the index failed to open says the files are gone. The failed answer describes the read instead,
+     * is the same whatever the scope, and claims no absence. It is a parameter rather than the caller's
+     * choice of string so that the decision sits here, where it can be tested, instead of in a
+     * composable nothing can assert on.
      */
-    fun emptyListing(scope: GalleryScope): String =
-        when (scope) {
-            GalleryScope.WholeVault -> "Nothing in the vault yet.\nAdd a file to encrypt it."
-            GalleryScope.Album -> "Nothing in this album yet.\nSelect items in your vault to file them here."
-            GalleryScope.Unfiled -> "Everything is filed.\nNothing is waiting to be sorted."
+    fun emptyListing(scope: GalleryScope, unreadable: Boolean): String =
+        if (unreadable) {
+            "Couldn't read what's in your vault."
+        } else {
+            // Exhaustive on purpose: a fourth scope must be made to answer for itself rather than
+            // inheriting whichever branch happened to be last.
+            when (scope) {
+                GalleryScope.WholeVault -> "Nothing in the vault yet.\nAdd a file to encrypt it."
+                GalleryScope.Album ->
+                    "Nothing in this album yet.\nSelect items in your vault to file them here."
+                GalleryScope.Unfiled -> "Everything is filed.\nNothing is waiting to be sorted."
+            }
         }
 
     /**
-     * What to say when there are no albums.
+     * What to say when there are no albums, or `null` to say nothing at all.
      *
      * Says what an album is *for*, because a blank grid teaches nothing — and only that, since the
      * create affordance is on the same screen and does not need describing in prose. And it
      * says what an album is **not**: grouping, not protection. Everything in the vault is already
      * encrypted, and a user who reads "album" as "extra lock" has been misled by omission — the one
      * place this screen could overstate what the app does (hard rule #6).
+     *
+     * **When the listing could not be read there is nothing honest to put here**, hence the null. "No
+     * albums yet" would be an absence nobody established. Unlike the item grid, which needs *some*
+     * message because the empty listing is the whole of it, that screen still has the banner saying
+     * the read failed and the Unfiled entry leading somewhere true — a second line would be the
+     * banner's sentence twice.
      */
-    fun noAlbums(): String =
-        "No albums yet.\nAlbums group your files so they are easier to find — everything in the vault " +
-            "is encrypted either way."
+    fun noAlbums(unreadable: Boolean): String? =
+        if (unreadable) {
+            null
+        } else {
+            "No albums yet.\nAlbums group your files so they are easier to find — everything in the " +
+                "vault is encrypted either way."
+        }
 
     /**
      * What the create affordance and its dialog say.
@@ -176,8 +201,15 @@ internal object GalleryFormat {
      */
     fun deleteAlbumQuestion(): String = "Delete this album?"
 
-    fun deleteAlbumExplanation(itemCount: Int): String =
+    fun deleteAlbumExplanation(itemCount: Int?): String =
         when (itemCount) {
+            // Not yet known, which is not the same as zero. The heading this dialog opens from appears
+            // as soon as the album does, and that is independent of the item listing's first emission —
+            // so "This album is empty" here would be a guess dressed as a fact, in the one dialog whose
+            // job is to be exactly right about what is at stake. The rule holds at any size, so it is
+            // stated without a number.
+            null -> "Everything in this album stays in your vault. It moves to Unfiled, and only the " +
+                "album itself is deleted."
             0 -> "This album is empty. Only the album is deleted."
             1 -> "The item in this album stays in your vault. It moves to Unfiled, and only the " +
                 "album itself is deleted."

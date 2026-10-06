@@ -7,6 +7,8 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.ImportStage
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class GalleryFormatTest {
@@ -166,9 +168,9 @@ class GalleryFormatTest {
      */
     @Test
     fun each_empty_listing_says_something_different() {
-        val vault = GalleryFormat.emptyListing(GalleryScope.WholeVault)
-        val album = GalleryFormat.emptyListing(GalleryScope.Album)
-        val unfiled = GalleryFormat.emptyListing(GalleryScope.Unfiled)
+        val vault = GalleryFormat.emptyListing(GalleryScope.WholeVault, unreadable = false)
+        val album = GalleryFormat.emptyListing(GalleryScope.Album, unreadable = false)
+        val unfiled = GalleryFormat.emptyListing(GalleryScope.Unfiled, unreadable = false)
 
         assertEquals(3, setOf(vault, album, unfiled).size, "three situations, three answers")
         assertTrue(
@@ -188,12 +190,65 @@ class GalleryFormatTest {
      */
     @Test
     fun nothing_unfiled_reads_as_an_achievement_rather_than_an_absence() {
-        val copy = GalleryFormat.emptyListing(GalleryScope.Unfiled).lowercase()
+        val copy = GalleryFormat.emptyListing(GalleryScope.Unfiled, unreadable = false).lowercase()
 
         assertTrue("filed" in copy, "it says what is true — everything is filed: $copy")
         for (lack in listOf("no items", "nothing in", "empty")) {
             assertFalse(lack in copy, "a fully filed vault is not a shortage: $copy")
         }
+    }
+
+    /**
+     * **A listing that could not be read is not a listing with nothing in it**, and the grid is empty
+     * in both cases. Every one of the three empty-listing answers asserts something about the vault's
+     * contents, which is exactly what a failed read cannot know: "nothing in the vault yet" after the
+     * index failed to open tells someone their files are gone.
+     *
+     * So the unreadable answer is the same whatever the scope — it describes the read, not the vault —
+     * and claims nothing about what is or is not in there.
+     */
+    @Test
+    fun an_unreadable_listing_claims_nothing_about_what_is_in_the_vault() {
+        val scopes = listOf(GalleryScope.WholeVault, GalleryScope.Album, GalleryScope.Unfiled)
+
+        val answers = scopes.map { GalleryFormat.emptyListing(it, unreadable = true) }
+        assertEquals(1, answers.toSet().size, "the read failed; the scope tells us nothing more")
+
+        val copy = answers.first()
+        val lower = copy.lowercase()
+        assertTrue(
+            listOf("couldn't", "could not").any { it in lower },
+            "it says the read failed: $copy",
+        )
+        for (claim in listOf("nothing in", "no items", "empty", "yet", "everything is filed")) {
+            assertFalse(claim in lower, "a failed read may not claim an absence: $copy")
+        }
+        for (scope in scopes) {
+            assertFalse(
+                GalleryFormat.emptyListing(scope, unreadable = false) == copy,
+                "and it is not one of the ordinary answers: $copy",
+            )
+        }
+    }
+
+    /**
+     * The album grid's teaching copy is **withheld** rather than replaced when the listing failed.
+     *
+     * Unlike the item grid, that screen still has something true on it — the Unfiled entry leads
+     * somewhere whether or not the albums could be read — and the banner directly above already says
+     * the read failed. A second line saying so would be the same sentence twice; "No albums yet" would
+     * be an absence nobody established.
+     */
+    @Test
+    fun an_unreadable_album_listing_says_nothing_rather_than_claiming_there_are_none() {
+        assertNull(
+            GalleryFormat.noAlbums(unreadable = true),
+            "the banner above has already said the only thing that is known",
+        )
+        assertNotNull(
+            GalleryFormat.noAlbums(unreadable = false),
+            "but a vault that genuinely has no albums is still taught what they are for",
+        )
     }
 
     /**
@@ -203,7 +258,7 @@ class GalleryFormatTest {
      */
     @Test
     fun the_no_albums_copy_explains_grouping_and_does_not_promise_protection() {
-        val copy = GalleryFormat.noAlbums()
+        val copy = assertNotNull(GalleryFormat.noAlbums(unreadable = false))
         val lower = copy.lowercase()
 
         assertTrue("album" in lower, "it names the thing: $copy")
@@ -358,6 +413,35 @@ class GalleryFormatTest {
 
         assertTrue("empty" in copy, copy)
         assertFalse("unfiled" in copy, "nothing to move, so nothing to say about where: $copy")
+    }
+
+    /**
+     * **A count we do not have yet is not a count of zero.** The album heading appears as soon as the
+     * album itself is known, which is independent of its item listing's first emission — so Delete
+     * album is reachable while the item list is still empty for want of having arrived. Passing that
+     * emptiness through would tell someone holding five hundred filed files that the album is empty,
+     * in the one dialog whose whole job is to be exactly right about what is at stake.
+     *
+     * The unknown answer states the rule without a number: true of an album with one item and of one
+     * with a thousand, and it cannot be read as "empty".
+     */
+    @Test
+    fun an_album_whose_contents_are_not_known_yet_is_not_called_empty() {
+        val copy = GalleryFormat.deleteAlbumExplanation(null)
+        val lower = copy.lowercase()
+
+        assertFalse("empty" in lower, "we have not read the listing; we cannot say that: $copy")
+        assertTrue("stay" in lower, "it still says the items are kept: $copy")
+        assertTrue("unfiled" in lower, "and where they go: $copy")
+        assertTrue("only the album" in lower, "and what is actually deleted: $copy")
+        assertFalse(
+            Regex("""\d""").containsMatchIn(copy),
+            "and it names no number, because it does not have one: $copy",
+        )
+        assertFalse(
+            copy == GalleryFormat.deleteAlbumExplanation(0),
+            "an unknown count is not the empty answer: $copy",
+        )
     }
 
     /**

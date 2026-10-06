@@ -72,6 +72,15 @@ data class AlbumsState(
     val error: AlbumsError? = null,
     /** The new-album draft, present only while the dialog is open. */
     val draft: AlbumDraft? = null,
+    /**
+     * The album listing could not be read, as a lasting fact rather than as a banner.
+     *
+     * Separate from [error] because the two have different lifetimes: the banner is dismissible, while
+     * an empty [albums] that is empty for want of having been read stays that way — a catalog failure
+     * ends the flow underneath it. Dismissing the banner without this would put "No albums yet" back on
+     * screen, which is an absence nobody established.
+     */
+    val listingUnreadable: Boolean = false,
 )
 
 /**
@@ -87,7 +96,16 @@ data class AlbumDraft(
     val problem: AlbumDraftProblem? = null,
     /** True only while the create is actually running: it disables the dialog and guards a second tap. */
     val saving: Boolean = false,
-)
+) {
+    /**
+     * Redacted like every other type in this package that holds a name: [name] is an album name, so
+     * the generated `toString` would print it — and this value is reachable from `AlbumsState` and
+     * from `AlbumState.Present`, so printing either of those would carry it too (hard rule #4). The
+     * length is withheld as well, since the length of a name is a fact about it.
+     */
+    override fun toString(): String =
+        "AlbumDraft(name=<redacted>, problem=$problem, saving=$saving)"
+}
 
 /** Why a draft has not become an album. Stated next to the field, not as a banner over the grid. */
 enum class AlbumDraftProblem {

@@ -72,6 +72,14 @@ class DefaultVaultAlbumsComponentTest {
 
         assertEquals(AlbumsError.ListingFailed, component.state.value.error)
         assertFalse(component.state.value.loading, "it has stopped waiting")
+        assertTrue(component.state.value.listingUnreadable, "and the grid knows why it is empty")
+
+        // Dismissing the banner acknowledges the message, not the condition: the failure ended the flow,
+        // so nothing will arrive afterwards, and a screen that forgot would put "No albums yet" back up
+        // over a vault whose albums it never managed to read.
+        component.dismissError()
+        assertNull(component.state.value.error, "the banner is the user's to dismiss")
+        assertTrue(component.state.value.listingUnreadable, "why the grid is empty is not")
     }
 
     @Test

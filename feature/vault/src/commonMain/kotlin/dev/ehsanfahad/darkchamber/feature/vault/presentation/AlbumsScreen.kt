@@ -90,6 +90,11 @@ internal fun AlbumsScreen(
                 // for. So the grid renders either way and the explanation sits above it.
                 else -> AlbumGrid(
                     albums = state.albums,
+                    // After a failed listing the grid is empty because it could not be read, which the
+                    // banner above already says — and "No albums yet" would be an absence nobody
+                    // established. Not the banner's error, which the user can dismiss: the reason the
+                    // grid is empty outlives the acknowledgement.
+                    unreadable = state.listingUnreadable,
                     imageLoader = imageLoader,
                     bottomInset = barHeight,
                     onOpenAlbum = onOpenAlbum,
@@ -138,6 +143,8 @@ internal fun AlbumsScreen(
 @Composable
 private fun AlbumGrid(
     albums: List<AlbumTile>,
+    /** Whether the empty grid is empty because the listing could not be read, rather than genuinely. */
+    unreadable: Boolean,
     imageLoader: ImageLoader,
     bottomInset: Dp,
     onOpenAlbum: (ByteArray) -> Unit,
@@ -157,12 +164,15 @@ private fun AlbumGrid(
         verticalArrangement = Arrangement.spacedBy(spacing.spaceSm),
         modifier = Modifier.fillMaxSize(),
     ) {
-        if (albums.isEmpty()) {
+        // Null when there is nothing honest to say — see GalleryFormat.noAlbums. The Unfiled entry
+        // below stays either way: it leads somewhere true whether or not the albums could be read.
+        val explanation = GalleryFormat.noAlbums(unreadable).takeIf { albums.isEmpty() }
+        if (explanation != null) {
             // Spans the row, above the Unfiled entry: a grid with one cell in it and no explanation
             // teaches nothing about what albums are for.
             item(span = { GridItemSpan(maxLineSpan) }, key = NO_ALBUMS_KEY) {
                 Text(
-                    text = GalleryFormat.noAlbums(),
+                    text = explanation,
                     style = DarkChamberTheme.typography.body,
                     color = DarkChamberTheme.colors.textSecondary,
                     modifier = Modifier.padding(bottom = spacing.spaceSm),
@@ -181,7 +191,7 @@ private fun AlbumGrid(
         // Keyed by the album id, never by position: the grid is alphabetical, so creating or
         // renaming an album moves everything after it, and an index key would tell Compose that
         // every tile changed.
-        items(albums, key = { it.id.toAlbumKey() }) { album ->
+        items(albums, key = { it.id.toListKey() }) { album ->
             AlbumTileView(album = album, imageLoader = imageLoader, onOpen = { onOpenAlbum(album.id) })
         }
     }
@@ -303,7 +313,7 @@ private fun AlbumTileView(
             }
 
             // **The album marker.** Inside the media slot's own corner — not the tile's, which is
-            // over the caption: that is the bug a previous cycle shipped. A new component rather
+            // over the caption: that is the bug an earlier release shipped. A new component rather
             // than a reuse of the item tile's badge, which is centred in the slot as the no-preview
             // fallback; this one sits on top of a drawn preview and has to read against it.
             //
@@ -395,15 +405,6 @@ private fun AlbumsErrorBanner(error: AlbumsError, onDismiss: () -> Unit) {
         )
     }
 }
-
-/** Hex, for the grid's stable keys: a `ByteArray` is not usable as one — its equality is identity. */
-private fun ByteArray.toAlbumKey(): String =
-    joinToString("") { byte ->
-        val value = byte.toInt() and 0xFF
-        "${HEX_DIGITS[value shr 4]}${HEX_DIGITS[value and 0x0F]}"
-    }
-
-private const val HEX_DIGITS = "0123456789abcdef"
 
 /** Wider than an item tile: an album carries a name and a count, and few of them fit badly. */
 private val ALBUM_MIN_WIDTH = 150.dp

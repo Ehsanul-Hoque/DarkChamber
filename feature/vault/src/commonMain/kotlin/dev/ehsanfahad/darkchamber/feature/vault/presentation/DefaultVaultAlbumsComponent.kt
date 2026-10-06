@@ -65,7 +65,14 @@ internal class DefaultVaultAlbumsComponent(
             // rule's exact target.
             .catch { cause ->
                 logVaultError(LISTING_STAGE, VaultError.Unexpected(cause))
-                _state.value = _state.value.copy(loading = false, error = AlbumsError.ListingFailed)
+                // Two fields: the banner is dismissible, the fact is not. catch ends the flow, so an
+                // empty list is all the screen would otherwise have to go on — and an empty list is
+                // what a vault with no albums looks like too.
+                _state.value = _state.value.copy(
+                    loading = false,
+                    error = AlbumsError.ListingFailed,
+                    listingUnreadable = true,
+                )
             }
             .onEach(::onAlbums)
             .launchIn(scope)
@@ -145,6 +152,10 @@ internal class DefaultVaultAlbumsComponent(
             loading = false,
             error = null,
             draft = _state.value.draft,
+            // A listing that arrives is a listing that was read. Stated rather than left to the
+            // default: it is the one thing that disproves the flag, and a reader should not have to
+            // check a constructor default to know that an empty list here means empty.
+            listingUnreadable = false,
         )
     }
 

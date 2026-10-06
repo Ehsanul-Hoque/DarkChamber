@@ -163,6 +163,17 @@ data class GalleryState(
     val album: AlbumState? = null,
     /** Where the selected items are being moved to, if that is happening. */
     val filing: Filing? = null,
+    /**
+     * The listing could not be read, as a lasting fact rather than as a banner.
+     *
+     * Separate from [error] because the two have different lifetimes. [error] is dismissible — the user
+     * has seen it and says so — while this stays true until a listing actually arrives, and in practice
+     * that is for good: a catalog failure ends the flow underneath, so nothing re-emits afterwards.
+     *
+     * Without it, dismissing the banner would leave an empty [items] with nothing to distinguish it
+     * from a vault that is genuinely empty, and the screen would go back to saying so.
+     */
+    val listingUnreadable: Boolean = false,
 ) {
     /** Whether a batch is between the user asking for one and it ending. */
     val importing: Boolean get() = batch is ImportState.Picking || batch is ImportState.Running

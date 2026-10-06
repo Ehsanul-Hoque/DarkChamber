@@ -84,8 +84,8 @@ internal class DefaultVaultGalleryComponent(
     // How often a *running* batch is allowed to redraw. The batch reports every buffered read —
     // kilobytes apart — which is far finer than a screen can show or a user can perceive, and
     // recomposing the grid at that rate would cost more than the encrypt does. Throttling here
-    // rather than in the core keeps the honest byte count intact for anything else that watches it
-    // (spec §6.3). Zero in tests, where every state is worth asserting.
+    // rather than in the core keeps the honest byte count intact for anything else that watches it.
+    // Zero in tests, where every state is worth asserting.
     private val progressInterval: Duration = PROGRESS_INTERVAL,
     // How long a pick has to be taking before it is worth saying so. The picker covers this screen a
     // few hundred milliseconds after it is asked for, so a notice published the instant the button
@@ -177,7 +177,14 @@ internal class DefaultVaultGalleryComponent(
             // an empty vault, which is the fail-closed rule's exact target.
             .catch { cause ->
                 logVaultError(LISTING_STAGE, VaultError.Unexpected(cause))
-                _state.value = _state.value.copy(loading = false, error = GalleryError.ListingFailed)
+                // Two fields, because the banner is dismissible and the fact is not: catch ends the
+                // flow, so nothing will arrive after this, and an empty list on its own is
+                // indistinguishable from an empty vault.
+                _state.value = _state.value.copy(
+                    loading = false,
+                    error = GalleryError.ListingFailed,
+                    listingUnreadable = true,
+                )
             }
             .onEach(::onItems)
             .launchIn(scope)
@@ -262,9 +269,14 @@ internal class DefaultVaultGalleryComponent(
     override fun clearSelection() = selection.clear()
 
     override fun dismissError() {
+        val dismissed = _state.value.error
         _state.value = _state.value.copy(error = null)
-        // A summary the user has acknowledged must not come back the moment the state re-emits.
-        imports.acknowledge()
+        // Only the import's own banner belongs to the batch. A summary the user has acknowledged must
+        // not come back the moment the state re-emits — but acknowledging drops the whole summary,
+        // including the one-time offer to delete the originals, and a filing or listing failure has
+        // nothing to do with the batch. One banner serving three errors is what made this reachable:
+        // a finished batch stays on screen until it is acknowledged, and a move can fail while it is.
+        if (dismissed == GalleryError.ImportFailed) imports.acknowledge()
     }
 
     /**
@@ -708,7 +720,15 @@ internal class DefaultVaultGalleryComponent(
         // A successful emission clears a stale listing error; an import error is the user's to
         // dismiss, so it survives.
         val error = _state.value.error.takeIf { it != GalleryError.ListingFailed }
-        _state.value = _state.value.copy(items = items, loading = false, error = error)
+        _state.value = _state.value.copy(
+            items = items,
+            loading = false,
+            error = error,
+            // A listing that arrives is a listing that was read. Unreachable today — a catalog failure
+            // ends the flow — but the field means "we could not read it", so the one thing that
+            // disproves it has to clear it.
+            listingUnreadable = false,
+        )
     }
 
     private fun ItemFilter.toScope(): GalleryScope =

@@ -182,16 +182,32 @@ class ItemSelectionTest {
         )
     }
 
+    /**
+     * A re-emission that takes nothing out of the selection must not **publish**, which is a stronger
+     * claim than the state ending up equal: `MutableValue` notifies its observers on every assignment
+     * whether or not the value changed, and the gallery republishes its whole state from that
+     * notification. So the subscriber is counted rather than the value compared — comparing values
+     * passes even when every emission is forwarded.
+     */
     @Test
-    fun an_emission_that_changes_nothing_leaves_the_state_identical() {
+    fun an_emission_that_changes_nothing_publishes_nothing() {
         val selection = ItemSelection()
         selection.onItems(listOf(item(1), item(2)))
         selection.start(byteArrayOf(1))
+
+        var published = 0
+        selection.state.subscribe { published++ } // fires once, with the current value
         val before = selection.state.value
+        assertEquals(1, published, "the subscription itself")
 
         selection.onItems(listOf(item(1), item(2)))
 
-        assertEquals(before, selection.state.value, "a re-emission of an unchanged list is not a change")
+        assertEquals(1, published, "a re-emission of an unchanged list is not a change")
+        assertEquals(before, selection.state.value, "and the state is what it was")
+
+        // The other half of the same rule: a list that *has* lost a selected item does publish.
+        selection.onItems(listOf(item(2)))
+        assertEquals(2, published, "an intersection that drops an item is a change")
     }
 
     @Test
