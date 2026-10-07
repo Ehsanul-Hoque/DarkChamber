@@ -63,6 +63,21 @@ You will need a vault with a handful of imported files. Note that screen capture
 because screenshot blocking is on for the whole app; a view-hierarchy dump reads the tree rather than
 the pixels and is usually enough to check a layout, including exact bounds.
 
+Two cautions if any of this is driven from a terminal rather than by hand, both of which have produced
+false results here:
+
+- **Confirm which app is in front before reading a dump or sending any input.** A dump that fails
+  leaves whatever was written last in place, so the next read returns the *previous* screen and every
+  conclusion drawn from it is about a screen that is no longer there. Have the dump fail loudly instead
+  of falling back, and check the focused window first. Typing blind is worse than reading blind: a
+  passphrase sent to a screen that is no longer the app goes into whatever has focus, such as a
+  launcher's search box.
+- **Scroll a listing until the set of items stops growing before counting it.** A fixed number of
+  swipes under-reports a grid taller than the swipes reach, and two under-reports that happen to agree
+  look exactly like "nothing was lost" — which is the one thing section B exists to establish. Checking
+  that the whole-vault count equals the unfiled count plus each album's count is a stronger check than
+  any single total, because the three listings have to partition the same vault.
+
 ## Checklist
 
 Tick each line. A failure in B or F is release-blocking.

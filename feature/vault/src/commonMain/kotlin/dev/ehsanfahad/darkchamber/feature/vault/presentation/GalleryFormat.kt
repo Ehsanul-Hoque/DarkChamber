@@ -160,7 +160,12 @@ internal object GalleryFormat {
         val where = when (destination) {
             FilingDestination.Album -> "moved into the album"
             // Not "removed", and not "deleted": the items are in the vault, outside any album.
-            FilingDestination.Unfiled -> "taken out of their album"
+            //
+            // "The album", never "their album" or "its album": this phrase is shared by every count
+            // branch below, so a possessive picked for one of them is wrong in the others — "1 item
+            // taken out of their album" is what a plural possessive produces. There is exactly one
+            // album to refer to in any case, because taking items out is only offered from inside one.
+            FilingDestination.Unfiled -> "taken out of the album"
         }
         return when {
             moved == 0 -> "Nothing was $where."

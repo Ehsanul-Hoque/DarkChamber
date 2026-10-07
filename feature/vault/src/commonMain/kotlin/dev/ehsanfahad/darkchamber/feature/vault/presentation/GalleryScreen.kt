@@ -8,6 +8,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -798,6 +799,13 @@ private fun ImportActions(onAddPhotos: () -> Unit, onAddFiles: () -> Unit) {
  *
  * The count is the whole message when nothing can be acted on. It is also the one honest thing to
  * say while the selection is being intersected against a listing that can change underneath it.
+ *
+ * **The count sits on its own line, above the actions.** Inside an album there are four actions, and
+ * sharing one row with the count overflowed the screen: on a 1440px phone at the default text size
+ * "Done" was pushed off the right edge entirely and "Select all" wrapped onto two lines, so the only
+ * way out of selecting mode was the system back button. A `Row` does not wrap or scroll — it just
+ * places children past the edge — so the fix is to stop asking it to fit five things. Giving the
+ * actions the full width leaves room for all four with margin to spare at larger text sizes.
  */
 @Composable
 private fun SelectionBar(
@@ -809,13 +817,45 @@ private fun SelectionBar(
 ) {
     val spacing = DarkChamberTheme.spacing
 
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    Column(horizontalAlignment = Alignment.End) {
         Text(
             text = GalleryFormat.selectedCount(count),
             style = DarkChamberTheme.typography.label,
             color = DarkChamberTheme.colors.textPrimary,
+            modifier = Modifier.padding(end = spacing.spaceSm),
         )
-        Spacer(Modifier.width(spacing.spaceMd))
+        SelectionActions(
+            count = count,
+            onUnfile = onUnfile,
+            onMoveToAlbum = onMoveToAlbum,
+            onSelectAll = onSelectAll,
+            onClear = onClear,
+        )
+    }
+}
+
+/**
+ * The actions, wrapping onto as many lines as they need.
+ *
+ * **A `Row` is the wrong container here and giving it more width only moved the cliff.** With the count
+ * on its own line all four fitted at the default text size, and at 1.5× they did not: "Select all" was
+ * squeezed to a few pixels wide and "Done" left the screen again. The widths are text, so they scale
+ * with the user's font setting and no arrangement of a single row survives every setting. Flowing them
+ * means the layout answers the question at run time instead of a developer guessing on one device.
+ */
+@Composable
+private fun SelectionActions(
+    count: Int,
+    onUnfile: (() -> Unit)?,
+    onMoveToAlbum: () -> Unit,
+    onSelectAll: () -> Unit,
+    onClear: () -> Unit,
+) {
+    FlowRow(
+        horizontalArrangement = Arrangement.End,
+        verticalArrangement = Arrangement.Center,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
         onUnfile?.let { unfile ->
             TextButton(onClick = unfile, enabled = count > 0) {
                 Text(

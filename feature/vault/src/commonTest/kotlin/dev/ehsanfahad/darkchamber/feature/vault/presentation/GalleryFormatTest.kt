@@ -370,9 +370,33 @@ class GalleryFormatTest {
         // The out-of-an-album wording stays clear of deletion here too, where it is reporting a
         // completed action and a user skimming would most easily misread it.
         val unfiled = GalleryFormat.movedCount(2, 2, FilingDestination.Unfiled).lowercase()
-        assertTrue("out of their album" in unfiled, unfiled)
+        assertTrue("out of the album" in unfiled, unfiled)
         for (claim in listOf("deleted", "removed", "gone")) {
             assertFalse(claim in unfiled, "nothing was destroyed: $unfiled")
+        }
+    }
+
+    /**
+     * **Every count branch has to read as English.** The destination phrase is shared by all of them, so
+     * a possessive chosen for the plural turns the singular into "1 item taken out of their album" — which
+     * is what shipped, because the only test of this wording used a plural count.
+     *
+     * "The album" rather than "its"/"their": taking items out is only ever offered from inside one album,
+     * so there is exactly one album to refer to, and the same phrase is then correct at every count.
+     */
+    @Test
+    fun the_move_report_agrees_with_its_own_count() {
+        for (destination in FilingDestination.entries) {
+            for ((moved, requested) in listOf(0 to 2, 1 to 1, 2 to 2, 4 to 5)) {
+                val copy = GalleryFormat.movedCount(moved, requested, destination)
+                val lower = copy.lowercase()
+                assertFalse("their" in lower, "no possessive that only fits a plural: $copy")
+                assertFalse("its album" in lower, "nor one that only fits a singular: $copy")
+                if (moved == 1) {
+                    assertFalse("1 items" in copy, "singular count, singular noun: $copy")
+                    assertTrue("1 item " in copy, copy)
+                }
+            }
         }
     }
 
