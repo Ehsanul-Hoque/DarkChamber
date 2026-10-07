@@ -1,6 +1,7 @@
 package dev.ehsanfahad.darkchamber.feature.vault.presentation
 
 import com.arkivanov.decompose.DefaultComponentContext
+import com.arkivanov.essenty.backhandler.BackDispatcher
 import com.arkivanov.essenty.lifecycle.LifecycleRegistry
 import com.arkivanov.essenty.lifecycle.destroy
 import com.arkivanov.essenty.lifecycle.resume
@@ -58,6 +59,12 @@ class DefaultVaultGalleryComponentTest {
 
     private val lifecycle = LifecycleRegistry().apply { resume() }
 
+    /**
+     * The host's back handler, shared by every screen in the unlocked subtree — which is what the real
+     * one is. A private dispatcher per component would hide anything this screen leaves behind on it.
+     */
+    private val backDispatcher = BackDispatcher()
+
     private fun TestScope.component(
         vault: VaultItems,
         imports: VaultImports = FakeImports(),
@@ -71,7 +78,7 @@ class DefaultVaultGalleryComponentTest {
     ): DefaultVaultGalleryComponent {
         val dispatcher = UnconfinedTestDispatcher(testScheduler)
         return DefaultVaultGalleryComponent(
-            componentContext = DefaultComponentContext(lifecycle),
+            componentContext = DefaultComponentContext(lifecycle, backHandler = backDispatcher),
             observeGallery = ObserveGallery(vault),
             imports = imports,
             observeAlbum = ObserveAlbum(vault),
@@ -593,6 +600,32 @@ class DefaultVaultGalleryComponentTest {
 
         assertEquals(0, imports.cancels, "destroying a screen must not cancel an import")
         assertTrue(imports.state.value is ImportState.Running, "the batch is still going")
+    }
+
+    /**
+     * **A destroyed screen must leave nothing on the host's back handler.** That handler outlives the
+     * screen — it belongs to the Activity — so a callback left on it is a callback the next back press
+     * can still reach, belonging to a component whose session has been torn down. Locking while
+     * selecting would leave an *enabled* one behind, which would then swallow the back press meant for
+     * whatever is on screen after unlocking, to clear a selection nobody can see.
+     *
+     * The leak is invisible with a private dispatcher per component, which is why the shared one above
+     * is the real shape.
+     */
+    @Test
+    fun destroying_the_component_leaves_nothing_registered_on_the_hosts_back_handler() = runTest {
+        val vault = FakeVaultItems()
+        val component = component(vault)
+        vault.summaries.value = listOf(summary(byteArrayOf(1), readableMeta()))
+        component.selectItem(byteArrayOf(1))
+        assertTrue(backDispatcher.isEnabled, "selecting owns back while it lasts")
+
+        lifecycle.destroy()
+
+        assertFalse(
+            backDispatcher.isEnabled,
+            "a torn-down screen must not still be holding the host's back button",
+        )
     }
 
     @Test

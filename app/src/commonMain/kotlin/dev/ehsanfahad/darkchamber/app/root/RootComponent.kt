@@ -98,7 +98,18 @@ class DefaultRootComponent(
         childLifecycle?.destroy()
         val lifecycle = LifecycleRegistry().apply { resume() }
         childLifecycle = lifecycle
-        return DefaultComponentContext(lifecycle)
+        return DefaultComponentContext(
+            lifecycle = lifecycle,
+            // **The host's back handler, passed through explicitly.** Standalone is about the
+            // *lifecycle* — this gate destroys its child's registry on lock — and back handling is a
+            // separate axis that must not be standalone with it. Omitting it is not neutral:
+            // DefaultComponentContext quietly substitutes a private BackDispatcher, so every callback
+            // the subtree registers (the item grid leaving selection, the navigation stack popping a
+            // screen) waits on a dispatcher nothing will ever call. The press then falls through to
+            // the system, which backgrounds the app — and backgrounding locks the vault, so the
+            // symptom is "back closes the app and throws away the session" from every screen.
+            backHandler = backHandler,
+        )
     }
 
     private fun createLocked(): LockedComponent =

@@ -152,6 +152,11 @@ internal class DefaultVaultGalleryComponent(
         doOnDestroy { scope.cancel() }
 
         backHandler.register(selectionBack)
+        // And give it back. The handler belongs to the host and outlives this screen, so a callback
+        // left on it is one a later back press can still reach — and if the vault locked while
+        // something was selected it is left *enabled*, swallowing a press meant for whatever is on
+        // screen after unlocking in order to clear a selection that no longer exists.
+        doOnDestroy { backHandler.unregister(selectionBack) }
 
         // One subscription rather than a copy after each intent: every path that changes the
         // selection publishes through here, including the live-list intersection, which no intent
