@@ -1,18 +1,27 @@
 package dev.ehsanfahad.darkchamber.feature.vault
 
 import com.arkivanov.decompose.ComponentContext
+import dev.ehsanfahad.darkchamber.core.model.ItemFilter
 import dev.ehsanfahad.darkchamber.core.vault.VaultObjects
 import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
 import dev.ehsanfahad.darkchamber.feature.vault.api.PhotoPicker
+import dev.ehsanfahad.darkchamber.feature.vault.api.VaultAlbumsComponent
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultGalleryComponent
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultImports
 import dev.ehsanfahad.darkchamber.feature.vault.data.VaultObjectsItems
+import dev.ehsanfahad.darkchamber.feature.vault.domain.CreateAlbum
+import dev.ehsanfahad.darkchamber.feature.vault.domain.DeleteAlbum
+import dev.ehsanfahad.darkchamber.feature.vault.domain.FileItems
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ImportCoordinator
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ImportFile
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ImportQueue
+import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveAlbum
+import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveAlbums
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveGallery
+import dev.ehsanfahad.darkchamber.feature.vault.domain.RenameAlbum
 import coil3.ImageLoader
 import coil3.PlatformContext
+import dev.ehsanfahad.darkchamber.feature.vault.presentation.DefaultVaultAlbumsComponent
 import dev.ehsanfahad.darkchamber.feature.vault.presentation.DefaultVaultGalleryComponent
 import dev.ehsanfahad.darkchamber.feature.vault.presentation.vaultImageLoader
 import kotlinx.coroutines.CoroutineScope
@@ -71,13 +80,59 @@ fun vaultGalleryComponent(
     vaultObjects: VaultObjects,
     imports: VaultImports,
     mainContext: CoroutineContext = Dispatchers.Main,
+    // Where an album rename or delete runs. Small writes, but blocking ones, and the thread they must
+    // not run on is the one drawing the screen they change.
+    ioContext: CoroutineContext = Dispatchers.Default,
+    // What this instance of the gallery lists: the whole vault, one album, or the unfiled items.
+    // A construction parameter rather than an intent, because it is the screen's identity — the
+    // host pushes a new child to change it, and nothing on screen can.
+    filter: ItemFilter = ItemFilter.All,
+    // Where leaving an album goes: a successful delete, or the notice shown when the album disappeared
+    // from somewhere else. Unused by the other two listings, which have no album to leave.
+    onLeaveAlbum: () -> Unit = {},
 ): VaultGalleryComponent {
     val items = VaultObjectsItems(vaultObjects)
     return DefaultVaultGalleryComponent(
         componentContext = componentContext,
         observeGallery = ObserveGallery(items),
         imports = imports,
+        observeAlbum = ObserveAlbum(items),
+        renameAlbum = RenameAlbum(vault = items, ioContext = ioContext),
+        deleteAlbum = DeleteAlbum(vault = items, ioContext = ioContext),
+        observeAlbums = ObserveAlbums(items),
+        createAlbum = CreateAlbum(vault = items, ioContext = ioContext),
+        fileItems = FileItems(vault = items, ioContext = ioContext),
         mainContext = mainContext,
+        filter = filter,
+        onLeaveAlbum = onLeaveAlbum,
+    )
+}
+
+/**
+ * Build the album grid component. Same rules as the gallery's factory: [vaultObjects] must come from
+ * the session scope, and everything behind this stays `internal`.
+ *
+ * The screen it feeds draws album names and counts, which is why it belongs inside the unlocked
+ * subtree like every other decrypted-content screen.
+ */
+fun vaultAlbumsComponent(
+    componentContext: ComponentContext,
+    vaultObjects: VaultObjects,
+    mainContext: CoroutineContext = Dispatchers.Main,
+    // Where a create runs: it seals a name and writes a catalog row, which is small but blocking, and
+    // the thread it must not run on is the one drawing the grid it will change.
+    ioContext: CoroutineContext = Dispatchers.Default,
+    onOpenAlbum: (ByteArray) -> Unit,
+    onOpenUnfiled: () -> Unit,
+): VaultAlbumsComponent {
+    val items = VaultObjectsItems(vaultObjects)
+    return DefaultVaultAlbumsComponent(
+        componentContext = componentContext,
+        observeAlbums = ObserveAlbums(items),
+        createAlbum = CreateAlbum(vault = items, ioContext = ioContext),
+        mainContext = mainContext,
+        onOpenAlbum = onOpenAlbum,
+        onOpenUnfiled = onOpenUnfiled,
     )
 }
 

@@ -59,17 +59,38 @@ Applied uniformly via the `darkchamber.quality` convention plugin; configs live 
 |-------------|----------------------------|-----------------------------------------|--------------------------------|
 | **ktlint**  | `.editorconfig`            | formatting (auto-fixable)               | `ktlintCheck` / `ktlintFormat` |
 | **detekt**  | `config/detekt/detekt.yml` | static analysis, complexity, Koin rules | `detekt`                       |
-| **Konsist** | `:konsist` module          | architecture + security invariants      | `konsistTest`                  |
+| **Konsist** | `:konsist` module          | architecture + security invariants      | `:konsist:test`                |
 | **Kover**   | quality plugin             | coverage thresholds (§4)                | `koverVerify`                  |
+
+**Konsist is the exception on both counts, and the only one of the four that exists today.** It is not
+applied by the quality plugin: its rules are ordinary tests in their own module, so they run as that
+module's test task and there is no aggregate `konsistTest` to invoke. Run it on its own rather than
+alongside the others, since a single command naming a task that does not exist yet fails before
+reaching the one that does.
 
 detekt version note: pick the line built against the project's Kotlin version at setup (this pairing is the most volatile in the toolchain); a baseline file may grandfather issues on adoption but **never** in `core:crypto`.
 
 ## 6. Running
 
 ```bash
-./gradlew ktlintCheck detekt konsistTest    # style + architecture
+./gradlew :konsist:test                      # architecture + security invariants
+./gradlew ktlintCheck detekt                 # style
 ./gradlew testDebugUnitTest                  # fast JVM suite (incl. format vectors)
-./gradlew iosSimulatorArm64Test              # iOS (CI-gated, see RELEASE.md)
+./gradlew iosSimulatorArm64Test              # iOS, on a simulator; runs on pull requests that touch
+                                             # shared code (gated to non-draft, see RELEASE.md). Worth
+                                             # running locally before any iOS-visible change: it is the
+                                             # only suite that exercises the native SQLite driver, the
+                                             # iOS platform seams, and the container vectors on a
+                                             # second platform.
 ./gradlew koverVerify                        # coverage gate
 ./gradlew migrationTest                      # fixture-vault upgrade gate
 ```
+
+## 7. What only a device can show
+
+Some guarantees are not expressible as a unit test: that a real picker returns what we think it does,
+that a platform decoder produces a sensible image, that a screenshot is actually blocked, and that
+plaintext is absent from a real database file on real storage. Those live as checklists in
+[`../verification/`](../verification) — one per area, each stating **what must be true** rather than how
+a particular run happened to check it, with the release-blocking lines marked. They are run at release
+and whenever the area they cover changes.

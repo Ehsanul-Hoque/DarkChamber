@@ -34,19 +34,25 @@ Package root: `dev.ehsanfahad.darkchamber`.
 >   Android `FragmentActivity` (`:androidApp`) and an iOS `ComposeUIViewController` linking the
 >   `Shared` umbrella framework (`:iosApp`).
 > - **`:feature:vault`** — the gallery (adaptive grid over `observeItems`, newest first, encrypted
->   previews in the media slot) and import: multi-select file + photo pickers behind `FilePicker` /
+>   previews in the media slot), import (multi-select file + photo pickers behind `FilePicker` /
 >   `PhotoPicker` seams the app implements, a sequential batch with two-level progress,
 >   continue-on-error and a stop that lands **within** a file, thumbnails generated inline at import
->   under their own DEK, and the original-delete offer behind its non-dismissable disclosure. Public
->   surface is one factory plus the `api` package; everything else is `internal`. Reaches the vault
->   through `core:vault` only.
+>   under their own DEK, and the original-delete offer behind its non-dismissable disclosure) and the
+>   **album surface**: one item grid serving three listings (whole vault / one album / unfiled), the
+>   album grid, create/rename/delete, a multi-select that moves items in and out, and imports landing in
+>   the album being viewed. An album is a **label, not a container** — deleting one keeps its items
+>   (they become unfiled) and an item is in one album at a time, so filing is a move; see
+>   `docs/ARCHITECTURE.md` §5.1. Public surface is two factories plus the `api` package; everything else
+>   is `internal`. Reaches the vault through `core:vault` only, and navigates only through callbacks the
+>   host supplies.
 > - **`:konsist`** — the architecture + **security-invariant** rules, running in CI on every PR.
 >
-> Still a stub (marker + smoke test): `:core:testing`. **In progress: Phase 1** — the import plumbing
-> the pickers exposed, then albums/browse, camera, the seek primitive and the in-app viewers
-> (deferred from Phase 0). **Planned, not yet wired:** ktlint/detekt/Kover, Lefthook and
+> Still a stub (marker + smoke test): `:core:testing`. **In progress: Phase 1** — albums are in; next
+> are sort/search over the listing, the camera, the seek primitive and the in-app viewers (deferred
+> from Phase 0). **Planned, not yet wired:** ktlint/detekt/Kover, Lefthook and
 > `migrationTest` — verify a Gradle task exists before assuming it runs. CI:
-> `pr.yml` is enabled (build + commit-message check + gated iOS compile); its `quality` job stays
+> `pr.yml` is enabled (build + commit-message check + a gated macOS job that runs the **iOS unit
+> tests** and compiles the device architecture); its `quality` job stays
 > commented out until those plugins land, and `nightly`/`release`/`test-build` stay committed
 > **disabled** (`*.yml.disabled`). Treat `docs/` as the source of truth for *where things are going*,
 > and the **code** as the source of truth for *how things work* (this file stays a map, not a mirror).
@@ -90,11 +96,17 @@ Test:
 ./gradlew iosSimulatorArm64Test            # iOS tests (expensive — CI-gated to core/feature changes)
 ```
 
-Quality & coverage (target tooling — confirm the task exists before relying on it):
+Architecture + security rules (**exists today**, and runs in CI on every PR):
+```bash
+./gradlew :konsist:test       # architecture + SECURITY-INVARIANT rules (crypto/storage confinement)
+```
+The `:konsist` module has no quality convention plugin applied, so its rules run as that module's own
+test task — there is no top-level `konsistTest`.
+
+Quality & coverage (target tooling — **none of these tasks exist yet**; confirm before relying on one):
 ```bash
 ./gradlew ktlintFormat        # auto-fix formatting — run before committing
 ./gradlew ktlintCheck detekt  # lint + static analysis
-./gradlew konsistTest         # architecture + SECURITY-INVARIANT rules (crypto/storage confinement)
 ./gradlew koverVerify         # coverage gates: core:crypto ~100%, domain 90%, overall 80%
 ./gradlew migrationTest       # fixture-vault upgrade gate (exists after v1.0 ships)
 ```

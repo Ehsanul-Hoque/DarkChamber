@@ -35,6 +35,106 @@ interface VaultGalleryComponent {
     /** Decline the disclosure. The only other way out of it — it cannot be dismissed. */
     fun keepOriginals()
 
+    /**
+     * Long-press a tile: enter selecting mode with that item selected, or — already selecting —
+     * toggle it, so the caller does not branch on a mode it is already in.
+     *
+     * **Ignored while a batch is running.** The grid grows underneath an import, so a selection made
+     * then is a selection of a moving target.
+     */
+    fun selectItem(id: ByteArray)
+
+    /** Tap a tile while selecting: add it or remove it. A no-op outside selecting mode. */
+    fun toggleItem(id: ByteArray)
+
+    /** Select everything the screen is currently showing — which inside an album is that album. */
+    fun selectAllItems()
+
+    /** Leave selecting mode and drop the selection. Clear and back both land here. */
+    fun clearSelection()
+
+    /**
+     * Open the album chooser for the selected items.
+     *
+     * Choosing is a step of its own because the destination is a decision, and because the chooser is
+     * where "add" is shown for what it is: an item is in at most one album, so the list is a set of
+     * places to **move** things to.
+     *
+     * Ignored with nothing selected, and ignored while a move is already running.
+     */
+    fun startFiling()
+
+    /** Move the selected items into [albumId]. Only ever reached from the chooser. */
+    fun chooseAlbum(albumId: ByteArray)
+
+    /** Abandon the chooser without moving anything. */
+    fun cancelFiling()
+
+    /**
+     * Take the selected items out of the album they are in — they become unfiled, and **nothing is
+     * deleted**. No chooser: there is only one place to go.
+     */
+    fun unfileSelection()
+
+    /** Open the name field inside the chooser, for a vault with no album to choose yet. */
+    fun startFilingCreate()
+
+    /** What has been typed into the chooser's name field. */
+    fun editFilingAlbumName(name: String)
+
+    /**
+     * Create that album and move the selected items into it, in one step — the point of offering a
+     * create here at all is that the user already said where things should go.
+     */
+    fun confirmFilingCreate()
+
+    /** Close the name field, leaving the chooser open. */
+    fun cancelFilingCreate()
+
+    /** Dismiss the "moved" report. */
+    fun acknowledgeFiling()
+
+    /**
+     * Open the rename dialog for the album being viewed, **prefilled with its current name**: a
+     * rename starts from what the thing is called, and an empty field would make the common edit —
+     * fixing a typo — a retype.
+     *
+     * A no-op on any other listing, and on an album whose name would not open: there is nothing to
+     * start from, and prefilling an unreadable name with a placeholder would offer to replace a name
+     * nobody has seen.
+     */
+    fun startAlbumRename()
+
+    /** What has been typed into the rename field. Clears a shown problem — they are fixing it. */
+    fun editAlbumName(name: String)
+
+    /** Rename the album to the current draft. Ignored while one rename is already running. */
+    fun confirmAlbumRename()
+
+    /** Abandon the rename. Ignored while the write is in flight — that cannot be called back. */
+    fun cancelAlbumRename()
+
+    /**
+     * Ask to delete the album being viewed. **Opens the confirmation; deletes nothing**, because what
+     * deleting an album does is the opposite of what users arrive expecting and the confirmation is
+     * where that gets corrected.
+     */
+    fun requestAlbumDelete()
+
+    /** Delete it, the confirmation having been shown. Its items are kept and become unfiled. */
+    fun confirmAlbumDelete()
+
+    /** Decline the confirmation. */
+    fun cancelAlbumDelete()
+
+    /**
+     * Leave an album that is no longer there — the one action offered on that notice.
+     *
+     * Navigation, so it leaves through the callback the host gave this component, like opening an
+     * album does from the grid.
+     */
+    fun leaveAlbum()
+
     /** Clear a surfaced [GalleryError] after the user acknowledges it. */
     fun dismissError()
 }
@@ -51,9 +151,209 @@ data class GalleryState(
     val loading: Boolean = true,
     val batch: ImportState = ImportState.Idle,
     val error: GalleryError? = null,
+    val selection: GallerySelection = GallerySelection(),
+    val scope: GalleryScope = GalleryScope.WholeVault,
+    /**
+     * The album this screen is showing, or `null` on the two listings that are not an album.
+     *
+     * Separate from [scope] rather than folded into it: the scope is fixed at construction and is what
+     * the copy branches on, while this changes underneath the screen — an album can be renamed from
+     * here and can disappear from elsewhere.
+     */
+    val album: AlbumState? = null,
+    /** Where the selected items are being moved to, if that is happening. */
+    val filing: Filing? = null,
+    /**
+     * The listing could not be read, as a lasting fact rather than as a banner.
+     *
+     * Separate from [error] because the two have different lifetimes. [error] is dismissible — the user
+     * has seen it and says so — while this stays true until a listing actually arrives, and in practice
+     * that is for good: a catalog failure ends the flow underneath, so nothing re-emits afterwards.
+     *
+     * Without it, dismissing the banner would leave an empty [items] with nothing to distinguish it
+     * from a vault that is genuinely empty, and the screen would go back to saying so.
+     */
+    val listingUnreadable: Boolean = false,
 ) {
     /** Whether a batch is between the user asking for one and it ending. */
     val importing: Boolean get() = batch is ImportState.Picking || batch is ImportState.Running
+}
+
+/**
+ * Which listing a gallery is showing — **not** the filter itself.
+ *
+ * It exists because an empty grid means three different things, and saying the wrong one is worse
+ * than saying nothing: a vault with no files at all wants to be told how to add some, an album with
+ * nothing in it is a perfectly ordinary album, and nothing unfiled means everything has been filed,
+ * which is a success rather than an absence.
+ *
+ * The album's id is deliberately absent. Copy does not need it — an album's name is already on the
+ * screen that led here — and a state that carried it would be holding an id for the sake of it.
+ */
+enum class GalleryScope {
+    /** Everything in the vault, filed or not. The listing a vault opens on. */
+    WholeVault,
+
+    /** One album's contents. */
+    Album,
+
+    /** The items in no album. */
+    Unfiled,
+}
+
+/**
+ * The album an album-scoped gallery is showing.
+ *
+ * Sealed, so [Gone] cannot be confused with "present but unnamed": the first has no actions at all
+ * and the second has all of them. A bag of nullable fields would let a screen offer to rename an
+ * album that is not there.
+ */
+sealed interface AlbumState {
+
+    /**
+     * It is there. [rename] and [delete] are the two things that can be in progress on it, and they
+     * are separate rather than one "current action" because neither can start while the other is
+     * open — the dialogs are modal, so the type does not need to enforce what the UI already does.
+     */
+    data class Present(
+        val name: AlbumTileName,
+        val rename: AlbumDraft? = null,
+        val delete: AlbumDelete? = null,
+    ) : AlbumState
+
+    /**
+     * It is not in the catalog any more — deleted here, or from somewhere else while this screen was
+     * open.
+     *
+     * This state exists because an album's disappearance is **invisible** in the item listing: its
+     * items are unfiled rather than destroyed, so the grid simply empties, which is indistinguishable
+     * from an album that was always empty. Without saying so, a user would be left on a grid that will
+     * never fill and never explain why.
+     */
+    data object Gone : AlbumState
+}
+
+/**
+ * Moving selected items into an album, or out of one.
+ *
+ * Sealed, in the same shape as the import's states and for the same reason: the bottom of the screen
+ * shows exactly one of these at a time, and a bag of flags would let it show two.
+ */
+sealed interface Filing {
+
+    /**
+     * The chooser is open. [albums] is every album the items could go to — **never the one they are
+     * already in**, since moving them there is nothing.
+     *
+     * [creating] is the name field, present only once asked for. It exists because a vault with no
+     * albums would otherwise offer an empty list and no way forward, having just asked the user to
+     * choose.
+     */
+    data class Choosing(
+        val albums: List<AlbumChoice> = emptyList(),
+        val creating: AlbumDraft? = null,
+    ) : Filing
+
+    /** The write is running. Nothing here can be cancelled: it is one statement. */
+    data object Moving : Filing
+
+    /**
+     * It is done, and this says what actually happened.
+     *
+     * [moved] can be fewer than [requested]: an item shredded between selecting and moving is skipped
+     * rather than failing the batch, and reporting the request as though it were the result would be
+     * claiming a move that did not happen.
+     */
+    data class Moved(
+        val requested: Int,
+        val moved: Int,
+        val destination: FilingDestination,
+    ) : Filing
+}
+
+/** Which way the items went, which is all the report needs to know to word itself. */
+enum class FilingDestination {
+    /** Into an album. */
+    Album,
+
+    /** Out of one — unfiled, **not** deleted. */
+    Unfiled,
+}
+
+/**
+ * One row in the chooser: an album the selection can be moved to.
+ *
+ * Deliberately not [AlbumTile] — a chooser row has no cover and no count to draw, and handing it one
+ * would invite a tile's worth of decoration onto a list that is answering a question.
+ */
+class AlbumChoice(val id: ByteArray, val name: AlbumTileName) {
+    // Content equality, because [id] is a ByteArray and the generated one would compare it by identity:
+    // a chooser list rebuilt from an unchanged catalog would otherwise look like a change.
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is AlbumChoice) return false
+        return id.contentEquals(other.id) && name == other.name
+    }
+
+    override fun hashCode(): Int = 31 * id.contentHashCode() + name.hashCode()
+
+    /** An id length and whether the name opened — never the name itself (hard rule #4). */
+    override fun toString(): String = "AlbumChoice(id=${id.size}B, readable=${name is AlbumTileName.Readable})"
+}
+
+/** How far a delete has got. The confirmation is a step of its own because the copy is the point. */
+enum class AlbumDelete {
+    /** The confirmation is up and nothing has been written. */
+    Confirming,
+
+    /** The two writes are running. Both buttons are spent — this cannot be called back. */
+    Deleting,
+
+    /**
+     * The vault refused. Deliberately **not** reported as "nothing changed": the vault unfiles the
+     * items and then deletes the album row, with no transaction spanning the two, so a failure may
+     * have left the items already unfiled.
+     */
+    Failed,
+}
+
+/**
+ * What is selected, and whether the screen is in selecting mode.
+ *
+ * Ids only, like the rest of this state — a selection can never pin decrypted bytes past a lock.
+ *
+ * Not a data class: the generated `equals` would compare the [ids] arrays by identity, so two
+ * selections of the same items would be unequal whenever the arrays were rebuilt. Nothing on today's
+ * paths rebuilds an identical selection — a change is published only when the selection actually
+ * changes — so this is the type's contract being correct rather than a bug being fixed; the point is
+ * that a caller comparing two of these, or a `GalleryState` holding one, gets the answer it expects.
+ * Equality runs through the content-keyed set below, which is also what makes [contains] a lookup
+ * rather than a scan of every selected id per tile.
+ */
+class GallerySelection(
+    val active: Boolean = false,
+    val ids: List<ByteArray> = emptyList(),
+) {
+    private val keys: Set<List<Byte>> = ids.mapTo(LinkedHashSet()) { it.toList() }
+
+    val count: Int get() = ids.size
+
+    /**
+     * Whether [id] is selected. Compares by **content**: `ByteArray` equality is identity, so a tile
+     * asking about a freshly decoded id would never match an id selected a moment earlier.
+     */
+    fun contains(id: ByteArray): Boolean = id.toList() in keys
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is GallerySelection) return false
+        return active == other.active && keys == other.keys
+    }
+
+    override fun hashCode(): Int = 31 * active.hashCode() + keys.hashCode()
+
+    /** A count and a flag; never an id's bytes (hard rule #4). */
+    override fun toString(): String = "GallerySelection(active=$active, count=$count)"
 }
 
 /**
@@ -124,4 +424,10 @@ enum class GalleryError {
 
     /** The listing itself failed; the vault is open but its catalog could not be read. */
     ListingFailed,
+
+    /**
+     * The move was refused outright — a destination album that is no longer there, or a catalog write
+     * that did not land. Nothing moved; the items are where they were.
+     */
+    FilingFailed,
 }

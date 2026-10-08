@@ -23,7 +23,8 @@ jobs:
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: "21" }
       - uses: gradle/actions/setup-gradle@v4
-      - run: ./gradlew ktlintCheck detekt konsistTest
+      - run: ./gradlew :konsist:test            # architecture + security invariants
+      - run: ./gradlew ktlintCheck detekt
       - run: ./gradlew testDebugUnitTest migrationTest koverVerify   # incl. format vectors
       - name: Conventional-commit re-check (all PR commits)
         run: ./scripts/check-commits.sh "${{ github.event.pull_request.base.sha }}" "${{ github.sha }}"

@@ -1,6 +1,7 @@
 package dev.ehsanfahad.darkchamber.feature.vault.domain
 
 import app.cash.turbine.test
+import dev.ehsanfahad.darkchamber.core.model.ItemFilter
 import dev.ehsanfahad.darkchamber.core.model.VaultItemKind
 import dev.ehsanfahad.darkchamber.feature.vault.FakeVaultItems
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
@@ -66,11 +67,42 @@ class ObserveGalleryTest {
         val vault = FakeVaultItems()
         val album = byteArrayOf(0xC3.toByte())
 
-        ObserveGallery(vault).invoke(albumId = album).test {
+        ObserveGallery(vault).invoke(ItemFilter.Album(album)).test {
             awaitItem()
             cancelAndIgnoreRemainingEvents()
         }
 
-        assertContentEquals(album, vault.observedAlbum)
+        assertEquals(ItemFilter.Album(album), vault.observedFilter)
+    }
+
+    /**
+     * Unfiled has to survive the trip as itself. It is the case a nullable id could not carry, so
+     * the use case collapsing it to All — the shape the old signature's default had — is the exact
+     * regression this filter exists to prevent, and it would look like a working screen that simply
+     * showed too much.
+     */
+    @Test
+    fun the_unfiled_filter_is_passed_through_as_itself() = runTest {
+        val vault = FakeVaultItems()
+
+        ObserveGallery(vault).invoke(ItemFilter.Unfiled).test {
+            awaitItem()
+            cancelAndIgnoreRemainingEvents()
+        }
+
+        assertEquals(ItemFilter.Unfiled, vault.observedFilter)
+    }
+
+    /** And the default is the whole vault, which is what the gallery asks for with no album. */
+    @Test
+    fun no_filter_means_the_whole_vault() = runTest {
+        val vault = FakeVaultItems()
+
+        ObserveGallery(vault).invoke().test {
+            awaitItem()
+            cancelAndIgnoreRemainingEvents()
+        }
+
+        assertEquals(ItemFilter.All, vault.observedFilter)
     }
 }

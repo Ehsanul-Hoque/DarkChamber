@@ -1,15 +1,19 @@
 package dev.ehsanfahad.darkchamber.feature.vault.presentation
 
 import com.arkivanov.decompose.DefaultComponentContext
+import com.arkivanov.essenty.backhandler.BackDispatcher
 import com.arkivanov.essenty.lifecycle.LifecycleRegistry
 import com.arkivanov.essenty.lifecycle.destroy
 import com.arkivanov.essenty.lifecycle.resume
 import dev.ehsanfahad.darkchamber.core.model.Outcome
+import dev.ehsanfahad.darkchamber.core.model.ItemFilter
 import dev.ehsanfahad.darkchamber.core.model.VaultError
+import dev.ehsanfahad.darkchamber.core.vault.AlbumSummary
 import dev.ehsanfahad.darkchamber.core.vault.ImportPhase
 import dev.ehsanfahad.darkchamber.core.vault.VaultItemSummary
 import dev.ehsanfahad.darkchamber.feature.vault.FakeFilePicker
 import dev.ehsanfahad.darkchamber.feature.vault.FakePickedFile
+import dev.ehsanfahad.darkchamber.feature.vault.ExplodingVaultItems
 import dev.ehsanfahad.darkchamber.feature.vault.FakeVaultItems
 import dev.ehsanfahad.darkchamber.feature.vault.api.FailedImport
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryError
@@ -18,7 +22,13 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.ImportStage
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportState
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultImports
 import dev.ehsanfahad.darkchamber.feature.vault.damagedMeta
+import dev.ehsanfahad.darkchamber.feature.vault.domain.CreateAlbum
+import dev.ehsanfahad.darkchamber.feature.vault.domain.DeleteAlbum
+import dev.ehsanfahad.darkchamber.feature.vault.domain.FileItems
+import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveAlbum
+import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveAlbums
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveGallery
+import dev.ehsanfahad.darkchamber.feature.vault.domain.RenameAlbum
 import dev.ehsanfahad.darkchamber.feature.vault.domain.VaultItems
 import dev.ehsanfahad.darkchamber.feature.vault.readableMeta
 import dev.ehsanfahad.darkchamber.feature.vault.summary
@@ -36,6 +46,7 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.io.RawSource
+import kotlin.coroutines.CoroutineContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -48,23 +59,41 @@ class DefaultVaultGalleryComponentTest {
 
     private val lifecycle = LifecycleRegistry().apply { resume() }
 
+    /**
+     * The host's back handler, shared by every screen in the unlocked subtree — which is what the real
+     * one is. A private dispatcher per component would hide anything this screen leaves behind on it.
+     */
+    private val backDispatcher = BackDispatcher()
+
     private fun TestScope.component(
         vault: VaultItems,
         imports: VaultImports = FakeImports(),
         progressInterval: Duration = Duration.ZERO,
         pickingDelay: Duration = Duration.ZERO,
         stageGrace: Duration = Duration.ZERO,
+        filter: ItemFilter = ItemFilter.All,
+        // Where the album writes run. Held by the tests that need to stand inside one.
+        ioContext: CoroutineContext = UnconfinedTestDispatcher(testScheduler),
+        onLeaveAlbum: () -> Unit = {},
     ): DefaultVaultGalleryComponent {
         val dispatcher = UnconfinedTestDispatcher(testScheduler)
         return DefaultVaultGalleryComponent(
-            componentContext = DefaultComponentContext(lifecycle),
+            componentContext = DefaultComponentContext(lifecycle, backHandler = backDispatcher),
             observeGallery = ObserveGallery(vault),
             imports = imports,
+            observeAlbum = ObserveAlbum(vault),
+            renameAlbum = RenameAlbum(vault, ioContext = ioContext),
+            deleteAlbum = DeleteAlbum(vault, ioContext = ioContext),
+            observeAlbums = ObserveAlbums(vault),
+            createAlbum = CreateAlbum(vault, ioContext = ioContext),
+            fileItems = FileItems(vault, ioContext = ioContext),
             mainContext = dispatcher,
             // No throttling by default: these tests are about which states arrive, not how often.
             progressInterval = progressInterval,
             pickingDelay = pickingDelay,
             stageGrace = stageGrace,
+            filter = filter,
+            onLeaveAlbum = onLeaveAlbum,
         )
     }
 
@@ -111,6 +140,23 @@ class DefaultVaultGalleryComponentTest {
         assertEquals(GalleryError.ListingFailed, state.error, "a broken catalog is reported, not hidden")
         assertFalse(state.loading, "the listing settled, unsuccessfully")
         assertEquals(emptyList(), state.items)
+        assertTrue(state.listingUnreadable, "and the grid knows why it is empty")
+    }
+
+    /**
+     * **Dismissing the banner does not make the vault empty.** The failure ends the flow underneath, so
+     * no listing will arrive afterwards; if acknowledging the banner were all that recorded it, the
+     * screen would go back to an empty list indistinguishable from a vault with nothing in it — and the
+     * copy for that says "Nothing in the vault yet", to someone whose files are all still there.
+     */
+    @Test
+    fun acknowledging_a_listing_failure_does_not_turn_it_into_an_empty_vault() = runTest {
+        val component = component(ExplodingVaultItems())
+
+        component.dismissError()
+
+        assertNull(component.state.value.error, "the banner is the user's to dismiss")
+        assertTrue(component.state.value.listingUnreadable, "why the grid is empty is not")
     }
 
     @Test
@@ -129,6 +175,54 @@ class DefaultVaultGalleryComponentTest {
         assertEquals(1, imports.photoRequests)
         assertEquals(1, imports.cancels)
         assertEquals(1, imports.acknowledged)
+    }
+
+    /**
+     * **An import started inside an album lands in it.** The screen's filter is the destination, decided
+     * once at construction, so it cannot drift mid-batch.
+     */
+    @Test
+    fun an_import_started_inside_an_album_is_filed_there() = runTest {
+        val imports = FakeImports()
+        val album = byteArrayOf(3, 3)
+        val component = component(
+            FakeVaultItems(),
+            imports = imports,
+            // A copy, as a navigation config would produce: the id reaching the batch has to be the
+            // album's content, and handing the same instance to both would hide a comparison bug.
+            filter = ItemFilter.Album(album.copyOf()),
+        )
+
+        component.importPhotos()
+        component.importFiles()
+
+        assertEquals(listOf<List<Byte>?>(album.toList()), imports.photoDestinations)
+        assertEquals(listOf<List<Byte>?>(album.toList()), imports.fileDestinations)
+    }
+
+    /** From the whole vault there is no album to land in, so the batch is told so explicitly. */
+    @Test
+    fun an_import_started_from_the_whole_vault_is_left_unfiled() = runTest {
+        val imports = FakeImports()
+        val component = component(FakeVaultItems(), imports = imports, filter = ItemFilter.All)
+
+        component.importPhotos()
+
+        assertEquals(listOf<List<Byte>?>(null), imports.photoDestinations)
+    }
+
+    /**
+     * Nor does Unfiled file anything: it is a view of the items in no album, so landing there *is*
+     * landing nowhere — and an import that filed itself into a reserved id would be inventing an album.
+     */
+    @Test
+    fun an_import_started_from_unfiled_is_left_unfiled() = runTest {
+        val imports = FakeImports()
+        val component = component(FakeVaultItems(), imports = imports, filter = ItemFilter.Unfiled)
+
+        component.importPhotos()
+
+        assertEquals(listOf<List<Byte>?>(null), imports.photoDestinations)
     }
 
     @Test
@@ -438,6 +532,47 @@ class DefaultVaultGalleryComponentTest {
         assertEquals(1, imports.acknowledged)
     }
 
+    /**
+     * **Dismissing a filing failure must not acknowledge the batch.** One banner serves three errors
+     * now, and only one of them is the import's: acknowledging drops a finished summary along with its
+     * `deletableOriginals` count and the one-time offer to delete the originals, which is the single
+     * moment that offer is ever made.
+     *
+     * The window is real rather than theoretical: a finished batch stays on screen until it is
+     * acknowledged, nothing stops a selection being made while it is there, and a move that fails
+     * raises the same banner. Dismissing it took the offer with it.
+     */
+    @Test
+    fun dismissing_a_filing_failure_leaves_the_finished_batch_alone() = runTest {
+        val imports = FakeImports()
+        val vault = FakeVaultItems(assignFailure = VaultError.Crypto.IntegrityFailure)
+        val album = byteArrayOf(2, 2)
+        vault.albums.value = listOf(
+            AlbumSummary(album.copyOf(), Outcome.Ok("Invoices"), itemCount = 0, coverItemId = null, createdAt = 1L),
+        )
+        val component = component(vault, imports = imports)
+        advanceUntilIdle()
+
+        // A clean batch, finished and waiting to be acknowledged, with originals still deletable.
+        imports.emit(ImportState.Finished(imported = 2, failed = emptyList(), deletableOriginals = 2))
+        assertNull(component.state.value.error, "a clean batch raises no banner of its own")
+
+        vault.summaries.value = listOf(summary(byteArrayOf(5), readableMeta()))
+        component.selectItem(byteArrayOf(5))
+        component.startFiling()
+        advanceUntilIdle()
+        component.chooseAlbum(album)
+        advanceUntilIdle()
+        assertEquals(GalleryError.FilingFailed, component.state.value.error, "the move was refused")
+
+        component.dismissError()
+
+        assertNull(component.state.value.error, "the banner clears")
+        assertEquals(0, imports.acknowledged, "but the batch was never the thing being dismissed")
+        val batch = assertIs<ImportState.Finished>(component.state.value.batch)
+        assertEquals(2, batch.deletableOriginals, "so the offer to delete the originals survives")
+    }
+
     @Test
     fun a_cancelled_picker_leaves_no_error_behind() = runTest {
         val imports = FakeImports()
@@ -452,7 +587,7 @@ class DefaultVaultGalleryComponentTest {
 
     /**
      * The component watches the batch; it does not own it. A screen that is destroyed
-     * mid-import — which the albums cycle makes ordinary — must not take fifty photos down with it.
+     * mid-import — which the album surface makes ordinary — must not take fifty photos down with it.
      */
     @Test
     fun destroying_the_screen_does_not_end_the_batch() = runTest {
@@ -465,6 +600,32 @@ class DefaultVaultGalleryComponentTest {
 
         assertEquals(0, imports.cancels, "destroying a screen must not cancel an import")
         assertTrue(imports.state.value is ImportState.Running, "the batch is still going")
+    }
+
+    /**
+     * **A destroyed screen must leave nothing on the host's back handler.** That handler outlives the
+     * screen — it belongs to the Activity — so a callback left on it is a callback the next back press
+     * can still reach, belonging to a component whose session has been torn down. Locking while
+     * selecting would leave an *enabled* one behind, which would then swallow the back press meant for
+     * whatever is on screen after unlocking, to clear a selection nobody can see.
+     *
+     * The leak is invisible with a private dispatcher per component, which is why the shared one above
+     * is the real shape.
+     */
+    @Test
+    fun destroying_the_component_leaves_nothing_registered_on_the_hosts_back_handler() = runTest {
+        val vault = FakeVaultItems()
+        val component = component(vault)
+        vault.summaries.value = listOf(summary(byteArrayOf(1), readableMeta()))
+        component.selectItem(byteArrayOf(1))
+        assertTrue(backDispatcher.isEnabled, "selecting owns back while it lasts")
+
+        lifecycle.destroy()
+
+        assertFalse(
+            backDispatcher.isEnabled,
+            "a torn-down screen must not still be holding the host's back button",
+        )
     }
 
     @Test
@@ -503,12 +664,24 @@ private class FakeImports : VaultImports {
         _state.value = next
     }
 
-    override fun importPhotos() {
+    /**
+     * Every destination a pick was started with, in order — `null` meaning unfiled.
+     *
+     * Recorded rather than counted, because the thing worth checking is *where* the batch was told to
+     * land: a count cannot tell an import into the album being viewed from one that quietly went
+     * nowhere.
+     */
+    val photoDestinations = mutableListOf<List<Byte>?>()
+    val fileDestinations = mutableListOf<List<Byte>?>()
+
+    override fun importPhotos(albumId: ByteArray?) {
         photoRequests++
+        photoDestinations += albumId?.toList()
     }
 
-    override fun importFiles() {
+    override fun importFiles(albumId: ByteArray?) {
         fileRequests++
+        fileDestinations += albumId?.toList()
     }
 
     override fun cancel() {
@@ -532,19 +705,3 @@ private class FakeImports : VaultImports {
     }
 }
 
-/** A listing that fails the way a broken catalog does: by throwing inside the flow. */
-private class ExplodingVaultItems : VaultItems {
-    override fun observe(albumId: ByteArray?): Flow<List<VaultItemSummary>> =
-        flow { throw IllegalStateException("catalog unreadable") }
-
-    override fun import(
-        name: String,
-        mime: String,
-        onProgress: (ImportPhase, Long) -> Unit,
-        isActive: () -> Boolean,
-        first: RawSource?,
-        openSource: () -> RawSource,
-    ): Outcome<ByteArray> = Outcome.Ok(byteArrayOf(1))
-
-    override fun thumbnail(id: ByteArray): Outcome<ByteArray?> = Outcome.Ok(null)
-}

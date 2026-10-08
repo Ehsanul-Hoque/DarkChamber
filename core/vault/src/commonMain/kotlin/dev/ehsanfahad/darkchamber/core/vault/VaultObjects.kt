@@ -3,8 +3,11 @@ package dev.ehsanfahad.darkchamber.core.vault
 import dev.ehsanfahad.darkchamber.core.crypto.DchmCodec
 import dev.ehsanfahad.darkchamber.core.crypto.DchmFormat
 import dev.ehsanfahad.darkchamber.core.crypto.VaultSession
+import dev.ehsanfahad.darkchamber.core.db.Albums
 import dev.ehsanfahad.darkchamber.core.db.CatalogStore
 import dev.ehsanfahad.darkchamber.core.db.Items
+import dev.ehsanfahad.darkchamber.core.db.SelectAlbumsWithCounts
+import dev.ehsanfahad.darkchamber.core.model.ItemFilter
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
 import dev.ehsanfahad.darkchamber.core.model.VaultItemKind
@@ -67,6 +70,16 @@ class VaultObjects(
      * owns the denominator, the percentage, and the decision of what to draw when no size is known:
      * [ImportPhase] says which arithmetic to do, never what to show.
      *
+     * [albumId] files the new item as it is created, so importing into the album being viewed is one
+     * action rather than an import followed by a selection. `null` leaves it unfiled, which is what
+     * an import from the whole-vault view should do and what every caller that predates albums gets.
+     *
+     * An album that does not exist is an **error**, not a quiet downgrade to unfiled: the schema
+     * declares no foreign key, so the row would be accepted and the item would land where no album
+     * view can reach it and the unfiled listing will not show it either. Checked twice on purpose —
+     * once before any bytes move, so a bad destination does not cost a full encrypt, and once against
+     * the finished row, because a long import can outlive the album it was aimed at.
+     *
      * [first] is an **already-open** source over the same payload, which stands in for the first
      * open this function would otherwise perform. It exists because a provider may block for minutes
      * inside that open — Drive downloads the whole file there — and abandoning a blocked call needs
@@ -93,12 +106,31 @@ class VaultObjects(
         kind: Int,
         name: String,
         mime: String,
+        albumId: ByteArray? = null,
         chunkSize: Int = DchmFormat.DEFAULT_CHUNK_SIZE,
         onProgress: (ImportPhase, Long) -> Unit = { _, _ -> },
         isActive: () -> Boolean = { true },
         first: RawSource? = null,
         openSource: () -> RawSource,
     ): Outcome<ByteArray> {
+        // Fail before any bytes move if the destination is not there. The check that *matters* is
+        // the one taken against the finished row (see storeGuarded), because an album can be deleted
+        // mid-import; this one exists so a mistyped destination does not cost a full encrypt of a
+        // video first. `first` belongs to the vault by contract, so this path closes it.
+        when (val destination = albumExists(albumId)) {
+            is Outcome.Err -> {
+                if (first != null) {
+                    try {
+                        first.close()
+                    } catch (_: Exception) {
+                        // best-effort: report the destination problem, not a close failure
+                    }
+                }
+                return destination
+            }
+            is Outcome.Ok -> Unit
+        }
+
         // Probe re-openability BEFORE reading anything. The check cannot be done after a failure:
         // by then the only stream a one-shot source will ever give has already been consumed by the
         // codec's first pass, leaving nothing to spill. So open one source and hold it, then try for
@@ -129,7 +161,7 @@ class VaultObjects(
             // Wrapped for the same reason as the spill path below: a lock can zeroize the session
             // mid-import, and a throw must not escape a function that promises an Outcome.
             return try {
-                storeObject(kind, name, mime, chunkSize, onProgress, isActive, openSource)
+                storeObject(kind, name, mime, albumId, chunkSize, onProgress, isActive, openSource)
             } catch (e: Exception) {
                 Outcome.Err(VaultError.Unexpected(e))
             }
@@ -166,7 +198,7 @@ class VaultObjects(
                         },
                     ) { session.isOpen && isActive() },
                 ) { spilled ->
-                    storeObject(kind, name, mime, chunkSize, onProgress, isActive, spilled)
+                    storeObject(kind, name, mime, albumId, chunkSize, onProgress, isActive, spilled)
                 }
                 .flatMap { it }
         } catch (e: Exception) {
@@ -188,6 +220,7 @@ class VaultObjects(
         kind: Int,
         name: String,
         mime: String,
+        albumId: ByteArray?,
         chunkSize: Int,
         onProgress: (ImportPhase, Long) -> Unit,
         isActive: () -> Boolean,
@@ -204,6 +237,7 @@ class VaultObjects(
             kind,
             name,
             mime,
+            albumId,
             chunkSize,
             openSource = {
                 SessionGuardedSource(
@@ -230,6 +264,7 @@ class VaultObjects(
         kind: Int,
         name: String,
         mime: String,
+        albumId: ByteArray?,
         chunkSize: Int,
         openSource: () -> RawSource,
         openForThumbnail: () -> RawSource,
@@ -272,9 +307,26 @@ class VaultObjects(
             storage.deleteThumbnail(fileId) // and no preview of an object that no longer exists
             throw e
         }
+
+        //    Still step 3: the destination is re-checked **here**, against the row about to be
+        //    written, and not only when the import started. An import of a large video takes
+        //    minutes, and the album it was aimed at can be deleted while it runs — `upsertItem`
+        //    would accept the stale id happily, since the schema declares no foreign key, and the
+        //    item would land where no album view can reach it and the unfiled listing will not show
+        //    it either. Cleaned up the same way a failed row write is: object bytes with no row are
+        //    unrecoverable garbage.
+        when (val destination = albumExists(albumId)) {
+            is Outcome.Err -> {
+                storage.deleteObject(fileId)
+                storage.deleteThumbnail(fileId)
+                return destination
+            }
+            is Outcome.Ok -> Unit
+        }
+
         val row = Items(
             id = fileId,
-            album_id = null,
+            album_id = albumId,
             kind = kind,
             size = size,
             created_at = createdAt,
@@ -445,8 +497,8 @@ class VaultObjects(
     /**
      * The listing feeding a gallery: each catalog row joined to its decrypted [ObjectMeta], so
      * features consume [VaultItemSummary] and never a SQLDelight row type. Re-emits whenever the
-     * catalog changes (an import, a shred), so callers never refresh by hand. Pass [albumId] to
-     * narrow to one album, or `null` for everything.
+     * catalog changes (an import, a shred), so callers never refresh by hand. [filter] chooses what
+     * the listing covers: the whole vault, one album, or the items in no album at all.
      *
      * A row whose `enc_meta` will not open is **listed with the error**, never dropped — omitting it
      * would hide tampering, and its plaintext columns are still usable (§4). Only the metadata is
@@ -464,10 +516,171 @@ class VaultObjects(
      * (the gallery component maps it to an error state). Swallowing it here would turn a broken
      * catalog into a silently empty vault, which is exactly the fail-closed rule's target.
      */
-    fun observeItems(albumId: ByteArray? = null): Flow<List<VaultItemSummary>> =
-        catalog.observeItems(albumId)
+    fun observeItems(filter: ItemFilter = ItemFilter.All): Flow<List<VaultItemSummary>> =
+        catalog.observeItems(filter)
             .map { rows -> rows.map(::toSummary) }
             .flowOn(mapContext)
+
+    /**
+     * The listing feeding the album grid: every album with its name opened, its item count and the
+     * id of the item that represents it. Re-emits whenever the catalog changes — **including when
+     * only the `items` table does**, which is what keeps a count and a cover current while every
+     * album row stays byte-identical.
+     *
+     * **One small decrypt per album, and nothing per item.** The count and the cover id arrive from
+     * the catalog's plaintext index columns — an item's album and its date — so this listing costs
+     * the same in a vault of ten files as in one of ten thousand. That is deliberate and worth
+     * defending: anything that makes this screen read item metadata to derive a count, a cover, or a
+     * total size turns a fixed cost into one GCM open per item per emission, on a screen that
+     * re-emits on every import.
+     *
+     * An album whose `enc_name` will not open is **listed with the error**, never dropped, for the
+     * same reason [observeItems] keeps a damaged row: an album that cannot be named still holds
+     * files, its id, count and cover still render, and omitting it would hide tampering while
+     * silently stranding whatever is inside it.
+     *
+     * Runs on [mapContext] and inherits `CatalogStore.observeAlbums`' failure contract, exactly as
+     * [observeItems] does — a driver failure surfaces as an exception in the flow for the collector
+     * to map, rather than becoming a silently empty list of albums.
+     */
+    fun observeAlbums(): Flow<List<AlbumSummary>> =
+        catalog.observeAlbums()
+            .map { rows -> rows.map(::toAlbumSummary) }
+            .flowOn(mapContext)
+
+    /**
+     * Create an album named [name], returning its new id.
+     *
+     * **Duplicate names are allowed, by decision.** The id is identity and the name is a label, so
+     * two albums called "Holiday" are confusing rather than broken. Enforcing uniqueness would mean
+     * opening every album's name on every create — the cost the album listing is carefully built to
+     * avoid — to buy an error message for something that is not an error.
+     *
+     * Nothing per-album is keyed here: `kek_variant` records that this album's name is sealed under
+     * MK like everything else, because an album organises and does not protect. A per-album key is a
+     * documented possibility for later, which is what the column is for.
+     *
+     * [name] must not be blank — see [requireUsableName]. The name is sealed **before** the row is
+     * written, so a session locked mid-create throws with nothing persisted; there is no half-made
+     * album to clean up, unlike an object import where bytes land first.
+     */
+    fun createAlbum(name: String): Outcome<ByteArray> {
+        requireUsableName(name)
+        val id = random(ALBUM_ID_SIZE)
+        val row = Albums(
+            id = id,
+            kek_variant = KEK_VARIANT_MASTER_KEY,
+            enc_name = session.sealAlbumMeta(AlbumMeta(name)),
+            created_at = clock(),
+        )
+        return catalog.upsertAlbum(row).map { id }
+    }
+
+    /**
+     * Rename the album with [id]. An unknown id is `VaultError.Io(NoSuchElementException)`, matching
+     * [openMeta] and [shredObject] — a rename is not a create, and silently making the album the
+     * caller thought it was editing would be worse than failing.
+     *
+     * **Reads the existing row and replaces only the sealed name.** The catalog's upsert is `INSERT
+     * OR REPLACE`, so building a fresh row here would quietly reset `created_at` — reordering the
+     * album grid — and discard `kek_variant`, which is the flag a later per-album key would live in.
+     * Both are pinned by a test.
+     *
+     * [name] must not be blank — see [requireUsableName].
+     */
+    fun renameAlbum(id: ByteArray, name: String): Outcome<Unit> {
+        requireUsableName(name)
+        val existing = when (val got = catalog.getAlbum(id)) {
+            is Outcome.Err -> return got
+            is Outcome.Ok -> got.value ?: return absentAlbum(id)
+        }
+        return catalog.upsertAlbum(existing.copy(enc_name = session.sealAlbumMeta(AlbumMeta(name))))
+    }
+
+    /**
+     * File every item in [ids] into [albumId], or unfile them all when it is `null`.
+     *
+     * **One write for the whole set, not one per item**, and that is a correctness-adjacent
+     * performance decision rather than a micro-optimisation. Every listing re-emits on any write to
+     * `items`, and the item listing opens and decodes every row's metadata on each emission — so
+     * fifty separate writes would mean fifty notifications and fifty full re-decrypts of a list that
+     * is being looked at while it happens. The catalog defers its notification to the commit, so the
+     * batch produces one.
+     *
+     * That per-emission re-decrypt is a **known cost of its own**, tracked separately; batching here
+     * keeps this call site from multiplying it, and does not fix it. An
+     * album's own listing is cheap by construction and is not what this is about.
+     *
+     * Returns an [AssignSummary] rather than `Unit`: ids that are no longer in the catalog are
+     * skipped rather than failed — an item shredded between selection and assignment is an ordinary
+     * race — and a caller that cannot see the difference can only report a half-move as a clean one.
+     * A destination album that does not exist **is** an error, because it would leave items filed
+     * where no listing can reach them.
+     */
+    fun assignItems(ids: List<ByteArray>, albumId: ByteArray?): Outcome<AssignSummary> =
+        catalog.updateItemAlbum(ids, albumId)
+            .map { moved -> AssignSummary(requested = ids.size, assigned = moved.toInt()) }
+
+    /**
+     * Delete the album with [id]. **Its items are kept** — they become unfiled, and nothing of
+     * theirs is touched.
+     *
+     * An album is a label on an item, not a container that owns it. Deleting an item's catalog row
+     * *is* the crypto-shred, because the wrapped DEK that opens that file lives in the row, so
+     * folder-deletes-contents semantics here would destroy files irreversibly with no trash to stage
+     * them in and no undo to offer. The album most likely to be deleted by mistake is a full one,
+     * because the grid shows its count.
+     *
+     * ### The order of the two writes is the design, and must not be tidied
+     *
+     * `CatalogStore` exposes no transaction spanning two of its operations, so this is two writes.
+     * **Clear the items first, then delete the album row** — and stop if the clear fails, which is
+     * what the short-circuit below is for.
+     *
+     * Interrupted after the first write, that leaves an album holding nothing: visible in the grid,
+     * harmless, and deletable again. Interrupted after the *other* order, it would leave items
+     * pointing at an album that no longer exists — absent from every album view, absent from the
+     * unfiled listing because their `album_id` is not null, and reachable only through the whole
+     * vault. One is a cosmetic leftover; the other is files the album surfaces cannot find.
+     *
+     * Both orders look equally reasonable in a diff, which is why the failure case is pinned by
+     * tests that inject a driver failure between the writes rather than left to this comment.
+     *
+     * An id that is not there is `Ok`: both writes are no-ops, the user's intent is already true, and
+     * unlike a shred of an unknown id there is no destruction being falsely reported.
+     */
+    fun deleteAlbum(id: ByteArray): Outcome<Unit> =
+        catalog.clearAlbumOnItems(id).flatMap { catalog.deleteAlbum(id) }
+
+    /**
+     * A blank name is a **caller bug, not a user error**, so it is a precondition rather than an
+     * `Outcome`.
+     *
+     * Deciding what to do about what the user typed — rejecting it, trimming it, keeping the field
+     * disabled until it is non-empty — is the use case's job, because that layer is the one that can
+     * say so in the interface and the one that knows whether the text is still being typed. By the
+     * time a name reaches here it has been through that, so blank means the validation was skipped.
+     * Failing loudly is how that gets found in a test rather than becoming an album with no name,
+     * which cannot be told apart from an album whose name will not decrypt.
+     *
+     * Whitespace counts as blank for the same reason: a name of three spaces is not a name, and
+     * storing one produces an album the user cannot identify or describe to anyone.
+     */
+    private fun requireUsableName(name: String) =
+        require(name.isNotBlank()) { "album name must not be blank" }
+
+    private fun toAlbumSummary(row: SelectAlbumsWithCounts): AlbumSummary =
+        AlbumSummary(
+            id = row.id,
+            // Only the name is sealed; everything else here is already plaintext in the catalog.
+            name = session.openAlbumMeta(row.enc_name).map { it.name },
+            // SQL counts are Long. Narrowed once, here, rather than carried through the UI: a vault
+            // that overflowed Int would have two billion files in one album, and every surface above
+            // this works in Int.
+            itemCount = row.item_count.toInt(),
+            coverItemId = row.cover_item_id,
+            createdAt = row.created_at,
+        )
 
     private fun toSummary(row: Items): VaultItemSummary =
         VaultItemSummary(
@@ -545,9 +758,35 @@ class VaultObjects(
     private fun absent(id: ByteArray): Outcome.Err =
         Outcome.Err(VaultError.Io(NoSuchElementException("no vault object for id (${id.size} bytes)")))
 
+    /**
+     * `Ok` when [albumId] is null — unfiled is always a valid destination — or when that album is
+     * there. Absent is an error rather than a silent downgrade to unfiled: the caller asked for a
+     * specific album, and quietly putting the file somewhere else is the kind of helpfulness that
+     * loses things.
+     */
+    private fun albumExists(albumId: ByteArray?): Outcome<Unit> {
+        if (albumId == null) return Outcome.Ok(Unit)
+        return when (val got = catalog.getAlbum(albumId)) {
+            is Outcome.Err -> got
+            is Outcome.Ok -> if (got.value == null) absentAlbum(albumId) else Outcome.Ok(Unit)
+        }
+    }
+
+    private fun absentAlbum(id: ByteArray): Outcome.Err =
+        Outcome.Err(VaultError.Io(NoSuchElementException("no album for id (${id.size} bytes)")))
+
     private companion object {
         // 128-bit random object id; the catalog primary key and the codec's chunk-AAD file_id.
         const val FILE_ID_SIZE = 16
+
+        // Album ids come from the same randomness and at the same width as object ids: one source
+        // of identity in this module, not two. An album id is only a primary key — it never reaches
+        // the container AAD the way a file_id does.
+        const val ALBUM_ID_SIZE = 16
+
+        // The album's name is sealed under MK, with no per-album key. Named rather than a bare 0 so
+        // the day a second variant exists, the existing rows say which one they are.
+        const val KEK_VARIANT_MASTER_KEY = 0
     }
 }
 

@@ -1,9 +1,11 @@
 package dev.ehsanfahad.darkchamber.core.db
 
+import app.cash.sqldelight.Query
 import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
+import dev.ehsanfahad.darkchamber.core.model.ItemFilter
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
 import kotlinx.coroutines.CoroutineDispatcher
@@ -47,15 +49,71 @@ class CatalogStore private constructor(
     fun getItem(id: ByteArray): Outcome<Items?> =
         catchingDb { items.selectItemById(id).executeAsOneOrNull() }
 
-    /** Items in [albumId] (or all items when null), ordered by `created_at`. */
-    fun listItems(albumId: ByteArray? = null): Outcome<List<Items>> =
-        catchingDb {
-            if (albumId != null) {
-                items.selectItemsByAlbum(albumId).executeAsList()
-            } else {
-                items.selectAllItems().executeAsList()
+    /** The items [filter] covers, ordered by `created_at`. */
+    fun listItems(filter: ItemFilter = ItemFilter.All): Outcome<List<Items>> =
+        catchingDb { itemQuery(filter).executeAsList() }
+
+    /**
+     * File every item in [ids] into [albumId], or unfile them all when it is `null`.
+     *
+     * **A destination, not a filter.** `null` here means "unfile these" and is unambiguous, because
+     * a destination has only two kinds of answer; a filter needs a third and so takes [ItemFilter]
+     * instead. The two read alike and mean different things.
+     *
+     * One statement for the whole set, inside one transaction: a bulk move either happens or does
+     * not, and listeners are notified once rather than once per item — a move of fifty items that
+     * emitted fifty times would have the gallery above it re-decrypt every row's metadata fifty
+     * times over.
+     *
+     * An empty [ids] short-circuits to `Ok` without running anything. Not for correctness — SQLite
+     * accepts the generated `IN ()` and matches nothing — but because executing it would still
+     * notify every listing that `items` changed, making each one re-read and re-decrypt itself to
+     * arrive at what it already had.
+     *
+     * **A non-existent [albumId] is an error.** The schema declares no foreign key, so SQLite would
+     * accept it and leave items filed into an album that does not exist — absent from every album
+     * listing and absent from the unfiled one too, since their `album_id` is not NULL. That is an
+     * item the album surfaces cannot reach, so the store enforces what the schema does not. Unknown
+     * *item* ids are not an error by contrast: an item shredded between selection and assignment is
+     * an ordinary race, and its absence is already the outcome the caller wanted.
+     *
+     * Returns **how many rows the write touched**, which is how a caller tells that ordinary race
+     * apart from a clean run: fewer rows than ids means some of them are no longer in the catalog.
+     * The count comes from the driver, so asking for it costs nothing.
+     */
+    fun updateItemAlbum(ids: List<ByteArray>, albumId: ByteArray?): Outcome<Long> =
+        if (ids.isEmpty()) {
+            Outcome.Ok(0L)
+        } else {
+            catchingDb {
+                db.transactionWithResult {
+                    // Inside the transaction for two reasons: the album cannot be deleted between
+                    // this check and the write, and the catalog defers its listener notification to
+                    // the commit — so however many statements this grows into, the listings are told
+                    // once.
+                    if (albumId != null && albums.selectAlbumById(albumId).executeAsOneOrNull() == null) {
+                        error("assignment destination album does not exist")
+                    }
+                    items.updateItemAlbum(album_id = albumId, id = ids).value
+                }
             }
         }
+
+    /**
+     * Unfile every item currently in [albumId], leaving the album row itself alone.
+     *
+     * This is what deleting an album does to its contents: they become unfiled, and **nothing is
+     * destroyed**. Deleting an item's row destroys the wrapped DEK living in it, which is the only
+     * way of reading that file — so an album delete must go through here and never through
+     * [deleteItem].
+     *
+     * A no-op is `Ok`: an album with nothing in it is the ordinary case for a delete, and so is an
+     * album id that no longer exists. Takes a non-null id deliberately — the generated query accepts
+     * one and quietly rewrites `=` to `IS`, which would make `null` mean "unfile the already
+     * unfiled" rather than the error it is.
+     */
+    fun clearAlbumOnItems(albumId: ByteArray): Outcome<Unit> =
+        catchingDb { items.clearAlbumOnItems(albumId) }
 
     /** Remove the item with [id]. Idempotent — an absent id is `Ok`, never a throw. */
     fun deleteItem(id: ByteArray): Outcome<Unit> =
@@ -66,15 +124,27 @@ class CatalogStore private constructor(
         catchingDb { items.countItems().executeAsOne() }
 
     /**
-     * A reactive list of items in [albumId] (or all items when null), ordered by `created_at`,
-     * re-emitting on every catalog write. Rows carry ids + opaque blobs only — never decrypted
-     * content (the session-gate rule). Unlike the one-shot ops this returns a raw [Flow]; the
-     * collector maps failures, since a hot stream has no single [Outcome] to return.
+     * A reactive list of the items [filter] covers, ordered by `created_at`, re-emitting on every
+     * catalog write. Rows carry ids + opaque blobs only — never decrypted content (the session-gate
+     * rule). Unlike the one-shot ops this returns a raw [Flow]; the collector maps failures, since a
+     * hot stream has no single [Outcome] to return.
      */
-    fun observeItems(albumId: ByteArray? = null): Flow<List<Items>> =
-        (if (albumId != null) items.selectItemsByAlbum(albumId) else items.selectAllItems())
+    fun observeItems(filter: ItemFilter = ItemFilter.All): Flow<List<Items>> =
+        itemQuery(filter)
             .asFlow()
             .mapToList(dispatcher)
+
+    /**
+     * The one place a filter becomes a query, shared by the listing and the stream so the two can
+     * never disagree about what a filter means. Exhaustive on purpose: a fourth case has to pick a
+     * query here rather than silently inherit one.
+     */
+    private fun itemQuery(filter: ItemFilter): Query<Items> =
+        when (filter) {
+            ItemFilter.All -> items.selectAllItems()
+            ItemFilter.Unfiled -> items.selectUnfiledItems()
+            is ItemFilter.Album -> items.selectItemsByAlbum(filter.id)
+        }
 
     private val albums get() = db.albumsQueries
 
@@ -96,6 +166,26 @@ class CatalogStore private constructor(
     /** All albums, ordered by `created_at`. */
     fun listAlbums(): Outcome<List<Albums>> =
         catchingDb { albums.selectAllAlbums().executeAsList() }
+
+    /**
+     * Live album listing: every album with its item count and the id of the item that represents it.
+     *
+     * **Re-emits when `items` changes, not only `albums`.** Importing, shredding or moving an item
+     * changes a count or a cover while every album row stays byte-identical, so a listener on
+     * `albums` alone would leave the grid confidently wrong. The query reaches into `items` for both
+     * derived columns, and SQLDelight registers a query's listener against every table its SQL
+     * names — so a write to either notifies this. That is load-bearing rather than incidental: a
+     * narrowing of this query that stopped mentioning `items` would silently stop the updates, which
+     * is why it is pinned by a test.
+     *
+     * Counts and covers come from the plaintext index columns only; nothing here decrypts. Returns a
+     * raw [Flow] for the same reason [observeItems] does — a hot stream has no single [Outcome] to
+     * return, so the collector maps failures.
+     */
+    fun observeAlbums(): Flow<List<SelectAlbumsWithCounts>> =
+        albums.selectAlbumsWithCounts()
+            .asFlow()
+            .mapToList(dispatcher)
 
     /** Remove the album with [id]. Idempotent — an absent id is `Ok`, never a throw. */
     fun deleteAlbum(id: ByteArray): Outcome<Unit> =

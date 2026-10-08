@@ -1,6 +1,9 @@
 package dev.ehsanfahad.darkchamber.feature.vault.domain
 
+import dev.ehsanfahad.darkchamber.core.model.ItemFilter
 import dev.ehsanfahad.darkchamber.core.model.Outcome
+import dev.ehsanfahad.darkchamber.core.vault.AlbumSummary
+import dev.ehsanfahad.darkchamber.core.vault.AssignSummary
 import dev.ehsanfahad.darkchamber.core.vault.ImportPhase
 import dev.ehsanfahad.darkchamber.core.vault.VaultItemSummary
 import kotlinx.coroutines.flow.Flow
@@ -16,8 +19,69 @@ import kotlinx.io.RawSource
  * no SQLDelight type is reachable from this module.
  */
 internal interface VaultItems {
-    /** The live listing, re-emitting on every catalog change. `null` album = the whole vault. */
-    fun observe(albumId: ByteArray?): Flow<List<VaultItemSummary>>
+    /**
+     * The live listing, re-emitting on every catalog change. [filter] chooses what it covers — the
+     * whole vault, one album, or the items in no album.
+     *
+     * The three cases are a filter, not a destination: unlike an album id being *assigned*, where
+     * `null` means "unfile these", there is no value of a nullable id that means "the unfiled ones"
+     * — which is why this is a type and not a parameter that can be left out.
+     */
+    fun observe(filter: ItemFilter): Flow<List<VaultItemSummary>>
+
+    /**
+     * The live album listing, re-emitting whenever the catalog changes — **including when only the
+     * items change**, which is what keeps a count and a cover current while every album row stays
+     * byte-identical.
+     *
+     * One small decrypt per album and nothing per item, which is the property that makes the album
+     * grid affordable in a large vault.
+     */
+    fun observeAlbums(): Flow<List<AlbumSummary>>
+
+    /**
+     * Create an album named [name], returning its new id.
+     *
+     * **[name] must already be usable** — non-blank, and whatever else the surface decided a name
+     * has to be. The vault treats a blank one as a caller bug and throws, deliberately: deciding
+     * what to do about what the user typed belongs to the layer that can say so on screen, which is
+     * why [CreateAlbum] exists rather than this being called from a component.
+     *
+     * Duplicate names are allowed — the id is identity and the name is a label — so this never fails
+     * for a name that is already taken.
+     */
+    fun createAlbum(name: String): Outcome<ByteArray>
+
+    /**
+     * Rename the album with [id]. Same contract as [createAlbum] for [name]: already usable, or the
+     * vault throws. An album that is not there is a failure rather than a create.
+     */
+    fun renameAlbum(id: ByteArray, name: String): Outcome<Unit>
+
+    /**
+     * Delete the album with [id]. **Its items are kept** — they become unfiled, and nothing of theirs
+     * is touched: an album is a label on an item, not a container that owns it.
+     *
+     * Not idempotent-but-silent: an id that is not there succeeds, because the user's intent is
+     * already true and nothing was falsely reported as destroyed.
+     */
+    fun deleteAlbum(id: ByteArray): Outcome<Unit>
+
+    /**
+     * File every id in [ids] into [albumId], or unfile them all when it is `null`.
+     *
+     * **A move, not a copy.** An item is in at most one album, so filing something already filed takes
+     * it out of where it was — there is no second copy of anything, encrypted or otherwise.
+     *
+     * One write for the whole set, which is why this is not a loop over a single-item call: every
+     * listing re-emits on any write to the items table and re-decrypts each row's metadata, so fifty
+     * separate writes would mean fifty re-decrypts of a list being looked at.
+     *
+     * The summary matters because ids can go missing between selecting and moving — an item shredded
+     * in between is an ordinary race, skipped rather than failed — and a caller that cannot see the
+     * difference can only report a half-move as a clean one.
+     */
+    fun assignItems(ids: List<ByteArray>, albumId: ByteArray?): Outcome<AssignSummary>
 
     /**
      * Stream-encrypt a payload into the vault, returning the new object's id.
@@ -31,6 +95,10 @@ internal interface VaultItems {
      * [isActive] going false aborts within a read rather than at the end of the file: the encrypt is
      * blocking, so a caller that waited for the loop to notice would wait out the rest of a video.
      *
+     * [albumId] files the item as it is created, so importing into the album being viewed does not
+     * need a second step. `null` leaves it unfiled, which is what an import from the whole-vault
+     * view does. An album that is not there fails the import rather than quietly unfiling it.
+     *
      * [first] is an already-open source over the same payload, standing in for the first open the
      * vault would otherwise perform. It is how a caller keeps a provider's blocking open somewhere it
      * can be abandoned: the vault is synchronous, so a wait inside it cannot be given up on.
@@ -41,6 +109,7 @@ internal interface VaultItems {
     fun import(
         name: String,
         mime: String,
+        albumId: ByteArray? = null,
         onProgress: (ImportPhase, Long) -> Unit = { _, _ -> },
         isActive: () -> Boolean = { true },
         first: RawSource? = null,

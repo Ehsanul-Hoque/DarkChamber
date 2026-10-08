@@ -5,9 +5,11 @@
 # checks pass (configure these as required status checks in branch protection).
 #
 # PREREQUISITES (land these before making the checks "required" in branch protection):
-#   • ktlint / detekt / konsistTest / kover tasks exist — added by the build-logic
-#     convention plugins (docs/engineering/MODULES.md §5, TESTING.md §5). Until then,
-#     comment out the "Static analysis" and "Unit tests + coverage" steps.
+#   • ktlint / detekt / kover tasks exist — added by the build-logic convention plugins
+#     (docs/engineering/MODULES.md §5, TESTING.md §5). Until then, comment out the
+#     "Static analysis" and "Unit tests + coverage" steps. Konsist is NOT one of these:
+#     its rules are tests in their own module, so `:konsist:test` already works and
+#     already runs in the enabled pr.yml — there is no aggregate `konsistTest` task.
 #   • migrationTest exists once the first release ships fixture vaults
 #     (docs/engineering/TESTING.md §3.2) — commented out below until then.
 #   • scripts/check-commits.sh is committed (it is — no Node/commitlint needed).
@@ -78,8 +80,11 @@ jobs:
           java-version: "21"
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Static analysis (ktlint, detekt, Konsist)
-        run: ./gradlew ktlintCheck detekt konsistTest
+      - name: Architecture + security invariants (Konsist)
+        run: ./gradlew :konsist:test
+
+      - name: Static analysis (ktlint, detekt)
+        run: ./gradlew ktlintCheck detekt
 
       - name: Unit tests + coverage
         # Includes the .dchm format test vectors (docs/engineering/TESTING.md §3.1)

@@ -8,8 +8,8 @@ import kotlinx.serialization.encodeToByteArray
 
 /**
  * The list-view metadata for a vault object — the plaintext that gets sealed under MK into the
- * catalog `enc_meta` column (5c middle depth). Deliberately minimal; the richer metadata model
- * (dimensions, duration, origin) waits for the cycle that first reads it.
+ * catalog `enc_meta` column. Deliberately minimal — enough to list an item and no more; the richer
+ * metadata model (dimensions, duration, origin) waits for the work that first reads it.
  *
  * [thumbnailKey] is the DEK of this object's thumbnail container, **wrapped under MK**, absent when
  * the object has no thumbnail — an unsupported type, a file the decoder declined, or an item
@@ -68,7 +68,9 @@ data class ObjectMeta(
         "ObjectMeta(mime=$mime, thumbnailKey=${if (thumbnailKey == null) "absent" else "present"})"
 }
 
-private fun ByteArray?.contentEqualsOrBothNull(other: ByteArray?): Boolean =
+// `internal` rather than private: AlbumSummary needs the same null-safe content comparison for its
+// cover id, and two copies of this are two chances for one of them to be written as `==`.
+internal fun ByteArray?.contentEqualsOrBothNull(other: ByteArray?): Boolean =
     if (this == null || other == null) this == null && other == null else contentEquals(other)
 
 // One CBOR instance for enc_meta framing — the same serialization idiom as the .dchm header and the
@@ -79,7 +81,7 @@ private fun ByteArray?.contentEqualsOrBothNull(other: ByteArray?): Boolean =
 // configuration into a wider shape; everything else goes through encodeMeta/decodeMeta.
 //
 // `ignoreUnknownKeys` is what makes the metadata model extensible on vaults that already exist: a
-// later cycle adds a field, and a build that predates it still reads those rows instead of failing
+// later release adds a field, and a build that predates it still reads those rows instead of failing
 // them as unverifiable. It is safe here and only here — enc_meta is a display record, not an
 // authenticity claim. The .dchm header stays strict, because an unexpected key there is tampering.
 @OptIn(ExperimentalSerializationApi::class)

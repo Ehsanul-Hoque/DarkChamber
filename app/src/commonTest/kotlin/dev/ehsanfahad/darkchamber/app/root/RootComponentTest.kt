@@ -1,6 +1,7 @@
 package dev.ehsanfahad.darkchamber.app.root
 
 import com.arkivanov.decompose.DefaultComponentContext
+import com.arkivanov.essenty.backhandler.BackDispatcher
 import com.arkivanov.decompose.value.MutableValue
 import com.arkivanov.decompose.value.Value
 import com.arkivanov.essenty.lifecycle.LifecycleRegistry
@@ -70,9 +71,17 @@ class RootComponentTest {
 
     private val handoff = SystemUiHandoff()
 
+    private val backDispatcher = BackDispatcher()
+
     private fun root(mainContext: CoroutineContext = UnconfinedTestDispatcher()): DefaultRootComponent =
         DefaultRootComponent(
-            componentContext = DefaultComponentContext(LifecycleRegistry()),
+            // With the host's back handler, because the children's contexts are built here rather than
+            // handed in: whether back reaches a child at all is this class's behaviour, and nothing
+            // that constructs a child directly can show it.
+            componentContext = DefaultComponentContext(
+                lifecycle = LifecycleRegistry(),
+                backHandler = backDispatcher,
+            ),
             lockedFactory = { _, onUnlocked -> lockedOnUnlocked = onUnlocked; FakeLockedComponent() },
             unlockedFactory = { ctx, vault, onLock -> DefaultUnlockedComponent(ctx, vault, koin, mainContext = UnconfinedTestDispatcher(), onLock = onLock) },
             handoff = handoff,
@@ -107,6 +116,34 @@ class RootComponentTest {
 
         val unlocked = assertIs<RootChild.Unlocked>(root.child.value)
         assertSame(vault.session, unlocked.component.session, "the unlocked child must hold the fed session")
+    }
+
+    /**
+     * **The host's back button has to reach the unlocked subtree.** The gate builds its children's
+     * contexts itself — standalone, so that it owns the lifecycle registry it destroys on lock — and a
+     * context built without a back handler quietly gets its own private one. Everything inside then
+     * registers its callbacks with a dispatcher nothing will ever call: the system takes the back
+     * press instead, the app goes to the background, and the vault auto-locks. On a device that looks
+     * like "back closes the app from every screen".
+     *
+     * Asserted here rather than on the subtree, which is the mistake this test exists to correct: a
+     * test that constructs the unlocked component itself passes a working dispatcher in by hand and so
+     * can only ever prove that Decompose's stack handles back — never that this class connects it.
+     */
+    @Test
+    fun the_hosts_back_button_reaches_the_unlocked_subtree() {
+        val root = root()
+        lockedOnUnlocked!!(openVault())
+        val unlocked = assertIs<RootChild.Unlocked>(root.child.value).component
+        unlocked.openAlbums()
+        assertIs<UnlockedChild.Albums>(unlocked.stack.value.active.instance, "something to come back from")
+
+        assertTrue(backDispatcher.back(), "the gate's child must be wired to the host's back handler")
+
+        assertIs<UnlockedChild.Gallery>(
+            unlocked.stack.value.active.instance,
+            "back belongs to the screen, not to the task switcher",
+        )
     }
 
     @Test

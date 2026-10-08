@@ -1,5 +1,6 @@
 package dev.ehsanfahad.darkchamber.feature.vault.domain
 
+import dev.ehsanfahad.darkchamber.core.model.ItemFilter
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.vault.VaultItemSummary
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
@@ -17,8 +18,8 @@ import kotlinx.coroutines.flow.map
  */
 internal class ObserveGallery(private val vault: VaultItems) {
 
-    operator fun invoke(albumId: ByteArray? = null): Flow<List<GalleryItem>> =
-        vault.observe(albumId).map { summaries -> summaries.map(::toItem) }
+    operator fun invoke(filter: ItemFilter = ItemFilter.All): Flow<List<GalleryItem>> =
+        vault.observe(filter).map { summaries -> summaries.map(::toItem) }
 
     private fun toItem(summary: VaultItemSummary): GalleryItem =
         GalleryItem(

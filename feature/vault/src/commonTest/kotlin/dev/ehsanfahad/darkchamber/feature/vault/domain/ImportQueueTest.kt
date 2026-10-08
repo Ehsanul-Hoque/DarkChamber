@@ -58,6 +58,37 @@ class ImportQueueTest {
         assertTrue(files.all { it.closed }, "every grant is released")
     }
 
+    /**
+     * A destination belongs to the pick, so every file in one batch carries the same one — not the
+     * destination as it stands when each file's turn comes. The screen behind a fifty-file import is
+     * free to navigate while it runs, and a batch that read the current album per file could scatter
+     * itself across two of them.
+     */
+    @Test
+    fun every_file_in_a_batch_is_filed_into_the_same_album() = runTest {
+        val vault = FakeVaultItems()
+        val album = byteArrayOf(0xA1.toByte())
+        val files = listOf(FakePickedFile(name = "a.jpg"), FakePickedFile(name = "b.jpg"))
+
+        queue(vault)(files, albumId = album)
+
+        assertEquals(2, vault.importedAlbums.size, "both files were offered a destination")
+        assertTrue(
+            vault.importedAlbums.all { it.contentEquals(album) },
+            "and it is the same one for each: ${vault.importedAlbums.map { it?.size }}",
+        )
+    }
+
+    /** No destination is the whole-vault import, and stays the default every existing caller gets. */
+    @Test
+    fun a_batch_with_no_album_imports_everything_unfiled() = runTest {
+        val vault = FakeVaultItems()
+
+        queue(vault)(listOf(FakePickedFile(name = "a.jpg")))
+
+        assertEquals(listOf<ByteArray?>(null), vault.importedAlbums)
+    }
+
     /** One unreadable file in fifty must cost the user that file and nothing else. */
     @Test
     fun a_failed_file_is_recorded_and_the_batch_carries_on() = runTest {

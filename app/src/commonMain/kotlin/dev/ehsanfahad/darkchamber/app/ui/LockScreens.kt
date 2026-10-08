@@ -40,6 +40,7 @@ import dev.ehsanfahad.darkchamber.app.root.UnlockedComponent
 import dev.ehsanfahad.darkchamber.core.designsystem.Aperture
 import dev.ehsanfahad.darkchamber.core.designsystem.ApertureState
 import dev.ehsanfahad.darkchamber.core.designsystem.DarkChamberTheme
+import dev.ehsanfahad.darkchamber.feature.vault.presentation.VaultAlbumsContent
 import dev.ehsanfahad.darkchamber.feature.vault.presentation.VaultGalleryContent
 
 /**
@@ -221,11 +222,19 @@ private fun UnlockedContent(component: UnlockedComponent) {
     // the bar), and leaving them to each screen means the first one that forgets sits under the
     // system bars.
     Column(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
-        UnlockedBar(onLock = component::lock)
-
         val stack by component.stack.subscribeAsState()
+        val child = stack.active.instance
+
+        UnlockedBar(
+            onLock = component::lock,
+            // Offered from the vault's own grid only. From inside an album, or from the album grid
+            // itself, the way onward is back — a second entry point to the screen you are standing
+            // next to is noise.
+            onAlbums = component::openAlbums.takeIf { child is UnlockedChild.Gallery && child.atHome },
+        )
+
         Box(modifier = Modifier.weight(1f)) {
-            when (val child = stack.active.instance) {
+            when (child) {
                 is UnlockedChild.Gallery ->
                     // The session owns the loader (it decrypts through the session's vault and
                     // holds previews in memory), so the screen is handed one rather than making
@@ -234,14 +243,26 @@ private fun UnlockedContent(component: UnlockedComponent) {
                     component.imageLoader?.let { loader ->
                         VaultGalleryContent(child.component, loader)
                     }
+                // The same loader, for the same reason: an album's cover is one of its items, so it
+                // is drawn through the session's encrypted-preview path rather than a second one.
+                is UnlockedChild.Albums ->
+                    component.imageLoader?.let { loader ->
+                        VaultAlbumsContent(child.component, loader)
+                    }
             }
         }
     }
 }
 
-/** The one chrome the unlocked subtree owns: an open aperture and the manual lock. */
+/**
+ * The one chrome the unlocked subtree owns: an open aperture, the way into albums, and the manual
+ * lock.
+ *
+ * [onAlbums] is null on every screen but the vault's own grid, and the entry point is simply absent
+ * then rather than present and disabled — a dead control invites a tap and explains nothing.
+ */
 @Composable
-private fun UnlockedBar(onLock: () -> Unit) {
+private fun UnlockedBar(onLock: () -> Unit, onAlbums: (() -> Unit)?) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -262,8 +283,19 @@ private fun UnlockedBar(onLock: () -> Unit) {
                 modifier = Modifier.padding(start = DarkChamberTheme.spacing.spaceXs),
             )
         }
-        TextButton(onClick = onLock) {
-            Text("Lock", style = DarkChamberTheme.typography.label, color = DarkChamberTheme.colors.accent)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            onAlbums?.let { open ->
+                TextButton(onClick = open) {
+                    Text(
+                        "Albums",
+                        style = DarkChamberTheme.typography.label,
+                        color = DarkChamberTheme.colors.accent,
+                    )
+                }
+            }
+            TextButton(onClick = onLock) {
+                Text("Lock", style = DarkChamberTheme.typography.label, color = DarkChamberTheme.colors.accent)
+            }
         }
     }
 }

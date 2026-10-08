@@ -1,8 +1,11 @@
 package dev.ehsanfahad.darkchamber.feature.vault
 
+import dev.ehsanfahad.darkchamber.core.model.ItemFilter
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
 import dev.ehsanfahad.darkchamber.core.model.VaultItemKind
+import dev.ehsanfahad.darkchamber.core.vault.AlbumSummary
+import dev.ehsanfahad.darkchamber.core.vault.AssignSummary
 import dev.ehsanfahad.darkchamber.core.vault.ImportPhase
 import dev.ehsanfahad.darkchamber.core.vault.ObjectMeta
 import dev.ehsanfahad.darkchamber.core.vault.VaultItemSummary
@@ -16,6 +19,7 @@ import kotlinx.coroutines.Runnable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.io.Buffer
@@ -363,10 +367,25 @@ internal class FakeVaultItems(
     private val onImport: (String) -> Unit = {},
     /** Stored previews by item id (as a list, so the map keys compare by content). */
     private val thumbnails: Map<List<Byte>, Outcome<ByteArray?>> = emptyMap(),
+    /** What a create answers. A failure here is the vault refusing, not a name being wrong. */
+    private val createResult: Outcome<ByteArray> = Outcome.Ok(byteArrayOf(42)),
+    /** What a rename answers. */
+    private val renameResult: Outcome<Unit> = Outcome.Ok(Unit),
+    /** What a delete answers. */
+    private val deleteResult: Outcome<Unit> = Outcome.Ok(Unit),
+    /**
+     * How many of a filing request actually move, as a function of how many were asked for. The default
+     * moves them all; a test about the partial path returns fewer, which is what the catalog does when
+     * an id has left it.
+     */
+    private val assignedOf: (Int) -> Int = { it },
+    /** A filing refused outright — a destination album that is no longer there, say. */
+    private val assignFailure: VaultError? = null,
 ) : VaultItems {
     var thumbnailCalls = 0
         private set
     val summaries = MutableStateFlow<List<VaultItemSummary>>(emptyList())
+    val albums = MutableStateFlow<List<AlbumSummary>>(emptyList())
     val importedNames = mutableListOf<String>()
     var importCalls = 0
         private set
@@ -374,27 +393,82 @@ internal class FakeVaultItems(
         private set
     var lastMime: String? = null
         private set
-    var observedAlbum: ByteArray? = null
+    var observedFilter: ItemFilter? = null
         private set
+
+    /** The destination of every import call, in order — so a batch's filing can be checked per file. */
+    val importedAlbums = mutableListOf<ByteArray?>()
 
     /** The already-open source of the most recent call, or `null` when the caller handed none. */
     var handedFirst: RawSource? = null
         private set
 
-    override fun observe(albumId: ByteArray?): Flow<List<VaultItemSummary>> {
-        observedAlbum = albumId
+    override fun observe(filter: ItemFilter): Flow<List<VaultItemSummary>> {
+        observedFilter = filter
         return summaries
+    }
+
+    override fun observeAlbums(): Flow<List<AlbumSummary>> = albums
+
+    /**
+     * Every name a create was asked for, in order. A list rather than a counter and a `lastName`:
+     * what has to be checkable is that a blank name never reached the vault at all, which a count
+     * alone cannot say.
+     */
+    val createdNames = mutableListOf<String>()
+
+    /** Every `(id, name)` a rename was asked for, so a blank name reaching the vault is catchable. */
+    val renames = mutableListOf<Pair<List<Byte>, String>>()
+
+    /** Every id a delete was asked for. */
+    val deletedAlbums = mutableListOf<List<Byte>>()
+
+    override fun createAlbum(name: String): Outcome<ByteArray> {
+        // The real vault treats a blank name as a caller bug and throws. The fake keeps that
+        // promise, so a use case that stopped validating is caught here rather than passing.
+        require(name.isNotBlank()) { "album name must not be blank" }
+        createdNames += name
+        return createResult
+    }
+
+    override fun renameAlbum(id: ByteArray, name: String): Outcome<Unit> {
+        // The same precondition the vault has, for the same reason as [createAlbum]'s.
+        require(name.isNotBlank()) { "album name must not be blank" }
+        renames += id.toList() to name
+        return renameResult
+    }
+
+    override fun deleteAlbum(id: ByteArray): Outcome<Unit> {
+        deletedAlbums += id.toList()
+        return deleteResult
+    }
+
+    /**
+     * Every filing call, as `(ids, destination)` — `null` being unfiled.
+     *
+     * Recorded rather than counted, because what the tests have to be able to say is *which* items went
+     * *where*: a move that filed the wrong ids, or filed them into the wrong album, is the failure mode
+     * a count cannot see.
+     */
+    val assignments = mutableListOf<Pair<List<List<Byte>>, List<Byte>?>>()
+
+    override fun assignItems(ids: List<ByteArray>, albumId: ByteArray?): Outcome<AssignSummary> {
+        assignments += ids.map { it.toList() } to albumId?.toList()
+        assignFailure?.let { return Outcome.Err(it) }
+        return Outcome.Ok(AssignSummary(requested = ids.size, assigned = assignedOf(ids.size)))
     }
 
     override fun import(
         name: String,
         mime: String,
+        albumId: ByteArray?,
         onProgress: (ImportPhase, Long) -> Unit,
         isActive: () -> Boolean,
         first: RawSource?,
         openSource: () -> RawSource,
     ): Outcome<ByteArray> {
         importCalls++
+        importedAlbums += albumId
         handedFirst = first
         // The real vault owns a handed source and closes it on every path. The fake keeps that
         // promise, so a caller that leaks one is not covered for by the test double.
@@ -426,13 +500,63 @@ internal class FakeVaultItems(
 /** Unknown ids answer "no preview", which is what the real seam does for an item without one. */
 private val NO_THUMBNAIL: Outcome<ByteArray?> = Outcome.Ok(null)
 
-/** A seam whose import blows up rather than returning — the "should never happen" path. */
-internal class ThrowingVaultItems : VaultItems {
-    override fun observe(albumId: ByteArray?): Flow<List<VaultItemSummary>> = MutableStateFlow(emptyList())
+/**
+ * A listing that fails the way a broken catalog does: by **throwing inside the flow**, which is
+ * `core:vault`'s documented contract for a listing that cannot be read.
+ *
+ * Shared by the gallery's and the album grid's tests: both screens have to turn that throw into a
+ * reported error rather than an empty list, and the two would otherwise keep their own copy of a fake
+ * whose one job is to get the failure shape right.
+ */
+internal class ExplodingVaultItems : VaultItems {
+    override fun observe(filter: ItemFilter): Flow<List<VaultItemSummary>> =
+        flow { throw IllegalStateException("catalog unreadable") }
+
+    override fun observeAlbums(): Flow<List<AlbumSummary>> =
+        flow { throw IllegalStateException("catalog unreadable") }
+
+    override fun createAlbum(name: String): Outcome<ByteArray> = Outcome.Ok(byteArrayOf(1))
+
+    override fun renameAlbum(id: ByteArray, name: String): Outcome<Unit> = Outcome.Ok(Unit)
+
+    override fun deleteAlbum(id: ByteArray): Outcome<Unit> = Outcome.Ok(Unit)
+
+    override fun assignItems(ids: List<ByteArray>, albumId: ByteArray?): Outcome<AssignSummary> =
+        Outcome.Ok(AssignSummary(requested = ids.size, assigned = ids.size))
 
     override fun import(
         name: String,
         mime: String,
+        albumId: ByteArray?,
+        onProgress: (ImportPhase, Long) -> Unit,
+        isActive: () -> Boolean,
+        first: RawSource?,
+        openSource: () -> RawSource,
+    ): Outcome<ByteArray> = Outcome.Ok(byteArrayOf(1))
+
+    override fun thumbnail(id: ByteArray): Outcome<ByteArray?> = Outcome.Ok(null)
+}
+
+/** A seam whose import blows up rather than returning — the "should never happen" path. */
+internal class ThrowingVaultItems : VaultItems {
+    override fun observe(filter: ItemFilter): Flow<List<VaultItemSummary>> = MutableStateFlow(emptyList())
+
+    override fun observeAlbums(): Flow<List<AlbumSummary>> = MutableStateFlow(emptyList())
+
+    override fun createAlbum(name: String): Outcome<ByteArray> = throw IllegalStateException("create exploded")
+
+    override fun renameAlbum(id: ByteArray, name: String): Outcome<Unit> =
+        throw IllegalStateException("rename exploded")
+
+    override fun deleteAlbum(id: ByteArray): Outcome<Unit> = throw IllegalStateException("delete exploded")
+
+    override fun assignItems(ids: List<ByteArray>, albumId: ByteArray?): Outcome<AssignSummary> =
+        throw IllegalStateException("filing exploded")
+
+    override fun import(
+        name: String,
+        mime: String,
+        albumId: ByteArray?,
         onProgress: (ImportPhase, Long) -> Unit,
         isActive: () -> Boolean,
         first: RawSource?,
@@ -444,11 +568,26 @@ internal class ThrowingVaultItems : VaultItems {
 
 /** A seam that behaves like an import interrupted by a lock cancelling the scope. */
 internal class CancellingVaultItems : VaultItems {
-    override fun observe(albumId: ByteArray?): Flow<List<VaultItemSummary>> = MutableStateFlow(emptyList())
+    override fun observe(filter: ItemFilter): Flow<List<VaultItemSummary>> = MutableStateFlow(emptyList())
+
+    override fun observeAlbums(): Flow<List<AlbumSummary>> = MutableStateFlow(emptyList())
+
+    override fun createAlbum(name: String): Outcome<ByteArray> =
+        throw CancellationException("the session was torn down mid-create")
+
+    override fun renameAlbum(id: ByteArray, name: String): Outcome<Unit> =
+        throw CancellationException("the session was torn down mid-rename")
+
+    override fun deleteAlbum(id: ByteArray): Outcome<Unit> =
+        throw CancellationException("the session was torn down mid-delete")
+
+    override fun assignItems(ids: List<ByteArray>, albumId: ByteArray?): Outcome<AssignSummary> =
+        throw CancellationException("the session was torn down mid-move")
 
     override fun import(
         name: String,
         mime: String,
+        albumId: ByteArray?,
         onProgress: (ImportPhase, Long) -> Unit,
         isActive: () -> Boolean,
         first: RawSource?,

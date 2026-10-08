@@ -1,7 +1,10 @@
 package dev.ehsanfahad.darkchamber.feature.vault.data
 
+import dev.ehsanfahad.darkchamber.core.model.ItemFilter
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultItemKind
+import dev.ehsanfahad.darkchamber.core.vault.AlbumSummary
+import dev.ehsanfahad.darkchamber.core.vault.AssignSummary
 import dev.ehsanfahad.darkchamber.core.vault.ImportPhase
 import dev.ehsanfahad.darkchamber.core.vault.VaultItemSummary
 import dev.ehsanfahad.darkchamber.core.vault.VaultObjects
@@ -20,12 +23,24 @@ import kotlinx.io.RawSource
  */
 internal class VaultObjectsItems(private val objects: VaultObjects) : VaultItems {
 
-    override fun observe(albumId: ByteArray?): Flow<List<VaultItemSummary>> =
-        objects.observeItems(albumId)
+    override fun observe(filter: ItemFilter): Flow<List<VaultItemSummary>> =
+        objects.observeItems(filter)
+
+    override fun observeAlbums(): Flow<List<AlbumSummary>> = objects.observeAlbums()
+
+    override fun createAlbum(name: String): Outcome<ByteArray> = objects.createAlbum(name)
+
+    override fun renameAlbum(id: ByteArray, name: String): Outcome<Unit> = objects.renameAlbum(id, name)
+
+    override fun deleteAlbum(id: ByteArray): Outcome<Unit> = objects.deleteAlbum(id)
+
+    override fun assignItems(ids: List<ByteArray>, albumId: ByteArray?): Outcome<AssignSummary> =
+        objects.assignItems(ids, albumId)
 
     override fun import(
         name: String,
         mime: String,
+        albumId: ByteArray?,
         onProgress: (ImportPhase, Long) -> Unit,
         isActive: () -> Boolean,
         first: RawSource?,
@@ -35,6 +50,7 @@ internal class VaultObjectsItems(private val objects: VaultObjects) : VaultItems
             kind = VaultItemKind.FILE.code,
             name = name,
             mime = mime,
+            albumId = albumId,
             onProgress = onProgress,
             isActive = isActive,
             first = first,

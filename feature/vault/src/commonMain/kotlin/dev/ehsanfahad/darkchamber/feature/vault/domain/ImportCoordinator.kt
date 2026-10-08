@@ -23,14 +23,14 @@ import kotlin.coroutines.cancellation.CancellationException
  * Owns the running import batch and publishes it as one [ImportState] a screen can render.
  *
  * **Bound to the session, not to a screen.** It runs on a scope the unlocked subtree owns,
- * so navigating away — which the albums cycle introduces — cannot cancel an import, while locking
+ * so navigating away — which the album surface makes ordinary — cannot cancel an import, while locking
  * still does, because locking cancels that scope. A component that owned the batch would make the
  * two indistinguishable.
  *
  * The consequence to be honest about: when a **lock** ends a batch, this object dies with the
  * session and the user can never be told what happened. Persisting batch state across a lock is not
  * something we will do, so the pre-import notice is the only warning there is — which is exactly why
- * it is load-bearing rather than decoration (spec §4.4).
+ * it is load-bearing rather than decoration.
  */
 internal class ImportCoordinator(
     private val photoPicker: PhotoPicker,
@@ -77,9 +77,9 @@ internal class ImportCoordinator(
         private set
 
 
-    override fun importPhotos() = start { photoPicker.pickPhotos() }
+    override fun importPhotos(albumId: ByteArray?) = start(albumId) { photoPicker.pickPhotos() }
 
-    override fun importFiles() = start { filePicker.pickFiles() }
+    override fun importFiles(albumId: ByteArray?) = start(albumId) { filePicker.pickFiles() }
 
     /** Stop the batch. What has already been imported stays imported. */
     override fun cancel() {
@@ -155,7 +155,12 @@ internal class ImportCoordinator(
         _state.value = finished.copy(originalDelete = OriginalDelete.NotAsked)
     }
 
-    private fun start(pick: suspend () -> List<PickedFile>) {
+    /**
+     * [albumId] is where this batch lands. Captured in the parameter and used once below rather than
+     * stored on this object: a field would be a second thing a later batch could leave stale, and the
+     * destination has exactly one life — this pick.
+     */
+    private fun start(albumId: ByteArray?, pick: suspend () -> List<PickedFile>) {
         // Set before the coroutine is even scheduled, so a double tap cannot open two pickers.
         if (isRunning) return
         cancelled = false
@@ -189,6 +194,7 @@ internal class ImportCoordinator(
 
             val summary = queue(
                 files = picked,
+                albumId = albumId,
                 isActive = { !cancelled },
                 onProgress = { progress ->
                     _state.value = ImportState.Running(
