@@ -76,7 +76,12 @@ detekt version note: pick the line built against the project's Kotlin version at
 ./gradlew :konsist:test                      # architecture + security invariants
 ./gradlew ktlintCheck detekt                 # style
 ./gradlew testDebugUnitTest                  # fast JVM suite (incl. format vectors)
-./gradlew iosSimulatorArm64Test              # iOS (CI-gated, see RELEASE.md)
+./gradlew iosSimulatorArm64Test              # iOS, on a simulator; runs on pull requests that touch
+                                             # shared code (gated to non-draft, see RELEASE.md). Worth
+                                             # running locally before any iOS-visible change: it is the
+                                             # only suite that exercises the native SQLite driver, the
+                                             # iOS platform seams, and the container vectors on a
+                                             # second platform.
 ./gradlew koverVerify                        # coverage gate
 ./gradlew migrationTest                      # fixture-vault upgrade gate
 ```

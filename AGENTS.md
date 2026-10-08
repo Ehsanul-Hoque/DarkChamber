@@ -51,7 +51,8 @@ Package root: `dev.ehsanfahad.darkchamber`.
 > are sort/search over the listing, the camera, the seek primitive and the in-app viewers (deferred
 > from Phase 0). **Planned, not yet wired:** ktlint/detekt/Kover, Lefthook and
 > `migrationTest` — verify a Gradle task exists before assuming it runs. CI:
-> `pr.yml` is enabled (build + commit-message check + gated iOS compile); its `quality` job stays
+> `pr.yml` is enabled (build + commit-message check + a gated macOS job that runs the **iOS unit
+> tests** and compiles the device architecture); its `quality` job stays
 > commented out until those plugins land, and `nightly`/`release`/`test-build` stay committed
 > **disabled** (`*.yml.disabled`). Treat `docs/` as the source of truth for *where things are going*,
 > and the **code** as the source of truth for *how things work* (this file stays a map, not a mirror).

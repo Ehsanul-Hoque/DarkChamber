@@ -1,14 +1,15 @@
 # .github/workflows/pr.yml
 #
-# Runs on every PR to main. Fast checks on Linux; the expensive macOS iOS job is gated
-# to run only when shared/iOS code changes.
+# Runs on every PR to main. Fast checks on Linux; the expensive macOS iOS job — which runs the iOS
+# unit tests, not just a compile — is gated to run only when shared/iOS code changes.
 #
 # SCOPE: builds the modules, validates commits + deps, and enforces the SECURITY-INVARIANT
 # architecture rules (:konsist — cipher confinement, no network, no telemetry SDK, shared-storage
 # confinement, logger confinement). Those run in the `build` job because they guard the hard rules
 # in CLAUDE.md and must gate every PR.
 # The `quality` job (ktlint / detekt / kover) stays COMMENTED OUT until those convention plugins
-# exist (docs/engineering/MODULES.md §5). `migrationTest` arrives after v1.0 ships fixture vaults.
+# exist (docs/engineering/MODULES.md §5). `migrationTest` arrives after v1.0 ships fixture vaults and
+# is carried as a commented step in the iOS job so the first release has a prompt.
 # Do NOT mark any check required in branch protection until the quality job is green — see
 # nightly/release/test-build which remain *.yml.disabled.
 name: PR
@@ -45,6 +46,12 @@ jobs:
             ios:
               - 'core/**'                    # KMP code (docs/engineering/MODULES.md)
               - 'feature/**'
+              # :app is shared KMP code too — the composition root and the session gate — and it
+              # carries 100 of the iOS tests. Without this line a change confined to its commonMain
+              # skips the whole iOS job: `**/iosMain/**` below only catches its platform half, and
+              # `core/**` does not reach it. The session-gate fix in this cycle was exactly such a
+              # change, with those 100 tests covering it.
+              - 'app/**'
               - '**/iosMain/**'
               - 'iosApp/**'
               - 'build-logic/**'
@@ -115,11 +122,14 @@ jobs:
   #     - name: Coverage gates
   #       run: ./gradlew koverVerify
 
-  ios-compile:
+  # NOTE: this job was called `ios-compile` until it started running the tests. The job name is the
+  # check name, so renaming it retires the old check — which is only safe while nothing requires it.
+  # Branch protection must not be pointed at a check name before that name is the one reporting.
+  ios-tests:
     needs: changes
     # Gated twice: only when shared/iOS code changed, and only once the PR is marked ready.
     # macOS minutes bill at 10x, so a draft PR keeps the fast Linux signal on every push while
-    # the expensive compile waits for the end of the cycle. (Moot once the repo is public.)
+    # the expensive job waits for the end of the cycle. (Moot once the repo is public.)
     if: needs.changes.outputs.ios == 'true' && github.event.pull_request.draft == false
     runs-on: macos-latest        # ~10x the cost of Linux — that's why it's gated
     steps:
@@ -129,7 +139,20 @@ jobs:
           distribution: temurin
           java-version: "21"
       - uses: gradle/actions/setup-gradle@v4
-      - name: Compile all modules for iOS (device + simulator)
-        # Compile-only: proves KMP cross-compiles for iOS without booting a simulator.
-        # Becomes the aggregate iOS *test* task once there's real iOS logic to exercise.
-        run: ./gradlew compileKotlinIosArm64 compileKotlinIosSimulatorArm64 compileTestKotlinIosSimulatorArm64
+      - name: iOS unit tests (simulator) + device-architecture compile
+        # The simulator test task runs the suite on a booted simulator, which `macos-latest` provides
+        # via its bundled Xcode. This is what the host suite cannot reach: the iOS platform seams, the
+        # whole common suite against the **native** SQLite driver rather than the JDBC one, and the
+        # .dchm format vectors on a second platform. 697 tests as of this change.
+        #
+        # No separate compile tasks for the simulator: the test task compiles and links its own
+        # sources, so `compileKotlinIosSimulatorArm64` and `compileTestKotlinIosSimulatorArm64` were
+        # redundant once it runs. The **device** architecture is still compiled explicitly — nothing
+        # else here builds for arm64 hardware, and that is the one the App Store receives.
+        run: ./gradlew compileKotlinIosArm64 iosSimulatorArm64Test
+
+      # - name: Migration gate (old vaults always open)
+      #   run: ./gradlew migrationTest
+      #   # Enable once the first release has shipped a fixture vault to upgrade *from*
+      #   # (docs/engineering/TESTING.md §3.2). Carried here as a reminder because the task does not
+      #   # exist yet and nothing else will prompt anyone at the first release.
