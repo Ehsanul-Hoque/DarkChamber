@@ -603,7 +603,16 @@ internal fun summary(
     size: Long = 12L,
     createdAt: Long = 34L,
     kind: VaultItemKind = VaultItemKind.FILE,
-): VaultItemSummary = VaultItemSummary(id = id, kind = kind, size = size, createdAt = createdAt, meta = meta)
+    albumId: ByteArray? = null,
+): VaultItemSummary =
+    VaultItemSummary(
+        id = id,
+        albumId = albumId,
+        kind = kind,
+        size = size,
+        createdAt = createdAt,
+        meta = meta,
+    )
 
 internal fun readableMeta(name: String = "a.txt", mime: String = "text/plain"): Outcome<ObjectMeta> =
     Outcome.Ok(ObjectMeta(name, mime))
