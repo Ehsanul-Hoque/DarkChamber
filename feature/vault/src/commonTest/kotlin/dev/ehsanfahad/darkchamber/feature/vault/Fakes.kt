@@ -403,9 +403,25 @@ internal class FakeVaultItems(
     var handedFirst: RawSource? = null
         private set
 
+    /**
+     * How many times a listing was asked for. The listing stage must subscribe **once per filter** —
+     * so a change of order or of search text that re-subscribed here would re-decrypt every row, and
+     * this counter is what notices.
+     */
+    var observeCalls = 0
+        private set
+
+    /**
+     * Per-filter listings, for a test that needs the three to differ — the catalog returns different
+     * rows for the whole vault, for one album and for the unfiled items, and a stage that searched
+     * the wrong one would look right against a single shared flow.
+     */
+    val summariesByFilter = mutableMapOf<ItemFilter, MutableStateFlow<List<VaultItemSummary>>>()
+
     override fun observe(filter: ItemFilter): Flow<List<VaultItemSummary>> {
         observedFilter = filter
-        return summaries
+        observeCalls++
+        return summariesByFilter[filter] ?: summaries
     }
 
     override fun observeAlbums(): Flow<List<AlbumSummary>> = albums

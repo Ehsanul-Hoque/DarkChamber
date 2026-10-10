@@ -191,7 +191,9 @@ internal class DefaultVaultGalleryComponent(
                     listingUnreadable = true,
                 )
             }
-            .onEach(::onItems)
+            // The count of items a search left out travels with the listing and is published with
+            // the search state, which this component does not hold yet.
+            .onEach { listing -> onItems(listing.items) }
             .launchIn(scope)
 
         // The batch runs on the session, not here: this only watches it. The component can be
