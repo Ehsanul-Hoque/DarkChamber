@@ -2,6 +2,7 @@ package dev.ehsanfahad.darkchamber.feature.vault.presentation
 
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumDraftProblem
 import dev.ehsanfahad.darkchamber.feature.vault.api.FilingDestination
+import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryOrder
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryScope
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportStage
 import kotlin.test.Test
@@ -557,5 +558,137 @@ class GalleryFormatTest {
             .map { GalleryFormat.stageLabel(it) }
 
         assertEquals(labels.size, labels.distinct().size, "two stages reading alike explain nothing: $labels")
+    }
+
+    /**
+     * The collapsed control names the order the grid is in, so every order needs a label of its own —
+     * two orders reading alike would make the control say nothing while appearing to.
+     */
+    @Test
+    fun every_order_has_a_label_of_its_own() {
+        val labels = GalleryOrder.entries.map { GalleryFormat.orderLabel(it) }
+
+        assertEquals(labels.size, labels.distinct().size, "two orders reading alike: $labels")
+        assertTrue(labels.none { it.isBlank() }, "an unlabelled order cannot be chosen: $labels")
+        assertEquals("Newest", GalleryFormat.orderLabel(GalleryOrder.Newest))
+        assertEquals("Oldest", GalleryFormat.orderLabel(GalleryOrder.Oldest))
+        assertEquals("A–Z", GalleryFormat.orderLabel(GalleryOrder.NameAsc))
+        assertEquals("Z–A", GalleryFormat.orderLabel(GalleryOrder.NameDesc))
+    }
+
+    /**
+     * **A search that matched nothing is not a listing with nothing in it**, and the grid is empty in
+     * both cases — the same shape of confusion the unreadable answer exists for.
+     *
+     * Every per-scope answer asserts something about what is in the vault, and all three would be
+     * false here: a search for "tax" inside a full album must not say the album is empty, and on the
+     * whole vault it must not say the vault is. So this answer talks about the search.
+     */
+    @Test
+    fun a_search_that_matched_nothing_claims_no_absence() {
+        val scopes = listOf(GalleryScope.WholeVault, GalleryScope.Album, GalleryScope.Unfiled)
+
+        val answers = scopes.map { GalleryFormat.emptyListing(it, unreadable = false, searching = true) }
+        assertEquals(1, answers.toSet().size, "the query is what came up empty; the scope adds nothing")
+
+        val copy = answers.first()
+        val lower = copy.lowercase()
+        assertTrue("match" in lower, "it says what did not happen — nothing matched: $copy")
+        for (claim in listOf("nothing in", "no items", "empty", "yet", "everything is filed")) {
+            assertFalse(claim in lower, "a search that found nothing may not claim an absence: $copy")
+        }
+        for (scope in scopes) {
+            assertFalse(
+                GalleryFormat.emptyListing(scope, unreadable = false) == copy,
+                "and it is not one of the ordinary answers: $copy",
+            )
+        }
+    }
+
+    /**
+     * It also says **what** was searched, because the two ways to get no results that are not the
+     * user's mistake are both invisible otherwise: only names are matched (so "pdf" finds nothing),
+     * and only this screen is searched (so an album's grid cannot answer for the vault).
+     */
+    @Test
+    fun the_empty_search_answer_says_what_was_searched() {
+        val copy = GalleryFormat.emptyListing(GalleryScope.Album, unreadable = false, searching = true)
+        val lower = copy.lowercase()
+
+        assertTrue("name" in lower, "names are what a query is matched against: $copy")
+        // Both clauses are load-bearing, and dropping either leaves a sentence that still reads fine:
+        // without this one, an album's empty result looks like an answer about the whole vault.
+        assertTrue("screen" in lower, "and this screen is all that was searched: $copy")
+    }
+
+    /**
+     * Precedence, and it only goes one way: a catalog that could not be read must not be described as
+     * a search that matched nothing. The query is still in the field when the read fails, so both
+     * conditions are true at once and the copy has to pick — "nothing matches" would blame the user's
+     * typing for a vault that did not open.
+     */
+    @Test
+    fun a_failed_read_outranks_a_running_search() {
+        for (scope in listOf(GalleryScope.WholeVault, GalleryScope.Album, GalleryScope.Unfiled)) {
+            assertEquals(
+                GalleryFormat.emptyListing(scope, unreadable = true),
+                GalleryFormat.emptyListing(scope, unreadable = true, searching = true),
+                "a failed read is the reason the grid is empty, whatever is typed",
+            )
+        }
+    }
+
+    /**
+     * Nothing to say, said as nothing — the same shape as `noAlbums`, and for the same reason: an
+     * empty string would still occupy a line and make the caller's layout decide what this layer
+     * already knows.
+     */
+    @Test
+    fun nothing_is_said_when_a_search_left_nothing_out() {
+        assertNull(GalleryFormat.hiddenUnreadable(0))
+    }
+
+    /**
+     * Items whose names will not open are excluded from results — a query cannot match a name nobody
+     * can read — and the exclusion is **stated**, because a search that silently drops them is a way
+     * to make tampering invisible (docs/THREAT_MODEL.md).
+     */
+    @Test
+    fun what_a_search_left_out_is_counted_and_reads_as_english() {
+        assertEquals(
+            "1 item couldn't be read, so it isn't in these results.",
+            GalleryFormat.hiddenUnreadable(1),
+        )
+        assertEquals(
+            "4 items couldn't be read, so they aren't in these results.",
+            GalleryFormat.hiddenUnreadable(4),
+        )
+    }
+
+    /**
+     * And it does not say **why**. Corruption and tampering are indistinguishable from here — a GCM
+     * tag mismatch is all that is known — so naming either one is a guess presented as a finding
+     * (hard rule 6).
+     */
+    @Test
+    fun what_a_search_left_out_is_not_explained() {
+        // Both branches, because an absence asserted against one of two wordings is an absence
+        // asserted against half the code — the singular line can name a cause the plural one does not.
+        for (count in listOf(1, 2)) {
+            val copy = assertNotNull(GalleryFormat.hiddenUnreadable(count)).lowercase()
+
+            for (guess in listOf("corrupt", "tamper", "damaged", "modified", "attack", "deleted", "lost")) {
+                assertFalse(guess in copy, "the line names a cause we cannot know: $copy")
+            }
+        }
+    }
+
+    /**
+     * The field says what it searches, where a plain "Search" would imply everything on the tile is
+     * fair game — the user typing "pdf" or a date is the failure this label is placed to prevent.
+     */
+    @Test
+    fun the_search_field_says_it_searches_names() {
+        assertTrue("name" in GalleryFormat.searchNames().lowercase(), GalleryFormat.searchNames())
     }
 }

@@ -65,6 +65,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryError
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryScope
+import dev.ehsanfahad.darkchamber.feature.vault.api.GallerySearch
 import dev.ehsanfahad.darkchamber.feature.vault.api.GallerySelection
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryState
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportState
@@ -161,6 +162,9 @@ internal fun GalleryScreen(
                 state.items.isEmpty() -> EmptyListing(
                     scope = state.scope,
                     unreadable = state.listingUnreadable,
+                    // An empty grid under an open search is the query's doing, not the listing's —
+                    // the three per-scope answers would all claim an absence the vault does not have.
+                    searching = state.search is GallerySearch.Open,
                 )
                 else -> ItemGrid(
                     items = state.items,
@@ -1349,13 +1353,17 @@ private fun ItemTile(
 }
 
 /**
- * An empty listing, which is four different situations — see [GalleryFormat.emptyListing]. The same
- * screen serves all of them, so the copy is the only thing that can tell them apart, and one of the
- * four is the grid being empty because it could not be read at all.
+ * An empty listing, which is five different situations — see [GalleryFormat.emptyListing]. The same
+ * screen serves all of them, so the copy is the only thing that can tell them apart, and two of the
+ * five are not about the vault's contents at all: the grid could not be read, or a search matched
+ * nothing in a listing that is not empty.
+ *
+ * Which of the five wins is decided in the formatter rather than here, so the precedence is something
+ * a test can assert on.
  */
 @Composable
-private fun EmptyListing(scope: GalleryScope, unreadable: Boolean) {
-    CenteredMessage(GalleryFormat.emptyListing(scope, unreadable), showSpinner = false)
+private fun EmptyListing(scope: GalleryScope, unreadable: Boolean, searching: Boolean) {
+    CenteredMessage(GalleryFormat.emptyListing(scope, unreadable, searching), showSpinner = false)
 }
 
 @Composable

@@ -2,6 +2,7 @@ package dev.ehsanfahad.darkchamber.feature.vault.presentation
 
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumDraftProblem
 import dev.ehsanfahad.darkchamber.feature.vault.api.FilingDestination
+import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryOrder
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryScope
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportStage
 
@@ -27,6 +28,60 @@ internal object GalleryFormat {
         }
 
     /**
+     * What the order control reads as, collapsed.
+     *
+     * The control names the **current** order rather than the action, which is what stops the grid's
+     * order being invisible until someone goes looking for it.
+     *
+     * The two name labels are the Latin alphabet's, matching every file manager a user has met. They
+     * are also the limit of what the ordering actually is — a case fold and a code-point comparison,
+     * not locale collation — so a vault named in another script is ordered consistently but not the
+     * way that script would order it. The label and the comparison are owed the same localization
+     * pass, and neither should be presented as having had it.
+     */
+    fun orderLabel(order: GalleryOrder): String =
+        // Exhaustive on purpose: a fifth order must be made to name itself rather than inheriting
+        // whichever branch happened to be last.
+        when (order) {
+            GalleryOrder.Newest -> "Newest"
+            GalleryOrder.Oldest -> "Oldest"
+            GalleryOrder.NameAsc -> "A–Z"
+            GalleryOrder.NameDesc -> "Z–A"
+        }
+
+    /**
+     * The search field's label, which is also what the affordance that opens it says.
+     *
+     * "Search names", not "Search": only the name is matched. The MIME type sits in the same
+     * decrypted metadata and is deliberately not searched, and date, size and kind are sort keys
+     * rather than queries — so a bare "Search" would invite "pdf", or a date, and return nothing
+     * with no way to tell that from an empty vault.
+     */
+    fun searchNames(): String = "Search names"
+
+    /**
+     * What a search had to leave out, or `null` when it left out nothing.
+     *
+     * An item whose metadata will not open has no name to match, so a query cannot include it — and
+     * the exclusion is **stated**, because a search that silently dropped those rows would be a way
+     * to make tampering invisible (docs/THREAT_MODEL.md). The item is still listed everywhere else;
+     * this is about results only.
+     *
+     * It does not say why. A GCM tag mismatch is all that is known, and corruption and tampering are
+     * indistinguishable from here, so naming either would be a guess presented as a finding (hard
+     * rule #6).
+     *
+     * Null rather than an empty string, like [noAlbums]: the absence is then testable, and the caller
+     * is not left deciding whether a blank line should take up space.
+     */
+    fun hiddenUnreadable(count: Int): String? =
+        when (count) {
+            0 -> null
+            1 -> "1 item couldn't be read, so it isn't in these results."
+            else -> "$count items couldn't be read, so they aren't in these results."
+        }
+
+    /**
      * What to say when a listing has nothing in it. **Three situations, three answers**, because an
      * empty grid is not one state:
      *
@@ -46,10 +101,23 @@ internal object GalleryFormat {
      * is the same whatever the scope, and claims no absence. It is a parameter rather than the caller's
      * choice of string so that the decision sits here, where it can be tested, instead of in a
      * composable nothing can assert on.
+     *
+     * **And a fifth: [searching], the grid is empty because nothing matched.** All three ordinary
+     * answers would be false — a search for "tax" inside a full album must not report the album as
+     * empty — so this one talks about the query instead, and is the same whatever the scope for the
+     * same reason the failed read is. It also says what a query is matched *against*, because the two
+     * ways to get no results that are not a typing mistake are invisible otherwise: names only, and
+     * this screen only.
+     *
+     * **[unreadable] outranks it**, and only in that direction. The query is still in the field when a
+     * read fails, so both are true at once, and "nothing matches" would blame someone's typing for a
+     * vault that did not open.
      */
-    fun emptyListing(scope: GalleryScope, unreadable: Boolean): String =
+    fun emptyListing(scope: GalleryScope, unreadable: Boolean, searching: Boolean = false): String =
         if (unreadable) {
             "Couldn't read what's in your vault."
+        } else if (searching) {
+            "No names match what you typed.\nSearch covers names on this screen — not dates or file types."
         } else {
             // Exhaustive on purpose: a fourth scope must be made to answer for itself rather than
             // inheriting whichever branch happened to be last.
