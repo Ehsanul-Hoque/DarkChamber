@@ -47,6 +47,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTile
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumsError
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumsState
+import dev.ehsanfahad.darkchamber.feature.vault.api.label
 
 /**
  * The album grid.
@@ -348,13 +349,9 @@ private fun AlbumTileView(
         }
 
         Text(
-            text = when (val name = album.name) {
-                is AlbumTileName.Readable -> name.value
-                // The same wording an item whose metadata will not open carries, and for the same
-                // reason: we know the name did not verify, not whether it was tampered with or
-                // merely corrupted (hard rule #6).
-                AlbumTileName.Unreadable -> "Can't be verified"
-            },
+            // One home for the unverifiable wording — see `label`. It is a claim bounded by the
+            // threat model, so it is decided once rather than spelled out per screen.
+            text = album.name.label(),
             style = DarkChamberTheme.typography.body,
             color = if (damaged) colors.danger else colors.textPrimary,
             maxLines = 1,

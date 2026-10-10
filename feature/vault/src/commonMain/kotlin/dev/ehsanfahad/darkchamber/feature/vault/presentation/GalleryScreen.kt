@@ -71,6 +71,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.GallerySelection
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryState
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportState
 import dev.ehsanfahad.darkchamber.feature.vault.api.OriginalDelete
+import dev.ehsanfahad.darkchamber.feature.vault.api.label
 
 /**
  * The vault gallery (docs/DESIGN.md). Reads theme **roles** only — no raw hex, no hardcoded colors —
@@ -413,10 +414,7 @@ private fun AlbumChooser(
                 LazyColumn(modifier = Modifier.heightIn(max = CHOOSER_LIST_MAX).padding(top = spacing.spaceSm)) {
                     items(choosing.albums, key = { it.id.toListKey() }) { choice ->
                         Text(
-                            text = when (val name = choice.name) {
-                                is AlbumTileName.Readable -> name.value
-                                AlbumTileName.Unreadable -> "Can't be verified"
-                            },
+                            text = choice.name.label(),
                             style = DarkChamberTheme.typography.body,
                             color = if (choice.name is AlbumTileName.Unreadable) colors.danger else colors.textPrimary,
                             maxLines = 1,
@@ -546,12 +544,7 @@ private fun AlbumHeader(name: AlbumTileName, onRename: (() -> Unit)?, onDelete: 
             .padding(horizontal = spacing.spaceMd, vertical = spacing.spaceXs),
     ) {
         Text(
-            text = when (name) {
-                is AlbumTileName.Readable -> name.value
-                // The same wording the tile carries, for the same reason: we know the name did not
-                // verify, not whether it was tampered with or merely corrupted (hard rule #6).
-                AlbumTileName.Unreadable -> "Can't be verified"
-            },
+            text = name.label(),
             style = DarkChamberTheme.typography.title,
             color = if (name is AlbumTileName.Unreadable) colors.danger else colors.textPrimary,
             maxLines = 1,
@@ -1408,12 +1401,7 @@ private fun ItemTile(
         }
 
         Text(
-            text = when (val meta = item.meta) {
-                is GalleryItemMeta.Readable -> meta.name
-                // Honest, and no more than the threat model allows: we know the metadata did not
-                // verify, not whether it was tampered with or merely corrupted (hard rule #6).
-                GalleryItemMeta.Unreadable -> "Can't be verified"
-            },
+            text = item.meta.label(),
             style = DarkChamberTheme.typography.body,
             color = if (damaged) colors.danger else colors.textPrimary,
             maxLines = 1,
