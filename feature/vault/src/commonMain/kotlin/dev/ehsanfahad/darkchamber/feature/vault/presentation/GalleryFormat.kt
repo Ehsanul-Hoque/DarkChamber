@@ -60,6 +60,25 @@ internal object GalleryFormat {
     fun searchNames(): String = "Search names"
 
     /**
+     * What the collapsed order control is **called**, as opposed to what it reads.
+     *
+     * The control shows the order and a caret, which is right on screen and useless spoken: "Newest"
+     * announced on its own does not say it is a control, what it controls, or that a list of other
+     * orders is behind it. Every aperture element already carries a description for the same reason
+     * (docs/DESIGN.md §13) — a drawing that cannot be read aloud needs words somewhere.
+     */
+    fun orderControlDescription(order: GalleryOrder): String = "Sort order: ${orderLabel(order)}"
+
+    /**
+     * The way out of the search field.
+     *
+     * "Clear search", not "Done": closing **discards the query**, so a label implying the filter is
+     * kept would hide the one consequence of pressing it. Closing and clearing are one action because
+     * a filter that outlives its field has nothing on screen to explain or undo it.
+     */
+    fun clearSearch(): String = "Clear search"
+
+    /**
      * What a search had to leave out, or `null` when it left out nothing.
      *
      * An item whose metadata will not open has no name to match, so a query cannot include it — and

@@ -691,4 +691,31 @@ class GalleryFormatTest {
     fun the_search_field_says_it_searches_names() {
         assertTrue("name" in GalleryFormat.searchNames().lowercase(), GalleryFormat.searchNames())
     }
+
+    /**
+     * Spoken, the order control has to say what it is. On screen it reads "Newest ▾", which is a
+     * control, a current value and an invitation all at once; announced as "Newest" it is none of
+     * them.
+     */
+    @Test
+    fun the_order_control_is_named_as_well_as_shown() {
+        for (order in GalleryOrder.entries) {
+            val spoken = GalleryFormat.orderControlDescription(order)
+
+            assertTrue("sort" in spoken.lowercase(), "it says what it controls: $spoken")
+            assertTrue(GalleryFormat.orderLabel(order) in spoken, "and which order is on: $spoken")
+        }
+    }
+
+    /**
+     * Leaving the search **discards the query**, and the label has to carry that. "Done" would read
+     * as keeping the filter, which is the opposite of what happens.
+     */
+    @Test
+    fun leaving_the_search_says_the_query_goes() {
+        val copy = GalleryFormat.clearSearch()
+
+        assertTrue("clear" in copy.lowercase(), "it says the query is cleared: $copy")
+        assertFalse("done" in copy.lowercase(), "and not that the search is simply finished: $copy")
+    }
 }

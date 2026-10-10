@@ -64,6 +64,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.Filing
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryError
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
+import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryOrder
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryScope
 import dev.ehsanfahad.darkchamber.feature.vault.api.GallerySearch
 import dev.ehsanfahad.darkchamber.feature.vault.api.GallerySelection
@@ -85,6 +86,10 @@ internal fun GalleryScreen(
     state: GalleryState,
     now: Long,
     imageLoader: ImageLoader,
+    onChooseOrder: (GalleryOrder) -> Unit,
+    onOpenSearch: () -> Unit,
+    onEditSearch: (String) -> Unit,
+    onCloseSearch: () -> Unit,
     onAddPhotos: () -> Unit,
     onAddFiles: () -> Unit,
     onCancelImport: () -> Unit,
@@ -147,6 +152,20 @@ internal fun GalleryScreen(
                     // most likely to want deleting.
                     onRename = onStartAlbumRename.takeIf { album.name is AlbumTileName.Readable },
                     onDelete = onRequestAlbumDelete,
+                )
+            }
+
+            // Under the album's heading and above the grid, on all three listings. Absent when
+            // neither control could do anything — see [showsBrowseControls], which holds that
+            // decision where a test can read it.
+            if (state.showsBrowseControls()) {
+                GalleryBrowseControls(
+                    order = state.order,
+                    search = state.search,
+                    onChooseOrder = onChooseOrder,
+                    onOpenSearch = onOpenSearch,
+                    onEditSearch = onEditSearch,
+                    onCloseSearch = onCloseSearch,
                 )
             }
 
