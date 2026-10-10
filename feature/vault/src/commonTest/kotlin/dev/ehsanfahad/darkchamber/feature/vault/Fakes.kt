@@ -10,8 +10,10 @@ import dev.ehsanfahad.darkchamber.core.vault.ImportPhase
 import dev.ehsanfahad.darkchamber.core.vault.ObjectMeta
 import dev.ehsanfahad.darkchamber.core.vault.VaultItemSummary
 import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
+import dev.ehsanfahad.darkchamber.feature.vault.api.ImportState
 import dev.ehsanfahad.darkchamber.feature.vault.api.PhotoPicker
 import dev.ehsanfahad.darkchamber.feature.vault.api.PickedFile
+import dev.ehsanfahad.darkchamber.feature.vault.api.VaultImports
 import dev.ehsanfahad.darkchamber.feature.vault.domain.VaultItems
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -647,3 +649,27 @@ internal fun readableMeta(name: String = "a.txt", mime: String = "text/plain"): 
     Outcome.Ok(ObjectMeta(name, mime))
 
 internal fun damagedMeta(): Outcome<ObjectMeta> = Outcome.Err(VaultError.Crypto.IntegrityFailure)
+
+/**
+ * A batch that never does anything, for the tests whose subject is not importing.
+ *
+ * Shared, unlike the four file-private copies of this that the presentation tests grew one at a
+ * time — any new test should take this one, and those four are worth folding into it.
+ */
+internal class IdleVaultImports : VaultImports {
+    override val state: MutableStateFlow<ImportState> = MutableStateFlow(ImportState.Idle)
+
+    override fun importPhotos(albumId: ByteArray?) = Unit
+
+    override fun importFiles(albumId: ByteArray?) = Unit
+
+    override fun cancel() = Unit
+
+    override fun acknowledge() = Unit
+
+    override fun requestOriginalDelete() = Unit
+
+    override fun confirmOriginalDelete() = Unit
+
+    override fun keepOriginals() = Unit
+}
