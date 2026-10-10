@@ -3,6 +3,7 @@ package dev.ehsanfahad.darkchamber.feature.vault.domain
 import dev.ehsanfahad.darkchamber.core.model.ItemFilter
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.vault.VaultItemSummary
+import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryOrder
@@ -49,23 +50,51 @@ internal class ObserveGallery(private val vault: VaultItems) {
         filter: ItemFilter = ItemFilter.All,
         controls: Flow<GalleryControls> = flowOf(GalleryControls()),
     ): Flow<GalleryListing> =
-        combine(vault.observe(filter), controls) { summaries, asked ->
-            summaries.map(::toItem)
-                .ordered(asked.order)
-                // Ordering first, then filtering: `matching` preserves the order it is handed, so the
-                // results of a search are in the order the user chose rather than the catalog's.
-                .matching(asked.query)
+        if (filter == ItemFilter.All) {
+            // The album listing is subscribed **only here**, because only this listing mixes filed
+            // and unfiled items. Inside an album every item is in that album and in Unfiled none has
+            // one, so those screens would pay a second subscription to label nothing.
+            combine(vault.observe(filter), vault.observeAlbums(), controls) { summaries, albums, asked ->
+                val names = albums.associate { album -> album.id.toList() to album.name.toTileName() }
+                summaries.present(asked) { summary -> summary.albumId?.let { names[it.toList()] } }
+            }
+        } else {
+            combine(vault.observe(filter), controls) { summaries, asked ->
+                summaries.present(asked) { null }
+            }
         }
 
-    private fun toItem(summary: VaultItemSummary): GalleryItem =
+    private fun List<VaultItemSummary>.present(
+        asked: GalleryControls,
+        albumOf: (VaultItemSummary) -> AlbumTileName?,
+    ): GalleryListing =
+        map { summary -> summary.toItem(albumOf(summary)) }
+            .ordered(asked.order)
+            // Ordering first, then filtering: `matching` preserves the order it is handed, so the
+            // results of a search are in the order the user chose rather than the catalog's.
+            .matching(asked.query)
+
+    private fun VaultItemSummary.toItem(album: AlbumTileName?): GalleryItem =
         GalleryItem(
-            id = summary.id,
-            kind = summary.kind,
-            size = summary.size,
-            createdAt = summary.createdAt,
-            meta = when (val meta = summary.meta) {
+            id = id,
+            kind = kind,
+            size = size,
+            createdAt = createdAt,
+            meta = when (val meta = meta) {
                 is Outcome.Ok -> GalleryItemMeta.Readable(meta.value.name, meta.value.mime)
                 is Outcome.Err -> GalleryItemMeta.Unreadable
             },
+            album = album,
         )
 }
+
+// `List<Byte>` as the map key, because `ByteArray` hashes by identity — two arrays holding the same
+// id would be different keys, so every lookup would miss and every filed item would look unfiled.
+//
+// Deliberately not the hex key the screens use for list identity: that helper belongs to the
+// presentation layer, and the dependency only runs the other way (docs/engineering/MODULES.md §3).
+private fun Outcome<String>.toTileName(): AlbumTileName =
+    when (this) {
+        is Outcome.Ok -> AlbumTileName.Readable(value)
+        is Outcome.Err -> AlbumTileName.Unreadable
+    }

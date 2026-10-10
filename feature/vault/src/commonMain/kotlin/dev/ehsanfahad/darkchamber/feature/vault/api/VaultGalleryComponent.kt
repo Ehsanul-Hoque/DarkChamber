@@ -366,6 +366,19 @@ class GalleryItem(
     val size: Long,
     val createdAt: Long,
     val meta: GalleryItemMeta,
+    /**
+     * The album this item is filed in, or `null` when it is in none — **and `null` on every listing
+     * but the whole vault**, where the question does not arise: inside an album every item is in that
+     * album, and nothing in Unfiled has one.
+     *
+     * An [AlbumTileName], so an album whose name will not open carries the same honest form it does
+     * on the album grid rather than a blank or a guess.
+     *
+     * It costs no per-item decrypt. The item's row carries its album *id* as a plaintext column and
+     * the name is mapped in from the album listing, which opens one small blob per album and nothing
+     * per item (docs/ARCHITECTURE.md §5.1).
+     */
+    val album: AlbumTileName? = null,
 ) {
     // Content equality, because [id] is a ByteArray: the generated data-class equals would compare
     // it by identity and every re-emission of an unchanged listing would look like a change.
@@ -376,7 +389,8 @@ class GalleryItem(
             kind == other.kind &&
             size == other.size &&
             createdAt == other.createdAt &&
-            meta == other.meta
+            meta == other.meta &&
+            album == other.album
     }
 
     override fun hashCode(): Int {
@@ -385,12 +399,19 @@ class GalleryItem(
         result = 31 * result + size.hashCode()
         result = 31 * result + createdAt.hashCode()
         result = 31 * result + meta.hashCode()
+        result = 31 * result + album.hashCode()
         return result
     }
 
-    /** Sizes and id lengths only — never the decrypted name or MIME (hard rule #4). */
+    /**
+     * Sizes and id lengths only — never the decrypted name or MIME (hard rule #4).
+     *
+     * [album] reports **whether** the item is filed, never where: an album's name is decrypted
+     * content exactly as a file's is.
+     */
     override fun toString(): String =
-        "GalleryItem(id=${id.size}B, kind=$kind, size=$size, createdAt=$createdAt, readable=${meta is GalleryItemMeta.Readable})"
+        "GalleryItem(id=${id.size}B, kind=$kind, size=$size, createdAt=$createdAt, " +
+            "readable=${meta is GalleryItemMeta.Readable}, filed=${album != null})"
 }
 
 /**

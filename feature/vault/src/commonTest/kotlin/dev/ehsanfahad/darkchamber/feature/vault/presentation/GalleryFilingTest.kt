@@ -425,6 +425,13 @@ class GalleryFilingTest {
      *
      * Counted on the flow rather than on the state: once the chooser is closed, a stale emission
      * changes no state either way, so state cannot tell a cancelled subscription from a live one.
+     *
+     * **The baseline is one, not zero, and that is a deliberate change.** The whole-vault listing now
+     * holds a subscription of its own, because it labels a filed item with its album's name and a
+     * rename has to reach the labels. So this measures what it always measured — that the chooser
+     * acquires its own subscription and releases it — against a screen that keeps one. The cost of
+     * that standing subscription is one small decrypt per *album* per catalog change, never per item,
+     * and only while the whole-vault grid is the screen being looked at.
      */
     @Test
     fun the_chooser_only_listens_to_the_album_listing_while_it_is_open() = runTest {
@@ -432,16 +439,16 @@ class GalleryFilingTest {
         vault.albums.value = listOf(album(otherAlbum, "Invoices"))
         val component = component(vault)
         advanceUntilIdle()
-        assertEquals(0, vault.albums.subscriptionCount.value, "the whole-vault gallery watches no albums")
+        assertEquals(1, vault.albums.subscriptionCount.value, "the whole-vault listing labels filed items")
 
         component.selectTwo(vault)
         component.startFiling()
         advanceUntilIdle()
-        assertEquals(1, vault.albums.subscriptionCount.value, "the open chooser keeps its list current")
+        assertEquals(2, vault.albums.subscriptionCount.value, "the open chooser keeps its own list current")
 
         component.cancelFiling()
         advanceUntilIdle()
-        assertEquals(0, vault.albums.subscriptionCount.value, "and lets go of it when it closes")
+        assertEquals(1, vault.albums.subscriptionCount.value, "and lets go of it when it closes")
     }
 
     @Test

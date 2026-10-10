@@ -424,7 +424,20 @@ internal class FakeVaultItems(
         return summariesByFilter[filter] ?: summaries
     }
 
-    override fun observeAlbums(): Flow<List<AlbumSummary>> = albums
+    /**
+     * How many times the album listing was asked for.
+     *
+     * The item grid names a filed item's album by mapping ids through this listing — but **only on
+     * the whole-vault listing**, where filed and unfiled items are mixed. An album screen or the
+     * unfiled screen must not subscribe at all, and this counter is what says so.
+     */
+    var observeAlbumsCalls = 0
+        private set
+
+    override fun observeAlbums(): Flow<List<AlbumSummary>> {
+        observeAlbumsCalls++
+        return albums
+    }
 
     /**
      * Every name a create was asked for, in order. A list rather than a counter and a `lastName`:
