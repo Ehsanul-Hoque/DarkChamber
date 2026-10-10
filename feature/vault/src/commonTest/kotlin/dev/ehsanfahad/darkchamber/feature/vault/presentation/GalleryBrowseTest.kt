@@ -9,6 +9,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.IdleVaultImports
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryOrder
 import dev.ehsanfahad.darkchamber.feature.vault.api.GallerySearch
+import dev.ehsanfahad.darkchamber.feature.vault.api.ImportState
 import dev.ehsanfahad.darkchamber.feature.vault.damagedMeta
 import dev.ehsanfahad.darkchamber.feature.vault.domain.CreateAlbum
 import dev.ehsanfahad.darkchamber.feature.vault.domain.DeleteAlbum
@@ -44,11 +45,14 @@ class GalleryBrowseTest {
     private val lifecycle = LifecycleRegistry().apply { resume() }
     private val backDispatcher = BackDispatcher()
 
-    private fun TestScope.component(vault: FakeVaultItems): DefaultVaultGalleryComponent =
+    private fun TestScope.component(
+        vault: FakeVaultItems,
+        imports: IdleVaultImports = IdleVaultImports(),
+    ): DefaultVaultGalleryComponent =
         DefaultVaultGalleryComponent(
             componentContext = DefaultComponentContext(lifecycle, backHandler = backDispatcher),
             observeGallery = ObserveGallery(vault),
-            imports = IdleVaultImports(),
+            imports = imports,
             // Albums and filing, unused here: this is the whole-vault listing and nothing is selected.
             observeAlbum = ObserveAlbum(vault),
             renameAlbum = RenameAlbum(vault, ioContext = UnconfinedTestDispatcher(testScheduler)),
@@ -218,6 +222,50 @@ class GalleryBrowseTest {
         val printed = component.state.value.toString()
         assertFalse("alps" in printed, "a query must never be printed, was $printed")
         assertTrue("4 chars" in printed, "but its length is safe to say, was $printed")
+    }
+
+    /**
+     * Taking the offer on a finished batch changes the **view** and nothing else — the card stays up
+     * with its counts and, if there is one, its one-time offer to delete the originals.
+     *
+     * The failure this guards was found the hard way once already: acknowledging the batch for the
+     * wrong reason threw away a finished summary and the offer riding on it. Clearing a search is a
+     * browse action, so it must not acknowledge anything.
+     */
+    @Test
+    fun clearing_the_search_from_the_summary_leaves_the_batch_report_alone() = runTest {
+        val vault = FakeVaultItems()
+        val imports = IdleVaultImports()
+        val component = component(vault, imports)
+        vault.emit()
+        val batch = ImportState.Finished(imported = 2, failed = emptyList(), deletableOriginals = 1)
+        imports.state.value = batch
+
+        component.openSearch()
+        component.editSearch("al")
+        component.closeSearch()
+
+        assertEquals(GallerySearch.Closed, component.state.value.search)
+        assertEquals(batch, component.state.value.batch, "the summary is not dismissed by browsing")
+        assertEquals(3, component.state.value.items.size)
+    }
+
+    @Test
+    fun showing_newest_first_from_the_summary_changes_only_the_order() = runTest {
+        val vault = FakeVaultItems()
+        val imports = IdleVaultImports()
+        val component = component(vault, imports)
+        vault.emit()
+        val batch = ImportState.Finished(imported = 2, failed = emptyList())
+        imports.state.value = batch
+
+        component.chooseOrder(GalleryOrder.NameAsc)
+        component.chooseOrder(GalleryOrder.Newest)
+
+        assertEquals(GalleryOrder.Newest, component.state.value.order)
+        assertEquals(listOf("beach.png", "alps.jpg", "tax.pdf"), component.names())
+        assertEquals(batch, component.state.value.batch)
+        assertEquals(GallerySearch.Closed, component.state.value.search, "and it does not touch the field")
     }
 
     @Test

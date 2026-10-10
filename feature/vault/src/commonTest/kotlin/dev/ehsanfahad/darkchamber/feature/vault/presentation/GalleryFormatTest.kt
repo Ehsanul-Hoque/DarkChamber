@@ -711,6 +711,42 @@ class GalleryFormatTest {
      * Leaving the search **discards the query**, and the label has to carry that. "Done" would read
      * as keeping the filter, which is the opposite of what happens.
      */
+    /**
+     * The offer describes the **screen**, which is knowable, and never how much is hidden, which is
+     * not: a finished batch carries counts and no ids, so nobody here can say whether a filter is
+     * keeping back one of the new items, all of them or none.
+     */
+    @Test
+    fun the_import_offer_claims_no_number() {
+        for (offer in ImportOffer.entries) {
+            val copy = GalleryFormat.importOfferExplanation(offer)
+
+            assertTrue("may" in copy, "it says what might be the case, not what is: $copy")
+            for (digit in '0'..'9') {
+                assertFalse(digit in copy, "a count nobody has: $copy")
+            }
+        }
+    }
+
+    /** Two different problems — one hides an item, the other moves it — so not one sentence. */
+    @Test
+    fun the_two_offers_do_not_share_their_wording() {
+        val explanations = ImportOffer.entries.map { GalleryFormat.importOfferExplanation(it) }
+        val actions = ImportOffer.entries.map { GalleryFormat.importOfferAction(it) }
+
+        assertEquals(explanations.size, explanations.distinct().size, "$explanations")
+        assertEquals(actions.size, actions.distinct().size, "$actions")
+    }
+
+    /**
+     * Clearing the search from the summary card is the **same act** the search control performs, so
+     * it says the same words — a second phrasing would read as a second, different thing.
+     */
+    @Test
+    fun clearing_the_search_is_worded_the_same_wherever_it_is_offered() {
+        assertEquals(GalleryFormat.clearSearch(), GalleryFormat.importOfferAction(ImportOffer.ClearSearch))
+    }
+
     @Test
     fun leaving_the_search_says_the_query_goes() {
         val copy = GalleryFormat.clearSearch()

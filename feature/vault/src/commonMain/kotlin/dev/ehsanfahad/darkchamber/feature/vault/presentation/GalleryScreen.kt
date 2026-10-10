@@ -242,8 +242,17 @@ internal fun GalleryScreen(
                 ImportState.Picking -> ImportNoticeCard(text = "Getting things ready…")
                 is ImportState.Finished -> ImportSummaryCard(
                     batch = batch,
+                    offer = state.importOffer(),
                     onDismiss = onAcknowledgeImport,
                     onDeleteOriginals = onRequestOriginalDelete,
+                    // A 1:1 dispatch onto intents that already exist, with no rule in it — the rule
+                    // is *which* offer to make, and that is decided and tested in `importOffer`.
+                    onTakeOffer = { offer ->
+                        when (offer) {
+                            ImportOffer.ClearSearch -> onCloseSearch()
+                            ImportOffer.ShowNewestFirst -> onChooseOrder(GalleryOrder.Newest)
+                        }
+                    },
                 )
                 ImportState.Idle -> ImportActions(onAddPhotos = onAddPhotos, onAddFiles = onAddFiles)
                 // Not the failed-file banner: nothing was chosen, so there is no file to blame
@@ -1071,9 +1080,63 @@ private fun ImportNoticeCard(text: String) {
 /**
  * What a finished batch amounts to. Says how many could not be read rather than implying everything
  * worked, and never claims a reason it does not have (hard rule #6).
+ *
+ * [offer] is the way back to seeing what just arrived, when a control would keep it out of sight —
+ * see [importOffer], which decides whether there is one.
  */
 @Composable
 private fun ImportSummaryCard(
+    batch: ImportState.Finished,
+    offer: ImportOffer?,
+    onDismiss: () -> Unit,
+    onDeleteOriginals: () -> Unit,
+    onTakeOffer: (ImportOffer) -> Unit,
+) {
+    val colors = DarkChamberTheme.colors
+    val spacing = DarkChamberTheme.spacing
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(color = colors.sealedContainer, shape = DarkChamberTheme.shapes.large),
+    ) {
+        ImportSummaryLine(
+            batch = batch,
+            onDismiss = onDismiss,
+            onDeleteOriginals = onDeleteOriginals,
+        )
+
+        // A line of its own rather than a third control in the row above. That row already carries
+        // the dismissal and, sometimes, the delete offer — and a bottom bar wrapping at five
+        // controls is this screen's known failure. Two per line, like the browse row.
+        offer?.let { shown ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = spacing.spaceMd, bottom = spacing.spaceXs),
+            ) {
+                Text(
+                    text = GalleryFormat.importOfferExplanation(shown),
+                    style = DarkChamberTheme.typography.caption,
+                    color = colors.textSecondary,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = { onTakeOffer(shown) }) {
+                    Text(
+                        text = GalleryFormat.importOfferAction(shown),
+                        style = DarkChamberTheme.typography.label,
+                        color = colors.accent,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** The summary itself: what came of the batch, and the one or two things to do about it. */
+@Composable
+private fun ImportSummaryLine(
     batch: ImportState.Finished,
     onDismiss: () -> Unit,
     onDeleteOriginals: () -> Unit,
@@ -1083,10 +1146,7 @@ private fun ImportSummaryCard(
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(color = colors.sealedContainer, shape = DarkChamberTheme.shapes.large)
-            .padding(start = spacing.spaceMd),
+        modifier = Modifier.fillMaxWidth().padding(start = spacing.spaceMd),
     ) {
         // The vertical padding only shows once the message wraps: on one line the row is already
         // taller than the text, because the buttons carry a 48 dp touch target. A two-line message

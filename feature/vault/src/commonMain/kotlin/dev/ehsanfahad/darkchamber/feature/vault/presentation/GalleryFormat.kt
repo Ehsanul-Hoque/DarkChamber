@@ -79,6 +79,32 @@ internal object GalleryFormat {
     fun clearSearch(): String = "Clear search"
 
     /**
+     * Why a just-finished import may not be where the user is looking.
+     *
+     * **Says "may", and never a number.** A finished batch carries counts and no ids, so this layer
+     * cannot know whether a filter is hiding one of the new items, all of them or none — and a
+     * sentence like "2 new items are hidden" would be inventing the one fact nobody has. Both lines
+     * describe the *screen*, which is knowable, and leave the user to look.
+     *
+     * The two cases are genuinely different and must not share a sentence: a query can leave an item
+     * off the grid entirely, while an order only moves it.
+     */
+    fun importOfferExplanation(offer: ImportOffer): String =
+        when (offer) {
+            ImportOffer.ClearSearch -> "These results are filtered, so what you added may not be among them."
+            ImportOffer.ShowNewestFirst -> "The grid isn't newest first, so what you added may be further down."
+        }
+
+    /** What the offer's one action says. Each names where it leads rather than agreeing with it. */
+    fun importOfferAction(offer: ImportOffer): String =
+        when (offer) {
+            // The same words the search control uses for the same act, because it *is* the same act
+            // — a second phrasing would read as a second, different thing.
+            ImportOffer.ClearSearch -> clearSearch()
+            ImportOffer.ShowNewestFirst -> "Show newest first"
+        }
+
+    /**
      * What a search had to leave out, or `null` when it left out nothing.
      *
      * An item whose metadata will not open has no name to match, so a query cannot include it — and

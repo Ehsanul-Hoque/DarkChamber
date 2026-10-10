@@ -5,8 +5,10 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumState
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
+import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryOrder
 import dev.ehsanfahad.darkchamber.feature.vault.api.GallerySearch
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryState
+import dev.ehsanfahad.darkchamber.feature.vault.api.ImportState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -119,5 +121,71 @@ class GalleryBrowseControlsTest {
 
         assertEquals(GalleryFormat.hiddenUnreadable(2), note)
         assertNotNull(note)
+    }
+
+    private fun finished(imported: Int = 2) =
+        GalleryState(items = listOf(item), loading = false, batch = ImportState.Finished(imported, emptyList()))
+
+    /**
+     * Newest-first used to make this free: a new item appeared at the top, where the user was already
+     * looking. Both controls undo that premise, so a finished batch offers the way back to seeing it.
+     */
+    @Test
+    fun a_filtered_screen_offers_to_clear_the_search() {
+        val state = finished().copy(search = GallerySearch.Open(query = "al"))
+
+        assertEquals(ImportOffer.ClearSearch, state.importOffer())
+    }
+
+    @Test
+    fun a_reordered_screen_offers_newest_first() {
+        assertEquals(ImportOffer.ShowNewestFirst, finished().copy(order = GalleryOrder.NameAsc).importOffer())
+    }
+
+    /**
+     * Both at once clears the search first: a **hidden** item cannot be scrolled to, so reordering
+     * would move something that is not on the screen at all.
+     */
+    @Test
+    fun both_at_once_clears_the_search_first() {
+        val state = finished().copy(
+            order = GalleryOrder.NameAsc,
+            search = GallerySearch.Open(query = "al"),
+        )
+
+        assertEquals(ImportOffer.ClearSearch, state.importOffer())
+    }
+
+    @Test
+    fun an_ordinary_screen_offers_nothing() {
+        // Newest first with nothing typed: the import is at the top, which is the premise this whole
+        // offer exists to restore. An offer here would be an instruction to fix what is not broken.
+        assertNull(finished().importOffer())
+    }
+
+    /**
+     * An **open but empty** field filters nothing, so there is nothing to clear and the results are
+     * not filtered — saying they are would be the one claim this copy makes, made falsely.
+     */
+    @Test
+    fun an_open_field_with_nothing_typed_is_not_a_filter() {
+        assertNull(finished().copy(search = GallerySearch.Open(query = "   ")).importOffer())
+    }
+
+    @Test
+    fun a_batch_that_added_nothing_offers_nothing() {
+        // There is nothing to go and look at, so pointing at the grid would be pointing at no change.
+        val state = finished(imported = 0).copy(search = GallerySearch.Open(query = "al"))
+
+        assertNull(state.importOffer())
+    }
+
+    @Test
+    fun a_screen_with_no_finished_batch_offers_nothing() {
+        // Mid-import the grid is still filling, and afterwards the card is gone — the offer belongs
+        // to the summary, which is the one place that says something was added.
+        val state = GalleryState(items = listOf(item), loading = false, order = GalleryOrder.NameAsc)
+
+        assertNull(state.importOffer())
     }
 }

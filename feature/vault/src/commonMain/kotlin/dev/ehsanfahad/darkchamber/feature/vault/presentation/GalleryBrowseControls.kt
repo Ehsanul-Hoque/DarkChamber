@@ -32,6 +32,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumState
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryOrder
 import dev.ehsanfahad.darkchamber.feature.vault.api.GallerySearch
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryState
+import dev.ehsanfahad.darkchamber.feature.vault.api.ImportState
 
 /**
  * Whether the browse controls belong on screen at all.
@@ -60,6 +61,51 @@ internal fun GalleryState.showsBrowseControls(): Boolean =
     album !is AlbumState.Gone &&
         !listingUnreadable &&
         (items.isNotEmpty() || search is GallerySearch.Open)
+
+/**
+ * The way back to seeing a batch that has just landed, when a control would keep it out of sight.
+ *
+ * Two different problems, so two different offers — and the order between them is the point of the
+ * type: a **hidden** item cannot be scrolled to, so when both apply the search is cleared first.
+ */
+internal enum class ImportOffer {
+    /** The results are filtered, so what was added may not be among them at all. */
+    ClearSearch,
+
+    /** Nothing is hidden; the new items are simply further down the grid. */
+    ShowNewestFirst,
+}
+
+/**
+ * Which offer a finished batch should carry, or `null` when the import is already where the user is
+ * looking.
+ *
+ * Newest-first used to make this free: an import appeared at the top of the grid, where the user had
+ * just been. Ordering and searching undo that premise — under a name order a batch lands mid-list,
+ * and under a query it may not be listed at all while the card still reports it as imported.
+ *
+ * Three conditions silence the offer, each because it would otherwise claim something untrue:
+ *
+ * - **no finished batch:** nothing has just arrived, so there is nothing to point at;
+ * - **nothing imported:** the batch added no items, so clearing a filter would reveal no change;
+ * - **an open but empty field:** a blank query filters nothing, so the results are *not* filtered —
+ *   which is the single claim this copy makes.
+ *
+ * Deliberately **not** an auto-clear: undoing something the user typed would change the screen under
+ * them for a reason they never see. And deliberately **not** a scroll — that only addresses the
+ * ordering case, and the state carries counts rather than ids, so nothing here knows where to scroll
+ * to or how many of the new items a filter is hiding.
+ */
+internal fun GalleryState.importOffer(): ImportOffer? {
+    val finished = batch as? ImportState.Finished ?: return null
+    if (finished.imported == 0) return null
+    val search = search
+    return when {
+        search is GallerySearch.Open && search.query.isNotBlank() -> ImportOffer.ClearSearch
+        order != GalleryOrder.Newest -> ImportOffer.ShowNewestFirst
+        else -> null
+    }
+}
 
 /**
  * What to say under the field about the items a search could not include, or `null` to say nothing.
