@@ -8,7 +8,10 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
 import dev.ehsanfahad.darkchamber.feature.vault.api.GallerySearch
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryState
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -88,5 +91,33 @@ class GalleryBrowseControlsTest {
         )
 
         assertTrue(state.showsBrowseControls())
+    }
+
+    /**
+     * A closed search says nothing about items it left out — **not because the count is zero, but
+     * because there is no count**: nothing was filtered, so nothing was excluded. The distinction
+     * matters because the obvious implementation reads a number off a state that does not have one.
+     */
+    @Test
+    fun a_closed_search_says_nothing_about_what_was_left_out() {
+        assertNull(GallerySearch.Closed.hiddenNote())
+    }
+
+    @Test
+    fun an_open_search_that_left_nothing_out_says_nothing_either() {
+        // The ordinary case: every name in the listing opened, so the results are the whole answer.
+        assertNull(GallerySearch.Open(query = "a", hiddenUnreadable = 0).hiddenNote())
+    }
+
+    /**
+     * And when it did leave something out, it says so — the exclusion is the point, because a search
+     * that drops unreadable rows silently is a way to make tampering invisible.
+     */
+    @Test
+    fun an_open_search_reports_what_it_could_not_read() {
+        val note = GallerySearch.Open(query = "a", hiddenUnreadable = 2).hiddenNote()
+
+        assertEquals(GalleryFormat.hiddenUnreadable(2), note)
+        assertNotNull(note)
     }
 }

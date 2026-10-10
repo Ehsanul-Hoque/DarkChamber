@@ -1,6 +1,7 @@
 package dev.ehsanfahad.darkchamber.feature.vault.presentation
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -61,6 +62,22 @@ internal fun GalleryState.showsBrowseControls(): Boolean =
         (items.isNotEmpty() || search is GallerySearch.Open)
 
 /**
+ * What to say under the field about the items a search could not include, or `null` to say nothing.
+ *
+ * A function rather than a cast inside the layout, for the same reason [showsBrowseControls] is one:
+ * this is the rule that a **closed** search says nothing — not because its count is zero, but because
+ * it has no count at all — and a rule written into a composable is a rule nothing can check.
+ *
+ * The count itself is the listing's, published with it (see `GallerySearch.Open`), so this never has
+ * to work out how many there are; it decides only whether there is anything to say.
+ */
+internal fun GallerySearch.hiddenNote(): String? =
+    when (this) {
+        GallerySearch.Closed -> null
+        is GallerySearch.Open -> GalleryFormat.hiddenUnreadable(hiddenUnreadable)
+    }
+
+/**
  * The gallery's own controls row: which order the grid is in, and the name being searched for.
  *
  * Under the app bar and owned by the feature, because sorting and searching are the listing's
@@ -71,6 +88,11 @@ internal fun GalleryState.showsBrowseControls(): Boolean =
  * large font scale: collapsed, the current order plus the way into the field; expanded, the field
  * plus the way out of it. Collapsed it also names the order the grid is in, which otherwise cannot be
  * discovered without opening the menu.
+ *
+ * Under the controls, while there is something to say, the line about what a search had to leave out
+ * ([hiddenNote]). It belongs here rather than beside the grid because it is a fact about the query,
+ * and it reads with the field that produced it — on an empty result the grid's own message says
+ * nothing matched, and this says how much was never looked at.
  */
 @Composable
 internal fun GalleryBrowseControls(
@@ -85,63 +107,82 @@ internal fun GalleryBrowseControls(
     val spacing = DarkChamberTheme.spacing
     val colors = DarkChamberTheme.colors
 
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = spacing.spaceMd, vertical = spacing.spaceXxs),
-    ) {
-        when (search) {
-            GallerySearch.Closed -> {
-                OrderControl(order = order, onChooseOrder = onChooseOrder)
-                Spacer(modifier = Modifier.weight(1f))
-                TextButton(
-                    onClick = onOpenSearch,
-                    modifier = Modifier.heightIn(min = spacing.spaceXxl),
-                ) {
-                    Text(
-                        text = GalleryFormat.searchNames(),
-                        style = DarkChamberTheme.typography.label,
-                        color = colors.accent,
+    Column(modifier = modifier.fillMaxWidth()) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = spacing.spaceMd, vertical = spacing.spaceXxs),
+        ) {
+            when (search) {
+                GallerySearch.Closed -> {
+                    OrderControl(order = order, onChooseOrder = onChooseOrder)
+                    Spacer(modifier = Modifier.weight(1f))
+                    TextButton(
+                        onClick = onOpenSearch,
+                        modifier = Modifier.heightIn(min = spacing.spaceXxl),
+                    ) {
+                        Text(
+                            text = GalleryFormat.searchNames(),
+                            style = DarkChamberTheme.typography.label,
+                            color = colors.accent,
+                        )
+                    }
+                }
+
+                is GallerySearch.Open -> {
+                    // Focused as it appears. The field is here because the user asked for it, and a
+                    // field that has to be tapped a second time to type into makes the first tap
+                    // look like it did nothing.
+                    val focus = remember { FocusRequester() }
+                    LaunchedEffect(Unit) { focus.requestFocus() }
+
+                    OutlinedTextField(
+                        value = search.query,
+                        onValueChange = onEditSearch,
+                        label = { Text(GalleryFormat.searchNames()) },
+                        singleLine = true,
+                        // No automatic capitalisation: this is matched against a file name, and the
+                        // match is case-folded anyway, so a capital letter the user did not type is
+                        // noise in a field they are reading back.
+                        keyboardOptions = KeyboardOptions(
+                            capitalization = KeyboardCapitalization.None,
+                            imeAction = ImeAction.Done,
+                        ),
+                        // No keyboard action of its own: results narrow as each character arrives,
+                        // so there is nothing for a submit key to do. Done gets the platform's own
+                        // behaviour — put the keyboard away — rather than a handler doing nothing.
+                        modifier = Modifier.weight(1f).focusRequester(focus),
                     )
+                    TextButton(
+                        onClick = onCloseSearch,
+                        modifier = Modifier.heightIn(min = spacing.spaceXxl),
+                    ) {
+                        Text(
+                            text = GalleryFormat.clearSearch(),
+                            style = DarkChamberTheme.typography.label,
+                            color = colors.accent,
+                        )
+                    }
                 }
             }
+        }
 
-            is GallerySearch.Open -> {
-                // Focused as it appears. The field is here because the user asked for it, and a
-                // field that has to be tapped a second time to type into makes the first tap look
-                // like it did nothing.
-                val focus = remember { FocusRequester() }
-                LaunchedEffect(Unit) { focus.requestFocus() }
-
-                OutlinedTextField(
-                    value = search.query,
-                    onValueChange = onEditSearch,
-                    label = { Text(GalleryFormat.searchNames()) },
-                    singleLine = true,
-                    // No automatic capitalisation: this is matched against a file name, and the
-                    // match is case-folded anyway, so a capital letter the user did not type is
-                    // noise in a field they are reading back.
-                    keyboardOptions = KeyboardOptions(
-                        capitalization = KeyboardCapitalization.None,
-                        imeAction = ImeAction.Done,
-                    ),
-                    // No keyboard action of its own: results narrow as each character arrives, so
-                    // there is nothing for a submit key to do. Done gets the platform's own
-                    // behaviour — put the keyboard away — rather than a handler that does nothing.
-                    modifier = Modifier.weight(1f).focusRequester(focus),
-                )
-                TextButton(
-                    onClick = onCloseSearch,
-                    modifier = Modifier.heightIn(min = spacing.spaceXxl),
-                ) {
-                    Text(
-                        text = GalleryFormat.clearSearch(),
-                        style = DarkChamberTheme.typography.label,
-                        color = colors.accent,
-                    )
-                }
-            }
+        search.hiddenNote()?.let { note ->
+            Text(
+                text = note,
+                style = DarkChamberTheme.typography.caption,
+                // The danger role, like every other line in this feature that says something would
+                // not verify — the tile's name, an album's name, a failed import. A search is the
+                // one place those items are *absent*, so a neutral footnote would be the quietest
+                // possible way to report a signal the vault is built to surface.
+                color = colors.danger,
+                modifier = Modifier.padding(
+                    start = spacing.spaceMd,
+                    end = spacing.spaceMd,
+                    bottom = spacing.spaceXs,
+                ),
+            )
         }
     }
 }
