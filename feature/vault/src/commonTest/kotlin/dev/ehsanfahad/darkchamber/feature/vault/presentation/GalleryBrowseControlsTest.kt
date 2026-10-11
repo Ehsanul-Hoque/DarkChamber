@@ -6,6 +6,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryOrder
+import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryScope
 import dev.ehsanfahad.darkchamber.feature.vault.api.GallerySearch
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryState
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportState
@@ -124,6 +125,80 @@ class GalleryBrowseControlsTest {
         assertNotNull(note)
     }
 
+    /**
+     * **Open is not filtering**, and the difference is load-bearing twice over: it decides whether a
+     * finished batch is told its results may be hidden, and it decides what an empty grid blames. A
+     * field the user opened and typed nothing into narrows the listing by exactly nothing.
+     */
+    @Test
+    fun a_closed_search_filters_nothing() {
+        assertFalse(GallerySearch.Closed.isFiltering())
+    }
+
+    @Test
+    fun an_open_field_filters_only_once_something_is_typed() {
+        assertFalse(GallerySearch.Open(query = "").isFiltering(), "opening is not filtering")
+        assertFalse(GallerySearch.Open(query = "   ").isFiltering(), "and whitespace is not a query")
+        assertTrue(GallerySearch.Open(query = "al").isFiltering())
+    }
+
+    /**
+     * Which of the empty-grid messages the screen asks for.
+     *
+     * The precedence between them belongs to the formatter, which has its own tests; what is checked
+     * here is the part that was wrong — **which state each argument comes from**. An empty listing
+     * under an open-but-blank field was blamed on the query, because the call site asked whether the
+     * field was open rather than whether it filtered.
+     */
+    @Test
+    fun an_emptied_album_under_an_open_field_still_explains_the_album() {
+        // Reachable: open the search in an album, type nothing, select everything and remove it.
+        val state = GalleryState(
+            items = emptyList(),
+            loading = false,
+            scope = GalleryScope.Album,
+            search = GallerySearch.Open(query = ""),
+        )
+
+        val message = state.emptyListingMessage()
+
+        assertEquals(GalleryFormat.emptyListing(GalleryScope.Album, unreadable = false), message)
+        assertFalse("typed" in message, "nothing was typed, so nothing can be blamed on it: $message")
+    }
+
+    @Test
+    fun an_empty_grid_under_a_query_says_the_query_did_it() {
+        val state = GalleryState(
+            items = emptyList(),
+            loading = false,
+            scope = GalleryScope.Album,
+            search = GallerySearch.Open(query = "al"),
+        )
+
+        assertEquals(
+            GalleryFormat.emptyListing(GalleryScope.Album, unreadable = false, searching = true),
+            state.emptyListingMessage(),
+        )
+    }
+
+    @Test
+    fun a_listing_that_could_not_be_read_outranks_both() {
+        // A failed read keeps the last good items on screen, so the honest fixture for "empty *and*
+        // failed" is a listing that failed before anything arrived.
+        val state = GalleryState(
+            items = emptyList(),
+            loading = false,
+            scope = GalleryScope.Unfiled,
+            listingUnreadable = true,
+            search = GallerySearch.Open(query = "al"),
+        )
+
+        assertEquals(
+            GalleryFormat.emptyListing(GalleryScope.Unfiled, unreadable = true),
+            state.emptyListingMessage(),
+        )
+    }
+
     private fun finished(imported: Int = 2) =
         GalleryState(items = listOf(item), loading = false, batch = ImportState.Finished(imported, emptyList()))
 
@@ -157,6 +232,21 @@ class GalleryBrowseControlsTest {
         assertEquals(ImportOffer.ClearSearch, state.importOffer())
     }
 
+    /**
+     * And once the search is cleared, the **other** offer takes its place: clearing stops anything
+     * being hidden, which leaves the items merely further down. Two taps for the two problems, which
+     * is the consequence of ordering them rather than an oversight — a single action cannot both
+     * unhide and reposition.
+     */
+    @Test
+    fun clearing_the_search_leaves_the_ordering_offer_standing() {
+        val both = finished().copy(order = GalleryOrder.NameAsc, search = GallerySearch.Open(query = "al"))
+
+        val afterClearing = both.copy(search = GallerySearch.Closed)
+
+        assertEquals(ImportOffer.ShowNewestFirst, afterClearing.importOffer())
+    }
+
     @Test
     fun an_ordinary_screen_offers_nothing() {
         // Newest first with nothing typed: the import is at the top, which is the premise this whole
@@ -179,6 +269,36 @@ class GalleryBrowseControlsTest {
         val state = finished(imported = 0).copy(search = GallerySearch.Open(query = "al"))
 
         assertNull(state.importOffer())
+    }
+
+    /**
+     * What taking an offer does — the other end of [importOffer], and the last decision this cycle
+     * left inside a layout.
+     *
+     * No rule in it, which is exactly why it is worth pinning: a 1:1 dispatch is where a swapped
+     * branch hides. "Clear search" quietly reordering the grid would be a control doing something
+     * other than what its own label says, and with no UI tests nothing else can see it.
+     */
+    @Test
+    fun clearing_the_search_is_what_the_clear_offer_does() {
+        var closed = 0
+        var ordered: GalleryOrder? = null
+
+        ImportOffer.ClearSearch.take(onCloseSearch = { closed++ }, onChooseOrder = { ordered = it })
+
+        assertEquals(1, closed)
+        assertNull(ordered, "and it leaves the order alone — clearing a filter is not a reorder")
+    }
+
+    @Test
+    fun the_other_offer_puts_the_newest_first_and_leaves_the_query() {
+        var closed = 0
+        var ordered: GalleryOrder? = null
+
+        ImportOffer.ShowNewestFirst.take(onCloseSearch = { closed++ }, onChooseOrder = { ordered = it })
+
+        assertEquals(GalleryOrder.Newest, ordered)
+        assertEquals(0, closed, "nothing was hidden, so there is no query to discard")
     }
 
     /**

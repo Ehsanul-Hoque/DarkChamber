@@ -70,7 +70,6 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryOrder
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryScope
-import dev.ehsanfahad.darkchamber.feature.vault.api.GallerySearch
 import dev.ehsanfahad.darkchamber.feature.vault.api.GallerySelection
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryState
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportState
@@ -183,13 +182,7 @@ internal fun GalleryScreen(
                 // an empty list with loading over — so the screen is told which it is rather than
                 // letting the copy assert an absence nobody established. Not the banner's error, which
                 // the user can dismiss: the reason the grid is empty outlives the acknowledgement.
-                state.items.isEmpty() -> EmptyListing(
-                    scope = state.scope,
-                    unreadable = state.listingUnreadable,
-                    // An empty grid under an open search is the query's doing, not the listing's —
-                    // the three per-scope answers would all claim an absence the vault does not have.
-                    searching = state.search is GallerySearch.Open,
-                )
+                state.items.isEmpty() -> EmptyListing(message = state.emptyListingMessage())
                 else -> ItemGrid(
                     items = state.items,
                     now = now,
@@ -250,13 +243,10 @@ internal fun GalleryScreen(
                     offer = state.importOffer(),
                     onDismiss = onAcknowledgeImport,
                     onDeleteOriginals = onRequestOriginalDelete,
-                    // A 1:1 dispatch onto intents that already exist, with no rule in it — the rule
-                    // is *which* offer to make, and that is decided and tested in `importOffer`.
+                    // Both halves live outside this layout: which offer to make, and what taking it
+                    // does — see `importOffer` and `take`.
                     onTakeOffer = { offer ->
-                        when (offer) {
-                            ImportOffer.ClearSearch -> onCloseSearch()
-                            ImportOffer.ShowNewestFirst -> onChooseOrder(GalleryOrder.Newest)
-                        }
+                        offer.take(onCloseSearch = onCloseSearch, onChooseOrder = onChooseOrder)
                     },
                 )
                 ImportState.Idle -> ImportActions(onAddPhotos = onAddPhotos, onAddFiles = onAddFiles)
@@ -1522,12 +1512,13 @@ private fun ItemTile(
  * five are not about the vault's contents at all: the grid could not be read, or a search matched
  * nothing in a listing that is not empty.
  *
- * Which of the five wins is decided in the formatter rather than here, so the precedence is something
- * a test can assert on.
+ * Which of the five wins is decided in the formatter, and which state each of its questions is
+ * answered from is decided in [emptyListingMessage] — so both halves are something a test can assert
+ * on, and nothing is left here but drawing.
  */
 @Composable
-private fun EmptyListing(scope: GalleryScope, unreadable: Boolean, searching: Boolean) {
-    CenteredMessage(GalleryFormat.emptyListing(scope, unreadable, searching), showSpinner = false)
+private fun EmptyListing(message: String) {
+    CenteredMessage(message, showSpinner = false)
 }
 
 @Composable

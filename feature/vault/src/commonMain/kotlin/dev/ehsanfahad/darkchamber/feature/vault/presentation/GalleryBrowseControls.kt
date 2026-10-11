@@ -100,12 +100,30 @@ internal enum class ImportOffer {
 internal fun GalleryState.importOffer(): ImportOffer? {
     val finished = batch as? ImportState.Finished ?: return null
     if (finished.imported == 0) return null
-    val search = search
     return when {
-        search is GallerySearch.Open && search.query.isNotBlank() -> ImportOffer.ClearSearch
+        search.isFiltering() -> ImportOffer.ClearSearch
         order != GalleryOrder.Newest -> ImportOffer.ShowNewestFirst
         else -> null
     }
+}
+
+/**
+ * What taking an offer does.
+ *
+ * A dispatch with no rule in it — the rule is *which* offer to make, which is [importOffer]'s — and
+ * it still belongs out here, because a 1:1 mapping is precisely where a swapped branch survives:
+ * "Clear search" that reordered the grid instead would be a control contradicting its own label, and
+ * with no UI tests in this project a branch written into the layout is a branch nothing checks.
+ *
+ * Takes the screen's own callbacks rather than reaching for the component, so this stays the
+ * mapping and nothing else.
+ */
+internal fun ImportOffer.take(
+    onCloseSearch: () -> Unit,
+    onChooseOrder: (GalleryOrder) -> Unit,
+) = when (this) {
+    ImportOffer.ClearSearch -> onCloseSearch()
+    ImportOffer.ShowNewestFirst -> onChooseOrder(GalleryOrder.Newest)
 }
 
 /**
@@ -135,6 +153,38 @@ internal fun GallerySearch.hiddenNote(): String? =
         GallerySearch.Closed -> null
         is GallerySearch.Open -> GalleryFormat.hiddenUnreadable(hiddenUnreadable)
     }
+
+/**
+ * Whether this search is actually narrowing the listing — which is **not** the same as being open.
+ *
+ * Opening the field changes the controls row and nothing else; a blank query matches every name, so
+ * until something is typed the grid on screen is the unfiltered listing. Two places need that
+ * distinction and had written it out separately, which is how they came to disagree: the import offer
+ * must not say results *may be hidden* when nothing filters them, and an empty grid must not blame a
+ * query nobody typed.
+ *
+ * Blank rather than empty, because a field holding only spaces narrows nothing either — and the
+ * search itself trims before matching, so anything else here would claim a filter the listing is not
+ * applying.
+ */
+internal fun GallerySearch.isFiltering(): Boolean =
+    this is GallerySearch.Open && query.isNotBlank()
+
+/**
+ * What an empty grid should say, out of the five answers the formatter holds.
+ *
+ * Which of the five wins is the formatter's rule and has its own tests; this is the other half —
+ * **which state each of its questions is answered from** — and it is a function because that half
+ * was wrong while every test passed. Asking whether the field was *open* rather than whether it was
+ * *filtering* blamed an empty listing on a query the user never typed, reachable by emptying an
+ * album with the field open: select everything, remove it, and the grid says no names matched.
+ */
+internal fun GalleryState.emptyListingMessage(): String =
+    GalleryFormat.emptyListing(
+        scope = scope,
+        unreadable = listingUnreadable,
+        searching = search.isFiltering(),
+    )
 
 /**
  * The gallery's own controls row: which order the grid is in, and the name being searched for.
