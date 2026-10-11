@@ -551,6 +551,83 @@ class GalleryFormatTest {
         assertEquals("7 selected", GalleryFormat.selectedCount(7))
     }
 
+    /**
+     * **The load-bearing sentence of the import card**, and the one that has to be said before
+     * anything happens: a lock or a background ends the batch, and afterwards there is nobody left
+     * to tell.
+     */
+    @Test
+    fun the_keep_open_notice_warns_before_the_fact() {
+        val copy = GalleryFormat.keepOpenNotice(ImportStage.ENCRYPTING).lowercase()
+
+        assertTrue("keep" in copy, "it asks for the one thing that helps: $copy")
+        assertTrue("stops the import" in copy, "and says what the cost is: $copy")
+    }
+
+    /**
+     * **The clause the user is owed while a provider is still sending the file**: stopping ends the
+     * import, but nothing can call the transfer back, so on a metered connection it is their data
+     * being spent after they believe they have stopped (docs/ARCHITECTURE.md).
+     */
+    @Test
+    fun a_fetch_admits_that_the_download_carries_on() {
+        val waiting = GalleryFormat.keepOpenNotice(ImportStage.FETCHING).lowercase()
+
+        assertTrue("download" in waiting, "it names what carries on: $waiting")
+        assertTrue("keep" in waiting, "without losing the warning it is appended to: $waiting")
+    }
+
+    @Test
+    fun stopping_during_a_fetch_says_the_file_is_still_coming() {
+        val stopping = GalleryFormat.stoppingNotice(ImportStage.FETCHING).lowercase()
+
+        assertTrue("download" in stopping, "it says the transfer is still running: $stopping")
+        assertTrue("cannot be cancelled" in stopping, "and that nothing can call it back: $stopping")
+        assertTrue("data" in stopping, "which is the cost that makes it worth saying: $stopping")
+    }
+
+    /**
+     * **And it is said only while it is true**, which is the whole reason the stage is surfaced.
+     *
+     * Each stage asserted on its own rather than as a group: a group assertion passes while one
+     * member is wrong, and these three are wrong for different reasons — a stop during the encrypt
+     * leaves no transfer running at all, and a streaming provider's transfer ends when the stream
+     * closes.
+     */
+    @Test
+    fun no_other_stage_claims_a_download_is_running() {
+        for (stage in listOf(ImportStage.COPYING, ImportStage.ENCRYPTING, ImportStage.FINISHING)) {
+            assertFalse(
+                "download" in GalleryFormat.keepOpenNotice(stage).lowercase(),
+                "$stage has nothing downloading: ${GalleryFormat.keepOpenNotice(stage)}",
+            )
+            assertFalse(
+                "download" in GalleryFormat.stoppingNotice(stage).lowercase(),
+                "$stage has nothing to call back: ${GalleryFormat.stoppingNotice(stage)}",
+            )
+        }
+    }
+
+    @Test
+    fun a_batch_with_no_stage_yet_claims_nothing_either() {
+        // The picker is still open, or the batch has not reached a file: there is no transfer to
+        // describe, and the card that shows this has no stage to read.
+        assertFalse("download" in GalleryFormat.keepOpenNotice(null).lowercase())
+        assertFalse("download" in GalleryFormat.stoppingNotice(null).lowercase())
+    }
+
+    /**
+     * The stopping notice keeps the half that stops a stop feeling like a loss, and still promises
+     * neither an instant stop nor a slow one — which wait it is in depends on where the stop lands.
+     */
+    @Test
+    fun stopping_still_says_what_is_already_safe() {
+        val copy = GalleryFormat.stoppingNotice(ImportStage.ENCRYPTING).lowercase()
+
+        assertTrue("stays in the vault" in copy, "nothing already added is at risk: $copy")
+        assertFalse("immediately" in copy, "no promise of an instant stop: $copy")
+    }
+
     /** Each named stage says something different, or the label is decoration rather than information. */
     @Test
     fun the_named_stages_are_told_apart() {

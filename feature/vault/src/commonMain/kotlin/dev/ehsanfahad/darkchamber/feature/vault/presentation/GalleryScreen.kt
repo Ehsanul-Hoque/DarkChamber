@@ -990,7 +990,14 @@ private fun ImportProgressCard(batch: ImportState.Running, onCancel: () -> Unit)
             // and what the user needs to know is that it has heard them and that nothing already
             // added is at risk. Which wait it is in is said by the stage line above rather than
             // guessed at here.
-            text = if (batch.stopping) STOPPING_NOTICE else KEEP_OPEN_NOTICE,
+            //
+            // Both take the stage, because both gain a clause while a provider is still sending the
+            // file and neither may claim it at any other time — see `GalleryFormat`.
+            text = if (batch.stopping) {
+                GalleryFormat.stoppingNotice(batch.stage)
+            } else {
+                GalleryFormat.keepOpenNotice(batch.stage)
+            },
             style = DarkChamberTheme.typography.caption,
             color = colors.textSecondary,
             modifier = Modifier.padding(top = spacing.spaceXs),
@@ -1066,7 +1073,9 @@ private fun ImportNoticeCard(text: String) {
     ) {
         Text(text = text, style = DarkChamberTheme.typography.body, color = colors.textPrimary)
         Text(
-            text = KEEP_OPEN_NOTICE,
+            // No stage: this card is the gap between tapping and the picker appearing, so no file
+            // has been reached and nothing is being transferred to warn about.
+            text = GalleryFormat.keepOpenNotice(stage = null),
             style = DarkChamberTheme.typography.caption,
             color = colors.textSecondary,
             modifier = Modifier.padding(top = spacing.spaceXs),
@@ -1569,30 +1578,6 @@ private fun ErrorBanner(error: GalleryError, onDismiss: () -> Unit) {
         }
     }
 }
-
-/**
- * The load-bearing sentence of this screen. A lock or a background ends a batch, and
- * afterwards there is nobody left to tell — the state died with the session. Warning beforehand is
- * the only chance there is, so it stays visible for the whole import, not just at the start.
- */
-private const val KEEP_OPEN_NOTICE =
-    "Keep DarkChamber open — locking the vault or leaving the app stops the import."
-
-/**
- * Shown from the moment Stop is tapped until the batch actually ends.
- *
- * Says a stop *may take a moment* rather than naming what it is waiting for, because that now
- * depends on where the stop lands. Waiting for a provider to hand the file over is abandoned at
- * once; part-way through the encrypt the stop takes effect on the next read of the payload, which is
- * kilobytes away but still not instant (docs/THREAT_MODEL.md's note that a stop is cooperative).
- *
- * It used to say "once the current file finishes reading", which described the longer of those two
- * waits — correct when a blocked fetch could not be interrupted, and an understatement of the stop
- * now that it can be. Promising an instant stop would be the opposite error (hard rule #6), so it
- * promises neither. The second half is the part that stops the wait feeling like a loss.
- */
-private const val STOPPING_NOTICE =
-    "Stopping — this may take a moment. Everything already added stays in the vault."
 
 /** Tall enough for several albums, short enough to leave the dialog's buttons on screen. */
 private val CHOOSER_LIST_MAX = 260.dp

@@ -424,6 +424,53 @@ internal object GalleryFormat {
             ImportStage.ENCRYPTING, null -> null
         }
 
+    /**
+     * The load-bearing sentence of the import card. A lock or a background ends the batch, and
+     * afterwards there is nobody left to tell — warning beforehand is the only chance there is, so
+     * it stays visible for the whole import rather than only at the start.
+     *
+     * **During a fetch it admits what stopping does not stop.** The phone goes on downloading the
+     * file regardless, because no API can call a provider's transfer back
+     * (`docs/ARCHITECTURE.md`) — and on a metered connection that is the user's data being spent
+     * after they believe they have stopped. This is the more important of the two places that is
+     * said, because it is the only one a *lock* reaches: after a lock the state is gone and there is
+     * nobody to tell.
+     *
+     * One clause, not a paragraph. The honest point is narrow, and over-explaining a small, rare
+     * cost on a progress card would turn it into a warning about the app.
+     */
+    fun keepOpenNotice(stage: ImportStage?): String =
+        "Keep DarkChamber open — locking the vault or leaving the app stops the import." +
+            downloadClause(stage, " The download itself carries on either way.")
+
+    /**
+     * Shown from the moment Stop is tapped until the batch actually ends.
+     *
+     * Says a stop *may take a moment* rather than naming what it is waiting for, because that
+     * depends on where the stop lands. Waiting for a provider to hand the file over is abandoned at
+     * once; part-way through the encrypt the stop takes effect on the next read of the payload,
+     * which is kilobytes away but still not instant (`docs/THREAT_MODEL.md` notes a stop is
+     * cooperative). Promising an instant stop would be the opposite error (hard rule 6), so it
+     * promises neither. The second half is the part that stops the wait feeling like a loss.
+     *
+     * **And during a fetch it says the file is still coming**, for the same reason as above: the
+     * batch has heard the user, and the transfer has not.
+     */
+    fun stoppingNotice(stage: ImportStage?): String =
+        "Stopping — this may take a moment. Everything already added stays in the vault." +
+            downloadClause(stage, " The file is still downloading — that cannot be cancelled, and it may use data.")
+
+    /**
+     * The clause, or nothing, depending on whether a transfer is actually running.
+     *
+     * [ImportStage.FETCHING] is the **only** stage where this is true, which is why the stage is
+     * surfaced at all: a stop during the encrypt leaves no transfer running, a streaming provider's
+     * transfer ends when the stream closes, and a batch with no stage yet has not reached a file.
+     * Saying it at any of those would be a warning about a cost that is not being paid.
+     */
+    private fun downloadClause(stage: ImportStage?, clause: String): String =
+        if (stage == ImportStage.FETCHING) clause else ""
+
     /** Binary units, one decimal above a kibibyte — the sizes a file manager would show. */
     fun size(bytes: Long): String {
         if (bytes < KIB) return "$bytes B"
