@@ -11,6 +11,7 @@ import com.arkivanov.essenty.lifecycle.doOnDestroy
 import coil3.ImageLoader
 import coil3.PlatformContext
 import com.arkivanov.essenty.lifecycle.doOnStop
+import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryScope
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultAlbumsComponent
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultGalleryComponent
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultImports
@@ -81,10 +82,14 @@ interface UnlockedComponent {
 sealed interface UnlockedChild {
     /**
      * The item grid. The same child serves the whole vault, one album and the unfiled items — which
-     * of those is decided when it is constructed, so [atHome] is how the chrome above knows whether
-     * this is the screen the album grid is reached from.
+     * of those is decided when it is constructed, so [scope] is how the chrome above knows which
+     * listing it is drawn over: whether to offer the way into albums, and what to say it is above.
+     *
+     * The feature's own [GalleryScope] rather than a boolean of this module's own. A flag could say
+     * "not the whole vault" and no more, which was enough while the chrome only had an entry point
+     * to hide and not a place to name — and two spellings of one fact is one of them going stale.
      */
-    class Gallery(val component: VaultGalleryComponent, val atHome: Boolean) : UnlockedChild
+    class Gallery(val component: VaultGalleryComponent, val scope: GalleryScope) : UnlockedChild
 
     class Albums(val component: VaultAlbumsComponent) : UnlockedChild
 }
@@ -233,10 +238,10 @@ class DefaultUnlockedComponent(
 
     private fun createChild(config: Config, context: ComponentContext): UnlockedChild =
         when (config) {
-            is Config.Gallery -> UnlockedChild.Gallery(
+            is Config.Gallery -> {
                 // VaultObjects comes from the session scope, so the gallery cannot outlive the
                 // session; the import batch is the session's, and the gallery only watches it.
-                component = vaultGalleryComponent(
+                val gallery = vaultGalleryComponent(
                     componentContext = context,
                     vaultObjects = scope.get(),
                     imports = imports,
@@ -250,9 +255,12 @@ class DefaultUnlockedComponent(
                     // no screen left to be. `pop`, not a push: this child *is* the album, so leaving
                     // it means going back to whatever opened it — which is the album grid.
                     onLeaveAlbum = { navigation.pop() },
-                ),
-                atHome = config.filter == Config.Filter.All,
-            )
+                )
+                // Read back off the component rather than mapped from the config a second time.
+                // The feature decides what its filter means for a screen, and it publishes that
+                // once at construction — so this cannot disagree with the screen it labels.
+                UnlockedChild.Gallery(component = gallery, scope = gallery.state.value.scope)
+            }
             Config.Albums -> UnlockedChild.Albums(
                 vaultAlbumsComponent(
                     componentContext = context,

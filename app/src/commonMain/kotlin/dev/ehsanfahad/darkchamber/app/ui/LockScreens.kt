@@ -27,6 +27,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import com.arkivanov.decompose.extensions.compose.subscribeAsState
 import dev.ehsanfahad.darkchamber.app.root.LockError
@@ -40,6 +41,7 @@ import dev.ehsanfahad.darkchamber.app.root.UnlockedComponent
 import dev.ehsanfahad.darkchamber.core.designsystem.Aperture
 import dev.ehsanfahad.darkchamber.core.designsystem.ApertureState
 import dev.ehsanfahad.darkchamber.core.designsystem.DarkChamberTheme
+import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryScope
 import dev.ehsanfahad.darkchamber.feature.vault.presentation.VaultAlbumsContent
 import dev.ehsanfahad.darkchamber.feature.vault.presentation.VaultGalleryContent
 
@@ -225,12 +227,22 @@ private fun UnlockedContent(component: UnlockedComponent) {
         val stack by component.stack.subscribeAsState()
         val child = stack.active.instance
 
+        // Subscribed rather than read once: an album can be renamed from the screen the bar is
+        // sitting above, and a crumb that did not follow it would be the only stale name on screen.
+        val gallery = when (child) {
+            is UnlockedChild.Gallery -> child.component.state.subscribeAsState().value
+            is UnlockedChild.Albums -> null
+        }
+
         UnlockedBar(
             onLock = component::lock,
             // Offered from the vault's own grid only. From inside an album, or from the album grid
             // itself, the way onward is back — a second entry point to the screen you are standing
             // next to is noise.
-            onAlbums = component::openAlbums.takeIf { child is UnlockedChild.Gallery && child.atHome },
+            onAlbums = component::openAlbums.takeIf {
+                child is UnlockedChild.Gallery && child.scope == GalleryScope.WholeVault
+            },
+            crumb = crumbFor(child, gallery),
         )
 
         Box(modifier = Modifier.weight(1f)) {
@@ -255,14 +267,17 @@ private fun UnlockedContent(component: UnlockedComponent) {
 }
 
 /**
- * The one chrome the unlocked subtree owns: an open aperture, the way into albums, and the manual
- * lock.
+ * The one chrome the unlocked subtree owns: an open aperture, where you are, the way into albums,
+ * and the manual lock.
  *
  * [onAlbums] is null on every screen but the vault's own grid, and the entry point is simply absent
  * then rather than present and disabled — a dead control invites a tap and explains nothing.
+ *
+ * [crumb] is the listing this bar is above, in address-bar form — see `crumbFor`, which decides it.
+ * Null on the vault itself, where a second label would only repeat the name beside it.
  */
 @Composable
-private fun UnlockedBar(onLock: () -> Unit, onAlbums: (() -> Unit)?) {
+private fun UnlockedBar(onLock: () -> Unit, onAlbums: (() -> Unit)?, crumb: String?) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -270,7 +285,10 @@ private fun UnlockedBar(onLock: () -> Unit, onAlbums: (() -> Unit)?) {
             .fillMaxWidth()
             .padding(horizontal = DarkChamberTheme.spacing.spaceMd, vertical = DarkChamberTheme.spacing.spaceXs),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        // Weighted, so the actions on the right are measured first and keep their space. This row is
+        // the tightest on the surface — an album's name can be any length the user typed — and the
+        // failure to avoid is a long name pushing Lock off the screen.
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
             Aperture(
                 state = ApertureState.Open,
                 contentDescription = "Vault unlocked",
@@ -280,8 +298,29 @@ private fun UnlockedBar(onLock: () -> Unit, onAlbums: (() -> Unit)?) {
                 "Vault",
                 style = DarkChamberTheme.typography.title,
                 color = DarkChamberTheme.colors.textPrimary,
+                maxLines = 1,
                 modifier = Modifier.padding(start = DarkChamberTheme.spacing.spaceXs),
             )
+            crumb?.let { here ->
+                Text(
+                    CRUMB_SEPARATOR,
+                    style = DarkChamberTheme.typography.title,
+                    // Quieter than either side of it: a separator is punctuation, not a third thing
+                    // to read.
+                    color = DarkChamberTheme.colors.textSecondary,
+                    modifier = Modifier.padding(horizontal = DarkChamberTheme.spacing.spaceXxs),
+                )
+                Text(
+                    here,
+                    style = DarkChamberTheme.typography.title,
+                    color = DarkChamberTheme.colors.textPrimary,
+                    maxLines = 1,
+                    // Ellipsised, and the only part of the row allowed to shrink: the vault's own
+                    // name is two syllables and fixed, while this is whatever was typed.
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+            }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             onAlbums?.let { open ->
@@ -359,3 +398,9 @@ private fun LockError.message(): String = when (this) {
     LockError.CreateFailed -> "Couldn't create the vault. Please try again."
     LockError.ProbeFailed -> "Couldn't open the vault storage. Unlock with your passphrase."
 }
+
+/**
+ * Between the vault's name and the listing below it. A path separator, because that is what the row
+ * is: where you are, read left to right.
+ */
+private const val CRUMB_SEPARATOR = "/"

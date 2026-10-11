@@ -18,9 +18,14 @@ import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultItemKind
 import dev.ehsanfahad.darkchamber.core.storage.VaultStorage
 import dev.ehsanfahad.darkchamber.core.vault.VaultObjects
+import dev.ehsanfahad.darkchamber.app.ui.crumbFor
+import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumState
+import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
 import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryScope
+import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryState
 import dev.ehsanfahad.darkchamber.feature.vault.api.PhotoPicker
+import dev.ehsanfahad.darkchamber.feature.vault.api.label
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -41,6 +46,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -77,6 +83,11 @@ class UnlockedNavigationTest {
     private fun component(
         open: VaultBootstrap.OpenVault,
         mainContext: CoroutineContext = UnconfinedTestDispatcher(),
+        // Where an album's write runs. Left as production's by default, because most of these tests
+        // only navigate — but a test that *waits* for a write has to hand it a dispatcher the test
+        // scheduler drives, or `advanceUntilIdle` returns with the work still in flight on a real
+        // thread pool and the assertion reads the state from before it.
+        ioContext: CoroutineContext = Dispatchers.Default,
     ): DefaultUnlockedComponent =
         DefaultUnlockedComponent(
             componentContext = DefaultComponentContext(
@@ -86,6 +97,7 @@ class UnlockedNavigationTest {
             vault = open,
             koin = koin,
             mainContext = mainContext,
+            ioContext = ioContext,
             mapContext = mainContext,
             onLock = {},
         )
@@ -97,7 +109,7 @@ class UnlockedNavigationTest {
         val stack = component(open).stack.value
 
         val child = assertIs<UnlockedChild.Gallery>(stack.active.instance, "unlock lands on the files")
-        assertTrue(child.atHome, "and on the whole vault rather than a filtered view of it")
+        assertEquals(GalleryScope.WholeVault, child.scope, "and on the whole vault, not a filtered view of it")
         assertEquals(1, stack.items.size, "nothing is stacked on top of it")
     }
 
@@ -148,7 +160,9 @@ class UnlockedNavigationTest {
 
         val child = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance)
         assertEquals(3, component.stack.value.items.size, "grid, albums, then the filtered grid")
-        assertTrue(!child.atHome, "a filtered gallery is not the home one, so it offers no albums entry")
+        // Which listing, not merely "not the home one": the chrome above needs to tell an album from
+        // Unfiled, and the boolean this replaced could not.
+        assertEquals(GalleryScope.Album, child.scope, "an album's own grid, so it offers no albums entry")
 
         val listed = child.component.state.value.items
         assertEquals(1, listed.size, "the filtered screen shows the album, not the vault")
@@ -175,7 +189,7 @@ class UnlockedNavigationTest {
         advanceUntilIdle()
 
         val child = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance)
-        assertTrue(!child.atHome, "a filtered gallery, so it offers no second way into albums")
+        assertEquals(GalleryScope.Unfiled, child.scope, "the unfiled listing, so no second way into albums")
         val listed = child.component.state.value.items
         assertEquals(1, listed.size, "only what is in no album")
         assertTrue(listed.single().id.contentEquals(loose))
@@ -276,7 +290,7 @@ class UnlockedNavigationTest {
 
         assertEquals(depth, component.stack.value.items.size, "the second tap added nothing and threw nothing")
         val child = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance)
-        assertTrue(!child.atHome, "and the album screen is still the one on top")
+        assertEquals(GalleryScope.Album, child.scope, "and the album screen is still the one on top")
     }
 
     /** The same hazard on the albums entry itself, which is also a button a finger can hit twice. */
@@ -290,6 +304,102 @@ class UnlockedNavigationTest {
 
         assertEquals(2, component.stack.value.items.size)
         assertIs<UnlockedChild.Albums>(component.stack.value.active.instance)
+    }
+
+    /**
+     * What the bar says it is above, on each of the four screens.
+     *
+     * Built from real children rather than hand-made ones, because the answer that matters is the
+     * album's — read from the live state, so it has to be a real component's.
+     */
+    @Test
+    fun the_bar_names_the_listing_it_is_above() = runTest {
+        val open = openVault(UnconfinedTestDispatcher(testScheduler))
+        val component = component(open, UnconfinedTestDispatcher(testScheduler))
+        val objects = vaultObjects(open)
+        val albumId = (objects.createAlbum("Receipts") as Outcome.Ok).value
+
+        val home = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance)
+        // The vault is the destination, so nothing is added beside its name.
+        assertNull(crumbFor(home, home.component.state.value))
+
+        component.openAlbums()
+        val albums = assertIs<UnlockedChild.Albums>(component.stack.value.active.instance)
+        assertEquals("Albums", crumbFor(albums, null), "a sibling of the grid, so it says which it is")
+
+        albums.component.openUnfiled()
+        advanceUntilIdle()
+        val unfiled = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance)
+        assertEquals("Unfiled", crumbFor(unfiled, unfiled.component.state.value))
+
+        albums.component.openAlbum(albumId)
+        advanceUntilIdle()
+        val inAlbum = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance)
+        assertEquals("Receipts", crumbFor(inAlbum, inAlbum.component.state.value), "the album, by name")
+    }
+
+    /**
+     * **A rename moves the crumb**, which is the reason it is read from live state rather than
+     * copied out of the navigation config: the rename is made from this very screen, so a stale name
+     * would be wrong in the one place the user is looking.
+     */
+    @Test
+    fun renaming_an_album_renames_the_crumb() = runTest {
+        val open = openVault(UnconfinedTestDispatcher(testScheduler))
+        val component = component(
+            open = open,
+            mainContext = UnconfinedTestDispatcher(testScheduler),
+            // The rename is a write, and this test waits for it.
+            ioContext = UnconfinedTestDispatcher(testScheduler),
+        )
+        val albumId = (vaultObjects(open).createAlbum("Receipts") as Outcome.Ok).value
+        component.openAlbums()
+        val albums = assertIs<UnlockedChild.Albums>(component.stack.value.active.instance)
+        albums.component.openAlbum(albumId)
+        advanceUntilIdle()
+        val child = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance)
+        assertEquals("Receipts", crumbFor(child, child.component.state.value))
+
+        child.component.startAlbumRename()
+        child.component.editAlbumName("Tax")
+        child.component.confirmAlbumRename()
+        advanceUntilIdle()
+
+        assertEquals("Tax", crumbFor(child, child.component.state.value))
+    }
+
+    /**
+     * An album whose name will not open gets the unverifiable form, never a blank and never a guess
+     * — the same words the grid and the heading use, through the one helper that decides them.
+     */
+    @Test
+    fun an_album_whose_name_will_not_open_still_has_a_crumb() = runTest {
+        val open = openVault(UnconfinedTestDispatcher(testScheduler))
+        val component = component(open, UnconfinedTestDispatcher(testScheduler))
+        val child = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance)
+
+        val crumb = crumbFor(
+            child = UnlockedChild.Gallery(child.component, GalleryScope.Album),
+            gallery = GalleryState(album = AlbumState.Present(AlbumTileName.Unreadable)),
+        )
+
+        assertEquals(AlbumTileName.Unreadable.label(), crumb)
+    }
+
+    /**
+     * Two cases say nothing at all, and both are deliberate: an album that is **gone** must not be
+     * named as though it were still there — the screen below is already explaining the exit — and a
+     * name that has **not arrived yet** gets no placeholder for the user to watch be replaced.
+     */
+    @Test
+    fun an_album_with_no_name_to_show_adds_nothing_to_the_bar() = runTest {
+        val open = openVault(UnconfinedTestDispatcher(testScheduler))
+        val component = component(open, UnconfinedTestDispatcher(testScheduler))
+        val gallery = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance).component
+        val child = UnlockedChild.Gallery(gallery, GalleryScope.Album)
+
+        assertNull(crumbFor(child, GalleryState(album = AlbumState.Gone)), "gone, so not named")
+        assertNull(crumbFor(child, GalleryState(album = null)), "not read yet, so nothing claimed")
     }
 
     /** One small item, filed or not, so a listing has something to be right or wrong about. */
