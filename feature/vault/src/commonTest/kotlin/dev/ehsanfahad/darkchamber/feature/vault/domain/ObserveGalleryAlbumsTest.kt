@@ -9,6 +9,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.FakeVaultItems
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
 import dev.ehsanfahad.darkchamber.feature.vault.readableMeta
 import dev.ehsanfahad.darkchamber.feature.vault.summary
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -127,6 +128,26 @@ class ObserveGalleryAlbumsTest {
         }
 
         assertEquals(0, vault.observeAlbumsCalls, "an album screen must not read the album listing")
+    }
+
+    /**
+     * And the items on that screen carry **no label**, which is what the tile's badge relies on to
+     * stay off every tile inside an album — the rendering has no scope of its own to check, so this
+     * is where "only on the whole vault" is actually decided.
+     */
+    @Test
+    fun an_item_inside_an_album_carries_no_label_to_draw() = runTest {
+        val vault = FakeVaultItems()
+        vault.albums.value = listOf(albumSummary())
+        val filter = ItemFilter.Album(album)
+        vault.summariesByFilter[filter] = MutableStateFlow(listOf(filedItem(1)))
+
+        ObserveGallery(vault).invoke(filter = filter).test {
+            // The item *is* filed — it carries the album's id — and still gets nothing, because the
+            // heading already says which album this is.
+            assertNull(awaitItem().items.single().album)
+            cancelAndIgnoreRemainingEvents()
+        }
     }
 
     @Test

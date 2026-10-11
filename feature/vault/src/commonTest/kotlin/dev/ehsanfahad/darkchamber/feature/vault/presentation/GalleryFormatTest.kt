@@ -697,6 +697,19 @@ class GalleryFormatTest {
      * control, a current value and an invitation all at once; announced as "Newest" it is none of
      * them.
      */
+    /**
+     * The tile's album badge draws a mark and a name. Seen together they say "this is in an album
+     * called Trip"; announced, the name alone is a stray word between a file name and a size — so
+     * the mark is what carries the relationship.
+     */
+    @Test
+    fun the_album_mark_on_a_tile_is_named_for_a_reader() {
+        val spoken = GalleryFormat.inAlbum().lowercase()
+
+        assertTrue("album" in spoken, "it names what the mark means: $spoken")
+        assertTrue("in" in spoken, "and that the item is in one: $spoken")
+    }
+
     @Test
     fun the_order_control_is_named_as_well_as_shown() {
         for (order in GalleryOrder.entries) {

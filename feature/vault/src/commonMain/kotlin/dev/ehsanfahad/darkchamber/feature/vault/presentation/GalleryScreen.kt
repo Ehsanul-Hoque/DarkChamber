@@ -55,6 +55,7 @@ import androidx.compose.ui.window.DialogProperties
 import coil3.ImageLoader
 import coil3.compose.AsyncImagePainter
 import coil3.compose.SubcomposeAsyncImage
+import dev.ehsanfahad.darkchamber.core.designsystem.AlbumMark
 import dev.ehsanfahad.darkchamber.core.designsystem.DarkChamberTheme
 import dev.ehsanfahad.darkchamber.core.designsystem.prefersReducedMotion
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumDelete
@@ -1363,6 +1364,66 @@ private fun ItemTile(
                 )
             }
 
+            // **Which album this is in**, on the one listing that mixes filed and unfiled items —
+            // and nowhere else, because the label itself is absent elsewhere: inside an album every
+            // item is in that album and in Unfiled none has one. The rendering has no scope to
+            // check; the listing stage decides it, and `ObserveGalleryAlbumsTest` pins it.
+            //
+            // Nothing at all on an unfiled item. An absence is the honest marker for "in no album",
+            // and a badge on every tile would be noise on the common case.
+            //
+            // Inside the media slot and in the corner **opposite the check mark**, so a filed item
+            // that is also selected shows both without one covering the other.
+            item.album?.let { album ->
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(spacing.spaceXs)
+                        // Capped, and the only reason this is a Box around a Row: the Row wraps its
+                        // content so the badge is as small as the name allows, while this bounds how
+                        // far a long one may grow — short of the check mark's corner.
+                        .fillMaxWidth(ALBUM_BADGE_MAX_FRACTION),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(spacing.spaceXxs),
+                        modifier = Modifier
+                            .background(
+                                color = colors.surface,
+                                // Rounded, never a circle: that radius is the aperture's alone
+                                // (docs/DESIGN.md §4).
+                                shape = DarkChamberTheme.shapes.small,
+                            )
+                            .border(
+                                width = TILE_BORDER,
+                                color = colors.outline,
+                                shape = DarkChamberTheme.shapes.small,
+                            )
+                            .padding(horizontal = spacing.spaceXxs, vertical = ALBUM_BADGE_INSET),
+                    ) {
+                        AlbumMark(
+                            // Named for a reader, unlike the album grid's badge: there the word
+                            // "Album" sits beside the mark, while here the only other text is the
+                            // album's own name.
+                            contentDescription = GalleryFormat.inAlbum(),
+                            tint = colors.textSecondary,
+                            modifier = Modifier.size(ALBUM_BADGE_MARK),
+                        )
+                        Text(
+                            text = album.label(),
+                            style = DarkChamberTheme.typography.caption,
+                            // The danger role when the album's name would not open, as everywhere
+                            // else that renders one — a badge is small, not a reason to say it
+                            // quietly.
+                            color = if (album is AlbumTileName.Unreadable) colors.danger else colors.textSecondary,
+                            maxLines = 1,
+                            // Truncated inside the badge rather than spanning the tile.
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+
             // Inside the media slot, which already reserves this square — **not** in the tile's own
             // corner. A badge drawn into the tile corner is the bug an earlier release shipped: the
             // tile is a Column of slot plus two lines of text, so its corners are over the caption,
@@ -1521,3 +1582,18 @@ private val SELECTION_MARK = 22.dp
 
 /** The unselected mark sits over a thumbnail, so it needs to be visible without hiding it. */
 private const val MARK_UNSELECTED_ALPHA = 0.6f
+
+/**
+ * How much of the slot a filed item's album badge may take.
+ *
+ * Two thirds, so a long album name truncates well before the check mark's corner — the two are on
+ * opposite sides, and a badge allowed the full width would slide under the tick the moment selecting
+ * mode opened.
+ */
+private const val ALBUM_BADGE_MAX_FRACTION = 0.66f
+
+/** The badge's mark, sized to the caption beside it rather than to an icon's own 24 dp. */
+private val ALBUM_BADGE_MARK = 12.dp
+
+/** Vertical breathing room, so the name does not sit on the badge's own border. */
+private val ALBUM_BADGE_INSET = 2.dp

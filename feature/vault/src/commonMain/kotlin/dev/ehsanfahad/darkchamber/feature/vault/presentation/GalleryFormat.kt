@@ -79,6 +79,18 @@ internal object GalleryFormat {
     fun clearSearch(): String = "Clear search"
 
     /**
+     * What the album mark on a tile is **called**, for a reader rather than an eye.
+     *
+     * The badge draws a mark and the album's name. Seen together those say "this is in an album
+     * called Trip"; announced, the name alone is a stray word between a file name and a size — so
+     * the mark carries the relationship and the name stays the name.
+     *
+     * Unlike the album grid's badge, where the word "Album" is already beside the mark and a reader
+     * announcing both would say it twice.
+     */
+    fun inAlbum(): String = "In album"
+
+    /**
      * Why a just-finished import may not be where the user is looking.
      *
      * **Says "may", and never a number.** A finished batch carries counts and no ids, so this layer
