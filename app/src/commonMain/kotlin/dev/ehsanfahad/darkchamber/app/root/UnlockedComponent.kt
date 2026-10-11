@@ -7,6 +7,7 @@ import com.arkivanov.decompose.router.stack.childStack
 import com.arkivanov.decompose.router.stack.pop
 import com.arkivanov.decompose.router.stack.pushNew
 import com.arkivanov.decompose.value.Value
+import com.arkivanov.essenty.backhandler.BackHandlerOwner
 import com.arkivanov.essenty.lifecycle.doOnDestroy
 import coil3.ImageLoader
 import coil3.PlatformContext
@@ -50,7 +51,7 @@ import kotlin.random.nextULong
  * catalog driver, dispose the scope, then hand control back to the gate (→ Locked). A session that
  * survives backgrounding is theater (hard rules #1/#5; no driver is left open on lock).
  */
-interface UnlockedComponent {
+interface UnlockedComponent : BackHandlerOwner {
     val session: VaultSession
 
     /**
@@ -76,6 +77,16 @@ interface UnlockedComponent {
      * lands on the user's files, and a folder list is the second surface.
      */
     fun openAlbums()
+
+    /**
+     * Leave the screen on top, if there is one under it.
+     *
+     * **The stack does not handle back itself.** The animation that draws the transition takes its
+     * own `onBack` and calls it when the gesture finishes, so a stack also registered for back would
+     * pop twice on one gesture. This is the single entry point, and [backHandler] — inherited from
+     * [BackHandlerOwner] — is what the animation watches to drive the gesture.
+     */
+    fun onBack()
 }
 
 /** A screen inside the unlocked subtree. Viewers join this list once the seekable read path exists. */
@@ -193,7 +204,11 @@ class DefaultUnlockedComponent(
             // ids. There is nothing to restore anyway: the session never survives process death, so a
             // relaunch always starts Locked (hard rules #1/#5).
             serializer = null,
-            handleBackButton = true,
+            // **False, and deliberately.** The navigation animation takes its own `onBack` and calls
+            // it when a back gesture finishes; a stack registered for back as well would pop twice
+            // on one gesture. `onBack` below is the one place a pop happens, and a test drives the
+            // host's dispatcher to prove nothing here answers a press on its own.
+            handleBackButton = false,
             childFactory = ::createChild,
         )
 
@@ -235,6 +250,10 @@ class DefaultUnlockedComponent(
      * do, and it must not be a crash.
      */
     override fun openAlbums() = navigation.pushNew(Config.Albums)
+
+    // The one place the stack pops. `pop()` with nothing beneath is a no-op, so leaving the first
+    // screen is the host's business rather than something to guard against here.
+    override fun onBack() = navigation.pop()
 
     private fun createChild(config: Config, context: ComponentContext): UnlockedChild =
         when (config) {

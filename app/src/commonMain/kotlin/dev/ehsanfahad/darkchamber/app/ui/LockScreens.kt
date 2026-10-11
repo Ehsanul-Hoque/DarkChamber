@@ -29,6 +29,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.animation.core.tween
+import com.arkivanov.decompose.ExperimentalDecomposeApi
+import com.arkivanov.decompose.extensions.compose.stack.Children
+import com.arkivanov.decompose.extensions.compose.stack.animation.StackAnimation
+import com.arkivanov.decompose.extensions.compose.stack.animation.fade
+import com.arkivanov.decompose.extensions.compose.stack.animation.predictiveback.predictiveBackAnimation
+import com.arkivanov.decompose.extensions.compose.stack.animation.slide
+import com.arkivanov.decompose.extensions.compose.stack.animation.stackAnimation
 import com.arkivanov.decompose.extensions.compose.subscribeAsState
 import dev.ehsanfahad.darkchamber.app.root.LockError
 import dev.ehsanfahad.darkchamber.app.root.LockState
@@ -41,6 +49,7 @@ import dev.ehsanfahad.darkchamber.app.root.UnlockedComponent
 import dev.ehsanfahad.darkchamber.core.designsystem.Aperture
 import dev.ehsanfahad.darkchamber.core.designsystem.ApertureState
 import dev.ehsanfahad.darkchamber.core.designsystem.DarkChamberTheme
+import dev.ehsanfahad.darkchamber.core.designsystem.prefersReducedMotion
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryScope
 import dev.ehsanfahad.darkchamber.feature.vault.presentation.VaultAlbumsContent
 import dev.ehsanfahad.darkchamber.feature.vault.presentation.VaultGalleryContent
@@ -217,6 +226,7 @@ private fun UnlockStep(
     ) { Text("Unlock") }
 }
 
+@OptIn(ExperimentalDecomposeApi::class)
 @Composable
 private fun UnlockedContent(component: UnlockedComponent) {
     // The window insets are applied once, here, for the whole unlocked subtree — the bar and every
@@ -246,23 +256,65 @@ private fun UnlockedContent(component: UnlockedComponent) {
         )
 
         Box(modifier = Modifier.weight(1f)) {
-            when (child) {
-                is UnlockedChild.Gallery ->
-                    // The session owns the loader (it decrypts through the session's vault and
-                    // holds previews in memory), so the screen is handed one rather than making
-                    // its own. Absent only in a graph with no platform context, which production
-                    // never is — both platform modules bind one and a test says so.
-                    component.imageLoader?.let { loader ->
-                        VaultGalleryContent(child.component, loader)
-                    }
-                // The same loader, for the same reason: an album's cover is one of its items, so it
-                // is drawn through the session's encrypted-preview path rather than a second one.
-                is UnlockedChild.Albums ->
-                    component.imageLoader?.let { loader ->
-                        VaultAlbumsContent(child.component, loader)
-                    }
+            // `Children`, not a `when` over the active child: read directly, a screen is simply
+            // replaced in one frame, which on a stack of siblings leaves nothing to say which way
+            // the user went.
+            Children(
+                stack = stack,
+                animation = predictiveBackAnimation(
+                    // The host's handler, which the gate wired up — the same one the gallery's
+                    // selection callback uses. This is what lets the user's own gesture drag the
+                    // outgoing screen on Android 13 and later rather than only animating after the
+                    // press.
+                    backHandler = component.backHandler,
+                    // **The only pop.** The stack is built with `handleBackButton = false` for this
+                    // reason: two registered handlers would pop twice on one gesture.
+                    onBack = component::onBack,
+                    fallbackAnimation = navigationAnimation(),
+                ),
+            ) { created ->
+                when (val instance = created.instance) {
+                    is UnlockedChild.Gallery ->
+                        // The session owns the loader (it decrypts through the session's vault and
+                        // holds previews in memory), so the screen is handed one rather than making
+                        // its own. Absent only in a graph with no platform context, which production
+                        // never is — both platform modules bind one and a test says so.
+                        component.imageLoader?.let { loader ->
+                            VaultGalleryContent(instance.component, loader)
+                        }
+                    // The same loader, for the same reason: an album's cover is one of its items, so
+                    // it is drawn through the session's encrypted-preview path rather than a second
+                    // one.
+                    is UnlockedChild.Albums ->
+                        component.imageLoader?.let { loader ->
+                            VaultAlbumsContent(instance.component, loader)
+                        }
+                }
             }
         }
+    }
+}
+
+/**
+ * How one unlocked screen gives way to another: a slide, or a cross-fade when the system asks for
+ * reduced motion.
+ *
+ * **Reduced motion drops to a fade rather than to nothing** — `docs/DESIGN.md` §8 asks for motion to
+ * be replaced by cross-fades, not removed, because an instant swap is what leaves a user unsure
+ * whether anything happened. The same `prefersReducedMotion()` the grid's tile arrival already uses,
+ * so the two cannot disagree.
+ *
+ * The duration is the navigation motion token. A number here would be a fourth opinion about how
+ * fast this app moves.
+ */
+@Composable
+private fun <C : Any, T : Any> navigationAnimation(): StackAnimation<C, T> {
+    val spec = tween<Float>(durationMillis = DarkChamberTheme.motion.motionBase)
+
+    return if (prefersReducedMotion()) {
+        stackAnimation(fade(animationSpec = spec))
+    } else {
+        stackAnimation(slide(animationSpec = spec))
     }
 }
 

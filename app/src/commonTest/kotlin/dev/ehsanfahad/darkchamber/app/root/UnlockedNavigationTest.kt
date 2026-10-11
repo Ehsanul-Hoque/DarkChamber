@@ -123,7 +123,12 @@ class UnlockedNavigationTest {
         assertIs<UnlockedChild.Albums>(component.stack.value.active.instance)
         assertEquals(2, component.stack.value.items.size, "pushed on top of the grid, not in place of it")
 
-        assertTrue(backDispatcher.back(), "the stack handles back")
+        // Through the component's own entry point. The stack no longer handles back itself — the
+        // navigation animation does, and calls this when the gesture finishes — so a press on the
+        // host's dispatcher is answered in a composition, which a host test has none of. That the
+        // press *reaches* this subtree is asserted in `RootComponentTest`, where the wiring lives.
+        component.onBack()
+
         assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance, "back returns to the files")
         assertEquals(1, component.stack.value.items.size)
     }
@@ -304,6 +309,48 @@ class UnlockedNavigationTest {
 
         assertEquals(2, component.stack.value.items.size)
         assertIs<UnlockedChild.Albums>(component.stack.value.active.instance)
+    }
+
+    /**
+     * **Exactly one thing pops.**
+     *
+     * The animation that draws the transition takes its own `onBack` and calls it when the gesture
+     * finishes, so the stack must not also handle back itself — both registered means one gesture
+     * pops two screens. This is the half of that invariant a host test can reach: the pop goes
+     * through the component's own entry point.
+     */
+    @Test
+    fun one_back_pops_exactly_one_screen() {
+        val component = component(openVault())
+        component.openAlbums()
+        assertEquals(2, component.stack.value.items.size)
+
+        component.onBack()
+
+        assertEquals(1, component.stack.value.items.size, "the grid, and nothing popped past it")
+        assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance)
+    }
+
+    /**
+     * And the other half: **the stack does not register a back callback of its own.**
+     *
+     * A press reaching the host handler finds nothing here to answer it, because answering is the
+     * animation's job and the animation only exists in a composition. If the stack were still
+     * built with `handleBackButton = true` this would pop — and in production that pop would land
+     * *as well as* the animation's, which is the double-pop this is written to catch.
+     *
+     * The previous cycle's whole back defect was a handler that silently went somewhere else, so
+     * this drives the dispatcher the component was handed rather than trusting the flag.
+     */
+    @Test
+    fun the_stack_leaves_back_to_the_animation() {
+        val component = component(openVault())
+        component.openAlbums()
+
+        val handled = backDispatcher.back()
+
+        assertTrue(!handled, "nothing in the component tree claims a plain back press")
+        assertEquals(2, component.stack.value.items.size, "so nothing popped")
     }
 
     /**

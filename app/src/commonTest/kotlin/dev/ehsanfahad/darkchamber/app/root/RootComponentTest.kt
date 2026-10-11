@@ -129,6 +129,13 @@ class RootComponentTest {
      * Asserted here rather than on the subtree, which is the mistake this test exists to correct: a
      * test that constructs the unlocked component itself passes a working dispatcher in by hand and so
      * can only ever prove that Decompose's stack handles back — never that this class connects it.
+     *
+     * **Asserted as the handler's identity, not by pressing back.** It used to press: the stack
+     * handled back itself, so a press that popped a screen proved the wiring. The stack has since
+     * handed back to the navigation animation — two registered handlers pop twice on one gesture —
+     * and the animation exists only inside a composition, which a host test has none of. So pressing
+     * now proves nothing either way, while *this* is the property the defect was actually about: the
+     * subtree watches the host's handler rather than a private one nothing will ever call.
      */
     @Test
     fun the_hosts_back_button_reaches_the_unlocked_subtree() {
@@ -138,11 +145,10 @@ class RootComponentTest {
         unlocked.openAlbums()
         assertIs<UnlockedChild.Albums>(unlocked.stack.value.active.instance, "something to come back from")
 
-        assertTrue(backDispatcher.back(), "the gate's child must be wired to the host's back handler")
-
-        assertIs<UnlockedChild.Gallery>(
-            unlocked.stack.value.active.instance,
-            "back belongs to the screen, not to the task switcher",
+        assertSame(
+            backDispatcher,
+            unlocked.backHandler,
+            "the gate's child must watch the host's back handler, not a private one",
         )
     }
 
