@@ -137,6 +137,10 @@ Fast and functional; motion explains state, never decorates.
 
 Standard decelerate easing; **lock is never animated slower than `motionBase`** (locking must feel instant, and the animation may never delay the actual session teardown — the crypto locks first, the iris catches up). All motion respects the OS reduced-motion setting: replace with cross-fades.
 
+**Navigation between the unlocked screens** slides at `motionBase`, wrapped in the platform's predictive back so the user's own gesture drags the outgoing screen rather than only animating once the press lands. Reduced motion replaces the slide with a cross-fade, as above. One thing to keep whole if this is ever rewritten: the animation owns the back pop, so the navigation stack must not also handle back — two handlers pop two screens on one gesture.
+
+**Entering the unlocked vault cross-fades; leaving it is not animated at all.** A fade in is right because the subtree is being *built*, not pushed in from the side — a page turn is the wrong metaphor for a shutter. The absence on the way out is the load-bearing half, and it is a security property rather than a stylistic one: a fade *out* keeps the unlocked screens composed for its duration, and the session's teardown zeroizes the keys and purges the decrypted scratch directory **before** the gate reports itself locked. An exiting animation would therefore be drawing decrypted content the session no longer has — a few hundred milliseconds of plaintext on screen, bought for decoration. Under reduced motion the entry goes instant: a cross-fade is already what motion degrades *to*, so the only way left to honour the setting is to skip it.
+
 ## 9. Iconography & imagery
 
 - Stroke icons, 2 dp, rounded caps, 24 dp grid (Lucide or Material Symbols rounded — pick one set at implementation and never mix).
