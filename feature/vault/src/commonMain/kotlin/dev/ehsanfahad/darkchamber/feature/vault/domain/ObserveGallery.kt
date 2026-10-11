@@ -23,7 +23,17 @@ import kotlinx.coroutines.flow.flowOf
 internal data class GalleryControls(
     val order: GalleryOrder = GalleryOrder.Newest,
     val query: String = "",
-)
+) {
+    /**
+     * A length, never the text (hard rule 4).
+     *
+     * [query] is a fragment of a vault item's name that the user retyped — decrypted content exactly
+     * as the name is — and the generated data-class `toString` would print it into any line that
+     * rendered this value. The same redaction `GallerySearch.Open` carries, on the other half of the
+     * pair that holds the typed text.
+     */
+    override fun toString(): String = "GalleryControls(order=$order, query=${query.length} chars)"
+}
 
 /**
  * The live gallery listing: the catalog's rows, as tiles, in the order asked for and narrowed to what

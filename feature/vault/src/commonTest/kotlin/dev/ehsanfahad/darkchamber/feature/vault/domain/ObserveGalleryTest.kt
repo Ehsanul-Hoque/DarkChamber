@@ -180,6 +180,19 @@ class ObserveGalleryTest {
         }
     }
 
+    /**
+     * The controls carry the typed text, so they are the other half of the redaction `GallerySearch`
+     * holds — a query is a fragment of a decrypted name, and a data class prints its fields.
+     */
+    @Test
+    fun the_controls_never_print_what_was_typed() {
+        val printed = GalleryControls(order = GalleryOrder.NameAsc, query = "alps").toString()
+
+        assertTrue("alps" !in printed, "a query must never be printed, was $printed")
+        assertTrue("4 chars" in printed, "but its length is safe to say, was $printed")
+        assertTrue("NameAsc" in printed, "and the order is not content, was $printed")
+    }
+
     @Test
     fun a_catalog_change_still_re_runs_the_pipeline() = runTest {
         val vault = FakeVaultItems()
