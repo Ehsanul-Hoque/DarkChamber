@@ -77,6 +77,10 @@ Tick each line. A failure in A, F or G is release-blocking.
 - [ ] Damage one item's metadata in a throwaway vault, then search. That item is excluded and a line
       under the field says how many could not be read. It does not say why.
 - [ ] With the search open and the field empty, nothing is reported as left out.
+- [ ] With the field open and **empty**, empty the listing underneath it — in an album, select
+      everything and remove it. The message explains the empty album; it must not say that names
+      failed to match, because nothing was typed. (A listing can empty under an open field without a
+      query ever running, and that sentence used to blame the user's typing for it.)
 - [ ] **No query in the logs.** With logging at its most verbose, type several searches, then search
       the device log for what you typed. Nothing — and no file name either.
 
@@ -123,6 +127,10 @@ Tick each line. A failure in A, F or G is release-blocking.
 - [ ] A long album name truncates inside the badge rather than spanning the tile.
 - [ ] Inside an album, no tile carries the badge; the same is true in the unfiled view.
 - [ ] Rename an album: the badges on the whole-vault grid follow.
+- [ ] The mark beside the name reads as a picture stack rather than a smudge. It is a 24 dp drawing
+      shown at half that, so its lines land near a single pixel — the one claim in this file that
+      needs looking at rather than measuring (`docs/DESIGN.md` §9 sets icon weight at 2 dp on the
+      24 dp grid). If it is too faint, the mark wants its own small-size drawing, not a bigger badge.
 
 ### F. Back is one step (property 5)
 
@@ -172,6 +180,20 @@ Tick each line. A failure in A, F or G is release-blocking.
       cancelled, and that it may use data.
 - [ ] Watch the other stages (copying, encrypting, finishing). None of them claims a download is
       running.
+
+### K. At the size a vault actually reaches
+
+Use the **largest** vault available, not a comfortable one — `docs/ARCHITECTURE.md` §5 puts the design
+target at thousands of items, and a few hundred is the one scale at which this cannot be seen. The
+listing is sorted and narrowed where it is collected, not in the background, so this cost lands on the
+frame.
+
+- [ ] Type a query one character at a time. Each keystroke appears without the field stuttering, and
+      the grid keeps up with it. Typing latency is the measurement, not scrolling.
+- [ ] Change the order with the grid scrolled down. The new order arrives without a visible pause.
+- [ ] Say what the vault held. A pass at a few hundred items proves nothing about a few thousand, so
+      record the count rather than the verdict alone — and if it struggles, report the count and the
+      symptom rather than tuning against a guess.
 
 ## Sign-off
 
