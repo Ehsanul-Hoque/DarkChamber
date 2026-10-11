@@ -22,7 +22,12 @@ interface VaultGalleryComponent {
      */
     fun chooseOrder(order: GalleryOrder)
 
-    /** Open the search field, empty. Opening is not filtering — the grid is untouched until typing. */
+    /**
+     * Open the search field, empty. Opening is not filtering — the grid is untouched until typing.
+     *
+     * **Ignored while it is already open**, where this can only be a second tap on the field itself:
+     * re-opening would silently discard what has been typed. [closeSearch] is the way to clear it.
+     */
     fun openSearch()
 
     /** What has been typed into it. Ignored while the search is closed. */

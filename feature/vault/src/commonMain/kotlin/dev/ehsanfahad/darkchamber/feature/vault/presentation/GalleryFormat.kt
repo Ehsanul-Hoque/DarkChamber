@@ -449,9 +449,10 @@ internal object GalleryFormat {
      * Says a stop *may take a moment* rather than naming what it is waiting for, because that
      * depends on where the stop lands. Waiting for a provider to hand the file over is abandoned at
      * once; part-way through the encrypt the stop takes effect on the next read of the payload,
-     * which is kilobytes away but still not instant (`docs/THREAT_MODEL.md` notes a stop is
-     * cooperative). Promising an instant stop would be the opposite error (hard rule 6), so it
-     * promises neither. The second half is the part that stops the wait feeling like a loss.
+     * which is kilobytes away but still not instant (`docs/ARCHITECTURE.md` — the stop predicate is
+     * the same check a lock uses, and it lands on the next read of the payload). Promising an
+     * instant stop would be the opposite error (hard rule 6), so it promises neither. The second
+     * half is the part that stops the wait feeling like a loss.
      *
      * **And during a fetch it says the file is still coming**, for the same reason as above: the
      * batch has heard the user, and the transfer has not.
