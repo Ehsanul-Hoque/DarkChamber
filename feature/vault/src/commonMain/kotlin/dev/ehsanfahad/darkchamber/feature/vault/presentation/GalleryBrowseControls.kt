@@ -33,6 +33,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryOrder
 import dev.ehsanfahad.darkchamber.feature.vault.api.GallerySearch
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryState
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportState
+import dev.ehsanfahad.darkchamber.feature.vault.api.OriginalDelete
 
 /**
  * Whether the browse controls belong on screen at all.
@@ -106,6 +107,18 @@ internal fun GalleryState.importOffer(): ImportOffer? {
         else -> null
     }
 }
+
+/**
+ * Whether the summary still has an offer to delete the imported originals.
+ *
+ * Two conditions, and both are about honesty rather than tidiness. **Nothing deletable is the
+ * ordinary case** — every photo-library item, every iOS item, most cloud documents — so the control
+ * is *absent* rather than present and disabled, which would be a control owing an explanation it
+ * cannot give. And once the disclosure has been opened it owns the decision: an offer still standing
+ * beside it would be a second way into something that has to be answered exactly once.
+ */
+internal fun ImportState.Finished.offersOriginalDelete(): Boolean =
+    deletableOriginals > 0 && originalDelete == OriginalDelete.NotAsked
 
 /**
  * What to say under the field about the items a search could not include, or `null` to say nothing.

@@ -26,9 +26,12 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -1094,11 +1097,7 @@ private fun ImportSummaryCard(
             .fillMaxWidth()
             .background(color = colors.sealedContainer, shape = DarkChamberTheme.shapes.large),
     ) {
-        ImportSummaryLine(
-            batch = batch,
-            onDismiss = onDismiss,
-            onDeleteOriginals = onDeleteOriginals,
-        )
+        ImportSummaryLine(batch = batch, onDismiss = onDismiss)
 
         // A line of its own rather than a third control in the row above. That row already carries
         // the dismissal and, sometimes, the delete offer — and a bottom bar wrapping at five
@@ -1125,16 +1124,24 @@ private fun ImportSummaryCard(
                 }
             }
         }
+
+        // Last, and furthest from both the dismissal and the position the picker had — see
+        // [OriginalDeleteRow]. Absent unless there is something to offer and nobody has answered yet
+        // ([offersOriginalDelete]), so the common case is the message and Done alone.
+        if (batch.offersOriginalDelete()) {
+            OriginalDeleteRow(count = batch.deletableOriginals, onDeleteOriginals = onDeleteOriginals)
+        }
     }
 }
 
-/** The summary itself: what came of the batch, and the one or two things to do about it. */
+/**
+ * The summary itself: what came of the batch, and the one safe thing to do about it.
+ *
+ * Only the dismissal lives here. The destructive action is a row of its own below — see
+ * [OriginalDeleteRow] for why it is not beside this one.
+ */
 @Composable
-private fun ImportSummaryLine(
-    batch: ImportState.Finished,
-    onDismiss: () -> Unit,
-    onDeleteOriginals: () -> Unit,
-) {
+private fun ImportSummaryLine(batch: ImportState.Finished, onDismiss: () -> Unit) {
     val colors = DarkChamberTheme.colors
     val spacing = DarkChamberTheme.spacing
 
@@ -1170,29 +1177,49 @@ private fun ImportSummaryLine(
             }
         }
 
-        // Beside Done rather than under the summary text, where it read as a stray line of the
-        // message. Offered only when there is something to offer, and gone once it has been
-        // answered: nothing deletable is the ordinary case — every photo-library item, every iOS
-        // item, most cloud documents — so it has to be *absent*, not a disabled control owing an
-        // explanation. The common case is therefore the message and Done alone, the shape this card
-        // has always had.
-        if (batch.deletableOriginals > 0 && batch.originalDelete == OriginalDelete.NotAsked) {
-            TextButton(onClick = onDeleteOriginals) {
-                // Muted, and left of the dismissal: this only opens the disclosure, so it is not
-                // the destructive step and must not dress like one — but it still must not be
-                // mistaken for Done, which keeps the accent.
-                Text(
-                    text = GalleryFormat.deleteOriginals(batch.deletableOriginals),
-                    style = DarkChamberTheme.typography.label,
-                    color = colors.textSecondary,
-                )
-            }
-            // A gap, so the two are not one continuous strip of tappable text.
-            Spacer(modifier = Modifier.width(spacing.spaceSm))
-        }
-
+        // **The safe action, in the position the picker occupied.** After a batch the card replaces
+        // the import affordances, so whatever sits here is what a finger returning from "Add photos"
+        // finds — and that has to be the one tap that costs nothing.
         TextButton(onClick = onDismiss) {
             Text("Done", style = DarkChamberTheme.typography.label, color = colors.accent)
+        }
+    }
+}
+
+/**
+ * Deleting the originals, on a row of its own at the bottom of the card.
+ *
+ * **It used to sit beside Done**, which put it within a few dp of where "Add photos" had been moments
+ * earlier — so importing repeatedly trained a finger for a spot that then opened the delete
+ * disclosure. Nothing is destroyed by that tap (the disclosure is non-dismissable and has to be
+ * answered) but a destructive control inheriting a safe one's position is a trap that only needs one
+ * distracted moment.
+ *
+ * Its own row, at the far end of the card from the dismissal, and **outlined rather than plain text**:
+ * the earlier shape of this — muted text under the message — is exactly how it came to read as a
+ * stray line of the summary, which is the bug that moved it up beside Done in the first place. A
+ * bordered control is unmistakably a control, while staying quieter than the accent on Done.
+ */
+@Composable
+private fun OriginalDeleteRow(count: Int, onDeleteOriginals: () -> Unit) {
+    val colors = DarkChamberTheme.colors
+    val spacing = DarkChamberTheme.spacing
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = spacing.spaceMd, end = spacing.spaceMd, bottom = spacing.spaceSm),
+    ) {
+        OutlinedButton(
+            onClick = onDeleteOriginals,
+            shape = DarkChamberTheme.shapes.medium,
+            border = BorderStroke(width = TILE_BORDER, color = colors.outline),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.textSecondary),
+        ) {
+            Text(
+                text = GalleryFormat.deleteOriginals(count),
+                style = DarkChamberTheme.typography.label,
+            )
         }
     }
 }

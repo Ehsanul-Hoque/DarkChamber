@@ -9,6 +9,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryOrder
 import dev.ehsanfahad.darkchamber.feature.vault.api.GallerySearch
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryState
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportState
+import dev.ehsanfahad.darkchamber.feature.vault.api.OriginalDelete
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -178,6 +179,39 @@ class GalleryBrowseControlsTest {
         val state = finished(imported = 0).copy(search = GallerySearch.Open(query = "al"))
 
         assertNull(state.importOffer())
+    }
+
+    /**
+     * When the summary carries its destructive row at all.
+     *
+     * The row is the one control on this card that can lose something outside the vault, and it has
+     * moved: it used to sit where the picker had been a moment earlier, so repeated importing built
+     * muscle memory for a spot that then opened the delete disclosure. A condition, not a layout
+     * detail — so it is tested rather than read.
+     */
+    @Test
+    fun a_batch_with_deletable_originals_offers_to_delete_them() {
+        val batch = ImportState.Finished(imported = 2, failed = emptyList(), deletableOriginals = 2)
+
+        assertTrue(batch.offersOriginalDelete())
+    }
+
+    @Test
+    fun a_batch_with_nothing_deletable_offers_nothing() {
+        // The ordinary case — every photo-library item, every iOS item, most cloud documents — so
+        // the row is *absent* rather than a disabled control owing an explanation.
+        assertFalse(ImportState.Finished(imported = 2, failed = emptyList()).offersOriginalDelete())
+    }
+
+    @Test
+    fun an_offer_already_answered_is_not_made_again() {
+        // Once asked, the disclosure owns the decision: an offer still standing beside it would be a
+        // second way into something that has to be answered exactly once.
+        val batch = ImportState.Finished(imported = 1, failed = emptyList(), deletableOriginals = 1)
+
+        for (answered in listOf(OriginalDelete.Confirming, OriginalDelete.Deleting, OriginalDelete.Done(1, 1))) {
+            assertFalse(batch.copy(originalDelete = answered).offersOriginalDelete(), "$answered")
+        }
     }
 
     @Test
