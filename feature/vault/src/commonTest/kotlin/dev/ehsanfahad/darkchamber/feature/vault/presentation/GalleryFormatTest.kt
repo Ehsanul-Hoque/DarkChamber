@@ -596,7 +596,9 @@ class GalleryFormatTest {
      */
     @Test
     fun no_other_stage_claims_a_download_is_running() {
-        for (stage in listOf(ImportStage.COPYING, ImportStage.ENCRYPTING, ImportStage.FINISHING)) {
+        // Derived from the enum rather than listed: a stage added later has to answer this question
+        // instead of being quietly exempt from it.
+        for (stage in ImportStage.entries.filter { it != ImportStage.FETCHING }) {
             assertFalse(
                 "download" in GalleryFormat.keepOpenNotice(stage).lowercase(),
                 "$stage has nothing downloading: ${GalleryFormat.keepOpenNotice(stage)}",
@@ -770,11 +772,6 @@ class GalleryFormatTest {
     }
 
     /**
-     * Spoken, the order control has to say what it is. On screen it reads "Newest ▾", which is a
-     * control, a current value and an invitation all at once; announced as "Newest" it is none of
-     * them.
-     */
-    /**
      * The tile's album badge draws a mark and a name. Seen together they say "this is in an album
      * called Trip"; announced, the name alone is a stray word between a file name and a size — so
      * the mark is what carries the relationship.
@@ -787,6 +784,11 @@ class GalleryFormatTest {
         assertTrue("in" in spoken, "and that the item is in one: $spoken")
     }
 
+    /**
+     * Spoken, the order control has to say what it is. On screen it reads "Newest ▾", which is a
+     * control, a current value and an invitation all at once; announced as "Newest" it is none of
+     * them.
+     */
     @Test
     fun the_order_control_is_named_as_well_as_shown() {
         for (order in GalleryOrder.entries) {
@@ -797,10 +799,6 @@ class GalleryFormatTest {
         }
     }
 
-    /**
-     * Leaving the search **discards the query**, and the label has to carry that. "Done" would read
-     * as keeping the filter, which is the opposite of what happens.
-     */
     /**
      * The offer describes the **screen**, which is knowable, and never how much is hidden, which is
      * not: a finished batch carries counts and no ids, so nobody here can say whether a filter is
@@ -837,6 +835,10 @@ class GalleryFormatTest {
         assertEquals(GalleryFormat.clearSearch(), GalleryFormat.importOfferAction(ImportOffer.ClearSearch))
     }
 
+    /**
+     * Leaving the search **discards the query**, and the label has to carry that. "Done" would read
+     * as keeping the filter, which is the opposite of what happens.
+     */
     @Test
     fun leaving_the_search_says_the_query_goes() {
         val copy = GalleryFormat.clearSearch()
