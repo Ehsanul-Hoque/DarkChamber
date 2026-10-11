@@ -19,13 +19,16 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -66,12 +69,58 @@ fun RootContent(component: RootComponent, modifier: Modifier = Modifier) {
     DarkChamberTheme {
         Surface(modifier = modifier.fillMaxSize(), color = DarkChamberTheme.colors.background) {
             val child by component.child.subscribeAsState()
+            // **The gate is asymmetric on purpose, and the `when` is what makes the lock half
+            // true.** Unlocking fades the vault in; locking replaces this branch in the same frame,
+            // exactly as it always has. See [UnlockedFadeIn] — a reader coming here to "fix" the
+            // missing lock animation should read that first.
             when (val c = child) {
                 is RootChild.Locked -> LockedContent(c.component)
-                is RootChild.Unlocked -> UnlockedContent(c.component)
+                is RootChild.Unlocked -> UnlockedFadeIn { UnlockedContent(c.component) }
             }
         }
     }
+}
+
+/**
+ * Fades the unlocked vault in — **and has no counterpart for locking, which is the point.**
+ *
+ * A fade rather than a slide: the unlocked subtree is being *built*, not pushed in from the side, and
+ * a page turn is the wrong metaphor for a shutter opening (`docs/DESIGN.md` §8).
+ *
+ * **Locking is not animated, for a reason stronger than taste.** A fade *out* would keep the unlocked
+ * subtree composed for the length of it — so decrypted previews would still be on screen after the
+ * keys are gone. The teardown zeroizes the master key and purges the scratch directory *before* the
+ * gate publishes `Locked`, by design, so a fading lock screen would be rendering what the session no
+ * longer has: not a leak, but a few hundred milliseconds of plaintext bought for decoration. The
+ * `when` above therefore drops the whole subtree in one frame, which is also what "locking must feel
+ * instant" asks for.
+ *
+ * Strictly cosmetic in the other direction too: this wraps an already-constructed subtree in an
+ * alpha, so it cannot delay, gate or reorder anything the session does.
+ *
+ * Reduced motion goes **instant** here rather than to a gentler animation. Elsewhere a cross-fade is
+ * what motion degrades *to* (§8); a fade is already that floor, so the only thing left to honour the
+ * setting with is to skip it.
+ */
+@Composable
+private fun UnlockedFadeIn(content: @Composable () -> Unit) {
+    if (prefersReducedMotion()) {
+        content()
+        return
+    }
+
+    // False for exactly one composition, so the animation has somewhere to start. An
+    // `animateFloatAsState` that begins at its target renders fully opaque and never animates — the
+    // same trap the aperture has, where a freshly composed one snaps instead of opening.
+    var shown by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { shown = true }
+    val alpha by animateFloatAsState(
+        targetValue = if (shown) 1f else 0f,
+        animationSpec = tween(durationMillis = DarkChamberTheme.motion.motionBase),
+        label = "unlock-fade",
+    )
+
+    Box(modifier = Modifier.graphicsLayer { this.alpha = alpha }) { content() }
 }
 
 /**
