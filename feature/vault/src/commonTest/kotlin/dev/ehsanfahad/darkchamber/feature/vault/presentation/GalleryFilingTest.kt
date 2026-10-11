@@ -8,14 +8,13 @@ import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
 import dev.ehsanfahad.darkchamber.core.vault.AlbumSummary
 import dev.ehsanfahad.darkchamber.feature.vault.FakeVaultItems
+import dev.ehsanfahad.darkchamber.feature.vault.IdleVaultImports
 import dev.ehsanfahad.darkchamber.feature.vault.ManualDispatcher
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumDraftProblem
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
 import dev.ehsanfahad.darkchamber.feature.vault.api.Filing
 import dev.ehsanfahad.darkchamber.feature.vault.api.FilingDestination
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryError
-import dev.ehsanfahad.darkchamber.feature.vault.api.ImportState
-import dev.ehsanfahad.darkchamber.feature.vault.api.VaultImports
 import dev.ehsanfahad.darkchamber.feature.vault.domain.CreateAlbum
 import dev.ehsanfahad.darkchamber.feature.vault.domain.DeleteAlbum
 import dev.ehsanfahad.darkchamber.feature.vault.domain.FileItems
@@ -26,8 +25,6 @@ import dev.ehsanfahad.darkchamber.feature.vault.domain.RenameAlbum
 import dev.ehsanfahad.darkchamber.feature.vault.readableMeta
 import dev.ehsanfahad.darkchamber.feature.vault.summary
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -64,7 +61,7 @@ class GalleryFilingTest {
         DefaultVaultGalleryComponent(
             componentContext = DefaultComponentContext(lifecycle),
             observeGallery = ObserveGallery(vault),
-            imports = QuietImports(),
+            imports = IdleVaultImports(),
             observeAlbum = ObserveAlbum(vault),
             renameAlbum = RenameAlbum(vault, ioContext = ioContext),
             deleteAlbum = DeleteAlbum(vault, ioContext = ioContext),
@@ -467,23 +464,4 @@ class GalleryFilingTest {
         assertTrue(vault.assignments.isEmpty())
         assertEquals(2, component.state.value.selection.count, "the selection is still there")
     }
-}
-
-/** A batch that stays idle: these tests are about filing, not importing. */
-private class QuietImports : VaultImports {
-    override val state: StateFlow<ImportState> = MutableStateFlow(ImportState.Idle)
-
-    override fun importPhotos(albumId: ByteArray?) = Unit
-
-    override fun importFiles(albumId: ByteArray?) = Unit
-
-    override fun cancel() = Unit
-
-    override fun acknowledge() = Unit
-
-    override fun requestOriginalDelete() = Unit
-
-    override fun confirmOriginalDelete() = Unit
-
-    override fun keepOriginals() = Unit
 }

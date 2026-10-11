@@ -8,13 +8,12 @@ import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
 import dev.ehsanfahad.darkchamber.core.vault.AlbumSummary
 import dev.ehsanfahad.darkchamber.feature.vault.FakeVaultItems
+import dev.ehsanfahad.darkchamber.feature.vault.IdleVaultImports
 import dev.ehsanfahad.darkchamber.feature.vault.ManualDispatcher
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumDelete
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumDraftProblem
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumState
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
-import dev.ehsanfahad.darkchamber.feature.vault.api.ImportState
-import dev.ehsanfahad.darkchamber.feature.vault.api.VaultImports
 import dev.ehsanfahad.darkchamber.feature.vault.domain.CreateAlbum
 import dev.ehsanfahad.darkchamber.feature.vault.domain.DeleteAlbum
 import dev.ehsanfahad.darkchamber.feature.vault.domain.FileItems
@@ -25,8 +24,6 @@ import dev.ehsanfahad.darkchamber.feature.vault.domain.RenameAlbum
 import dev.ehsanfahad.darkchamber.feature.vault.readableMeta
 import dev.ehsanfahad.darkchamber.feature.vault.summary
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -65,7 +62,7 @@ class GalleryAlbumActionsTest {
         DefaultVaultGalleryComponent(
             componentContext = DefaultComponentContext(lifecycle),
             observeGallery = ObserveGallery(vault),
-            imports = IdleImports(),
+            imports = IdleVaultImports(),
             observeAlbum = ObserveAlbum(vault),
             renameAlbum = RenameAlbum(vault, ioContext = ioContext),
             deleteAlbum = DeleteAlbum(vault, ioContext = ioContext),
@@ -500,23 +497,4 @@ class GalleryAlbumActionsTest {
         assertTrue(vault.deletedAlbums.isEmpty())
         assertEquals(0, left)
     }
-}
-
-/** A batch that never does anything: these tests are about the album, not about importing. */
-private class IdleImports : VaultImports {
-    override val state: StateFlow<ImportState> = MutableStateFlow(ImportState.Idle)
-
-    override fun importPhotos(albumId: ByteArray?) = Unit
-
-    override fun importFiles(albumId: ByteArray?) = Unit
-
-    override fun cancel() = Unit
-
-    override fun acknowledge() = Unit
-
-    override fun requestOriginalDelete() = Unit
-
-    override fun confirmOriginalDelete() = Unit
-
-    override fun keepOriginals() = Unit
 }
