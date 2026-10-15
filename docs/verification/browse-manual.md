@@ -114,8 +114,11 @@ Tick each line. A failure in A, F or G is release-blocking.
 - [ ] Inside an album, the crumb is that album's name. Rename the album from that screen: the crumb
       follows, with no manual refresh.
 - [ ] An album whose name will not open shows the unverifiable wording, not a blank.
-- [ ] Give an album a very long name. The crumb truncates and the bar's two actions stay on screen —
-      this is the tightest row in the app. Check at 1.5× too.
+- [ ] Give an album a very long name. The crumb truncates and the bar's actions stay on screen — this
+      is the tightest row in the app. Check at 1.5× too. Note that an album screen's bar carries only
+      the lock action; the albums entry belongs to the whole-vault screen, so that is where the
+      two-action case is. **Use two names of very different lengths**: identical crumb bounds for both
+      is what proves truncation, where one name alone only shows that it happened to fit.
 - [ ] Delete the album you are looking at. The crumb does not keep naming it.
 
 ### E. A filed item's album
@@ -194,6 +197,12 @@ frame.
 - [ ] Say what the vault held. A pass at a few hundred items proves nothing about a few thousand, so
       record the count rather than the verdict alone — and if it struggles, report the count and the
       symptom rather than tuning against a guess.
+
+Judging this by eye is unreliable, and it does not have to be: reset the app's frame statistics, type
+a query one character at a time, then read them back. The share of janky frames, the missed vsyncs and
+the 99th-percentile frame time are the numbers to record, at two vault sizes so the slope is visible
+rather than a single verdict. Scroll the same listing as a control — if scrolling is clean and typing
+is not, the cost is in the per-keystroke work rather than in drawing.
 
 ## Sign-off
 
