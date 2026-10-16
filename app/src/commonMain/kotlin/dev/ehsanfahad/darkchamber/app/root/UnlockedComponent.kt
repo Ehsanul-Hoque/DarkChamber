@@ -6,7 +6,10 @@ import com.arkivanov.decompose.router.stack.StackNavigation
 import com.arkivanov.decompose.router.stack.childStack
 import com.arkivanov.decompose.router.stack.pop
 import com.arkivanov.decompose.router.stack.pushNew
+import com.arkivanov.decompose.value.MutableValue
 import com.arkivanov.decompose.value.Value
+import com.arkivanov.decompose.value.subscribe
+import com.arkivanov.essenty.backhandler.BackCallback
 import com.arkivanov.essenty.backhandler.BackHandlerOwner
 import com.arkivanov.essenty.lifecycle.doOnDestroy
 import coil3.ImageLoader
@@ -34,11 +37,17 @@ import org.koin.core.qualifier.named
 import org.koin.core.scope.Scope
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.coroutines.CoroutineContext
 import kotlin.random.Random
 import kotlin.random.nextULong
+import kotlin.time.Duration
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 
 /**
  * The unlocked child — **constructed with a live vault**, which is the structural gate invariant: a
@@ -68,6 +77,16 @@ interface UnlockedComponent : BackHandlerOwner {
 
     /** The feature screens living inside the unlocked subtree. */
     val stack: Value<ChildStack<*, UnlockedChild>>
+
+    /**
+     * Whether the offer to leave the app is standing — i.e. whether a back press at the vault's own
+     * grid has just been swallowed and is waiting for a second one.
+     *
+     * Published for the chrome to draw and for nothing else: the decision about what the next press
+     * does is re-measured from a clock rather than read from this (see [backPressLeaves]), so a
+     * notice left on screen by a late coroutine cannot let a press out of the app.
+     */
+    val leaveNotice: Value<Boolean>
 
     /** Lock now: tear down and return the gate to locked. */
     fun lock()
@@ -119,7 +138,25 @@ class DefaultUnlockedComponent(
     // reading a freshly pushed screen's state otherwise races a background dispatcher it cannot
     // drive, and passes or fails on how much slow work happened to come first.
     private val mapContext: CoroutineContext = Dispatchers.Default,
+    // How long the offer to leave stands after a back press at the grid.
+    private val leaveWindow: Duration = LEAVE_WINDOW,
+    // **Monotonic, and injected.** Monotonic because the app's own `nowEpochMillis()` is a wall
+    // clock: a time sync, a timezone change or the user setting the clock moves it, and an offer
+    // measured against it would either never expire or expire the instant it was made. Injected for
+    // the same reason the dispatchers above are — a test that waits out a window on real elapsed
+    // time is a test that passes because the machine was slow.
+    private val timeSource: TimeSource = TimeSource.Monotonic,
     private val onLock: () -> Unit,
+    /**
+     * Leave the app. Called on the second back press at the vault's own grid.
+     *
+     * An **output callback**, like everything else this component is told to do rather than doing
+     * itself — and here it has to be: a back press that reached a callback has been consumed, so
+     * there is nothing left to re-dispatch, and a component that reached for the activity would have
+     * to know what hosts it. The host wires this to finishing; the lock that follows is the ordinary
+     * on-background teardown, which is why the notice can honestly say leaving locks the vault.
+     */
+    private val onLeave: () -> Unit,
 ) : UnlockedComponent, ComponentContext by componentContext {
 
     private val scope: Scope =
@@ -214,11 +251,54 @@ class DefaultUnlockedComponent(
 
     private var tornDown = false
 
+    private val _leaveNotice = MutableValue(false)
+    override val leaveNotice: Value<Boolean> = _leaveNotice
+
+    /**
+     * When the standing offer to leave was made, or null when none is. A [TimeMark] rather than a
+     * boolean, because the offer expires by elapsed time and not by anything happening.
+     */
+    private var leaveArmedAt: TimeMark? = null
+
+    /**
+     * Takes the notice back off the screen. Purely cosmetic — see [backPressLeaves] — and parented to
+     * [featureWork], so a lock ends it with everything else this session owns.
+     */
+    private var noticeWork: Job? = null
+    private val noticeScope = CoroutineScope(mainContext + featureWork)
+
+    /**
+     * Back at the vault's own grid: swallow the first press and offer to leave instead.
+     *
+     * **Enabled only while the grid is the one screen.** Above it, back belongs to the navigation
+     * animation, which registers itself only while there is something to pop and which draws the
+     * transition; and above that a live selection keeps winning, because the item grid's callback
+     * lives in a child context and so outranks this one. That ordering is why this is registered on
+     * the host's handler here at the gate rather than inside a screen.
+     */
+    private val leaveBack = BackCallback(isEnabled = false) { onBackAtRoot() }
+
     init {
         // Auto-lock on background. A manual lock() sets tornDown before the ensuing destroy re-fires
         // onStop, so the guard stops a re-entrant second lock; onDestroy is the last-resort net.
         lifecycle.doOnStop { if (!tornDown) lock() }
         lifecycle.doOnDestroy { tearDown() }
+
+        backHandler.register(leaveBack)
+        // And give it back: the handler belongs to the host and outlives this subtree, so a callback
+        // left on it is one a later press can still reach — and left enabled it would swallow a press
+        // meant for the lock screen in order to offer to leave a session that no longer exists. This
+        // module has shipped that defect once already.
+        lifecycle.doOnDestroy { backHandler.unregister(leaveBack) }
+
+        val navigated = stack.subscribe { current ->
+            leaveBack.isEnabled = current.backStack.isEmpty()
+            // Any navigation starts over. A press at the grid, a trip into albums and a press on the
+            // way back is three presses by one finger, and the third must not confirm the first —
+            // the offer was made about a screen the user has since left.
+            disarmLeave()
+        }
+        lifecycle.doOnDestroy(navigated::cancel)
     }
 
     override val session: VaultSession get() = vault.session
@@ -254,6 +334,35 @@ class DefaultUnlockedComponent(
     // The one place the stack pops. `pop()` with nothing beneath is a no-op, so leaving the first
     // screen is the host's business rather than something to guard against here.
     override fun onBack() = navigation.pop()
+
+    /**
+     * A back press with the grid as the only screen, where there is nothing to pop and the press used
+     * to fall through to the system — which backgrounds the app, and backgrounding locks the vault.
+     * So the press is answered here: the first one offers to leave, a second one inside the window
+     * takes the offer.
+     */
+    private fun onBackAtRoot() {
+        if (backPressLeaves(leaveArmedAt?.elapsedNow(), leaveWindow)) {
+            disarmLeave()
+            onLeave()
+            return
+        }
+        leaveArmedAt = timeSource.markNow()
+        _leaveNotice.value = true
+        noticeWork?.cancel()
+        noticeWork = noticeScope.launch {
+            delay(leaveWindow)
+            disarmLeave()
+        }
+    }
+
+    /** No offer standing, and nothing on screen saying there is. */
+    private fun disarmLeave() {
+        noticeWork?.cancel()
+        noticeWork = null
+        leaveArmedAt = null
+        _leaveNotice.value = false
+    }
 
     private fun createChild(config: Config, context: ComponentContext): UnlockedChild =
         when (config) {

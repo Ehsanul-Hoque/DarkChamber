@@ -77,6 +77,7 @@ class UnlockedComponentTest {
             koin = koin,
             mainContext = UnconfinedTestDispatcher(),
             onLock = { locked = true },
+            onLeave = {},
         )
 
         component.lock()
@@ -101,6 +102,7 @@ class UnlockedComponentTest {
             koin = koin,
             mainContext = UnconfinedTestDispatcher(),
             onLock = { locked = true },
+            onLeave = {},
         )
 
         lifecycle.stop() // app backgrounded
@@ -122,6 +124,7 @@ class UnlockedComponentTest {
             koin = koin,
             mainContext = UnconfinedTestDispatcher(),
             onLock = {},
+            onLeave = {},
         )
 
         val stack = component.stack.value
@@ -144,6 +147,7 @@ class UnlockedComponentTest {
             koin = koin,
             mainContext = UnconfinedTestDispatcher(),
             onLock = {},
+            onLeave = {},
         )
         assertTrue(component.stack.value.active.instance is UnlockedChild.Gallery)
 
@@ -226,6 +230,7 @@ class UnlockedComponentTest {
             koin = koin,
             mainContext = UnconfinedTestDispatcher(),
             onLock = { lockCount++ },
+            onLeave = {},
         )
 
         component.lock()
@@ -310,6 +315,7 @@ class UnlockedComponentTest {
             // Inline, so a batch driven from a test runs to completion before the assertions.
             ioContext = dispatcher,
             onLock = onLock,
+            onLeave = {},
         )
     }
 

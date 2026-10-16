@@ -304,6 +304,11 @@ private fun UnlockedContent(component: UnlockedComponent) {
             crumb = crumbFor(child, gallery),
         )
 
+        // The offer to leave, which only the vault's own grid ever makes. Drawn over the screen
+        // rather than above it in the column: it is transient, and a row appearing and disappearing
+        // in the chrome would move the grid under the user's finger.
+        val offeringToLeave by component.leaveNotice.subscribeAsState()
+
         Box(modifier = Modifier.weight(1f)) {
             // `Children`, not a `when` over the active child: read directly, a screen is simply
             // replaced in one frame, which on a stack of siblings leaves nothing to say which way
@@ -340,6 +345,11 @@ private fun UnlockedContent(component: UnlockedComponent) {
                         }
                 }
             }
+
+            // Only while the offer stands. No animation and no timer of its own: the component owns
+            // how long the offer lasts, and a notice that faded out on its own schedule would be on
+            // screen when the next press no longer leaves — or gone while it still does.
+            if (offeringToLeave) LeaveNotice(modifier = Modifier.align(Alignment.BottomCenter))
         }
     }
 }

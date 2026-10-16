@@ -80,6 +80,9 @@ class UnlockedNavigationTest {
     @AfterTest
     fun cleanup() = deleteRecursively(testDir)
 
+    /** How many times the subtree asked its host to leave the app. */
+    private var leaves = 0
+
     private fun component(
         open: VaultBootstrap.OpenVault,
         mainContext: CoroutineContext = UnconfinedTestDispatcher(),
@@ -100,6 +103,7 @@ class UnlockedNavigationTest {
             ioContext = ioContext,
             mapContext = mainContext,
             onLock = {},
+            onLeave = { leaves++ },
         )
 
     @Test
@@ -351,6 +355,38 @@ class UnlockedNavigationTest {
 
         assertTrue(!handled, "nothing in the component tree claims a plain back press")
         assertEquals(2, component.stack.value.items.size, "so nothing popped")
+    }
+
+    /**
+     * **A selection still wins back, ahead of the offer to leave.**
+     *
+     * Three things want a back press inside the unlocked subtree and they have to answer in a fixed
+     * order: a live selection first, then the screen below, then — with the grid as the only screen —
+     * the offer to leave the app. The first two are settled by where their callbacks are registered:
+     * the grid's lives in a child context, which Decompose gives a higher priority than the gate's
+     * own. This is the pair that would be easiest to get wrong, because both are enabled at the same
+     * moment: the grid is the only screen *and* something is selected.
+     *
+     * Here rather than beside the other leave tests because it needs an item to select, and this is
+     * the file with the fixtures for that. What it proves is a priority between two callbacks on one
+     * dispatcher, which does not depend on who built the dispatcher.
+     */
+    @Test
+    fun a_press_while_selecting_ends_the_selection_rather_than_offering_to_leave() = runTest {
+        val open = openVault(UnconfinedTestDispatcher(testScheduler))
+        val component = component(open, UnconfinedTestDispatcher(testScheduler))
+        val id = importInto(vaultObjects(open), null, "one.txt")
+        advanceUntilIdle()
+        val gallery = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance).component
+        gallery.selectItem(id)
+        assertTrue(gallery.state.value.selection.active, "something to come out of")
+
+        val handled = backDispatcher.back()
+
+        assertTrue(handled)
+        assertTrue(!gallery.state.value.selection.active, "back left selecting mode")
+        assertEquals(0, leaves, "and did not offer to leave, let alone leave")
+        assertTrue(!component.leaveNotice.value, "nor put a notice on screen about it")
     }
 
     /**

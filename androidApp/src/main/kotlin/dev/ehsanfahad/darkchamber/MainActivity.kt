@@ -100,7 +100,18 @@ class MainActivity : FragmentActivity() {
                 )
             },
             unlockedFactory = { ctx, vault, onLock ->
-                DefaultUnlockedComponent(ctx, vault, koin, onLock = onLock)
+                DefaultUnlockedComponent(
+                    ctx,
+                    vault,
+                    koin,
+                    onLock = onLock,
+                    // Leaving on the second back press at the vault's grid. `finish()` rather than
+                    // re-dispatching the press, which is not possible — a press a callback answered
+                    // is consumed. Finishing runs `onStop` below with `isChangingConfigurations`
+                    // false, so the session is torn down on the way out exactly as backgrounding
+                    // tears it down; the notice says so.
+                    onLeave = ::finish,
+                )
             },
             // The same instance the file picker marks its round-trip on.
             handoff = koin.get(),

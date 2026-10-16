@@ -24,9 +24,12 @@ releasable.
 4. **Nothing about ordering or searching claims more than it does.** Name order is a case fold, not
    locale collation; a search covers names on the current listing only; and the finished-import offer
    says what *may* be hidden rather than a number nobody has.
-5. **Leaving a screen is one step.** One back press or gesture goes back exactly one screen — never
-   two, and never out of the app. Backgrounding the app locks the vault, so a back press that escapes
-   costs the session.
+5. **Leaving a screen is one step, and leaving the app takes two.** One back press or gesture goes
+   back exactly one screen — never two. At the vault's own grid there is nothing to go back to, and a
+   press there used to reach the system and background the app, which locks the vault: a mis-swipe
+   cost the whole session. The first press there is now answered instead, saying that a second one
+   leaves and that leaving locks the vault, and only a second press within a short window does. The
+   notice may not suggest the session survives leaving, because it does not.
 6. **Locking is not animated.** The unlocked screens leave at once, because the keys are already gone
    when the gate reports itself locked.
 
@@ -135,15 +138,27 @@ Tick each line. A failure in A, F or G is release-blocking.
       needs looking at rather than measuring (`docs/DESIGN.md` §9 sets icon weight at 2 dp on the
       24 dp grid). If it is too faint, the mark wants its own small-size drawing, not a bigger badge.
 
-### F. Back is one step (property 5)
+### F. Back is one step, and leaving takes two (property 5)
 
 - [ ] From an album, one back press returns to the album grid — **one** screen, not two.
 - [ ] The same from the unfiled view, and from the album grid back to the vault.
+- [ ] At the vault's own grid, one back press stays in the app and a notice says a second one leaves
+      and that leaving locks the vault. Confirm the session by **reading the screen** — the grid is
+      still listing items and the bar still offers to lock — rather than by assuming the press did
+      nothing.
+- [ ] Press back again while that notice is up: the app closes. Reopen it: the lock screen, not the
+      grid, because leaving locks the vault exactly as backgrounding does.
+- [ ] Press back once, let the notice disappear, then press again. It offers a second time rather
+      than leaving — the offer lasts about two seconds, and a press after it is a first press.
+- [ ] The same with an **edge gesture** instead of a press, which is the half only hardware shows: one
+      gesture brings up the notice, and two in quick succession leave.
+- [ ] With items selected at the vault's grid, back still only leaves selecting mode. It neither
+      leaves the app nor offers to — the selection is what back is for while it exists.
 - [ ] On Android 13 or later, start a back gesture slowly: the outgoing screen follows your finger,
       and releasing completes it. Cancelling it returns to the screen you were on, still only one
       screen deep.
-- [ ] With items selected, back leaves selecting mode rather than navigating — and the app does not
-      go to the background, which would lock the vault.
+- [ ] With items selected **on a sub-screen**, back leaves selecting mode rather than navigating, and
+      the app does not go to the background, which would lock the vault.
 - [ ] Turn the system's reduced-motion setting on. Navigation cross-fades instead of sliding, and
       nothing jumps.
 

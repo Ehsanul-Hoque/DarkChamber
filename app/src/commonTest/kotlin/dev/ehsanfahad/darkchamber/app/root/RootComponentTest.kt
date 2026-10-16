@@ -12,6 +12,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
 import dev.ehsanfahad.darkchamber.feature.vault.api.PhotoPicker
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
@@ -19,6 +20,8 @@ import kotlinx.coroutines.test.runTest
 import kotlin.coroutines.CoroutineContext
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TestTimeSource
 import org.koin.dsl.koinApplication
 import org.koin.dsl.module
 import dev.ehsanfahad.darkchamber.app.VaultBootstrap
@@ -38,6 +41,8 @@ import kotlin.random.Random
 import kotlin.random.nextULong
 import kotlin.test.AfterTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
@@ -73,7 +78,25 @@ class RootComponentTest {
 
     private val backDispatcher = BackDispatcher()
 
-    private fun root(mainContext: CoroutineContext = UnconfinedTestDispatcher()): DefaultRootComponent =
+    /** How many times the unlocked subtree asked its host to leave the app. */
+    private var leaves = 0
+
+    /**
+     * The clock the leave window is measured against — **not** the coroutine scheduler's.
+     *
+     * Two clocks on purpose, because the behaviour has two halves: the notice disappears on a
+     * coroutine (virtual time), while whether a press leaves is re-measured from this. A test can
+     * therefore move one without the other, which is how the "the notice is still up but the offer
+     * has expired" case below is reachable at all.
+     */
+    private val timeSource = TestTimeSource()
+
+    private fun root(
+        mainContext: CoroutineContext = UnconfinedTestDispatcher(),
+        // The unlocked subtree's own dispatcher. Separate from the gate's because most tests here
+        // only lock and unlock, while one drives a real gallery and needs the test's scheduler.
+        unlockedContext: CoroutineContext = UnconfinedTestDispatcher(),
+    ): DefaultRootComponent =
         DefaultRootComponent(
             // With the host's back handler, because the children's contexts are built here rather than
             // handed in: whether back reaches a child at all is this class's behaviour, and nothing
@@ -83,7 +106,18 @@ class RootComponentTest {
                 backHandler = backDispatcher,
             ),
             lockedFactory = { _, onUnlocked -> lockedOnUnlocked = onUnlocked; FakeLockedComponent() },
-            unlockedFactory = { ctx, vault, onLock -> DefaultUnlockedComponent(ctx, vault, koin, mainContext = UnconfinedTestDispatcher(), onLock = onLock) },
+            unlockedFactory = { ctx, vault, onLock ->
+                DefaultUnlockedComponent(
+                    ctx,
+                    vault,
+                    koin,
+                    mainContext = unlockedContext,
+                    leaveWindow = WINDOW,
+                    timeSource = timeSource,
+                    onLock = onLock,
+                    onLeave = { leaves++ },
+                )
+            },
             handoff = handoff,
             mainContext = mainContext,
             handoffGrace = GRACE,
@@ -181,6 +215,159 @@ class RootComponentTest {
         val root = root()
         root.lockIfUnlocked() // must not throw
         assertIs<RootChild.Locked>(root.child.value)
+    }
+
+    // --- leaving from the vault's own grid -----------------------------------------------------
+    //
+    // Back at the first screen used to fall straight through to the system, which backgrounds the
+    // app — and backgrounding locks the vault. So a mis-swipe at the grid cost the whole session,
+    // including a running import. The first press is now swallowed and offers to leave; a second
+    // inside a short window takes the offer.
+    //
+    // Driven through the dispatcher **this** class hands the gate, for the reason the wiring test
+    // above gives: a test that builds the unlocked component itself supplies a working dispatcher by
+    // hand, and so cannot tell a callback registered with the host's handler from one registered with
+    // a private handler nothing will ever call.
+
+    @Test
+    fun one_press_at_the_vault_is_swallowed_and_offers_to_leave() = runTest {
+        val root = root(unlockedContext = StandardTestDispatcher(testScheduler))
+        lockedOnUnlocked!!(openVault())
+        val unlocked = unlocked(root)
+
+        val handled = backDispatcher.back()
+
+        assertTrue(handled, "the press is answered here rather than falling through to the system")
+        assertEquals(0, leaves, "one press does not leave")
+        assertEquals(1, unlocked.stack.value.items.size, "and nothing popped")
+        assertTrue(unlocked.leaveNotice.value, "the offer is on screen, so the next press is no surprise")
+        assertIs<RootChild.Unlocked>(root.child.value, "the session the press would have cost is still open")
+    }
+
+    @Test
+    fun a_second_press_inside_the_window_leaves_exactly_once() = runTest {
+        val root = root(unlockedContext = StandardTestDispatcher(testScheduler))
+        lockedOnUnlocked!!(openVault())
+        unlocked(root)
+
+        backDispatcher.back()
+        // Part-way through the window rather than in the same instant: a window of zero would still
+        // pass "two presses in a row leave" if the second press were measured at no elapsed time.
+        timeSource += WINDOW / 2
+        backDispatcher.back()
+
+        assertEquals(1, leaves, "the second press leaves, and asks for it once")
+    }
+
+    @Test
+    fun a_second_press_after_the_window_arms_again_instead_of_leaving() = runTest {
+        val root = root(unlockedContext = StandardTestDispatcher(testScheduler))
+        lockedOnUnlocked!!(openVault())
+        val unlocked = unlocked(root)
+
+        backDispatcher.back()
+        elapse(WINDOW * 2)
+        assertFalse(unlocked.leaveNotice.value, "the offer expired on its own")
+        backDispatcher.back()
+
+        assertEquals(0, leaves, "a press long after the first is a first press, not a confirmation")
+        assertTrue(unlocked.leaveNotice.value, "so it offers again")
+    }
+
+    /**
+     * **The decision does not trust the notice.** Taking the notice off screen is a coroutine, and a
+     * coroutine can be late — the dispatcher is busy, the app was frozen in the background, the
+     * window passed while a long import held the main thread. The elapsed time is therefore measured
+     * again on every press, so a notice that has outstayed the offer cannot let the next press
+     * straight out of the app.
+     *
+     * The two clocks move independently here: the monotonic source is past the window while the
+     * notice's timer has not run at all.
+     */
+    @Test
+    fun a_press_the_offer_has_outlived_cannot_leave_even_while_the_notice_is_still_up() = runTest {
+        val root = root(unlockedContext = StandardTestDispatcher(testScheduler))
+        lockedOnUnlocked!!(openVault())
+        val unlocked = unlocked(root)
+
+        backDispatcher.back()
+        timeSource += WINDOW * 2 // time passed; the effect that clears the notice did not run
+        assertTrue(unlocked.leaveNotice.value, "the stale notice is exactly the condition under test")
+
+        backDispatcher.back()
+
+        assertEquals(0, leaves, "an expired offer is not a confirmation, whatever is on screen")
+    }
+
+    @Test
+    fun the_notice_clears_itself_once_the_window_passes() = runTest {
+        val root = root(unlockedContext = StandardTestDispatcher(testScheduler))
+        lockedOnUnlocked!!(openVault())
+        val unlocked = unlocked(root)
+
+        backDispatcher.back()
+        assertTrue(unlocked.leaveNotice.value)
+        elapse(WINDOW)
+
+        assertFalse(unlocked.leaveNotice.value, "a notice nobody answered does not stay on screen")
+    }
+
+    /**
+     * **Above the root, back still belongs to the navigation animation.** The callback is enabled
+     * only while the grid is the one screen, so a press on a sub-screen is not answered here at all —
+     * which in a host test means not answered by anything, the animation existing only inside a
+     * composition. Popping is the component's own entry point, and it still pops exactly one screen.
+     */
+    @Test
+    fun a_press_on_a_sub_screen_is_not_answered_at_the_root() = runTest {
+        val root = root(unlockedContext = StandardTestDispatcher(testScheduler))
+        lockedOnUnlocked!!(openVault())
+        val unlocked = unlocked(root)
+        unlocked.openAlbums()
+
+        val handled = backDispatcher.back()
+
+        assertFalse(handled, "the root's callback must be disabled while something is stacked on it")
+        assertEquals(0, leaves, "and a press meant for a screen must never leave the app")
+        assertEquals(2, unlocked.stack.value.items.size, "nothing popped, nothing left")
+        assertFalse(unlocked.leaveNotice.value, "and nothing offered to leave")
+
+        unlocked.onBack()
+
+        assertEquals(1, unlocked.stack.value.items.size, "the way back out of a sub-screen still works")
+    }
+
+    /**
+     * **Arriving back at the grid starts unarmed.** A press at the grid, a trip into albums and a
+     * press on the way back is three presses by one finger, and the third must not be read as a
+     * confirmation of the first. The clock is deliberately not moved here: the offer has not expired,
+     * so only disarming on navigation can make this pass.
+     */
+    @Test
+    fun coming_back_to_the_vault_from_a_sub_screen_starts_unarmed() = runTest {
+        val root = root(unlockedContext = StandardTestDispatcher(testScheduler))
+        lockedOnUnlocked!!(openVault())
+        val unlocked = unlocked(root)
+
+        backDispatcher.back() // at the grid: the offer stands
+        unlocked.openAlbums()
+        assertFalse(unlocked.leaveNotice.value, "and it goes with the screen it was made on")
+        unlocked.onBack()
+
+        backDispatcher.back()
+
+        assertEquals(0, leaves, "back at the grid, this is a first press again")
+        assertTrue(unlocked.leaveNotice.value)
+    }
+
+    private fun unlocked(root: DefaultRootComponent): UnlockedComponent =
+        assertIs<RootChild.Unlocked>(root.child.value).component
+
+    /** Move both clocks: the one the decision reads and the one the notice's timer runs on. */
+    private fun TestScope.elapse(duration: Duration) {
+        timeSource += duration
+        advanceTimeBy(duration)
+        runCurrent()
     }
 
     // --- the system-UI handoff exemption -------------------------------------------------------
@@ -284,6 +471,13 @@ class RootComponentTest {
     private companion object {
         /** Virtual time, so the value only has to be non-zero — the production grace is 2 minutes. */
         val GRACE: Duration = 2.minutes
+
+        /**
+         * The leave window these tests measure against. A value of its own rather than the
+         * production constant: every assertion here is about a press landing inside or outside the
+         * window, and none of them should change meaning if the app's window is retuned.
+         */
+        val WINDOW: Duration = 5.seconds
     }
 
     private fun deleteRecursively(path: Path) {

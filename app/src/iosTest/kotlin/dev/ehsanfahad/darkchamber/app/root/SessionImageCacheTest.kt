@@ -171,6 +171,7 @@ class SessionImageCacheTest {
             mainContext = dispatcher,
             ioContext = dispatcher,
             onLock = {},
+            onLeave = {},
         )
     }
 
