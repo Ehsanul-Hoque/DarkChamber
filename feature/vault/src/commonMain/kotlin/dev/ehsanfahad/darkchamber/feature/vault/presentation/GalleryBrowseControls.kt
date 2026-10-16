@@ -17,11 +17,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -192,43 +192,79 @@ internal fun rememberBrowsingScroll(
 ): BrowsingScroll {
     val scroll = remember(gridState) { BrowsingScroll(gridState) }
 
-    // Keyed on the **listing**, not on the order. The order reaches the screen's state as soon as it
-    // is chosen, but the re-ordered listing arrives later — it comes back through the catalog
-    // subscription — and the grid only moves when those items land. A restore hung off the order ran
-    // a frame after the tap, scrolled a listing that had not changed yet, and was then overrun by the
-    // move it was supposed to undo. This was measured, not reasoned about.
-    LaunchedEffect(items) { scroll.onListingArrived() }
-    LaunchedEffect(search) { scroll.onSearchArrived(search) }
+    scroll.onSearch(search)
+
+    // **Before the frame is laid out, not after it.** A side effect runs once the composition that
+    // carries the new listing has been applied and before that listing is measured, which is the only
+    // moment a position can be asked for without a wrong one being drawn first. Correcting it
+    // afterwards does work — and shows: on a recording the grid sat at the far end of the new listing
+    // for six frames, about 50 ms, before snapping back.
+    SideEffect { scroll.onListingComposed(items) }
 
     return scroll
 }
 
 /** The state behind [rememberBrowsingScroll]; see there for why each half exists. */
 internal class BrowsingScroll(private val gridState: LazyGridState) {
-    private var placeToRestore: Place? = null
+    private var wanted: Place? = null
     private var lastSearch: GallerySearch? = null
+    private var lastListing: List<GalleryItem>? = null
 
-    /** Called as the order is chosen, while the grid is still showing the old listing. */
-    fun rememberPlaceBeforeReordering() {
-        placeToRestore = Place(gridState.firstVisibleItemIndex, gridState.firstVisibleItemScrollOffset)
+    /**
+     * Whether a re-order is in flight — observable, because the grid reads it while composing.
+     *
+     * It gates the tile animation as well as the scroll: animating a re-order draws two tiles in one
+     * slot, one fading out while the other fades in. True from the tap until the new listing has been
+     * put back where the old one was, which is the whole window in which both listings exist.
+     */
+    var isReordering by mutableStateOf(false)
+        private set
+
+    /**
+     * Called as an order is chosen, while the grid is still showing the old listing.
+     *
+     * **Choosing the order already in force arms nothing**, and the guard lives here rather than at
+     * the call site because forgetting it is silent and lasting. The controls are a state flow, which
+     * conflates an equal value — so re-choosing the current order produces no listing at all, and an
+     * armed capture would simply wait. The next listing to arrive for any reason would then collect
+     * it: filing one item sent the grid from the top back to the end of the listing, which is where it
+     * had been when the order was re-chosen. Measured on a device before this guard existed.
+     */
+    fun rememberPlaceBeforeReordering(from: GalleryOrder, to: GalleryOrder) {
+        if (from == to) return
+        wanted = Place(gridState.firstVisibleItemIndex, gridState.firstVisibleItemScrollOffset)
+        isReordering = true
     }
 
     /**
-     * Called when a new listing reaches the grid. Does nothing unless an order was chosen, so the
-     * listings that arrive for every other reason — an import, a filing, a rename — are left alone.
+     * Called while the search is read during composition, so a changed query has already asked for
+     * the top by the time its results arrive.
      */
-    suspend fun onListingArrived() {
-        val place = placeToRestore ?: return
-        placeToRestore = null
-        // After the re-measure that moves it, not before.
-        withFrameNanos { }
-        gridState.scrollToItem(place.index, place.offset)
-    }
-
-    suspend fun onSearchArrived(search: GallerySearch) {
+    fun onSearch(search: GallerySearch) {
         val previous = lastSearch
         lastSearch = search
-        if (previous != null && scrollsToTop(previous, search)) gridState.scrollToItem(0)
+        if (previous != null && scrollsToTop(previous, search)) wanted = Place(0, 0)
+    }
+
+    /**
+     * Called for every composition; acts only on the one that carries a listing we have not seen.
+     *
+     * The guard is what keeps this to the case it is for: listings arrive for imports, filings and
+     * renames too, and none of those should move the grid. Compared by identity — a new list instance
+     * is exactly what a new emission is, and comparing contents would walk every item on every
+     * composition to learn the same thing.
+     */
+    fun onListingComposed(items: List<GalleryItem>) {
+        if (items === lastListing) return
+        lastListing = items
+
+        val place = wanted ?: return
+        wanted = null
+        // Asked for rather than scrolled to: this is applied *during* the measure that first lays the
+        // new listing out, so the position the grid would otherwise have kept — the one holding the
+        // old first item's key — is never used and never drawn.
+        gridState.requestScrollToItem(place.index, place.offset)
+        isReordering = false
     }
 
     private data class Place(val index: Int, val offset: Int)

@@ -179,7 +179,7 @@ internal fun GalleryScreen(
                     // The position is taken here, at the tap, because by the time the new order
                     // arrives the grid has already moved itself.
                     onChooseOrder = { chosen ->
-                        scroll.rememberPlaceBeforeReordering()
+                        scroll.rememberPlaceBeforeReordering(from = state.order, to = chosen)
                         onChooseOrder(chosen)
                     },
                     onOpenSearch = onOpenSearch,
@@ -201,6 +201,7 @@ internal fun GalleryScreen(
                 else -> ItemGrid(
                     items = state.items,
                     gridState = gridState,
+                    reordering = scroll.isReordering,
                     now = now,
                     imageLoader = imageLoader,
                     bottomInset = barHeight,
@@ -1243,6 +1244,7 @@ private fun OriginalDeleteRow(count: Int, onDeleteOriginals: () -> Unit) {
 private fun ItemGrid(
     items: List<GalleryItem>,
     gridState: LazyGridState,
+    reordering: Boolean,
     now: Long,
     imageLoader: ImageLoader,
     bottomInset: Dp,
@@ -1251,7 +1253,7 @@ private fun ItemGrid(
     onToggleItem: (ByteArray) -> Unit,
 ) {
     val spacing = DarkChamberTheme.spacing
-    val arrival = tileArrival(DarkChamberTheme.motion, prefersReducedMotion())
+    val arrival = tileArrival(DarkChamberTheme.motion, prefersReducedMotion(), reordering)
 
     LazyVerticalGrid(
         state = gridState,
@@ -1288,9 +1290,9 @@ private fun ItemGrid(
                 onLongPress = { onSelectItem(item.id) },
                 onTap = { onToggleItem(item.id) },
                 modifier = Modifier.animateItem(
-                    fadeInSpec = tween(arrival.fadeIn),
+                    fadeInSpec = arrival.fadeIn?.let { tween(it) },
                     placementSpec = arrival.placement?.let { tween<IntOffset>(it) },
-                    fadeOutSpec = tween(arrival.fadeOut),
+                    fadeOutSpec = arrival.fadeOut?.let { tween(it) },
                 ),
             )
         }
