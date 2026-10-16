@@ -126,6 +126,52 @@ class GalleryBrowseControlsTest {
     }
 
     /**
+     * Whether a change to the search should put the grid back at the top.
+     *
+     * The grid holds its position when the **order** changes, which is what was asked for. A changed
+     * **query** is a different thing: the result set is new and its first match is the interesting
+     * one, so a held offset can leave the viewport past the end of a short result — which is exactly
+     * what happened while verifying the search, and read as matches being dropped.
+     *
+     * What counts as a change is the query that actually *filters*, not the text in the field: opening
+     * the field filters nothing, whitespace filters nothing, and a trailing space is a typing artefact
+     * the matcher trims. So each of those leaves the grid alone, while gaining or losing a real query
+     * moves it.
+     */
+    @Test
+    fun opening_or_closing_an_empty_field_leaves_the_grid_alone() {
+        assertFalse(scrollsToTop(GallerySearch.Closed, GallerySearch.Open(query = "")))
+        assertFalse(scrollsToTop(GallerySearch.Open(query = ""), GallerySearch.Closed))
+        assertFalse(scrollsToTop(GallerySearch.Open(query = ""), GallerySearch.Open(query = "   ")))
+    }
+
+    @Test
+    fun gaining_or_losing_a_query_puts_the_grid_back_at_the_top() {
+        assertTrue(scrollsToTop(GallerySearch.Open(query = ""), GallerySearch.Open(query = "al")))
+        assertTrue(scrollsToTop(GallerySearch.Open(query = "al"), GallerySearch.Open(query = "")))
+        assertTrue(scrollsToTop(GallerySearch.Open(query = "al"), GallerySearch.Closed))
+        assertTrue(scrollsToTop(GallerySearch.Open(query = "al"), GallerySearch.Open(query = "alp")))
+    }
+
+    @Test
+    fun a_query_that_matches_the_same_items_leaves_the_grid_alone() {
+        // The matcher trims, so these two narrow the listing identically — the grid did not change
+        // under the viewport and moving it would lose the user's place for nothing.
+        assertFalse(scrollsToTop(GallerySearch.Open(query = "al"), GallerySearch.Open(query = "al ")))
+        assertFalse(scrollsToTop(GallerySearch.Open(query = "al"), GallerySearch.Open(query = "al")))
+    }
+
+    @Test
+    fun the_count_of_unreadable_items_is_not_a_change_to_the_query() {
+        // It travels with the listing rather than with the field, so it can change while the query
+        // has not — and the grid must not jump because a count arrived.
+        val before = GallerySearch.Open(query = "al", hiddenUnreadable = 0)
+        val after = GallerySearch.Open(query = "al", hiddenUnreadable = 2)
+
+        assertFalse(scrollsToTop(before, after))
+    }
+
+    /**
      * What the order menu offers, and which one it marks.
      *
      * Pulled out of the menu for two reasons that have both already bitten this screen. The list

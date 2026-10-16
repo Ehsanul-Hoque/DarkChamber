@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -20,6 +21,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -33,6 +35,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import dev.ehsanfahad.darkchamber.core.designsystem.DarkChamberTheme
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumState
+import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryOrder
 import dev.ehsanfahad.darkchamber.feature.vault.api.GallerySearch
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryState
@@ -157,6 +160,99 @@ internal fun GallerySearch.hiddenNote(): String? =
         GallerySearch.Closed -> null
         is GallerySearch.Open -> GalleryFormat.hiddenUnreadable(hiddenUnreadable)
     }
+
+/**
+ * Keeps the grid where the user left it when the browse controls change.
+ *
+ * **Re-ordering a listing moves the viewport on its own.** Measured on a device: standing at the top
+ * of a Z–A listing and choosing A–Z left the scroll at index 0 at the moment the order changed and at
+ * index 54 of 60 by the next measure — the far end, where the tile that had been at the top now lives.
+ * Two things follow, and both are why this is a holder rather than a line in the layout.
+ *
+ * **The position has to be taken at the tap.** By the time the new order reaches the screen the grid
+ * has already moved, so anything read then is the wrong number. [rememberPlaceBeforeReordering] is
+ * called from the control's own callback, which is the last moment the old position is still true.
+ *
+ * **It has to be put back a frame later**, because the move happens in that re-measure and a scroll
+ * issued before it would simply be overwritten.
+ *
+ * A changed **query** is the opposite case and needs no capture: the result set is new, so the grid
+ * goes to its first match — see [scrollsToTop] for what counts as a change.
+ *
+ * Deliberately not an item key. Putting the order into the tiles' keys was tried first, on the theory
+ * that a key the re-order could not match would leave the grid nothing to chase; the device showed the
+ * viewport still moving, so the move is not a key remap, and the only thing that changed was every
+ * tile being composed again on each order change.
+ */
+@Composable
+internal fun rememberBrowsingScroll(
+    gridState: LazyGridState,
+    items: List<GalleryItem>,
+    search: GallerySearch,
+): BrowsingScroll {
+    val scroll = remember(gridState) { BrowsingScroll(gridState) }
+
+    // Keyed on the **listing**, not on the order. The order reaches the screen's state as soon as it
+    // is chosen, but the re-ordered listing arrives later — it comes back through the catalog
+    // subscription — and the grid only moves when those items land. A restore hung off the order ran
+    // a frame after the tap, scrolled a listing that had not changed yet, and was then overrun by the
+    // move it was supposed to undo. This was measured, not reasoned about.
+    LaunchedEffect(items) { scroll.onListingArrived() }
+    LaunchedEffect(search) { scroll.onSearchArrived(search) }
+
+    return scroll
+}
+
+/** The state behind [rememberBrowsingScroll]; see there for why each half exists. */
+internal class BrowsingScroll(private val gridState: LazyGridState) {
+    private var placeToRestore: Place? = null
+    private var lastSearch: GallerySearch? = null
+
+    /** Called as the order is chosen, while the grid is still showing the old listing. */
+    fun rememberPlaceBeforeReordering() {
+        placeToRestore = Place(gridState.firstVisibleItemIndex, gridState.firstVisibleItemScrollOffset)
+    }
+
+    /**
+     * Called when a new listing reaches the grid. Does nothing unless an order was chosen, so the
+     * listings that arrive for every other reason — an import, a filing, a rename — are left alone.
+     */
+    suspend fun onListingArrived() {
+        val place = placeToRestore ?: return
+        placeToRestore = null
+        // After the re-measure that moves it, not before.
+        withFrameNanos { }
+        gridState.scrollToItem(place.index, place.offset)
+    }
+
+    suspend fun onSearchArrived(search: GallerySearch) {
+        val previous = lastSearch
+        lastSearch = search
+        if (previous != null && scrollsToTop(previous, search)) gridState.scrollToItem(0)
+    }
+
+    private data class Place(val index: Int, val offset: Int)
+}
+
+/**
+ * Whether a change to the search should put the grid back at the top.
+ *
+ * The grid **holds** its position when the order changes. A changed query is the other case: the
+ * result set is new, its first match is the one worth seeing, and a held offset can leave the viewport
+ * past the end of a short result — which looks exactly like matches having been dropped.
+ *
+ * What counts as a change is the query that actually **filters**, not the text in the field. Opening
+ * the field filters nothing, whitespace filters nothing, and a trailing space is a typing artefact the
+ * matcher trims — so none of those move the grid, while gaining or losing a real query does. Comparing
+ * the effective needle rather than the raw string is what keeps this agreeing with the listing: if the
+ * items did not change, neither does where the user is looking.
+ */
+internal fun scrollsToTop(previous: GallerySearch, next: GallerySearch): Boolean =
+    previous.needle() != next.needle()
+
+/** The text the listing actually filters by, which is nothing at all unless something was typed. */
+private fun GallerySearch.needle(): String =
+    if (isFiltering()) (this as GallerySearch.Open).query.trim() else ""
 
 /**
  * One row of the order menu: an order to choose, and whether it is the one already in force.

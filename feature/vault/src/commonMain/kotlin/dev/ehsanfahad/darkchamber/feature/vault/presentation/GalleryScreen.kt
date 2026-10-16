@@ -22,8 +22,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.BorderStroke
@@ -36,10 +38,12 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -70,6 +74,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryOrder
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryScope
+import dev.ehsanfahad.darkchamber.feature.vault.api.GallerySearch
 import dev.ehsanfahad.darkchamber.feature.vault.api.GallerySelection
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryState
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportState
@@ -135,6 +140,11 @@ internal fun GalleryScreen(
     // under the others.
     var barHeight by remember { mutableStateOf(0.dp) }
 
+    // The grid's scroll, owned here rather than inside the grid because choosing an order has to read
+    // it at the moment of the tap — see [BrowsingScroll].
+    val gridState = rememberLazyGridState()
+    val scroll = rememberBrowsingScroll(gridState, state.items, state.search)
+
     // No insets here: the host applies them once for the whole unlocked subtree, so a screen that
     // added its own would inset twice.
     val album = state.album
@@ -166,7 +176,12 @@ internal fun GalleryScreen(
                 GalleryBrowseControls(
                     order = state.order,
                     search = state.search,
-                    onChooseOrder = onChooseOrder,
+                    // The position is taken here, at the tap, because by the time the new order
+                    // arrives the grid has already moved itself.
+                    onChooseOrder = { chosen ->
+                        scroll.rememberPlaceBeforeReordering()
+                        onChooseOrder(chosen)
+                    },
                     onOpenSearch = onOpenSearch,
                     onEditSearch = onEditSearch,
                     onCloseSearch = onCloseSearch,
@@ -185,6 +200,7 @@ internal fun GalleryScreen(
                 state.items.isEmpty() -> EmptyListing(message = state.emptyListingMessage())
                 else -> ItemGrid(
                     items = state.items,
+                    gridState = gridState,
                     now = now,
                     imageLoader = imageLoader,
                     bottomInset = barHeight,
@@ -1226,6 +1242,7 @@ private fun OriginalDeleteRow(count: Int, onDeleteOriginals: () -> Unit) {
 @Composable
 private fun ItemGrid(
     items: List<GalleryItem>,
+    gridState: LazyGridState,
     now: Long,
     imageLoader: ImageLoader,
     bottomInset: Dp,
@@ -1235,7 +1252,9 @@ private fun ItemGrid(
 ) {
     val spacing = DarkChamberTheme.spacing
     val arrival = tileArrival(DarkChamberTheme.motion, prefersReducedMotion())
+
     LazyVerticalGrid(
+        state = gridState,
         columns = GridCells.Adaptive(minSize = TILE_MIN_WIDTH),
         contentPadding = PaddingValues(
             start = spacing.spaceMd,
@@ -1253,6 +1272,12 @@ private fun ItemGrid(
         // Keyed by the object id, never by position. With newest-first ordering every existing tile
         // shifts down on each import, so an index key would tell Compose that every row changed —
         // animating the whole grid instead of the one tile that actually arrived.
+        //
+        // Putting the order in the key as well was tried, on the theory that a key the re-order could
+        // not match would leave the grid nothing to chase. It does not: measured on a device, the
+        // viewport still moved to the far end, so the move is not a key remap. It only cost every tile
+        // being composed again on each order change. Holding the position is done explicitly instead
+        // — see [rememberBrowsingScroll].
         items(items, key = { it.id.toListKey() }) { item ->
             ItemTile(
                 item = item,
