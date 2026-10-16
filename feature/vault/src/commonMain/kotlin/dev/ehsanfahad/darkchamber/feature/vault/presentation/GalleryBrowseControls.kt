@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -23,10 +24,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.unit.dp
 import dev.ehsanfahad.darkchamber.core.designsystem.DarkChamberTheme
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumState
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryOrder
@@ -153,6 +157,29 @@ internal fun GallerySearch.hiddenNote(): String? =
         GallerySearch.Closed -> null
         is GallerySearch.Open -> GalleryFormat.hiddenUnreadable(hiddenUnreadable)
     }
+
+/**
+ * One row of the order menu: an order to choose, and whether it is the one already in force.
+ *
+ * [inForce] is carried rather than recomputed at the point of drawing, so that "exactly one option is
+ * marked" is a property of a value a test can hold rather than of a comparison buried in a layout.
+ */
+internal data class OrderOption(val order: GalleryOrder, val inForce: Boolean)
+
+/**
+ * Every order the menu offers, in the enum's own order, with the one in force marked.
+ *
+ * **From the enum, never a list written out here** — a fifth order added later must appear in this
+ * menu or be choosable nowhere at all, and until this was a function nothing could check that. The
+ * layout used to iterate the entries itself and carried a comment hoping for the same thing.
+ *
+ * The mark exists because the menu had no state to report. It coloured the order in force and said
+ * nothing else, so assistive technology had nothing to announce and a view dump showed four identical
+ * rows — a state carried only in a colour is also invisible to a reader who cannot separate the two
+ * (docs/DESIGN.md §9 and §13).
+ */
+internal fun orderOptions(current: GalleryOrder): List<OrderOption> =
+    GalleryOrder.entries.map { order -> OrderOption(order, inForce = order == current) }
 
 /**
  * Whether this search is actually narrowing the listing — which is **not** the same as being open.
@@ -327,23 +354,27 @@ private fun OrderControl(order: GalleryOrder, onChooseOrder: (GalleryOrder) -> U
         }
 
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            // Every order, from the enum rather than a list written out here: a fifth order would
-            // otherwise be choosable nowhere and silently missing from this menu.
-            for (candidate in GalleryOrder.entries) {
+            // What to offer and which one to mark is decided in `orderOptions`, so that a fifth order
+            // missing from this menu is a failing test rather than something to notice by eye.
+            for (option in orderOptions(order)) {
                 DropdownMenuItem(
                     text = {
                         Text(
-                            text = GalleryFormat.orderLabel(candidate),
+                            text = GalleryFormat.orderLabel(option.order),
                             style = DarkChamberTheme.typography.body,
-                            // The one in force is marked by colour rather than by a tick, which
-                            // would need a glyph; it matches the collapsed label, so the menu says
-                            // the same thing the row does.
-                            color = if (candidate == order) colors.accent else colors.textPrimary,
+                            // Colour as well as the mark, not instead of it: it matches the collapsed
+                            // label, so the menu reads the same way the row does.
+                            color = if (option.inForce) colors.accent else colors.textPrimary,
                         )
                     },
+                    // The state itself, for anything that reads the screen rather than looks at it.
+                    // The platform owns the wording, which is why no copy here says "in use" — a
+                    // hand-written suffix would be announced alongside it and localized by nobody.
+                    modifier = Modifier.semantics { selected = option.inForce },
+                    leadingIcon = { OrderMark(inForce = option.inForce) },
                     onClick = {
                         open = false
-                        onChooseOrder(candidate)
+                        onChooseOrder(option.order)
                     },
                 )
             }
@@ -351,5 +382,35 @@ private fun OrderControl(order: GalleryOrder, onChooseOrder: (GalleryOrder) -> U
     }
 }
 
+/**
+ * The mark beside the order in force, and an equally wide gap beside the others.
+ *
+ * **Always occupies its slot**, which is the whole reason it is a composable rather than a
+ * conditional: a mark drawn only on one row would indent that row's label and leave the other three
+ * sitting somewhere else, so the eye would read the shift rather than the mark.
+ *
+ * **Silent to a reader.** The state is on the row itself as a selected semantic, which the platform
+ * announces in its own words; this glyph says the same thing to an eye, and announced as well it
+ * would be either a duplicate or the word "tick". The same mark the grid draws on a selected tile.
+ */
+@Composable
+private fun OrderMark(inForce: Boolean) {
+    Box(modifier = Modifier.width(ORDER_MARK_SLOT).clearAndSetSemantics {}) {
+        if (inForce) {
+            Text(
+                text = "✓",
+                style = DarkChamberTheme.typography.label,
+                color = DarkChamberTheme.colors.accent,
+            )
+        }
+    }
+}
+
 /** The disclosure caret. A glyph rather than an icon dependency, and hidden from the reader above. */
 private const val CARET = "▾"
+
+/**
+ * Wide enough for the mark and no wider. Fixed rather than measured, because the point of the slot is
+ * that all four rows agree on it — a width that followed its contents would defeat it.
+ */
+private val ORDER_MARK_SLOT = 20.dp

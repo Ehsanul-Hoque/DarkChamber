@@ -126,6 +126,32 @@ class GalleryBrowseControlsTest {
     }
 
     /**
+     * What the order menu offers, and which one it marks.
+     *
+     * Pulled out of the menu for two reasons that have both already bitten this screen. The list
+     * comes from the enum so a fifth order cannot be choosable nowhere — the layout's own comment
+     * worried about exactly that and nothing could check it. And **exactly one** option is marked,
+     * which is the property the menu was getting wrong: it marked the order in force by colour alone,
+     * so there was no state for a reader or a test to see.
+     */
+    @Test
+    fun the_menu_offers_every_order_exactly_once() {
+        val offered = orderOptions(GalleryOrder.Newest).map { it.order }
+
+        assertEquals(GalleryOrder.entries, offered)
+    }
+
+    @Test
+    fun exactly_one_option_is_marked_and_it_is_the_one_in_force() {
+        for (current in GalleryOrder.entries) {
+            val options = orderOptions(current)
+
+            assertEquals(1, options.count { it.inForce }, "one mark, whichever order is in force: $current")
+            assertEquals(current, options.single { it.inForce }.order, "and it is $current")
+        }
+    }
+
+    /**
      * **Open is not filtering**, and the difference is load-bearing twice over: it decides whether a
      * finished batch is told its results may be hidden, and it decides what an empty grid blames. A
      * field the user opened and typed nothing into narrows the listing by exactly nothing.
