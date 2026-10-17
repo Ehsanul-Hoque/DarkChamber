@@ -219,7 +219,7 @@ class SecurityArchitectureTest {
 /**
  * Guards the guard. Every rule above is an *absence* assertion, so a scope that resolves to zero
  * files — a moved directory, a Konsist upgrade changing path handling, a broken filter — would make
- * all five pass while checking nothing. These assertions fail loudly in that case.
+ * every one of them pass while checking nothing. These assertions fail loudly in that case.
  */
 class ScanCoverageTest {
 
