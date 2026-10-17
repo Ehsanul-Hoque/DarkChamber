@@ -32,6 +32,11 @@ releasable.
    notice may not suggest the session survives leaving, because it does not.
 6. **Locking is not animated.** The unlocked screens leave at once, because the keys are already gone
    when the gate reports itself locked.
+7. **No window hands its text to another process.** Android builds a structure of the foreground
+   window for its autofill and content-capture services, which run elsewhere on the device, and the
+   secure-window flag does not cover that channel. Every window the app opens — the host's, each
+   dialog, each menu — excludes itself, because the text in them is vault content: a search is a
+   fragment of a file name, an album's name is content, and the passphrase is the way to all of it.
 
 ## What is already automated (run these first)
 
@@ -219,7 +224,44 @@ the 99th-percentile frame time are the numbers to record, at two vault sizes so 
 rather than a single verdict. Scroll the same listing as a control — if scrolling is clean and typing
 is not, the cost is in the per-keystroke work rather than in drawing.
 
+### L. No window hands its text to another process (property 7)
+
+The one security behaviour here that **only** a device can confirm, and the one most likely to be
+assumed. An architecture rule fails the build when a file opens a window without excluding it, but
+nothing offline can show what the platform actually sent.
+
+Ask the platform to say what it is doing, exercise every window that holds a field, then put the
+logging back:
+
+```bash
+adb shell cmd autofill set log_level verbose
+# … the checks below, watching `adb logcat` …
+adb shell cmd autofill set log_level off
+```
+
+What to read: as a field is focused, a fill request goes to the system's autofill service and the log
+names the fillable ids it carries. **An empty list is the pass.** A request that still goes out is
+expected — the toolkit tells the platform a field was entered and nothing in the app can prevent that
+— so the check is the *contents* of the structure, never its absence.
+
+- [ ] Focus the **passphrase field** on the lock screen. No fillable id. (Type a throwaway string if
+      anything needs typing here — never a real passphrase, which the keyboard would then learn.)
+- [ ] Unlock, open the **search field**, type a character. No fillable id.
+- [ ] Open the **new-album** dialog and the **rename** dialog in turn, typing in each. No fillable id
+      from either — a dialog is its own window and does not inherit the host's exclusion, which is
+      exactly how this was first found.
+- [ ] Open the **order menu** and the album's **overflow menu**. A menu is a window of its own as well
+      — with one open, `adb shell dumpsys window windows` lists a second window for this package,
+      attached to the activity's. Neither menu holds a text field today, so no fill request is
+      produced and this bullet cannot show a leak either way: record that the windows appear, and
+      treat the exclusion in them as the standing rule's work rather than as something measured here.
+      The first menu to list names is what this is for, and that one *will* be measurable.
+- [ ] Confirm the secure-window flag is **not** what is doing this work: it is on throughout, and the
+      first measurement that found this had it on.
+- [ ] Record the device and OS version beside the result. This is platform behaviour, so a pass on one
+      version is not a pass on the next.
+
 ## Sign-off
 
 Record device models + OS versions, date, and the app version (`:androidApp:printVersion`). Any
-failure in A, F or G is release-blocking; the rest are correctness or UX bugs to fix before release.
+failure in A, F, G or L is release-blocking; the rest are correctness or UX bugs to fix before release.
