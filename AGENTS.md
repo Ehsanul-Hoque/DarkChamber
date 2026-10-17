@@ -24,7 +24,12 @@ Package root: `dev.ehsanfahad.darkchamber`.
 >   over an injected driver. Opaque encrypted-BLOB + plaintext-index columns only; no `core:crypto` dep.
 > - **`:core:vault`** — `VaultObjects`: streaming `importObject`/`openObject`/`openMeta`/`shredObject`;
 >   the one place crypto + storage + db compose. Imports no cipher primitive.
-> - **`:core:designsystem`** — `DarkChamberTheme` roles + the `Aperture` signature.
+> - **`:core:designsystem`** — `DarkChamberTheme` roles, the `Aperture` signature, the icon set as
+>   Kotlin `ImageVector`s (a drawable is unreachable from `commonMain`, so iOS would draw nothing)
+>   handed out only through composables that take a theme role, and `ExcludeFromPlatformStructures` —
+>   the expect/actual that keeps a window out of the platform's autofill and content-capture
+>   structures. **Every window that opens one of its own must call it**; a dialog or a menu is its own
+>   window and inherits nothing, and a Konsist rule fails the build when one forgets.
 > - **`:core:logging`** — Kermit + the `VaultError` redaction boundary (hard rule #4).
 > - **`:app`** — the composition root: the Koin graph, the platform seams (`VaultRootResolver`, the
 >   catalog driver, `SecureKeyStore`), `VaultBootstrap`'s fail-closed cold-open, the Decompose
@@ -53,7 +58,8 @@ Package root: `dev.ehsanfahad.darkchamber`.
 > - **`:konsist`** — the architecture + **security-invariant** rules, running in CI on every PR.
 >
 > Still a stub (marker + smoke test): `:core:testing`. **In progress: Phase 1** — albums and browsing
-> are in; next are the camera, the seek primitive and the in-app viewers (deferred from Phase 0). **Planned, not yet wired:** ktlint/detekt/Kover, Lefthook and
+> are in and merged (browse refinement landed 2026-10-17); next are the camera, the seek primitive and
+> the in-app viewers (deferred from Phase 0). **Planned, not yet wired:** ktlint/detekt/Kover, Lefthook and
 > `migrationTest` — verify a Gradle task exists before assuming it runs. CI:
 > `pr.yml` is enabled (build + commit-message check + a gated macOS job that runs the **iOS unit
 > tests** and compiles the device architecture); its `quality` job stays

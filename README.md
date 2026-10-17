@@ -28,12 +28,22 @@ A Kotlin Multiplatform app for **Android** and **iOS** that encrypts, stores, an
 > - **albums** — group what you have put in, see what is in no album, move a selection in or out, and
 >   import straight into the album you are looking at. An album is a label, not a container: deleting
 >   one keeps every file in it, and an item is in one album at a time, so filing it moves it. Albums
->   organise — they are not a second lock, and nothing in the app pretends otherwise.
+>   organise — they are not a second lock, and nothing in the app pretends otherwise;
+> - **browsing** — four orders (newest, oldest, A–Z, Z–A) and a search over names, plus a line in the
+>   bar saying which listing you are looking at. Both run on the rows already on screen, because a
+>   name lives inside the encrypted metadata and no database can sort or match what it cannot open;
+>   changing the order or typing never re-decrypts a row. The search covers names on the current
+>   listing and says so, an item whose name will not open is counted out rather than quietly dropped,
+>   and an empty grid names which of the five reasons it is empty;
+> - **nothing handed to the rest of the phone** — screenshots and screen recording are blocked, and
+>   every window the app opens, each dialog included, keeps itself out of the platform's autofill and
+>   content-capture structures. That channel is **not** covered by the screenshot flag: it was
+>   measured sending a vault text field to another process, which is why a password manager cannot
+>   fill the passphrase here.
 >
-> What's left before the vault is usable: **sorting and search**, the **private camera**, and the
-> **in-app viewers** — tapping an item is deliberately inert until those land — then export with
-> metadata scrubbing and the settings screen. The documents under [`docs/`](./docs) describe the
-> target design.
+> What's left before the vault is usable: the **private camera** and the **in-app viewers** — tapping
+> an item is deliberately inert until those land — then export with metadata scrubbing and the
+> settings screen. The documents under [`docs/`](./docs) describe the target design.
 
 ---
 
