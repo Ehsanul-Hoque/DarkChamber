@@ -94,6 +94,39 @@ class SecurityArchitectureTest {
     }
 
     @Test
+    fun `every window that opens a dialog keeps it out of the platform's structures`() {
+        // A dialog is its own window with its own view root, so the exclusion set on the host's
+        // window does not reach it. Measured on a device: with the activity's window excluded, the
+        // album-name field inside a dialog still appeared in an autofill fill request sent to
+        // another process — one autofillable id, which went to none once the dialog excluded itself.
+        //
+        // The text in these windows is vault content: an album's name, a search the user typed
+        // (hard rules #1 and #5). So the rule is "a file that opens a dialog also excludes it",
+        // which is what stops the next dialog from being the one that forgets.
+        //
+        // A source rule rather than a unit test for the usual reason: nothing a host test can reach
+        // observes a platform window, and the hazard is the call site nobody wrote a test for.
+        val violations = productionFiles
+            .filter { OPENS_A_DIALOG.containsMatchIn(codeOf(it)) }
+            // The **call**, not the name: the first version of this looked for the bare identifier
+            // and was satisfied by the import line, so deleting the call from a dialog while
+            // leaving the import — the exact shape of an accidental removal — passed.
+            .filterNot { codeOf(it).contains("$EXCLUDES_FROM_STRUCTURES()") }
+
+        assertTrue(
+            violations.isEmpty(),
+            buildString {
+                appendLine(
+                    "A dialog is opened without excluding its window from the platform's autofill " +
+                        "and content-capture structures (hard rules #1/#5). Call " +
+                        "$EXCLUDES_FROM_STRUCTURES() inside the dialog's content.",
+                )
+                violations.forEach { appendLine("  ${it.projectPath}") }
+            },
+        )
+    }
+
+    @Test
     fun `no Android source declares a PlatformContext in the graph`() {
         // On Android `coil3.PlatformContext` is a typealias for `android.content.Context`, so a
         // `single<PlatformContext> { androidContext() }` is a definition keyed on Context whose body
@@ -168,6 +201,18 @@ class SecurityArchitectureTest {
          */
         val DECLARES_A_PLATFORM_CONTEXT =
             Regex("""(single|factory|scoped)\s*(\([^)]*\))?\s*<\s*([A-Za-z0-9_]+\.)*PlatformContext\s*>""")
+
+        /**
+         * A Compose dialog being opened — `Dialog(`, and the Material spellings beside it, each with
+         * a leading boundary so that `AlbumNameDialog(` and other composables whose names merely end
+         * in "Dialog" are not read as opening a window of their own. They are not: they call one of
+         * these, in the file this rule then checks.
+         */
+        val OPENS_A_DIALOG =
+            Regex("""(?<![A-Za-z0-9_])(Dialog|AlertDialog|BasicAlertDialog)\s*\(""")
+
+        /** The helper that excludes the window it is composed in. */
+        const val EXCLUDES_FROM_STRUCTURES = "ExcludeFromPlatformStructures"
     }
 }
 

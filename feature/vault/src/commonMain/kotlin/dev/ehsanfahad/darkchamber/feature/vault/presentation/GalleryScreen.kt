@@ -64,6 +64,7 @@ import coil3.compose.AsyncImagePainter
 import coil3.compose.SubcomposeAsyncImage
 import dev.ehsanfahad.darkchamber.core.designsystem.AlbumMark
 import dev.ehsanfahad.darkchamber.core.designsystem.DarkChamberTheme
+import dev.ehsanfahad.darkchamber.core.designsystem.ExcludeFromPlatformStructures
 import dev.ehsanfahad.darkchamber.core.designsystem.prefersReducedMotion
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumDelete
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumState
@@ -374,6 +375,11 @@ private fun AlbumChooser(
             dismissOnClickOutside = creating?.saving != true,
         ),
     ) {
+        // Its own window, so its own exclusion. Every dialog does this whether or not it holds a
+        // field today — the album names listed here are vault content too, and a dialog that gains
+        // a field later must not have to remember.
+        ExcludeFromPlatformStructures()
+
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -649,6 +655,8 @@ private fun DeleteAlbumConfirmation(
         // and a dialog that vanished would be claiming it had been.
         properties = DialogProperties(dismissOnBackPress = !running, dismissOnClickOutside = !running),
     ) {
+        ExcludeFromPlatformStructures()
+
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -727,6 +735,8 @@ private fun DeleteOriginalsDisclosure(
         onDismissRequest = {},
         properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false),
     ) {
+        ExcludeFromPlatformStructures()
+
         Column(
             modifier = Modifier
                 .fillMaxWidth()
