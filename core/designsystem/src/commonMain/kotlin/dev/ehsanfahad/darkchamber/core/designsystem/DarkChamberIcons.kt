@@ -169,6 +169,98 @@ internal val disclosureCaretVector: ImageVector by lazy {
 }
 
 /**
+ * The overflow mark: three dots, on a control that opens a menu of secondary actions.
+ *
+ * Same set and same rules as the two above — Kotlin rather than a drawable so shared code can draw
+ * it, path data exactly as supplied, and handed out only through a composable that takes a theme
+ * role.
+ *
+ * Unlike the caret beside it, this one **carries words**: it is the whole control rather than a hint
+ * attached to a label, so [MoreActions] takes a description and the caller has to say what the menu
+ * is for. A mark that says only "more" tells a screen reader nothing.
+ */
+internal val moreActionsVector: ImageVector by lazy {
+    ImageVector.Builder(
+        name = "MoreActions",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        @Suppress("CheckReturnValue")
+        path(
+            fill = SolidColor(Color.Black),
+            fillAlpha = 1f,
+            stroke = null,
+            strokeAlpha = 1f,
+            strokeLineWidth = 1f,
+            strokeLineCap = StrokeCap.Butt,
+            strokeLineJoin = StrokeJoin.Bevel,
+            strokeLineMiter = 1f,
+            pathFillType = PathFillType.NonZero,
+        ) {
+            // Three round dots, bottom to top, each a closed subpath of four arcs written as
+            // quadratics. Filled outlines again, so the shape holds at the size it is drawn.
+            moveTo(12f, 20f)
+            quadToRelative(-0.82f, 0f, -1.41f, -0.59f)
+            reflectiveQuadTo(10f, 18f)
+            reflectiveQuadToRelative(0.59f, -1.41f)
+            reflectiveQuadTo(12f, 16f)
+            reflectiveQuadToRelative(1.41f, 0.59f)
+            quadTo(14f, 17.18f, 14f, 18f)
+            reflectiveQuadToRelative(-0.59f, 1.41f)
+            reflectiveQuadTo(12f, 20f)
+            close()
+            moveToRelative(0f, -6f)
+            quadToRelative(-0.82f, 0f, -1.41f, -0.59f)
+            reflectiveQuadTo(10f, 12f)
+            reflectiveQuadToRelative(0.59f, -1.41f)
+            reflectiveQuadTo(12f, 10f)
+            reflectiveQuadToRelative(1.41f, 0.59f)
+            quadTo(14f, 11.18f, 14f, 12f)
+            reflectiveQuadToRelative(-0.59f, 1.41f)
+            reflectiveQuadTo(12f, 14f)
+            close()
+            moveTo(12f, 8f)
+            quadTo(11.18f, 8f, 10.59f, 7.41f)
+            reflectiveQuadTo(10f, 6f)
+            reflectiveQuadTo(10.59f, 4.59f)
+            reflectiveQuadTo(12f, 4f)
+            reflectiveQuadToRelative(1.41f, 0.59f)
+            quadTo(14f, 5.18f, 14f, 6f)
+            reflectiveQuadTo(13.41f, 7.41f)
+            reflectiveQuadTo(12f, 8f)
+            close()
+        }
+    }.build()
+}
+
+/**
+ * The overflow mark, tinted by a theme role.
+ *
+ * [tint] defaults to the primary text role: like the caret, this is part of a control rather than an
+ * annotation, and the complaint that produced the caret's change was a control drawn too quietly to
+ * read.
+ *
+ * [contentDescription] is required and should **name the menu's subject**, not the glyph — "more
+ * actions for this album" rather than "three dots". This is the control, so its words are the only
+ * ones a screen reader has.
+ */
+@Composable
+fun MoreActions(
+    contentDescription: String,
+    modifier: Modifier = Modifier,
+    tint: Color = DarkChamberTheme.colors.textPrimary,
+) {
+    Icon(
+        imageVector = moreActionsVector,
+        contentDescription = contentDescription,
+        tint = tint,
+        modifier = modifier,
+    )
+}
+
+/**
  * The disclosure chevron, tinted by a theme role.
  *
  * [tint] defaults to the **primary** text role rather than the secondary one the album mark uses.

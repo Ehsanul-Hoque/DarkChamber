@@ -156,24 +156,16 @@ internal fun GalleryScreen(
                 ErrorBanner(error = error, onDismiss = onDismissError)
             }
 
-            // An album's own heading, with the two things that can be done to the album itself. Only
-            // ever present on an album-scoped screen: the whole vault cannot be renamed, and Unfiled
-            // is a view rather than a thing.
-            if (album is AlbumState.Present) {
-                AlbumHeader(
-                    name = album.name,
-                    // Nothing to rename when the name will not open, so the action is absent rather
-                    // than present and dead — but deleting stays, because a damaged album is the one
-                    // most likely to want deleting.
-                    onRename = onStartAlbumRename.takeIf { album.name is AlbumTileName.Readable },
-                    onDelete = onRequestAlbumDelete,
-                )
-            }
-
-            // Under the album's heading and above the grid, on all three listings. Absent when
-            // neither control could do anything — see [showsBrowseControls], which holds that
-            // decision where a test can read it.
-            if (state.showsBrowseControls()) {
+            // One row above the grid on all three listings, carrying the browse controls and — on an
+            // album — the actions on the album itself. The album used to have a second row of its
+            // own above this one, repeating the name already in the bar; both copies were truncated
+            // anyway, and it cost the grid a row of thumbnails at all times.
+            //
+            // Two decisions, both held where a test can read them: [showsControlsRow] decides
+            // whether the row is drawn at all — it stays for an album's actions even when there is
+            // nothing to browse, which is when deleting an album matters most — and [albumActions]
+            // decides what the menu offers.
+            if (state.showsControlsRow()) {
                 GalleryBrowseControls(
                     order = state.order,
                     search = state.search,
@@ -186,6 +178,10 @@ internal fun GalleryScreen(
                     onOpenSearch = onOpenSearch,
                     onEditSearch = onEditSearch,
                     onCloseSearch = onCloseSearch,
+                    showsControls = state.showsBrowseControls(),
+                    albumActions = state.albumActions(),
+                    onRenameAlbum = onStartAlbumRename,
+                    onDeleteAlbum = onRequestAlbumDelete,
                 )
             }
 
@@ -534,59 +530,6 @@ private fun FilingCard(filing: Filing, onDismiss: () -> Unit) {
 
             // The chooser is a dialog, so this card is never asked to draw it.
             is Filing.Choosing -> Unit
-        }
-    }
-}
-
-/**
- * An album's heading: what it is called, and the two things that can be done to the album itself.
- *
- * The name is drawn from the listing rather than from the screen that led here, so a rename shows up
- * on the heading without this screen being told about it.
- *
- * [onRename] is null for an album whose name will not open — absent rather than disabled, because a
- * dead control invites a tap and explains nothing. Deleting stays available there on purpose: an album
- * nobody can read the name of is the one most likely to want removing, and doing so destroys none of
- * its contents.
- */
-@Composable
-private fun AlbumHeader(name: AlbumTileName, onRename: (() -> Unit)?, onDelete: () -> Unit) {
-    val colors = DarkChamberTheme.colors
-    val spacing = DarkChamberTheme.spacing
-
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = spacing.spaceMd, vertical = spacing.spaceXs),
-    ) {
-        Text(
-            text = name.label(),
-            style = DarkChamberTheme.typography.title,
-            color = if (name is AlbumTileName.Unreadable) colors.danger else colors.textPrimary,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-
-        onRename?.let { rename ->
-            TextButton(onClick = rename) {
-                Text(
-                    text = GalleryFormat.renameAlbum(),
-                    style = DarkChamberTheme.typography.label,
-                    color = colors.accent,
-                )
-            }
-        }
-        TextButton(onClick = onDelete) {
-            // Not the danger role. Deleting an album destroys nothing, and colouring it as though it
-            // did would be the honesty rule broken in the other direction — frightening someone away
-            // from a harmless action (hard rule #6).
-            Text(
-                text = GalleryFormat.deleteAlbum(),
-                style = DarkChamberTheme.typography.label,
-                color = colors.accent,
-            )
         }
     }
 }

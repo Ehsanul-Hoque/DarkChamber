@@ -97,6 +97,97 @@ class GalleryBrowseControlsTest {
         assertTrue(state.showsBrowseControls())
     }
 
+    // --- which actions a screen offers on the album itself ------------------------------------
+    //
+    // These moved out of the layout when the album's own row was removed: the name was already in
+    // the bar above it, and rename and delete became an overflow menu inside the controls row. A
+    // menu is easier to get wrong than a row was — a row simply omitted a control it had no callback
+    // for, while a menu lists what it is told to list — so what it offers is decided here.
+
+    private fun album(name: AlbumTileName = AlbumTileName.Readable("Trip")) =
+        listing().copy(album = AlbumState.Present(name))
+
+    @Test
+    fun an_album_offers_renaming_and_deleting() {
+        val actions = album().albumActions()
+
+        assertTrue(actions.rename)
+        assertTrue(actions.delete)
+    }
+
+    /**
+     * **An album whose name will not open cannot be renamed, but can still be deleted.** The rule
+     * the row already had, kept rather than re-decided: there is nothing to rename *from*, so the
+     * dialog would prefill with a placeholder nobody has seen — while an album nobody can read the
+     * name of is the one most likely to want removing, and removing it destroys none of its items.
+     */
+    @Test
+    fun an_album_whose_name_will_not_open_offers_only_deleting() {
+        val actions = album(AlbumTileName.Unreadable).albumActions()
+
+        assertFalse(actions.rename, "nothing to rename from")
+        assertTrue(actions.delete, "and this is the album most likely to want deleting")
+    }
+
+    @Test
+    fun an_album_that_is_no_longer_there_offers_neither() {
+        // That screen is a notice and one way out. Offering to rename or delete what is already gone
+        // is the menu version of the mistake the browse controls avoid by not being there at all.
+        val actions = listing().copy(album = AlbumState.Gone).albumActions()
+
+        assertFalse(actions.rename)
+        assertFalse(actions.delete)
+        assertFalse(actions.any)
+    }
+
+    @Test
+    fun the_listings_that_are_not_an_album_offer_neither() {
+        // The whole vault cannot be renamed and Unfiled is a view rather than a thing, so neither
+        // has an album to act on — `album` is null on both.
+        assertFalse(listing().albumActions().any)
+    }
+
+    // --- whether the row itself is there --------------------------------------------------------
+
+    @Test
+    fun the_row_is_there_whenever_the_browse_controls_are() {
+        assertTrue(listing().showsControlsRow())
+    }
+
+    /**
+     * **The reason this predicate is not just the browse one.** An empty album hides the browse
+     * controls — nothing to order, nothing to find — and before this change that took the album's
+     * actions off the screen with them. Deleting an album matters most when it is empty or when its
+     * listing would not read, so the row stays for the overflow alone.
+     */
+    @Test
+    fun an_empty_album_keeps_the_row_for_its_own_actions() {
+        val state = album().copy(items = emptyList())
+
+        assertFalse(state.showsBrowseControls(), "nothing to browse")
+        assertTrue(state.showsControlsRow(), "but the album's actions still have to be reachable")
+    }
+
+    @Test
+    fun an_album_whose_listing_would_not_read_keeps_the_row() {
+        val state = album().copy(listingUnreadable = true)
+
+        assertFalse(state.showsBrowseControls())
+        assertTrue(state.showsControlsRow())
+    }
+
+    @Test
+    fun a_missing_album_has_no_row_at_all() {
+        assertFalse(listing().copy(album = AlbumState.Gone).showsControlsRow())
+    }
+
+    @Test
+    fun an_empty_whole_vault_still_has_no_row() {
+        // The case that would break if the row were simply always shown: nothing to browse and no
+        // album to act on, so the row would be an empty strip above an empty grid.
+        assertFalse(listing().copy(items = emptyList()).showsControlsRow())
+    }
+
     /**
      * A closed search says nothing about items it left out — **not because the count is zero, but
      * because there is no count**: nothing was filtered, so nothing was excluded. The distinction

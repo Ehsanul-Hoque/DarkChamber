@@ -790,6 +790,22 @@ class GalleryFormatTest {
      * "Newest" it is none of them. The chevron itself stays silent for exactly this reason — this
      * description is where that information lives.
      */
+    /**
+     * The album overflow is a drawing with no label beside it, so its description is the only thing
+     * a screen reader has to go on. It has to name the **subject** — three dots are nothing, and
+     * "more" alone does not say more of what.
+     */
+    @Test
+    fun the_album_overflow_names_what_its_menu_acts_on() {
+        val spoken = GalleryFormat.albumActions()
+
+        assertTrue("album" in spoken.lowercase(), "it says what the menu acts on: $spoken")
+        assertFalse("dots" in spoken.lowercase(), "and never describes the glyph: $spoken")
+        // The album's own name is deliberately absent: the bar above already says which album this
+        // screen is, and a decrypted name does not need announcing twice.
+        assertEquals("More actions for this album", spoken)
+    }
+
     @Test
     fun the_order_control_is_named_as_well_as_shown() {
         for (order in GalleryOrder.entries) {

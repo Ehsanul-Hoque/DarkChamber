@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -36,7 +37,9 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import dev.ehsanfahad.darkchamber.core.designsystem.DarkChamberTheme
 import dev.ehsanfahad.darkchamber.core.designsystem.DisclosureCaret
+import dev.ehsanfahad.darkchamber.core.designsystem.MoreActions
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumState
+import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryOrder
 import dev.ehsanfahad.darkchamber.feature.vault.api.GallerySearch
@@ -71,6 +74,53 @@ internal fun GalleryState.showsBrowseControls(): Boolean =
     album !is AlbumState.Gone &&
         !listingUnreadable &&
         (items.isNotEmpty() || search is GallerySearch.Open)
+
+/**
+ * What a screen offers to do to **the album itself** — as opposed to its contents.
+ *
+ * These used to be two controls in a row of their own, which also repeated the album's name under the
+ * name already in the bar. The row is gone and they are an overflow menu in the controls row instead;
+ * this is where what the menu lists is decided, because a menu is easier to get wrong than the row
+ * was. A row with no callback for a control simply left it out, while a menu lists whatever it is
+ * handed — and an entry that does nothing is the kind of thing no test in this module can see.
+ */
+internal data class AlbumActions(val rename: Boolean, val delete: Boolean) {
+    val any: Boolean get() = rename || delete
+}
+
+/**
+ * Which of those this state offers.
+ *
+ * **Renaming needs a name that opened.** The rule comes across unchanged from the row it replaces:
+ * with nothing to rename *from*, the dialog would prefill with a placeholder nobody has seen, so the
+ * action is absent rather than present and dead. Deleting stays, because an album whose name will not
+ * open is the one most likely to want removing — and deleting an album destroys none of its items.
+ *
+ * **A missing album offers neither.** That screen is a notice and one way out; acting on something
+ * already gone is exactly what the browse controls avoid by not being drawn there either.
+ *
+ * The other two listings have no album to act on: the whole vault cannot be renamed, and Unfiled is a
+ * view rather than a thing.
+ */
+internal fun GalleryState.albumActions(): AlbumActions =
+    when (val album = album) {
+        is AlbumState.Present ->
+            AlbumActions(rename = album.name is AlbumTileName.Readable, delete = true)
+        AlbumState.Gone, null -> AlbumActions(rename = false, delete = false)
+    }
+
+/**
+ * Whether the row above the grid is drawn at all.
+ *
+ * Wider than [showsBrowseControls] by exactly one case, and that case is the reason this exists: an
+ * **empty album**, or one whose listing would not read, has nothing to order and nothing to find — so
+ * the browse controls are hidden — but it still has an album to rename or delete, and those are most
+ * wanted precisely then. The row stays, carrying the overflow alone.
+ *
+ * An empty whole-vault listing still has no row: nothing to browse and no album to act on.
+ */
+internal fun GalleryState.showsControlsRow(): Boolean =
+    showsBrowseControls() || albumActions().any
 
 /**
  * The way back to seeing a batch that has just landed, when a control would keep it out of sight.
@@ -372,6 +422,13 @@ internal fun GalleryBrowseControls(
     onOpenSearch: () -> Unit,
     onEditSearch: (String) -> Unit,
     onCloseSearch: () -> Unit,
+    // Whether the order and search controls themselves belong on the row — see [showsBrowseControls].
+    // False while the row is drawn for the album's actions alone, which is how deleting an empty
+    // album stays reachable now that it has no row of its own.
+    showsControls: Boolean = true,
+    albumActions: AlbumActions = AlbumActions(rename = false, delete = false),
+    onRenameAlbum: () -> Unit = {},
+    onDeleteAlbum: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val spacing = DarkChamberTheme.spacing
@@ -384,7 +441,12 @@ internal fun GalleryBrowseControls(
                 .fillMaxWidth()
                 .padding(horizontal = spacing.spaceMd, vertical = spacing.spaceXxs),
         ) {
-            when (search) {
+            if (!showsControls) {
+                // The row with nothing to browse: it holds the album's own actions and no more, so
+                // the overflow sits where it always does rather than sliding to the left edge.
+                Spacer(modifier = Modifier.weight(1f))
+            }
+            if (showsControls) when (search) {
                 GallerySearch.Closed -> {
                     OrderControl(order = order, onChooseOrder = onChooseOrder)
                     Spacer(modifier = Modifier.weight(1f))
@@ -435,6 +497,14 @@ internal fun GalleryBrowseControls(
                         )
                     }
                 }
+            }
+
+            if (albumActions.any) {
+                AlbumOverflow(
+                    actions = albumActions,
+                    onRename = onRenameAlbum,
+                    onDelete = onDeleteAlbum,
+                )
             }
         }
 
@@ -524,6 +594,83 @@ private fun OrderControl(order: GalleryOrder, onChooseOrder: (GalleryOrder) -> U
                     onClick = {
                         open = false
                         onChooseOrder(option.order)
+                    },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * The album's own actions, behind one control.
+ *
+ * They were a row of two text buttons under a second copy of the album's name. The name was already
+ * in the bar above — both copies truncated anyway — and renaming or deleting the album is not what
+ * the screen is for, so a full row at all times was the wrong price: on a 3.5× screen it cost the
+ * grid 224 px, which is a row of thumbnails.
+ *
+ * **What it offers is [AlbumActions]'s decision, not this layout's.** A menu lists what it is handed,
+ * so an entry for an action that cannot run would look exactly like one that can — the row it
+ * replaces could only ever omit a control it had no callback for.
+ *
+ * Whether the menu is open is not in the screen's state, for the same reason the order menu's is not:
+ * it is transient, guards nothing, and a menu that reopened itself after a rebuild would be worse
+ * than one that did not.
+ */
+@Composable
+private fun AlbumOverflow(actions: AlbumActions, onRename: () -> Unit, onDelete: () -> Unit) {
+    val spacing = DarkChamberTheme.spacing
+    var open by remember { mutableStateOf(false) }
+
+    Box {
+        IconButton(
+            onClick = { open = true },
+            // The full touch target, explicitly. The controls beside it ask for the same, and the
+            // row this replaces was measured at 40 dp — short of the minimum — which is the defect
+            // this change had to carry forward rather than inherit.
+            modifier = Modifier.size(spacing.spaceXxl),
+        ) {
+            MoreActions(
+                // Named for its subject rather than its shape: this is the whole control, so these
+                // are the only words a screen reader has for it.
+                contentDescription = GalleryFormat.albumActions(),
+                modifier = Modifier.size(spacing.spaceLg),
+            )
+        }
+
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            if (actions.rename) {
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = GalleryFormat.renameAlbum(),
+                            style = DarkChamberTheme.typography.body,
+                            color = DarkChamberTheme.colors.textPrimary,
+                        )
+                    },
+                    modifier = Modifier.heightIn(min = spacing.spaceXxl),
+                    onClick = {
+                        open = false
+                        onRename()
+                    },
+                )
+            }
+            if (actions.delete) {
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = GalleryFormat.deleteAlbum(),
+                            style = DarkChamberTheme.typography.body,
+                            // Not the danger role, as in the row before it: deleting an album
+                            // destroys none of its items, and colouring it as though it did would
+                            // frighten someone away from a harmless action (hard rule 6).
+                            color = DarkChamberTheme.colors.textPrimary,
+                        )
+                    },
+                    modifier = Modifier.heightIn(min = spacing.spaceXxl),
+                    onClick = {
+                        open = false
+                        onDelete()
                     },
                 )
             }

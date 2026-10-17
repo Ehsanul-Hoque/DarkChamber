@@ -300,11 +300,21 @@ internal object GalleryFormat {
         }
     }
 
-    /** The rename dialog's heading. */
+    /** The rename dialog's heading, and the menu entry that opens it. */
     fun renameAlbum(): String = "Rename album"
 
-    /** The two actions on an album's own screen. */
+    /** The other entry in that menu. */
     fun deleteAlbum(): String = "Delete album"
+
+    /**
+     * The spoken name of the control those two entries live behind.
+     *
+     * It names its **subject**, not its shape: three dots are nothing to a screen reader, and "more"
+     * on its own does not say more of what. The album is not named here either — the bar above
+     * already says which album the screen is, and repeating a decrypted name into a second
+     * announcement buys nothing.
+     */
+    fun albumActions(): String = "More actions for this album"
 
     /**
      * The delete confirmation's heading and body — **the most load-bearing copy in the album

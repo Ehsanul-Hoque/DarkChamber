@@ -67,6 +67,28 @@ class DarkChamberIconsTest {
         assertEquals(24f, disclosureCaretVector.viewportHeight)
     }
 
+    @Test
+    fun the_overflow_mark_carries_its_three_dots() {
+        val paths = moreActionsVector.root.filterIsInstance<VectorPath>()
+
+        assertEquals(1, paths.size, "one path holding all three dots, as supplied")
+        assertEquals(OVERFLOW_COMMANDS, paths.single().pathData.size)
+        assertEquals(
+            OVERFLOW_SUBPATHS,
+            paths.single().pathData.count { it is PathNode.Close },
+            "three closed subpaths — one dot each, and a missing one is the defect this catches: " +
+                "${paths.single().pathData}",
+        )
+    }
+
+    @Test
+    fun the_overflow_mark_is_drawn_in_the_box_it_is_sized_for() {
+        assertEquals(24.dp, moreActionsVector.defaultWidth)
+        assertEquals(24.dp, moreActionsVector.defaultHeight)
+        assertEquals(24f, moreActionsVector.viewportWidth)
+        assertEquals(24f, moreActionsVector.viewportHeight)
+    }
+
     private companion object {
         /** Every command in the supplied drawing. See the exact-count note above. */
         const val ALBUM_MARK_COMMANDS = 41
@@ -78,5 +100,10 @@ class DarkChamberIconsTest {
         const val CARET_COMMANDS = 8
 
         const val CARET_SUBPATHS = 1
+
+        /** The three dots: ten commands for each of the first two, eleven for the last. */
+        const val OVERFLOW_COMMANDS = 30
+
+        const val OVERFLOW_SUBPATHS = 3
     }
 }
