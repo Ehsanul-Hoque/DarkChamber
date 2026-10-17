@@ -239,10 +239,13 @@ adb shell cmd autofill set log_level verbose
 adb shell cmd autofill set log_level off
 ```
 
-What to read: as a field is focused, a fill request goes to the system's autofill service and the log
-names the fillable ids it carries. **An empty list is the pass.** A request that still goes out is
-expected — the toolkit tells the platform a field was entered and nothing in the app can prevent that
-— so the check is the *contents* of the structure, never its absence.
+What to read: focus a field, then ask the platform what it has. `adb shell dumpsys autofill` lists the
+live sessions, and a verbose log names the fillable ids a fill request carries. **Two answers pass,
+and both have been seen on hardware:** `No sessions` — the platform finds nothing autofillable and
+starts no session at all — or a session whose structure carries **no fillable id**. Only a structure
+with an id in it is a failure. A session existing is not, on its own, a problem: the toolkit tells the
+platform a field was entered and nothing in the app can prevent that, so the check is the *contents*
+of the structure, never its absence.
 
 - [ ] Focus the **passphrase field** on the lock screen. No fillable id. (Type a throwaway string if
       anything needs typing here — never a real passphrase, which the keyboard would then learn.)
