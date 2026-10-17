@@ -80,8 +80,8 @@ Goal: a walking skeleton with the security core proven before any product UI.
 
 The complete free product. Everything here ships open source and free.
 
-> **Progress (2026-09): Phase 1 is under way — the vault half of it is taking shape.** What a build
-> can do today, on Android and iOS:
+> **Progress (2026-10): Phase 1 is under way — the vault half of it is in place; the camera is next.**
+> What a build can do today, on Android and iOS:
 >
 > - **Browse the vault.** An adaptive grid over the encrypted catalog, newest first, backed by the
 >   session gate from Phase 0 — the item list cannot exist without an open vault.
@@ -99,7 +99,12 @@ The complete free product. Everything here ships open source and free.
 > - **Keep the screen private** — whole-app rather than per-screen: screenshot and screen-recording
 >   blocking plus a blank app-switcher card on Android, and an obscured app-switcher snapshot on
 >   iOS. iOS gives apps no way to block a screenshot at all, which the threat model states and no
->   copy here softens.
+>   copy here softens. The screenshot flag turned out **not** to cover a second channel: Android
+>   builds a structure of the foreground window for its autofill and content-capture services, which
+>   run in other processes, and a device showed a vault text field travelling that way with the flag
+>   set. Every window the app opens — each dialog, each menu — now excludes itself, and an
+>   architecture rule fails the build when a new one forgets. The cost is stated rather than hidden:
+>   a password manager cannot fill the passphrase.
 > - **Import from the cloud without the app seeming to hang.** A file stored in a cloud service has
 >   to be downloaded before it can be encrypted, which the provider does on its own schedule and
 >   reports nothing about — minutes, for a large file. The import now says it is waiting for the
@@ -115,16 +120,30 @@ The complete free product. Everything here ships open source and free.
 >   item is in **one album at a time**, so filing it moves it rather than making a second copy. An
 >   album organises; it is not a second lock, and nothing in the app implies that it is.
 >
-> Still to come before v1.0: sorting and search over the listing, the private camera, the in-app
-> viewers and the seekable reads they need, export with metadata scrubbing, the settings screen and
-> recovery-key entry, and the release-readiness tooling.
+> - **Find the one file you came for.** Four orders — newest, oldest, A–Z, Z–A — and a search over
+>   names, with a line in the bar saying which listing you are looking at and an album's name drawn
+>   on the tiles of the items filed in it. Both the ordering and the matching run on rows already on
+>   screen, because a name lives inside the encrypted metadata and no database can sort or match what
+>   it cannot open; what that buys is that changing the order, or typing another character, never
+>   re-opens a single row. The search says it covers names on this listing and nothing else, an item
+>   whose name will not open is counted out of the results rather than quietly dropped, and an empty
+>   grid distinguishes a vault with nothing in it from an album with nothing in it, from nothing
+>   unfiled, from a search that matched nothing, from a listing that could not be read.
+>
+> Still to come before v1.0: the private camera, the in-app viewers and the seekable reads they need,
+> export with metadata scrubbing, the settings screen and recovery-key entry, and the
+> release-readiness tooling.
 >
 > **Verified on Android hardware.** The iOS side is built and passes on the simulator, but the
 > platform-specific paths — the pickers and the preview encoder — have not yet been run on a device.
 > That is a pre-release gate, and it is stated here rather than implied away. The album surface's own
 > on-device pass is a gate of the same kind: what the automated tests cannot show is that an album name
 > never reaches the catalog file or a log line, which is checked on a device against
-> [`docs/verification/albums-manual.md`](./docs/verification/albums-manual.md).
+> [`docs/verification/albums-manual.md`](./docs/verification/albums-manual.md). Browsing has a
+> checklist of the same kind in
+> [`docs/verification/browse-manual.md`](./docs/verification/browse-manual.md), where four sections
+> are release-blocking — including the one that asks the platform what a window actually handed it,
+> which no test off the device can answer.
 
 | Feature                                | Notes                                                                                                                                                                                               |
 |----------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|

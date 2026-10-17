@@ -307,4 +307,4 @@ Notes are vault items (`kind='note'`, `text/markdown`) in the same `.dchm` conta
 └─ .github/workflows/
 ```
 
-ADRs live in `docs/ADR/` — currently: ADR-001 (no auto-encryption of other apps' photos), ADR-002 (no app lock), ADR-003 (no sandboxing of other apps). Future candidates: Argon2 binding choice, Drive appDataFolder vs visible folder.
+ADRs live in `docs/ADR/` — currently: ADR-001 (no auto-encryption of other apps' photos), ADR-002 (no app lock), ADR-003 (no sandboxing of other apps), ADR-004 (no `INTERNET` permission in v1). Future candidates: Argon2 binding choice, Drive appDataFolder vs visible folder.
