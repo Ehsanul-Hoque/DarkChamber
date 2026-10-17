@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -34,6 +35,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import dev.ehsanfahad.darkchamber.core.designsystem.DarkChamberTheme
+import dev.ehsanfahad.darkchamber.core.designsystem.DisclosureCaret
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumState
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryOrder
@@ -479,9 +481,24 @@ private fun OrderControl(order: GalleryOrder, onChooseOrder: (GalleryOrder) -> U
                 .semantics { contentDescription = GalleryFormat.orderControlDescription(order) },
         ) {
             Text(
-                text = "${GalleryFormat.orderLabel(order)} $CARET",
+                text = GalleryFormat.orderLabel(order),
                 style = DarkChamberTheme.typography.label,
                 color = colors.textPrimary,
+            )
+            DisclosureCaret(
+                // Decoration: the control's own description already says which order is in force and
+                // that this opens a choice, so a second thing to announce would only repeat it.
+                contentDescription = null,
+                tint = colors.textPrimary,
+                modifier = Modifier
+                    .padding(start = spacing.spaceXxs)
+                    // **Not its natural 24 dp.** The label beside it is 12 sp, and a 24 dp chevron
+                    // next to 12 sp type is the loudest thing in the row — the opposite failure to
+                    // the one being fixed. 16 dp from the scale is about half again the label's
+                    // height, which is the proportion a disclosure caret has in Material's own
+                    // controls. Being a filled outline, it keeps its shape at that size rather than
+                    // thinning the way a stroke-drawn icon would.
+                    .size(spacing.spaceMd),
             )
         }
 
@@ -537,9 +554,6 @@ private fun OrderMark(inForce: Boolean) {
         }
     }
 }
-
-/** The disclosure caret. A glyph rather than an icon dependency, and hidden from the reader above. */
-private const val CARET = "▾"
 
 /**
  * Wide enough for the mark and no wider. Fixed rather than measured, because the point of the slot is

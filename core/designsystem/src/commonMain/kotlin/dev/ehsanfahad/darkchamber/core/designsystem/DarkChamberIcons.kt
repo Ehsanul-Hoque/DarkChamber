@@ -119,3 +119,77 @@ fun AlbumMark(
         modifier = modifier,
     )
 }
+
+/**
+ * The downward chevron on a control that opens something beneath it.
+ *
+ * Kotlin rather than an Android drawable, for the same reason the album mark is: a drawable is
+ * unreachable from shared code, so the iOS build would draw nothing at all.
+ *
+ * **It exists because the thing it replaces was a character.** The order control used to append a
+ * literal `▾` to its label and render it at the label's own 12 sp, so it was as small as the type
+ * around it and carried whatever weight the system font gave it — there was nothing to resize,
+ * re-weight or tint, and on a device it was barely visible. A drawing has a size of its own.
+ */
+internal val disclosureCaretVector: ImageVector by lazy {
+    ImageVector.Builder(
+        name = "DisclosureCaret",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).apply {
+        @Suppress("CheckReturnValue")
+        path(
+            fill = SolidColor(Color.Black),
+            fillAlpha = 1f,
+            stroke = null,
+            strokeAlpha = 1f,
+            strokeLineWidth = 1f,
+            strokeLineCap = StrokeCap.Butt,
+            strokeLineJoin = StrokeJoin.Bevel,
+            strokeLineMiter = 1f,
+            pathFillType = PathFillType.NonZero,
+        ) {
+            // Exactly as supplied, from the same icon set the album mark comes from (Material
+            // Symbols rounded — docs/DESIGN.md §9 asks for one set and never a mix). A filled
+            // outline rather than a stroked line, which is why shrinking it below 24 dp costs less
+            // here than it would for a stroke-drawn icon: the chevron's own thickness scales with it
+            // instead of a 2 dp stroke thinning to a hairline.
+            moveTo(12f, 15.4f)
+            lineTo(6f, 9.4f)
+            lineTo(7.4f, 8f)
+            lineTo(12f, 12.6f)
+            lineTo(16.6f, 8f)
+            lineTo(18f, 9.4f)
+            lineToRelative(-6f, 6f)
+            close()
+        }
+    }.build()
+}
+
+/**
+ * The disclosure chevron, tinted by a theme role.
+ *
+ * [tint] defaults to the **primary** text role rather than the secondary one the album mark uses.
+ * They are different kinds of mark: the album mark annotates something, so it sits beside its label
+ * in the same quiet role, while this one is part of a control and reads as the thing you press. A
+ * caret quieter than its own label is how the glyph version came to be invisible.
+ *
+ * [contentDescription] is not defaulted away — same rule as the album mark. Pass null where the
+ * control already has a spoken name, which is every use so far: a caret announced as "caret" tells a
+ * screen reader nothing the control's own description has not already said.
+ */
+@Composable
+fun DisclosureCaret(
+    contentDescription: String?,
+    modifier: Modifier = Modifier,
+    tint: Color = DarkChamberTheme.colors.textPrimary,
+) {
+    Icon(
+        imageVector = disclosureCaretVector,
+        contentDescription = contentDescription,
+        tint = tint,
+        modifier = modifier,
+    )
+}

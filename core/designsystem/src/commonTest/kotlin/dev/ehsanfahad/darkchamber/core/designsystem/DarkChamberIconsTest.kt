@@ -44,11 +44,39 @@ class DarkChamberIconsTest {
         assertEquals(24f, albumMarkVector.viewportHeight)
     }
 
+    @Test
+    fun the_disclosure_caret_carries_its_drawing() {
+        val paths = disclosureCaretVector.root.filterIsInstance<VectorPath>()
+
+        assertEquals(1, paths.size, "one path, as supplied")
+        // Exact, for the same reason as the album mark above: the drawing is fixed data carried in,
+        // so losing part of it must fail rather than render a shorter chevron nobody notices.
+        assertEquals(CARET_COMMANDS, paths.single().pathData.size)
+        assertEquals(
+            CARET_SUBPATHS,
+            paths.single().pathData.count { it is PathNode.Close },
+            "one closed subpath — the chevron is a single outline: ${paths.single().pathData}",
+        )
+    }
+
+    @Test
+    fun the_disclosure_caret_is_drawn_in_the_box_it_is_sized_for() {
+        assertEquals(24.dp, disclosureCaretVector.defaultWidth)
+        assertEquals(24.dp, disclosureCaretVector.defaultHeight)
+        assertEquals(24f, disclosureCaretVector.viewportWidth)
+        assertEquals(24f, disclosureCaretVector.viewportHeight)
+    }
+
     private companion object {
         /** Every command in the supplied drawing. See the exact-count note above. */
         const val ALBUM_MARK_COMMANDS = 41
 
         /** How many of those commands close a subpath. */
         const val ALBUM_MARK_SUBPATHS = 5
+
+        /** The chevron: a move, six lines and a close. */
+        const val CARET_COMMANDS = 8
+
+        const val CARET_SUBPATHS = 1
     }
 }

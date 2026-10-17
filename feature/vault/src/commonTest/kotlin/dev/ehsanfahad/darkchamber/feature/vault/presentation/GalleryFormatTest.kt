@@ -785,9 +785,10 @@ class GalleryFormatTest {
     }
 
     /**
-     * Spoken, the order control has to say what it is. On screen it reads "Newest ▾", which is a
-     * control, a current value and an invitation all at once; announced as "Newest" it is none of
-     * them.
+     * Spoken, the order control has to say what it is. On screen it reads "Newest" beside a
+     * chevron, which is a control, a current value and an invitation all at once; announced as
+     * "Newest" it is none of them. The chevron itself stays silent for exactly this reason — this
+     * description is where that information lives.
      */
     @Test
     fun the_order_control_is_named_as_well_as_shown() {
