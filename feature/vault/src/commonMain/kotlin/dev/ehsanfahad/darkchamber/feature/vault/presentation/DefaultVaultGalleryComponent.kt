@@ -20,7 +20,9 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.Filing
 import dev.ehsanfahad.darkchamber.feature.vault.api.FilingDestination
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryError
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
+import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryOrder
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryScope
+import dev.ehsanfahad.darkchamber.feature.vault.api.GallerySearch
 import dev.ehsanfahad.darkchamber.feature.vault.api.GallerySelection
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryState
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportStage
@@ -32,6 +34,8 @@ import dev.ehsanfahad.darkchamber.feature.vault.domain.CreateAlbum
 import dev.ehsanfahad.darkchamber.feature.vault.domain.CreateAlbumResult
 import dev.ehsanfahad.darkchamber.feature.vault.domain.DeleteAlbum
 import dev.ehsanfahad.darkchamber.feature.vault.domain.FileItems
+import dev.ehsanfahad.darkchamber.feature.vault.domain.GalleryControls
+import dev.ehsanfahad.darkchamber.feature.vault.domain.GalleryListing
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveAlbum
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveAlbums
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveGallery
@@ -44,6 +48,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.onEach
@@ -102,6 +107,16 @@ internal class DefaultVaultGalleryComponent(
     // different child from the one showing the whole vault, so changing it is navigation rather than
     // a state change, and the selection below cannot straddle two listings.
     private val filter: ItemFilter = ItemFilter.All,
+    // What the screen that opened this one already knew the album was called, when there was one.
+    //
+    // **A starting point, not a cache.** The album listing below decides what the album is called
+    // from its first emission onwards, and this exists only to fill the frames before that arrives:
+    // the name has to be read from the catalog, which is a round trip, while the album grid that
+    // pushed this screen has had the name on a tile all along. Without it the bar above the screen
+    // draws no album name for the first few frames and then adds one, which reads as a flicker.
+    //
+    // Null on every other way in, and ignored unless this screen is an album's — see [_state].
+    openedAlbumName: AlbumTileName? = null,
     // Where leaving an album goes — a successful delete, or the notice shown when it disappeared from
     // elsewhere. A callback rather than navigation performed here, like the album grid's openers: a
     // component that popped the stack itself would have to know the shape of the stack it sits in.
@@ -126,6 +141,22 @@ internal class DefaultVaultGalleryComponent(
      */
     private var chooserWork: Job? = null
 
+    /**
+     * What this screen has been asked to show beyond its filter: the chosen order and the search
+     * text.
+     *
+     * Handed to the listing stage as a **flow**, which is the whole performance design of these two
+     * controls — the subscription is keyed by the filter alone, so changing either re-sorts and
+     * re-filters rows already in memory instead of re-running the query and re-opening every row's
+     * metadata (see `ObserveGallery`). The same values are published into [state] for the controls
+     * row to draw, and the intents below write both together so the row can never disagree with the
+     * grid.
+     *
+     * Owned here and shared with nothing: these are one screen's transient view of its own listing,
+     * and they die with it on lock like everything else this component holds.
+     */
+    private val controls = MutableStateFlow(GalleryControls())
+
     // SupervisorJob so one failed intent does not kill the component's other work, but parented to
     // whatever Job the caller passed: the app scopes feature work to the vault session, and
     // cancelling that must cancel this too — before the session it runs against is zeroized.
@@ -134,7 +165,12 @@ internal class DefaultVaultGalleryComponent(
     private val _state = MutableValue(
         // The scope is published once, at construction, because that is when it is decided: this
         // screen's identity is its filter, and changing it is a push rather than a state change.
-        GalleryState(scope = filter.toScope()),
+        GalleryState(
+            scope = filter.toScope(),
+            // Guarded on the filter rather than trusted from the caller: a name carried to a listing
+            // that is not an album would give a screen with no album a heading and two album actions.
+            album = openedAlbumName?.takeIf { albumId != null }?.let(AlbumState::Present),
+        ),
     )
     override val state: Value<GalleryState> = _state
 
@@ -176,7 +212,7 @@ internal class DefaultVaultGalleryComponent(
         }
         doOnDestroy(subscription::cancel)
 
-        observeGallery(filter)
+        observeGallery(filter, controls)
             // A catalog failure arrives as an exception in the flow, not an Outcome (core:vault's
             // documented contract). Report it: an empty list here would render a broken catalog as
             // an empty vault, which is the fail-closed rule's exact target.
@@ -191,7 +227,7 @@ internal class DefaultVaultGalleryComponent(
                     listingUnreadable = true,
                 )
             }
-            .onEach(::onItems)
+            .onEach(::onListing)
             .launchIn(scope)
 
         // The batch runs on the session, not here: this only watches it. The component can be
@@ -222,6 +258,41 @@ internal class DefaultVaultGalleryComponent(
                 .onEach(::onAlbum)
                 .launchIn(scope)
         }
+    }
+
+    // The state is written before the controls, in all three intents that touch both. The listing
+    // stage emits as soon as the controls change, and that emission reads the search back out of the
+    // state to attach its hidden count — so writing the controls first would have it read the
+    // previous query and then publish the new one with a count belonging to the old.
+    override fun chooseOrder(order: GalleryOrder) {
+        _state.value = _state.value.copy(order = order)
+        controls.value = controls.value.copy(order = order)
+    }
+
+    override fun openSearch() {
+        // Ignored when it is already open. The field *is* the control in that state, so this can only
+        // be a second tap on it, and re-opening would silently discard what has been typed.
+        if (_state.value.search is GallerySearch.Open) return
+        // No controls change: an empty query filters nothing, so the grid is left exactly as it is.
+        _state.value = _state.value.copy(search = GallerySearch.Open(query = ""))
+    }
+
+    override fun editSearch(query: String) {
+        // Nothing to type into while it is closed. A query held with no field showing it would filter
+        // the grid with nothing on screen to explain why, or to clear it.
+        val open = _state.value.search as? GallerySearch.Open ?: return
+        // The count is carried over rather than reset: it counts the items whose names will not open,
+        // which is a property of the listing and not of what is being typed. The emission that
+        // follows confirms it.
+        _state.value = _state.value.copy(search = open.copy(query = query))
+        controls.value = controls.value.copy(query = query)
+    }
+
+    override fun closeSearch() {
+        _state.value = _state.value.copy(search = GallerySearch.Closed)
+        // The query goes with the field. Leaving it would filter the grid behind a control that is no
+        // longer on screen, and reopening the search costs nothing — nothing is re-read.
+        controls.value = controls.value.copy(query = "")
     }
 
     // The coordinator holds the double-tap guard: it is the thing that knows whether a batch is
@@ -716,7 +787,8 @@ internal class DefaultVaultGalleryComponent(
         )
     }
 
-    private fun onItems(items: List<GalleryItem>) {
+    private fun onListing(listing: GalleryListing) {
+        val items = listing.items
         // Before publishing the list, not after: items can be shredded or moved out of the album
         // being viewed while selected, and a selection holding ids the grid no longer shows would
         // count things that are gone and then act on them. The intersection publishes its own state
@@ -729,6 +801,13 @@ internal class DefaultVaultGalleryComponent(
             items = items,
             loading = false,
             error = error,
+            // How many items the search left out is a fact about the listing that just arrived, so
+            // it is published with it rather than guessed at when the query changes. Only an open
+            // search has anywhere to say it.
+            search = when (val search = _state.value.search) {
+                is GallerySearch.Open -> search.copy(hiddenUnreadable = listing.hiddenUnreadable)
+                GallerySearch.Closed -> GallerySearch.Closed
+            },
             // A listing that arrives is a listing that was read. Unreachable today — a catalog failure
             // ends the flow — but the field means "we could not read it", so the one thing that
             // disproves it has to clear it.

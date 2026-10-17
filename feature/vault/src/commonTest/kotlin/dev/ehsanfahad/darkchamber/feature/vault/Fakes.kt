@@ -10,8 +10,10 @@ import dev.ehsanfahad.darkchamber.core.vault.ImportPhase
 import dev.ehsanfahad.darkchamber.core.vault.ObjectMeta
 import dev.ehsanfahad.darkchamber.core.vault.VaultItemSummary
 import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
+import dev.ehsanfahad.darkchamber.feature.vault.api.ImportState
 import dev.ehsanfahad.darkchamber.feature.vault.api.PhotoPicker
 import dev.ehsanfahad.darkchamber.feature.vault.api.PickedFile
+import dev.ehsanfahad.darkchamber.feature.vault.api.VaultImports
 import dev.ehsanfahad.darkchamber.feature.vault.domain.VaultItems
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -403,12 +405,41 @@ internal class FakeVaultItems(
     var handedFirst: RawSource? = null
         private set
 
+    /**
+     * How many times a listing was asked for. The listing stage must subscribe **once per filter** —
+     * so a change of order or of search text that re-subscribed here would re-decrypt every row, and
+     * this counter is what notices.
+     */
+    var observeCalls = 0
+        private set
+
+    /**
+     * Per-filter listings, for a test that needs the three to differ — the catalog returns different
+     * rows for the whole vault, for one album and for the unfiled items, and a stage that searched
+     * the wrong one would look right against a single shared flow.
+     */
+    val summariesByFilter = mutableMapOf<ItemFilter, MutableStateFlow<List<VaultItemSummary>>>()
+
     override fun observe(filter: ItemFilter): Flow<List<VaultItemSummary>> {
         observedFilter = filter
-        return summaries
+        observeCalls++
+        return summariesByFilter[filter] ?: summaries
     }
 
-    override fun observeAlbums(): Flow<List<AlbumSummary>> = albums
+    /**
+     * How many times the album listing was asked for.
+     *
+     * The item grid names a filed item's album by mapping ids through this listing — but **only on
+     * the whole-vault listing**, where filed and unfiled items are mixed. An album screen or the
+     * unfiled screen must not subscribe at all, and this counter is what says so.
+     */
+    var observeAlbumsCalls = 0
+        private set
+
+    override fun observeAlbums(): Flow<List<AlbumSummary>> {
+        observeAlbumsCalls++
+        return albums
+    }
 
     /**
      * Every name a create was asked for, in order. A list rather than a counter and a `lastName`:
@@ -603,9 +634,42 @@ internal fun summary(
     size: Long = 12L,
     createdAt: Long = 34L,
     kind: VaultItemKind = VaultItemKind.FILE,
-): VaultItemSummary = VaultItemSummary(id = id, kind = kind, size = size, createdAt = createdAt, meta = meta)
+    albumId: ByteArray? = null,
+): VaultItemSummary =
+    VaultItemSummary(
+        id = id,
+        albumId = albumId,
+        kind = kind,
+        size = size,
+        createdAt = createdAt,
+        meta = meta,
+    )
 
 internal fun readableMeta(name: String = "a.txt", mime: String = "text/plain"): Outcome<ObjectMeta> =
     Outcome.Ok(ObjectMeta(name, mime))
 
 internal fun damagedMeta(): Outcome<ObjectMeta> = Outcome.Err(VaultError.Crypto.IntegrityFailure)
+
+/**
+ * A batch that never does anything, for the tests whose subject is not importing.
+ *
+ * Shared, unlike the four file-private copies of this that the presentation tests grew one at a
+ * time — any new test should take this one, and those four are worth folding into it.
+ */
+internal class IdleVaultImports : VaultImports {
+    override val state: MutableStateFlow<ImportState> = MutableStateFlow(ImportState.Idle)
+
+    override fun importPhotos(albumId: ByteArray?) = Unit
+
+    override fun importFiles(albumId: ByteArray?) = Unit
+
+    override fun cancel() = Unit
+
+    override fun acknowledge() = Unit
+
+    override fun requestOriginalDelete() = Unit
+
+    override fun confirmOriginalDelete() = Unit
+
+    override fun keepOriginals() = Unit
+}

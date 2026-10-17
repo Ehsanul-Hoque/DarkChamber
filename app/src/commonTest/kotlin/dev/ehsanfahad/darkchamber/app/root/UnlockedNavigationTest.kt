@@ -18,12 +18,18 @@ import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultItemKind
 import dev.ehsanfahad.darkchamber.core.storage.VaultStorage
 import dev.ehsanfahad.darkchamber.core.vault.VaultObjects
+import dev.ehsanfahad.darkchamber.app.ui.crumbFor
+import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumState
+import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
 import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryScope
+import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryState
 import dev.ehsanfahad.darkchamber.feature.vault.api.PhotoPicker
+import dev.ehsanfahad.darkchamber.feature.vault.api.label
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -41,6 +47,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -74,9 +81,17 @@ class UnlockedNavigationTest {
     @AfterTest
     fun cleanup() = deleteRecursively(testDir)
 
+    /** How many times the subtree asked its host to leave the app. */
+    private var leaves = 0
+
     private fun component(
         open: VaultBootstrap.OpenVault,
         mainContext: CoroutineContext = UnconfinedTestDispatcher(),
+        // Where an album's write runs. Left as production's by default, because most of these tests
+        // only navigate — but a test that *waits* for a write has to hand it a dispatcher the test
+        // scheduler drives, or `advanceUntilIdle` returns with the work still in flight on a real
+        // thread pool and the assertion reads the state from before it.
+        ioContext: CoroutineContext = Dispatchers.Default,
     ): DefaultUnlockedComponent =
         DefaultUnlockedComponent(
             componentContext = DefaultComponentContext(
@@ -86,8 +101,10 @@ class UnlockedNavigationTest {
             vault = open,
             koin = koin,
             mainContext = mainContext,
+            ioContext = ioContext,
             mapContext = mainContext,
             onLock = {},
+            onLeave = { leaves++ },
         )
 
     @Test
@@ -97,7 +114,7 @@ class UnlockedNavigationTest {
         val stack = component(open).stack.value
 
         val child = assertIs<UnlockedChild.Gallery>(stack.active.instance, "unlock lands on the files")
-        assertTrue(child.atHome, "and on the whole vault rather than a filtered view of it")
+        assertEquals(GalleryScope.WholeVault, child.scope, "and on the whole vault, not a filtered view of it")
         assertEquals(1, stack.items.size, "nothing is stacked on top of it")
     }
 
@@ -111,7 +128,12 @@ class UnlockedNavigationTest {
         assertIs<UnlockedChild.Albums>(component.stack.value.active.instance)
         assertEquals(2, component.stack.value.items.size, "pushed on top of the grid, not in place of it")
 
-        assertTrue(backDispatcher.back(), "the stack handles back")
+        // Through the component's own entry point. The stack no longer handles back itself — the
+        // navigation animation does, and calls this when the gesture finishes — so a press on the
+        // host's dispatcher is answered in a composition, which a host test has none of. That the
+        // press *reaches* this subtree is asserted in `RootComponentTest`, where the wiring lives.
+        component.onBack()
+
         assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance, "back returns to the files")
         assertEquals(1, component.stack.value.items.size)
     }
@@ -148,7 +170,9 @@ class UnlockedNavigationTest {
 
         val child = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance)
         assertEquals(3, component.stack.value.items.size, "grid, albums, then the filtered grid")
-        assertTrue(!child.atHome, "a filtered gallery is not the home one, so it offers no albums entry")
+        // Which listing, not merely "not the home one": the chrome above needs to tell an album from
+        // Unfiled, and the boolean this replaced could not.
+        assertEquals(GalleryScope.Album, child.scope, "an album's own grid, so it offers no albums entry")
 
         val listed = child.component.state.value.items
         assertEquals(1, listed.size, "the filtered screen shows the album, not the vault")
@@ -175,7 +199,7 @@ class UnlockedNavigationTest {
         advanceUntilIdle()
 
         val child = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance)
-        assertTrue(!child.atHome, "a filtered gallery, so it offers no second way into albums")
+        assertEquals(GalleryScope.Unfiled, child.scope, "the unfiled listing, so no second way into albums")
         val listed = child.component.state.value.items
         assertEquals(1, listed.size, "only what is in no album")
         assertTrue(listed.single().id.contentEquals(loose))
@@ -276,7 +300,7 @@ class UnlockedNavigationTest {
 
         assertEquals(depth, component.stack.value.items.size, "the second tap added nothing and threw nothing")
         val child = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance)
-        assertTrue(!child.atHome, "and the album screen is still the one on top")
+        assertEquals(GalleryScope.Album, child.scope, "and the album screen is still the one on top")
     }
 
     /** The same hazard on the albums entry itself, which is also a button a finger can hit twice. */
@@ -290,6 +314,209 @@ class UnlockedNavigationTest {
 
         assertEquals(2, component.stack.value.items.size)
         assertIs<UnlockedChild.Albums>(component.stack.value.active.instance)
+    }
+
+    /**
+     * **Exactly one thing pops.**
+     *
+     * The animation that draws the transition takes its own `onBack` and calls it when the gesture
+     * finishes, so the stack must not also handle back itself — both registered means one gesture
+     * pops two screens. This is the half of that invariant a host test can reach: the pop goes
+     * through the component's own entry point.
+     */
+    @Test
+    fun one_back_pops_exactly_one_screen() {
+        val component = component(openVault())
+        component.openAlbums()
+        assertEquals(2, component.stack.value.items.size)
+
+        component.onBack()
+
+        assertEquals(1, component.stack.value.items.size, "the grid, and nothing popped past it")
+        assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance)
+    }
+
+    /**
+     * And the other half: **the stack does not register a back callback of its own.**
+     *
+     * A press reaching the host handler finds nothing here to answer it, because answering is the
+     * animation's job and the animation only exists in a composition. If the stack were still
+     * built with `handleBackButton = true` this would pop — and in production that pop would land
+     * *as well as* the animation's, which is the double-pop this is written to catch.
+     *
+     * The previous cycle's whole back defect was a handler that silently went somewhere else, so
+     * this drives the dispatcher the component was handed rather than trusting the flag.
+     */
+    @Test
+    fun the_stack_leaves_back_to_the_animation() {
+        val component = component(openVault())
+        component.openAlbums()
+
+        val handled = backDispatcher.back()
+
+        assertTrue(!handled, "nothing in the component tree claims a plain back press")
+        assertEquals(2, component.stack.value.items.size, "so nothing popped")
+    }
+
+    /**
+     * **A selection still wins back, ahead of the offer to leave.**
+     *
+     * Three things want a back press inside the unlocked subtree and they have to answer in a fixed
+     * order: a live selection first, then the screen below, then — with the grid as the only screen —
+     * the offer to leave the app. The first two are settled by where their callbacks are registered:
+     * the grid's lives in a child context, which Decompose gives a higher priority than the gate's
+     * own. This is the pair that would be easiest to get wrong, because both are enabled at the same
+     * moment: the grid is the only screen *and* something is selected.
+     *
+     * Here rather than beside the other leave tests because it needs an item to select, and this is
+     * the file with the fixtures for that. What it proves is a priority between two callbacks on one
+     * dispatcher, which does not depend on who built the dispatcher.
+     */
+    @Test
+    fun a_press_while_selecting_ends_the_selection_rather_than_offering_to_leave() = runTest {
+        val open = openVault(UnconfinedTestDispatcher(testScheduler))
+        val component = component(open, UnconfinedTestDispatcher(testScheduler))
+        val id = importInto(vaultObjects(open), null, "one.txt")
+        advanceUntilIdle()
+        val gallery = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance).component
+        gallery.selectItem(id)
+        assertTrue(gallery.state.value.selection.active, "something to come out of")
+
+        val handled = backDispatcher.back()
+
+        assertTrue(handled)
+        assertTrue(!gallery.state.value.selection.active, "back left selecting mode")
+        assertEquals(0, leaves, "and did not offer to leave, let alone leave")
+        assertTrue(!component.leaveNotice.value, "nor put a notice on screen about it")
+    }
+
+    /**
+     * What the bar says it is above, on each of the four screens.
+     *
+     * Built from real children rather than hand-made ones, because the answer that matters is the
+     * album's — read from the live state, so it has to be a real component's.
+     */
+    @Test
+    fun the_bar_names_the_listing_it_is_above() = runTest {
+        val open = openVault(UnconfinedTestDispatcher(testScheduler))
+        val component = component(open, UnconfinedTestDispatcher(testScheduler))
+        val objects = vaultObjects(open)
+        val albumId = (objects.createAlbum("Receipts") as Outcome.Ok).value
+
+        val home = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance)
+        // The vault is the destination, so nothing is added beside its name.
+        assertNull(crumbFor(home, home.component.state.value))
+
+        component.openAlbums()
+        val albums = assertIs<UnlockedChild.Albums>(component.stack.value.active.instance)
+        assertEquals("Albums", crumbFor(albums, null), "a sibling of the grid, so it says which it is")
+
+        albums.component.openUnfiled()
+        advanceUntilIdle()
+        val unfiled = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance)
+        assertEquals("Unfiled", crumbFor(unfiled, unfiled.component.state.value))
+
+        albums.component.openAlbum(albumId)
+        advanceUntilIdle()
+        val inAlbum = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance)
+        assertEquals("Receipts", crumbFor(inAlbum, inAlbum.component.state.value), "the album, by name")
+    }
+
+    /**
+     * **The album's name is in the bar from the first frame**, not a few frames later.
+     *
+     * The bar reads live state, and an album's name is the one answer that has to be read from the
+     * catalog — so without the grid handing over the name it is already showing, the bar spends the
+     * first frames of the push saying only "Vault" and then adds the album, which reads as a flicker
+     * on a screen that has not begun to move.
+     *
+     * A driven dispatcher is what makes this discriminate: the grid's listing is let run first, and
+     * then nothing runs between the push and the assertion. An unconfined one would let the new
+     * screen's own listing emit inside `openAlbum` and the bar would be right either way.
+     */
+    @Test
+    fun the_bar_names_an_album_from_the_frame_it_is_opened_in() = runTest {
+        val open = openVault(StandardTestDispatcher(testScheduler))
+        val component = component(open, StandardTestDispatcher(testScheduler))
+        val albumId = (vaultObjects(open).createAlbum("Receipts") as Outcome.Ok).value
+
+        component.openAlbums()
+        val albums = assertIs<UnlockedChild.Albums>(component.stack.value.active.instance)
+        // The grid has read the catalog; from here on the scheduler is held.
+        advanceUntilIdle()
+
+        albums.component.openAlbum(albumId)
+
+        val child = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance)
+        assertEquals(
+            "Receipts",
+            crumbFor(child, child.component.state.value),
+            "named before its own listing has answered",
+        )
+    }
+
+    /**
+     * **A rename moves the crumb**, which is the reason it is read from live state rather than
+     * copied out of the navigation config: the rename is made from this very screen, so a stale name
+     * would be wrong in the one place the user is looking.
+     */
+    @Test
+    fun renaming_an_album_renames_the_crumb() = runTest {
+        val open = openVault(UnconfinedTestDispatcher(testScheduler))
+        val component = component(
+            open = open,
+            mainContext = UnconfinedTestDispatcher(testScheduler),
+            // The rename is a write, and this test waits for it.
+            ioContext = UnconfinedTestDispatcher(testScheduler),
+        )
+        val albumId = (vaultObjects(open).createAlbum("Receipts") as Outcome.Ok).value
+        component.openAlbums()
+        val albums = assertIs<UnlockedChild.Albums>(component.stack.value.active.instance)
+        albums.component.openAlbum(albumId)
+        advanceUntilIdle()
+        val child = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance)
+        assertEquals("Receipts", crumbFor(child, child.component.state.value))
+
+        child.component.startAlbumRename()
+        child.component.editAlbumName("Tax")
+        child.component.confirmAlbumRename()
+        advanceUntilIdle()
+
+        assertEquals("Tax", crumbFor(child, child.component.state.value))
+    }
+
+    /**
+     * An album whose name will not open gets the unverifiable form, never a blank and never a guess
+     * — the same words the grid and the heading use, through the one helper that decides them.
+     */
+    @Test
+    fun an_album_whose_name_will_not_open_still_has_a_crumb() = runTest {
+        val open = openVault(UnconfinedTestDispatcher(testScheduler))
+        val component = component(open, UnconfinedTestDispatcher(testScheduler))
+        val child = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance)
+
+        val crumb = crumbFor(
+            child = UnlockedChild.Gallery(child.component, GalleryScope.Album),
+            gallery = GalleryState(album = AlbumState.Present(AlbumTileName.Unreadable)),
+        )
+
+        assertEquals(AlbumTileName.Unreadable.label(), crumb)
+    }
+
+    /**
+     * Two cases say nothing at all, and both are deliberate: an album that is **gone** must not be
+     * named as though it were still there — the screen below is already explaining the exit — and a
+     * name that has **not arrived yet** gets no placeholder for the user to watch be replaced.
+     */
+    @Test
+    fun an_album_with_no_name_to_show_adds_nothing_to_the_bar() = runTest {
+        val open = openVault(UnconfinedTestDispatcher(testScheduler))
+        val component = component(open, UnconfinedTestDispatcher(testScheduler))
+        val gallery = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance).component
+        val child = UnlockedChild.Gallery(gallery, GalleryScope.Album)
+
+        assertNull(crumbFor(child, GalleryState(album = AlbumState.Gone)), "gone, so not named")
+        assertNull(crumbFor(child, GalleryState(album = null)), "not read yet, so nothing claimed")
     }
 
     /** One small item, filed or not, so a listing has something to be right or wrong about. */

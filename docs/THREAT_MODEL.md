@@ -18,6 +18,7 @@
 4. **Root-level extraction of stored data.** Even with root access to the app's private directory, an attacker obtains ciphertext plus a wrapped master key. Hardware-bound wraps cannot be exported from the secure element; the password wrap requires brute-forcing the passphrase through Argon2id (memory-hard, deliberately slow).
 5. **Cloud provider inspection (Phase 3 backup).** Providers store ciphertext with encrypted names and metadata; the backup design is zero-knowledge and we operate no servers.
 6. **Shoulder-surfing and incidental leaks.** Screenshot blocking (`FLAG_SECURE`) on Android, app-switcher snapshot obscuring on both platforms, optional tap-to-reveal for sensitive lists.
+7. **The platform handing a window's text to another process.** Android builds a structure of the foreground window for its autofill, content-capture and assist services, which run in other processes. Every window the app opens, each dialog included, excludes itself from the **autofill and content-capture** structures, because the text in them is vault content: a name search is a fragment of a file name the user retyped, an album's name is content, and the passphrase is the way to all of it. The **assist** structure is not excluded, and does not need to be for a different reason: the UI toolkit publishes no text into it, so what is built over a window there is layout without content — a property of the toolkit rather than something this app asserts. Measured rather than assumed, on a device — see the out-of-scope note below for what the measurement showed and what it cost.
 
 ## Out of scope — threats we do not defend against (and say so)
 
@@ -32,6 +33,10 @@
    - **iOS** — the pasteboard write is marked *local only*, so Universal Clipboard does not broadcast the key over iCloud to every device signed into the same account, and carries an *expiration date* (about a minute) that the system honours by itself.
    - **Android** — the clip is flagged *sensitive* (API 33+), so the system shows no preview of it on screen and keyboards that honour the flag keep it out of clipboard history. The flag is a hint the system passes on, not a restriction it enforces: the stock keyboard respects it, another keyboard need not. Android offers no expiry, so the app schedules the clear itself; **if the process dies first, the clip stays**. The clear also leaves the clipboard alone if the user has copied something else since, rather than deleting their work.
    - **Neither platform makes the clipboard private.** Any app the user runs can read it, and on Android before 13 a foreground app can read it silently. The user may also paste the key somewhere that syncs or is backed up. In-app copy therefore says only that the key clears in about a minute and to paste it somewhere safe now — never that copying is secure.
+
+9. **Autofill as a convenience, deliberately given up.** Because the app's windows are excluded from the autofill structures, a password manager cannot fill the passphrase field — there is no way to offer that to one field while keeping vault text out of the structure, since the framework marks every text field in a Compose window as fillable and populates each with its own text. A vault whose passphrase is the only route to its contents is the wrong place to hand that text to another process, so the convenience is the thing that gives way. Typing the passphrase remains the only path besides biometric unlock.
+
+   What the device showed, recorded so the next person does not re-derive it: `FLAG_SECURE` **does not** cover this. With the flag set, focusing a text field still started an autofill session for the activity and sent a fill request to the system's autofill service, carrying one fillable field. After the exclusion, the session still starts — the UI toolkit tells the platform a field was entered and nothing outside it can prevent that — but the structure carries **no fillable field at all**. A dialog is its own window and needed its own exclusion; the host's was not inherited. The assist path is quieter: the toolkit never publishes its text there in the first place, so the structure built over the window is layout without content.
 
 ## Security invariants (enforced in code review)
 
@@ -59,6 +64,10 @@
   encrypt notices within a buffered read, and the interrupted file leaves no object, no catalog row
   and no scratch. Nothing about a running import is persisted across a lock, which is why the app
   warns before an import rather than explaining afterwards.
+- **Every window that shows vault content is excluded from the platform's autofill and
+  content-capture structures.** A dialog is its own window and does not inherit the exclusion set on
+  the host's, so each one asks for it itself; an architecture rule fails the build when a dialog is
+  opened without it, because the next dialog to hold a text field is the one that would forget.
 - A violation of any invariant is a P0 security bug, regardless of user impact observed.
 
 ## Reporting

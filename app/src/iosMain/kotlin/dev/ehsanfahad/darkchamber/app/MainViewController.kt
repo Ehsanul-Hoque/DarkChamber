@@ -57,7 +57,20 @@ fun MainViewController(): UIViewController {
                 onUnlocked = onUnlocked,
             )
         },
-        unlockedFactory = { ctx, vault, onLock -> DefaultUnlockedComponent(ctx, vault, koin, onLock = onLock) },
+        unlockedFactory = { ctx, vault, onLock ->
+            DefaultUnlockedComponent(
+                ctx,
+                vault,
+                koin,
+                onLock = onLock,
+                // Nothing, because iOS has neither half of what this is for: no system back reaches
+                // the gate (the context above is built without a back handler, so the callback that
+                // would offer to leave is never enabled by anything), and an app does not quit
+                // itself here — leaving is the home gesture, which backgrounds us and locks the
+                // vault through `didEnterBackground`.
+                onLeave = {},
+            )
+        },
         // Wired for symmetry, and for the pickers Phase 1 still has to add. iOS never *needs* the
         // exemption today: `UIDocumentPickerViewController` is presented inside our own window, so
         // the app stays foreground-active and `didEnterBackground` never fires during a pick.

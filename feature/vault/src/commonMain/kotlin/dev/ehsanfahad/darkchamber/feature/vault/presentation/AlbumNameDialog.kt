@@ -17,6 +17,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import dev.ehsanfahad.darkchamber.core.designsystem.DarkChamberTheme
+import dev.ehsanfahad.darkchamber.core.designsystem.ExcludeFromPlatformStructures
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumDraft
 
 /**
@@ -54,6 +55,11 @@ internal fun AlbumNameDialog(
             dismissOnClickOutside = !draft.saving,
         ),
     ) {
+        // A dialog is its own window, and the host's exclusion does not reach it — measured: the
+        // field below still turned up in a fill request until this was here. The album's name is
+        // vault content, so this is the dialog that most needs it.
+        ExcludeFromPlatformStructures()
+
         Column(
             modifier = Modifier
                 .fillMaxWidth()

@@ -2,6 +2,7 @@ package dev.ehsanfahad.darkchamber.feature.vault.presentation
 
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumDraftProblem
 import dev.ehsanfahad.darkchamber.feature.vault.api.FilingDestination
+import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryOrder
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryScope
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportStage
 
@@ -27,6 +28,117 @@ internal object GalleryFormat {
         }
 
     /**
+     * What the order control reads as, collapsed.
+     *
+     * The control names the **current** order rather than the action, which is what stops the grid's
+     * order being invisible until someone goes looking for it.
+     *
+     * The two name labels are the Latin alphabet's, matching every file manager a user has met. They
+     * are also the limit of what the ordering actually is — a case fold and a code-point comparison,
+     * not locale collation — so a vault named in another script is ordered consistently but not the
+     * way that script would order it. The label and the comparison are owed the same localization
+     * pass, and neither should be presented as having had it.
+     */
+    fun orderLabel(order: GalleryOrder): String =
+        // Exhaustive on purpose: a fifth order must be made to name itself rather than inheriting
+        // whichever branch happened to be last.
+        when (order) {
+            GalleryOrder.Newest -> "Newest"
+            GalleryOrder.Oldest -> "Oldest"
+            GalleryOrder.NameAsc -> "A–Z"
+            GalleryOrder.NameDesc -> "Z–A"
+        }
+
+    /**
+     * The search field's label, which is also what the affordance that opens it says.
+     *
+     * "Search names", not "Search": only the name is matched. The MIME type sits in the same
+     * decrypted metadata and is deliberately not searched, and date, size and kind are sort keys
+     * rather than queries — so a bare "Search" would invite "pdf", or a date, and return nothing
+     * with no way to tell that from an empty vault.
+     */
+    fun searchNames(): String = "Search names"
+
+    /**
+     * What the collapsed order control is **called**, as opposed to what it reads.
+     *
+     * The control shows the order and a caret, which is right on screen and useless spoken: "Newest"
+     * announced on its own does not say it is a control, what it controls, or that a list of other
+     * orders is behind it. Every aperture element already carries a description for the same reason
+     * (docs/DESIGN.md §13) — a drawing that cannot be read aloud needs words somewhere.
+     */
+    fun orderControlDescription(order: GalleryOrder): String = "Sort order: ${orderLabel(order)}"
+
+    /**
+     * The way out of the search field.
+     *
+     * "Clear search", not "Done": closing **discards the query**, so a label implying the filter is
+     * kept would hide the one consequence of pressing it. Closing and clearing are one action because
+     * a filter that outlives its field has nothing on screen to explain or undo it.
+     */
+    fun clearSearch(): String = "Clear search"
+
+    /**
+     * What the album mark on a tile is **called**, for a reader rather than an eye.
+     *
+     * The badge draws a mark and the album's name. Seen together those say "this is in an album
+     * called Trip"; announced, the name alone is a stray word between a file name and a size — so
+     * the mark carries the relationship and the name stays the name.
+     *
+     * Unlike the album grid's badge, where the word "Album" is already beside the mark and a reader
+     * announcing both would say it twice.
+     */
+    fun inAlbum(): String = "In album"
+
+    /**
+     * Why a just-finished import may not be where the user is looking.
+     *
+     * **Says "may", and never a number.** A finished batch carries counts and no ids, so this layer
+     * cannot know whether a filter is hiding one of the new items, all of them or none — and a
+     * sentence like "2 new items are hidden" would be inventing the one fact nobody has. Both lines
+     * describe the *screen*, which is knowable, and leave the user to look.
+     *
+     * The two cases are genuinely different and must not share a sentence: a query can leave an item
+     * off the grid entirely, while an order only moves it.
+     */
+    fun importOfferExplanation(offer: ImportOffer): String =
+        when (offer) {
+            ImportOffer.ClearSearch -> "These results are filtered, so what you added may not be among them."
+            ImportOffer.ShowNewestFirst -> "The grid isn't newest first, so what you added may be further down."
+        }
+
+    /** What the offer's one action says. Each names where it leads rather than agreeing with it. */
+    fun importOfferAction(offer: ImportOffer): String =
+        when (offer) {
+            // The same words the search control uses for the same act, because it *is* the same act
+            // — a second phrasing would read as a second, different thing.
+            ImportOffer.ClearSearch -> clearSearch()
+            ImportOffer.ShowNewestFirst -> "Show newest first"
+        }
+
+    /**
+     * What a search had to leave out, or `null` when it left out nothing.
+     *
+     * An item whose metadata will not open has no name to match, so a query cannot include it — and
+     * the exclusion is **stated**, because a search that silently dropped those rows would be a way
+     * to make tampering invisible (docs/THREAT_MODEL.md). The item is still listed everywhere else;
+     * this is about results only.
+     *
+     * It does not say why. A GCM tag mismatch is all that is known, and corruption and tampering are
+     * indistinguishable from here, so naming either would be a guess presented as a finding (hard
+     * rule #6).
+     *
+     * Null rather than an empty string, like [noAlbums]: the absence is then testable, and the caller
+     * is not left deciding whether a blank line should take up space.
+     */
+    fun hiddenUnreadable(count: Int): String? =
+        when (count) {
+            0 -> null
+            1 -> "1 item couldn't be read, so it isn't in these results."
+            else -> "$count items couldn't be read, so they aren't in these results."
+        }
+
+    /**
      * What to say when a listing has nothing in it. **Three situations, three answers**, because an
      * empty grid is not one state:
      *
@@ -46,10 +158,23 @@ internal object GalleryFormat {
      * is the same whatever the scope, and claims no absence. It is a parameter rather than the caller's
      * choice of string so that the decision sits here, where it can be tested, instead of in a
      * composable nothing can assert on.
+     *
+     * **And a fifth: [searching], the grid is empty because nothing matched.** All three ordinary
+     * answers would be false — a search for "tax" inside a full album must not report the album as
+     * empty — so this one talks about the query instead, and is the same whatever the scope for the
+     * same reason the failed read is. It also says what a query is matched *against*, because the two
+     * ways to get no results that are not a typing mistake are invisible otherwise: names only, and
+     * this screen only.
+     *
+     * **[unreadable] outranks it**, and only in that direction. The query is still in the field when a
+     * read fails, so both are true at once, and "nothing matches" would blame someone's typing for a
+     * vault that did not open.
      */
-    fun emptyListing(scope: GalleryScope, unreadable: Boolean): String =
+    fun emptyListing(scope: GalleryScope, unreadable: Boolean, searching: Boolean = false): String =
         if (unreadable) {
             "Couldn't read what's in your vault."
+        } else if (searching) {
+            "No names match what you typed.\nSearch covers names on this screen — not dates or file types."
         } else {
             // Exhaustive on purpose: a fourth scope must be made to answer for itself rather than
             // inheriting whichever branch happened to be last.
@@ -175,11 +300,21 @@ internal object GalleryFormat {
         }
     }
 
-    /** The rename dialog's heading. */
+    /** The rename dialog's heading, and the menu entry that opens it. */
     fun renameAlbum(): String = "Rename album"
 
-    /** The two actions on an album's own screen. */
+    /** The other entry in that menu. */
     fun deleteAlbum(): String = "Delete album"
+
+    /**
+     * The spoken name of the control those two entries live behind.
+     *
+     * It names its **subject**, not its shape: three dots are nothing to a screen reader, and "more"
+     * on its own does not say more of what. The album is not named here either — the bar above
+     * already says which album the screen is, and repeating a decrypted name into a second
+     * announcement buys nothing.
+     */
+    fun albumActions(): String = "More actions for this album"
 
     /**
      * The delete confirmation's heading and body — **the most load-bearing copy in the album
@@ -298,6 +433,54 @@ internal object GalleryFormat {
             ImportStage.FINISHING -> "Finishing…"
             ImportStage.ENCRYPTING, null -> null
         }
+
+    /**
+     * The load-bearing sentence of the import card. A lock or a background ends the batch, and
+     * afterwards there is nobody left to tell — warning beforehand is the only chance there is, so
+     * it stays visible for the whole import rather than only at the start.
+     *
+     * **During a fetch it admits what stopping does not stop.** The phone goes on downloading the
+     * file regardless, because no API can call a provider's transfer back
+     * (`docs/ARCHITECTURE.md`) — and on a metered connection that is the user's data being spent
+     * after they believe they have stopped. This is the more important of the two places that is
+     * said, because it is the only one a *lock* reaches: after a lock the state is gone and there is
+     * nobody to tell.
+     *
+     * One clause, not a paragraph. The honest point is narrow, and over-explaining a small, rare
+     * cost on a progress card would turn it into a warning about the app.
+     */
+    fun keepOpenNotice(stage: ImportStage?): String =
+        "Keep DarkChamber open — locking the vault or leaving the app stops the import." +
+            downloadClause(stage, " The download itself carries on either way.")
+
+    /**
+     * Shown from the moment Stop is tapped until the batch actually ends.
+     *
+     * Says a stop *may take a moment* rather than naming what it is waiting for, because that
+     * depends on where the stop lands. Waiting for a provider to hand the file over is abandoned at
+     * once; part-way through the encrypt the stop takes effect on the next read of the payload,
+     * which is kilobytes away but still not instant (`docs/ARCHITECTURE.md` — the stop predicate is
+     * the same check a lock uses, and it lands on the next read of the payload). Promising an
+     * instant stop would be the opposite error (hard rule 6), so it promises neither. The second
+     * half is the part that stops the wait feeling like a loss.
+     *
+     * **And during a fetch it says the file is still coming**, for the same reason as above: the
+     * batch has heard the user, and the transfer has not.
+     */
+    fun stoppingNotice(stage: ImportStage?): String =
+        "Stopping — this may take a moment. Everything already added stays in the vault." +
+            downloadClause(stage, " The file is still downloading — that cannot be cancelled, and it may use data.")
+
+    /**
+     * The clause, or nothing, depending on whether a transfer is actually running.
+     *
+     * [ImportStage.FETCHING] is the **only** stage where this is true, which is why the stage is
+     * surfaced at all: a stop during the encrypt leaves no transfer running, a streaming provider's
+     * transfer ends when the stream closes, and a batch with no stage yet has not reached a file.
+     * Saying it at any of those would be a warning about a cost that is not being paid.
+     */
+    private fun downloadClause(stage: ImportStage?, clause: String): String =
+        if (stage == ImportStage.FETCHING) clause else ""
 
     /** Binary units, one decimal above a kibibyte — the sizes a file manager would show. */
     fun size(bytes: Long): String {

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -41,12 +42,14 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil3.ImageLoader
 import coil3.compose.SubcomposeAsyncImage
+import dev.ehsanfahad.darkchamber.core.designsystem.AlbumMark
 import dev.ehsanfahad.darkchamber.core.designsystem.DarkChamberTheme
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumDraft
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTile
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumsError
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumsState
+import dev.ehsanfahad.darkchamber.feature.vault.api.label
 
 /**
  * The album grid.
@@ -320,8 +323,9 @@ private fun AlbumTileView(
             // It says "this is an album" and nothing else. No padlock and no shield: an album
             // organises and does not protect, and a tile implying otherwise is the easiest way to
             // break the honesty rule by accident (hard rule #6).
-            Box(
-                contentAlignment = Alignment.Center,
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(spacing.spaceXxs),
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .padding(spacing.spaceXs)
@@ -336,8 +340,18 @@ private fun AlbumTileView(
                         color = colors.outline,
                         shape = DarkChamberTheme.shapes.small,
                     )
-                    .padding(horizontal = spacing.spaceXs),
+                    // Vertical as well as horizontal. It had only the horizontal inset, so the
+                    // caption sat on the border above and below it — and a border touching its own
+                    // text reads as a clipped box rather than a badge.
+                    .padding(horizontal = spacing.spaceXs, vertical = spacing.spaceXxs),
             ) {
+                AlbumMark(
+                    // Decorative here: the word beside it says the same thing, and a reader that
+                    // announced both would say "album album".
+                    contentDescription = null,
+                    tint = colors.textSecondary,
+                    modifier = Modifier.size(ALBUM_MARK_SIZE),
+                )
                 Text(
                     text = "Album",
                     style = DarkChamberTheme.typography.caption,
@@ -348,13 +362,9 @@ private fun AlbumTileView(
         }
 
         Text(
-            text = when (val name = album.name) {
-                is AlbumTileName.Readable -> name.value
-                // The same wording an item whose metadata will not open carries, and for the same
-                // reason: we know the name did not verify, not whether it was tampered with or
-                // merely corrupted (hard rule #6).
-                AlbumTileName.Unreadable -> "Can't be verified"
-            },
+            // One home for the unverifiable wording — see `label`. It is a claim bounded by the
+            // threat model, so it is decided once rather than spelled out per screen.
+            text = album.name.label(),
             style = DarkChamberTheme.typography.body,
             color = if (damaged) colors.danger else colors.textPrimary,
             maxLines = 1,
@@ -410,6 +420,13 @@ private fun AlbumsErrorBanner(error: AlbumsError, onDismiss: () -> Unit) {
 private val ALBUM_MIN_WIDTH = 150.dp
 
 private val ALBUM_BORDER = 1.dp
+
+/**
+ * The mark beside the badge's word, sized to the caption rather than to an icon's own 24 dp — at the
+ * default size it would be twice the height of the text it sits next to, on a badge that has to stay
+ * out of the way of the picture underneath.
+ */
+private val ALBUM_MARK_SIZE = 14.dp
 
 // Stable keys for the two cells that are not albums. Prefixed so they can never collide with an
 // album's hex id, which is only ever the digits 0-9 and a-f.

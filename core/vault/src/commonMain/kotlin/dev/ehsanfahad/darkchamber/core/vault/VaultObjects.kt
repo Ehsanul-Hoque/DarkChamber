@@ -685,6 +685,7 @@ class VaultObjects(
     private fun toSummary(row: Items): VaultItemSummary =
         VaultItemSummary(
             id = row.id,
+            albumId = row.album_id,
             kind = VaultItemKind.fromCode(row.kind),
             size = row.size,
             createdAt = row.created_at,

@@ -1,7 +1,9 @@
 package dev.ehsanfahad.darkchamber
 
 import android.graphics.Color
+import android.os.Build
 import android.os.Bundle
+import android.view.View
 import android.view.WindowManager
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
@@ -56,6 +58,38 @@ class MainActivity : FragmentActivity() {
 
         root = retainedComponent { componentContext -> buildRoot(componentContext) }
         setContent { RootContent(root) }
+        excludeWindowFromPlatformStructures()
+    }
+
+    /**
+     * Keep this activity's window out of the platform's **autofill and content-capture structures**
+     * — the companion to the secure flag above, for a channel that flag does not cover.
+     *
+     * A device settled that it does not cover it: with `FLAG_SECURE` set, focusing a text field
+     * still started an autofill session for this activity and sent a fill request to the system's
+     * autofill service in another process. The flag governs screenshots and non-secure displays.
+     *
+     * Why that matters, what travels, and why every dialog repeats this for its own window are all
+     * in `ExcludeFromPlatformStructures`, which is the same exclusion written as a composable.
+     * Here because this window exists before any composition does, and because a reader looking for
+     * what hardens the app's window should find both halves in one place.
+     *
+     * The cost, stated plainly: a password manager cannot fill the passphrase field. That is the
+     * right trade for a vault whose passphrase is the only way to its contents, and it is recorded
+     * in `docs/THREAT_MODEL.md` beside the rest of the platform-exposure notes.
+     *
+     * Both properties are newer than this app's minimum, and on the versions that lack them the
+     * framework they belong to does not exist either: autofill arrives in API 26 and the
+     * content-capture flag in API 30.
+     */
+    private fun excludeWindowFromPlatformStructures() {
+        val root = window.decorView
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            root.importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            root.importantForContentCapture = View.IMPORTANT_FOR_CONTENT_CAPTURE_NO_EXCLUDE_DESCENDANTS
+        }
     }
 
     override fun onStart() {
@@ -100,7 +134,18 @@ class MainActivity : FragmentActivity() {
                 )
             },
             unlockedFactory = { ctx, vault, onLock ->
-                DefaultUnlockedComponent(ctx, vault, koin, onLock = onLock)
+                DefaultUnlockedComponent(
+                    ctx,
+                    vault,
+                    koin,
+                    onLock = onLock,
+                    // Leaving on the second back press at the vault's grid. `finish()` rather than
+                    // re-dispatching the press, which is not possible — a press a callback answered
+                    // is consumed. Finishing runs `onStop` below with `isChangingConfigurations`
+                    // false, so the session is torn down on the way out exactly as backgrounding
+                    // tears it down; the notice says so.
+                    onLeave = ::finish,
+                )
             },
             // The same instance the file picker marks its round-trip on.
             handoff = koin.get(),

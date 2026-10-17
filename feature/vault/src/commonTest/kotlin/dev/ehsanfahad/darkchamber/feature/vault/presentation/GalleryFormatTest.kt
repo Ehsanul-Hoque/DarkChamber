@@ -2,6 +2,7 @@ package dev.ehsanfahad.darkchamber.feature.vault.presentation
 
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumDraftProblem
 import dev.ehsanfahad.darkchamber.feature.vault.api.FilingDestination
+import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryOrder
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryScope
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportStage
 import kotlin.test.Test
@@ -550,6 +551,85 @@ class GalleryFormatTest {
         assertEquals("7 selected", GalleryFormat.selectedCount(7))
     }
 
+    /**
+     * **The load-bearing sentence of the import card**, and the one that has to be said before
+     * anything happens: a lock or a background ends the batch, and afterwards there is nobody left
+     * to tell.
+     */
+    @Test
+    fun the_keep_open_notice_warns_before_the_fact() {
+        val copy = GalleryFormat.keepOpenNotice(ImportStage.ENCRYPTING).lowercase()
+
+        assertTrue("keep" in copy, "it asks for the one thing that helps: $copy")
+        assertTrue("stops the import" in copy, "and says what the cost is: $copy")
+    }
+
+    /**
+     * **The clause the user is owed while a provider is still sending the file**: stopping ends the
+     * import, but nothing can call the transfer back, so on a metered connection it is their data
+     * being spent after they believe they have stopped (docs/ARCHITECTURE.md).
+     */
+    @Test
+    fun a_fetch_admits_that_the_download_carries_on() {
+        val waiting = GalleryFormat.keepOpenNotice(ImportStage.FETCHING).lowercase()
+
+        assertTrue("download" in waiting, "it names what carries on: $waiting")
+        assertTrue("keep" in waiting, "without losing the warning it is appended to: $waiting")
+    }
+
+    @Test
+    fun stopping_during_a_fetch_says_the_file_is_still_coming() {
+        val stopping = GalleryFormat.stoppingNotice(ImportStage.FETCHING).lowercase()
+
+        assertTrue("download" in stopping, "it says the transfer is still running: $stopping")
+        assertTrue("cannot be cancelled" in stopping, "and that nothing can call it back: $stopping")
+        assertTrue("data" in stopping, "which is the cost that makes it worth saying: $stopping")
+    }
+
+    /**
+     * **And it is said only while it is true**, which is the whole reason the stage is surfaced.
+     *
+     * Each stage asserted on its own rather than as a group: a group assertion passes while one
+     * member is wrong, and these three are wrong for different reasons — a stop during the encrypt
+     * leaves no transfer running at all, and a streaming provider's transfer ends when the stream
+     * closes.
+     */
+    @Test
+    fun no_other_stage_claims_a_download_is_running() {
+        // Derived from the enum rather than listed: a stage added later has to answer this question
+        // instead of being quietly exempt from it.
+        for (stage in ImportStage.entries.filter { it != ImportStage.FETCHING }) {
+            assertFalse(
+                "download" in GalleryFormat.keepOpenNotice(stage).lowercase(),
+                "$stage has nothing downloading: ${GalleryFormat.keepOpenNotice(stage)}",
+            )
+            assertFalse(
+                "download" in GalleryFormat.stoppingNotice(stage).lowercase(),
+                "$stage has nothing to call back: ${GalleryFormat.stoppingNotice(stage)}",
+            )
+        }
+    }
+
+    @Test
+    fun a_batch_with_no_stage_yet_claims_nothing_either() {
+        // The picker is still open, or the batch has not reached a file: there is no transfer to
+        // describe, and the card that shows this has no stage to read.
+        assertFalse("download" in GalleryFormat.keepOpenNotice(null).lowercase())
+        assertFalse("download" in GalleryFormat.stoppingNotice(null).lowercase())
+    }
+
+    /**
+     * The stopping notice keeps the half that stops a stop feeling like a loss, and still promises
+     * neither an instant stop nor a slow one — which wait it is in depends on where the stop lands.
+     */
+    @Test
+    fun stopping_still_says_what_is_already_safe() {
+        val copy = GalleryFormat.stoppingNotice(ImportStage.ENCRYPTING).lowercase()
+
+        assertTrue("stays in the vault" in copy, "nothing already added is at risk: $copy")
+        assertFalse("immediately" in copy, "no promise of an instant stop: $copy")
+    }
+
     /** Each named stage says something different, or the label is decoration rather than information. */
     @Test
     fun the_named_stages_are_told_apart() {
@@ -557,5 +637,230 @@ class GalleryFormatTest {
             .map { GalleryFormat.stageLabel(it) }
 
         assertEquals(labels.size, labels.distinct().size, "two stages reading alike explain nothing: $labels")
+    }
+
+    /**
+     * The collapsed control names the order the grid is in, so every order needs a label of its own —
+     * two orders reading alike would make the control say nothing while appearing to.
+     */
+    @Test
+    fun every_order_has_a_label_of_its_own() {
+        val labels = GalleryOrder.entries.map { GalleryFormat.orderLabel(it) }
+
+        assertEquals(labels.size, labels.distinct().size, "two orders reading alike: $labels")
+        assertTrue(labels.none { it.isBlank() }, "an unlabelled order cannot be chosen: $labels")
+        assertEquals("Newest", GalleryFormat.orderLabel(GalleryOrder.Newest))
+        assertEquals("Oldest", GalleryFormat.orderLabel(GalleryOrder.Oldest))
+        assertEquals("A–Z", GalleryFormat.orderLabel(GalleryOrder.NameAsc))
+        assertEquals("Z–A", GalleryFormat.orderLabel(GalleryOrder.NameDesc))
+    }
+
+    /**
+     * **A search that matched nothing is not a listing with nothing in it**, and the grid is empty in
+     * both cases — the same shape of confusion the unreadable answer exists for.
+     *
+     * Every per-scope answer asserts something about what is in the vault, and all three would be
+     * false here: a search for "tax" inside a full album must not say the album is empty, and on the
+     * whole vault it must not say the vault is. So this answer talks about the search.
+     */
+    @Test
+    fun a_search_that_matched_nothing_claims_no_absence() {
+        val scopes = listOf(GalleryScope.WholeVault, GalleryScope.Album, GalleryScope.Unfiled)
+
+        val answers = scopes.map { GalleryFormat.emptyListing(it, unreadable = false, searching = true) }
+        assertEquals(1, answers.toSet().size, "the query is what came up empty; the scope adds nothing")
+
+        val copy = answers.first()
+        val lower = copy.lowercase()
+        assertTrue("match" in lower, "it says what did not happen — nothing matched: $copy")
+        for (claim in listOf("nothing in", "no items", "empty", "yet", "everything is filed")) {
+            assertFalse(claim in lower, "a search that found nothing may not claim an absence: $copy")
+        }
+        for (scope in scopes) {
+            assertFalse(
+                GalleryFormat.emptyListing(scope, unreadable = false) == copy,
+                "and it is not one of the ordinary answers: $copy",
+            )
+        }
+    }
+
+    /**
+     * It also says **what** was searched, because the two ways to get no results that are not the
+     * user's mistake are both invisible otherwise: only names are matched (so "pdf" finds nothing),
+     * and only this screen is searched (so an album's grid cannot answer for the vault).
+     */
+    @Test
+    fun the_empty_search_answer_says_what_was_searched() {
+        val copy = GalleryFormat.emptyListing(GalleryScope.Album, unreadable = false, searching = true)
+        val lower = copy.lowercase()
+
+        assertTrue("name" in lower, "names are what a query is matched against: $copy")
+        // Both clauses are load-bearing, and dropping either leaves a sentence that still reads fine:
+        // without this one, an album's empty result looks like an answer about the whole vault.
+        assertTrue("screen" in lower, "and this screen is all that was searched: $copy")
+    }
+
+    /**
+     * Precedence, and it only goes one way: a catalog that could not be read must not be described as
+     * a search that matched nothing. The query is still in the field when the read fails, so both
+     * conditions are true at once and the copy has to pick — "nothing matches" would blame the user's
+     * typing for a vault that did not open.
+     */
+    @Test
+    fun a_failed_read_outranks_a_running_search() {
+        for (scope in listOf(GalleryScope.WholeVault, GalleryScope.Album, GalleryScope.Unfiled)) {
+            assertEquals(
+                GalleryFormat.emptyListing(scope, unreadable = true),
+                GalleryFormat.emptyListing(scope, unreadable = true, searching = true),
+                "a failed read is the reason the grid is empty, whatever is typed",
+            )
+        }
+    }
+
+    /**
+     * Nothing to say, said as nothing — the same shape as `noAlbums`, and for the same reason: an
+     * empty string would still occupy a line and make the caller's layout decide what this layer
+     * already knows.
+     */
+    @Test
+    fun nothing_is_said_when_a_search_left_nothing_out() {
+        assertNull(GalleryFormat.hiddenUnreadable(0))
+    }
+
+    /**
+     * Items whose names will not open are excluded from results — a query cannot match a name nobody
+     * can read — and the exclusion is **stated**, because a search that silently drops them is a way
+     * to make tampering invisible (docs/THREAT_MODEL.md).
+     */
+    @Test
+    fun what_a_search_left_out_is_counted_and_reads_as_english() {
+        assertEquals(
+            "1 item couldn't be read, so it isn't in these results.",
+            GalleryFormat.hiddenUnreadable(1),
+        )
+        assertEquals(
+            "4 items couldn't be read, so they aren't in these results.",
+            GalleryFormat.hiddenUnreadable(4),
+        )
+    }
+
+    /**
+     * And it does not say **why**. Corruption and tampering are indistinguishable from here — a GCM
+     * tag mismatch is all that is known — so naming either one is a guess presented as a finding
+     * (hard rule 6).
+     */
+    @Test
+    fun what_a_search_left_out_is_not_explained() {
+        // Both branches, because an absence asserted against one of two wordings is an absence
+        // asserted against half the code — the singular line can name a cause the plural one does not.
+        for (count in listOf(1, 2)) {
+            val copy = assertNotNull(GalleryFormat.hiddenUnreadable(count)).lowercase()
+
+            for (guess in listOf("corrupt", "tamper", "damaged", "modified", "attack", "deleted", "lost")) {
+                assertFalse(guess in copy, "the line names a cause we cannot know: $copy")
+            }
+        }
+    }
+
+    /**
+     * The field says what it searches, where a plain "Search" would imply everything on the tile is
+     * fair game — the user typing "pdf" or a date is the failure this label is placed to prevent.
+     */
+    @Test
+    fun the_search_field_says_it_searches_names() {
+        assertTrue("name" in GalleryFormat.searchNames().lowercase(), GalleryFormat.searchNames())
+    }
+
+    /**
+     * The tile's album badge draws a mark and a name. Seen together they say "this is in an album
+     * called Trip"; announced, the name alone is a stray word between a file name and a size — so
+     * the mark is what carries the relationship.
+     */
+    @Test
+    fun the_album_mark_on_a_tile_is_named_for_a_reader() {
+        val spoken = GalleryFormat.inAlbum().lowercase()
+
+        assertTrue("album" in spoken, "it names what the mark means: $spoken")
+        assertTrue("in" in spoken, "and that the item is in one: $spoken")
+    }
+
+    /**
+     * Spoken, the order control has to say what it is. On screen it reads "Newest" beside a
+     * chevron, which is a control, a current value and an invitation all at once; announced as
+     * "Newest" it is none of them. The chevron itself stays silent for exactly this reason — this
+     * description is where that information lives.
+     */
+    /**
+     * The album overflow is a drawing with no label beside it, so its description is the only thing
+     * a screen reader has to go on. It has to name the **subject** — three dots are nothing, and
+     * "more" alone does not say more of what.
+     */
+    @Test
+    fun the_album_overflow_names_what_its_menu_acts_on() {
+        val spoken = GalleryFormat.albumActions()
+
+        assertTrue("album" in spoken.lowercase(), "it says what the menu acts on: $spoken")
+        assertFalse("dots" in spoken.lowercase(), "and never describes the glyph: $spoken")
+        // The album's own name is deliberately absent: the bar above already says which album this
+        // screen is, and a decrypted name does not need announcing twice.
+        assertEquals("More actions for this album", spoken)
+    }
+
+    @Test
+    fun the_order_control_is_named_as_well_as_shown() {
+        for (order in GalleryOrder.entries) {
+            val spoken = GalleryFormat.orderControlDescription(order)
+
+            assertTrue("sort" in spoken.lowercase(), "it says what it controls: $spoken")
+            assertTrue(GalleryFormat.orderLabel(order) in spoken, "and which order is on: $spoken")
+        }
+    }
+
+    /**
+     * The offer describes the **screen**, which is knowable, and never how much is hidden, which is
+     * not: a finished batch carries counts and no ids, so nobody here can say whether a filter is
+     * keeping back one of the new items, all of them or none.
+     */
+    @Test
+    fun the_import_offer_claims_no_number() {
+        for (offer in ImportOffer.entries) {
+            val copy = GalleryFormat.importOfferExplanation(offer)
+
+            assertTrue("may" in copy, "it says what might be the case, not what is: $copy")
+            for (digit in '0'..'9') {
+                assertFalse(digit in copy, "a count nobody has: $copy")
+            }
+        }
+    }
+
+    /** Two different problems — one hides an item, the other moves it — so not one sentence. */
+    @Test
+    fun the_two_offers_do_not_share_their_wording() {
+        val explanations = ImportOffer.entries.map { GalleryFormat.importOfferExplanation(it) }
+        val actions = ImportOffer.entries.map { GalleryFormat.importOfferAction(it) }
+
+        assertEquals(explanations.size, explanations.distinct().size, "$explanations")
+        assertEquals(actions.size, actions.distinct().size, "$actions")
+    }
+
+    /**
+     * Clearing the search from the summary card is the **same act** the search control performs, so
+     * it says the same words — a second phrasing would read as a second, different thing.
+     */
+    @Test
+    fun clearing_the_search_is_worded_the_same_wherever_it_is_offered() {
+        assertEquals(GalleryFormat.clearSearch(), GalleryFormat.importOfferAction(ImportOffer.ClearSearch))
+    }
+
+    /**
+     * Leaving the search **discards the query**, and the label has to carry that. "Done" would read
+     * as keeping the filter, which is the opposite of what happens.
+     */
+    @Test
+    fun leaving_the_search_says_the_query_goes() {
+        val copy = GalleryFormat.clearSearch()
+
+        assertTrue("clear" in copy.lowercase(), "it says the query is cleared: $copy")
+        assertFalse("done" in copy.lowercase(), "and not that the search is simply finished: $copy")
     }
 }

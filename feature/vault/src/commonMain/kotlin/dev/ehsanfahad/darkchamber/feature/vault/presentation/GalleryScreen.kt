@@ -22,13 +22,18 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -55,7 +60,9 @@ import androidx.compose.ui.window.DialogProperties
 import coil3.ImageLoader
 import coil3.compose.AsyncImagePainter
 import coil3.compose.SubcomposeAsyncImage
+import dev.ehsanfahad.darkchamber.core.designsystem.AlbumMark
 import dev.ehsanfahad.darkchamber.core.designsystem.DarkChamberTheme
+import dev.ehsanfahad.darkchamber.core.designsystem.ExcludeFromPlatformStructures
 import dev.ehsanfahad.darkchamber.core.designsystem.prefersReducedMotion
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumDelete
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumState
@@ -64,11 +71,13 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.Filing
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryError
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
+import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryOrder
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryScope
 import dev.ehsanfahad.darkchamber.feature.vault.api.GallerySelection
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryState
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportState
 import dev.ehsanfahad.darkchamber.feature.vault.api.OriginalDelete
+import dev.ehsanfahad.darkchamber.feature.vault.api.label
 
 /**
  * The vault gallery (docs/DESIGN.md). Reads theme **roles** only — no raw hex, no hardcoded colors —
@@ -84,6 +93,10 @@ internal fun GalleryScreen(
     state: GalleryState,
     now: Long,
     imageLoader: ImageLoader,
+    onChooseOrder: (GalleryOrder) -> Unit,
+    onOpenSearch: () -> Unit,
+    onEditSearch: (String) -> Unit,
+    onCloseSearch: () -> Unit,
     onAddPhotos: () -> Unit,
     onAddFiles: () -> Unit,
     onCancelImport: () -> Unit,
@@ -125,6 +138,11 @@ internal fun GalleryScreen(
     // under the others.
     var barHeight by remember { mutableStateOf(0.dp) }
 
+    // The grid's scroll, owned here rather than inside the grid because choosing an order has to read
+    // it at the moment of the tap — see [BrowsingScroll].
+    val gridState = rememberLazyGridState()
+    val scroll = rememberBrowsingScroll(gridState, state.items, state.search)
+
     // No insets here: the host applies them once for the whole unlocked subtree, so a screen that
     // added its own would inset twice.
     val album = state.album
@@ -135,17 +153,32 @@ internal fun GalleryScreen(
                 ErrorBanner(error = error, onDismiss = onDismissError)
             }
 
-            // An album's own heading, with the two things that can be done to the album itself. Only
-            // ever present on an album-scoped screen: the whole vault cannot be renamed, and Unfiled
-            // is a view rather than a thing.
-            if (album is AlbumState.Present) {
-                AlbumHeader(
-                    name = album.name,
-                    // Nothing to rename when the name will not open, so the action is absent rather
-                    // than present and dead — but deleting stays, because a damaged album is the one
-                    // most likely to want deleting.
-                    onRename = onStartAlbumRename.takeIf { album.name is AlbumTileName.Readable },
-                    onDelete = onRequestAlbumDelete,
+            // One row above the grid on all three listings, carrying the browse controls and — on an
+            // album — the actions on the album itself. The album used to have a second row of its
+            // own above this one, repeating the name already in the bar; both copies were truncated
+            // anyway, and it cost the grid a row of thumbnails at all times.
+            //
+            // Two decisions, both held where a test can read them: [showsControlsRow] decides
+            // whether the row is drawn at all — it stays for an album's actions even when there is
+            // nothing to browse, which is when deleting an album matters most — and [albumActions]
+            // decides what the menu offers.
+            if (state.showsControlsRow()) {
+                GalleryBrowseControls(
+                    order = state.order,
+                    search = state.search,
+                    // The position is taken here, at the tap, because by the time the new order
+                    // arrives the grid has already moved itself.
+                    onChooseOrder = { chosen ->
+                        scroll.rememberPlaceBeforeReordering(from = state.order, to = chosen)
+                        onChooseOrder(chosen)
+                    },
+                    onOpenSearch = onOpenSearch,
+                    onEditSearch = onEditSearch,
+                    onCloseSearch = onCloseSearch,
+                    showsControls = state.showsBrowseControls(),
+                    albumActions = state.albumActions(),
+                    onRenameAlbum = onStartAlbumRename,
+                    onDeleteAlbum = onRequestAlbumDelete,
                 )
             }
 
@@ -158,12 +191,11 @@ internal fun GalleryScreen(
                 // an empty list with loading over — so the screen is told which it is rather than
                 // letting the copy assert an absence nobody established. Not the banner's error, which
                 // the user can dismiss: the reason the grid is empty outlives the acknowledgement.
-                state.items.isEmpty() -> EmptyListing(
-                    scope = state.scope,
-                    unreadable = state.listingUnreadable,
-                )
+                state.items.isEmpty() -> EmptyListing(message = state.emptyListingMessage())
                 else -> ItemGrid(
                     items = state.items,
+                    gridState = gridState,
+                    reordering = scroll.isReordering,
                     now = now,
                     imageLoader = imageLoader,
                     bottomInset = barHeight,
@@ -219,8 +251,14 @@ internal fun GalleryScreen(
                 ImportState.Picking -> ImportNoticeCard(text = "Getting things ready…")
                 is ImportState.Finished -> ImportSummaryCard(
                     batch = batch,
+                    offer = state.importOffer(),
                     onDismiss = onAcknowledgeImport,
                     onDeleteOriginals = onRequestOriginalDelete,
+                    // Both halves live outside this layout: which offer to make, and what taking it
+                    // does — see `importOffer` and `take`.
+                    onTakeOffer = { offer ->
+                        offer.take(onCloseSearch = onCloseSearch, onChooseOrder = onChooseOrder)
+                    },
                 )
                 ImportState.Idle -> ImportActions(onAddPhotos = onAddPhotos, onAddFiles = onAddFiles)
                 // Not the failed-file banner: nothing was chosen, so there is no file to blame
@@ -330,6 +368,11 @@ private fun AlbumChooser(
             dismissOnClickOutside = creating?.saving != true,
         ),
     ) {
+        // Its own window, so its own exclusion. Every dialog does this whether or not it holds a
+        // field today — the album names listed here are vault content too, and a dialog that gains
+        // a field later must not have to remember.
+        ExcludeFromPlatformStructures()
+
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -381,10 +424,7 @@ private fun AlbumChooser(
                 LazyColumn(modifier = Modifier.heightIn(max = CHOOSER_LIST_MAX).padding(top = spacing.spaceSm)) {
                     items(choosing.albums, key = { it.id.toListKey() }) { choice ->
                         Text(
-                            text = when (val name = choice.name) {
-                                is AlbumTileName.Readable -> name.value
-                                AlbumTileName.Unreadable -> "Can't be verified"
-                            },
+                            text = choice.name.label(),
                             style = DarkChamberTheme.typography.body,
                             color = if (choice.name is AlbumTileName.Unreadable) colors.danger else colors.textPrimary,
                             maxLines = 1,
@@ -492,64 +532,6 @@ private fun FilingCard(filing: Filing, onDismiss: () -> Unit) {
 }
 
 /**
- * An album's heading: what it is called, and the two things that can be done to the album itself.
- *
- * The name is drawn from the listing rather than from the screen that led here, so a rename shows up
- * on the heading without this screen being told about it.
- *
- * [onRename] is null for an album whose name will not open — absent rather than disabled, because a
- * dead control invites a tap and explains nothing. Deleting stays available there on purpose: an album
- * nobody can read the name of is the one most likely to want removing, and doing so destroys none of
- * its contents.
- */
-@Composable
-private fun AlbumHeader(name: AlbumTileName, onRename: (() -> Unit)?, onDelete: () -> Unit) {
-    val colors = DarkChamberTheme.colors
-    val spacing = DarkChamberTheme.spacing
-
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = spacing.spaceMd, vertical = spacing.spaceXs),
-    ) {
-        Text(
-            text = when (name) {
-                is AlbumTileName.Readable -> name.value
-                // The same wording the tile carries, for the same reason: we know the name did not
-                // verify, not whether it was tampered with or merely corrupted (hard rule #6).
-                AlbumTileName.Unreadable -> "Can't be verified"
-            },
-            style = DarkChamberTheme.typography.title,
-            color = if (name is AlbumTileName.Unreadable) colors.danger else colors.textPrimary,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-
-        onRename?.let { rename ->
-            TextButton(onClick = rename) {
-                Text(
-                    text = GalleryFormat.renameAlbum(),
-                    style = DarkChamberTheme.typography.label,
-                    color = colors.accent,
-                )
-            }
-        }
-        TextButton(onClick = onDelete) {
-            // Not the danger role. Deleting an album destroys nothing, and colouring it as though it
-            // did would be the honesty rule broken in the other direction — frightening someone away
-            // from a harmless action (hard rule #6).
-            Text(
-                text = GalleryFormat.deleteAlbum(),
-                style = DarkChamberTheme.typography.label,
-                color = colors.accent,
-            )
-        }
-    }
-}
-
-/**
  * The album is not there any more, said where the user is already looking — then one tap back to the
  * grid.
  *
@@ -613,6 +595,8 @@ private fun DeleteAlbumConfirmation(
         // and a dialog that vanished would be claiming it had been.
         properties = DialogProperties(dismissOnBackPress = !running, dismissOnClickOutside = !running),
     ) {
+        ExcludeFromPlatformStructures()
+
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -691,6 +675,8 @@ private fun DeleteOriginalsDisclosure(
         onDismissRequest = {},
         properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false),
     ) {
+        ExcludeFromPlatformStructures()
+
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -961,7 +947,14 @@ private fun ImportProgressCard(batch: ImportState.Running, onCancel: () -> Unit)
             // and what the user needs to know is that it has heard them and that nothing already
             // added is at risk. Which wait it is in is said by the stage line above rather than
             // guessed at here.
-            text = if (batch.stopping) STOPPING_NOTICE else KEEP_OPEN_NOTICE,
+            //
+            // Both take the stage, because both gain a clause while a provider is still sending the
+            // file and neither may claim it at any other time — see `GalleryFormat`.
+            text = if (batch.stopping) {
+                GalleryFormat.stoppingNotice(batch.stage)
+            } else {
+                GalleryFormat.keepOpenNotice(batch.stage)
+            },
             style = DarkChamberTheme.typography.caption,
             color = colors.textSecondary,
             modifier = Modifier.padding(top = spacing.spaceXs),
@@ -1037,7 +1030,9 @@ private fun ImportNoticeCard(text: String) {
     ) {
         Text(text = text, style = DarkChamberTheme.typography.body, color = colors.textPrimary)
         Text(
-            text = KEEP_OPEN_NOTICE,
+            // No stage: this card is the gap between tapping and the picker appearing, so no file
+            // has been reached and nothing is being transferred to warn about.
+            text = GalleryFormat.keepOpenNotice(stage = null),
             style = DarkChamberTheme.typography.caption,
             color = colors.textSecondary,
             modifier = Modifier.padding(top = spacing.spaceXs),
@@ -1048,22 +1043,77 @@ private fun ImportNoticeCard(text: String) {
 /**
  * What a finished batch amounts to. Says how many could not be read rather than implying everything
  * worked, and never claims a reason it does not have (hard rule #6).
+ *
+ * [offer] is the way back to seeing what just arrived, when a control would keep it out of sight —
+ * see [importOffer], which decides whether there is one.
  */
 @Composable
 private fun ImportSummaryCard(
     batch: ImportState.Finished,
+    offer: ImportOffer?,
     onDismiss: () -> Unit,
     onDeleteOriginals: () -> Unit,
+    onTakeOffer: (ImportOffer) -> Unit,
 ) {
+    val colors = DarkChamberTheme.colors
+    val spacing = DarkChamberTheme.spacing
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(color = colors.sealedContainer, shape = DarkChamberTheme.shapes.large),
+    ) {
+        ImportSummaryLine(batch = batch, onDismiss = onDismiss)
+
+        // A line of its own rather than a third control in the row above. That row already carries
+        // the dismissal and, sometimes, the delete offer — and a bottom bar wrapping at five
+        // controls is this screen's known failure. Two per line, like the browse row.
+        offer?.let { shown ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = spacing.spaceMd, bottom = spacing.spaceXs),
+            ) {
+                Text(
+                    text = GalleryFormat.importOfferExplanation(shown),
+                    style = DarkChamberTheme.typography.caption,
+                    color = colors.textSecondary,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(onClick = { onTakeOffer(shown) }) {
+                    Text(
+                        text = GalleryFormat.importOfferAction(shown),
+                        style = DarkChamberTheme.typography.label,
+                        color = colors.accent,
+                    )
+                }
+            }
+        }
+
+        // Last, and furthest from both the dismissal and the position the picker had — see
+        // [OriginalDeleteRow]. Absent unless there is something to offer and nobody has answered yet
+        // ([offersOriginalDelete]), so the common case is the message and Done alone.
+        if (batch.offersOriginalDelete()) {
+            OriginalDeleteRow(count = batch.deletableOriginals, onDeleteOriginals = onDeleteOriginals)
+        }
+    }
+}
+
+/**
+ * The summary itself: what came of the batch, and the one safe thing to do about it.
+ *
+ * Only the dismissal lives here. The destructive action is a row of its own below — see
+ * [OriginalDeleteRow] for why it is not beside this one.
+ */
+@Composable
+private fun ImportSummaryLine(batch: ImportState.Finished, onDismiss: () -> Unit) {
     val colors = DarkChamberTheme.colors
     val spacing = DarkChamberTheme.spacing
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(color = colors.sealedContainer, shape = DarkChamberTheme.shapes.large)
-            .padding(start = spacing.spaceMd),
+        modifier = Modifier.fillMaxWidth().padding(start = spacing.spaceMd),
     ) {
         // The vertical padding only shows once the message wraps: on one line the row is already
         // taller than the text, because the buttons carry a 48 dp touch target. A two-line message
@@ -1093,29 +1143,49 @@ private fun ImportSummaryCard(
             }
         }
 
-        // Beside Done rather than under the summary text, where it read as a stray line of the
-        // message. Offered only when there is something to offer, and gone once it has been
-        // answered: nothing deletable is the ordinary case — every photo-library item, every iOS
-        // item, most cloud documents — so it has to be *absent*, not a disabled control owing an
-        // explanation. The common case is therefore the message and Done alone, the shape this card
-        // has always had.
-        if (batch.deletableOriginals > 0 && batch.originalDelete == OriginalDelete.NotAsked) {
-            TextButton(onClick = onDeleteOriginals) {
-                // Muted, and left of the dismissal: this only opens the disclosure, so it is not
-                // the destructive step and must not dress like one — but it still must not be
-                // mistaken for Done, which keeps the accent.
-                Text(
-                    text = GalleryFormat.deleteOriginals(batch.deletableOriginals),
-                    style = DarkChamberTheme.typography.label,
-                    color = colors.textSecondary,
-                )
-            }
-            // A gap, so the two are not one continuous strip of tappable text.
-            Spacer(modifier = Modifier.width(spacing.spaceSm))
-        }
-
+        // **The safe action, in the position the picker occupied.** After a batch the card replaces
+        // the import affordances, so whatever sits here is what a finger returning from "Add photos"
+        // finds — and that has to be the one tap that costs nothing.
         TextButton(onClick = onDismiss) {
             Text("Done", style = DarkChamberTheme.typography.label, color = colors.accent)
+        }
+    }
+}
+
+/**
+ * Deleting the originals, on a row of its own at the bottom of the card.
+ *
+ * **It used to sit beside Done**, which put it within a few dp of where "Add photos" had been moments
+ * earlier — so importing repeatedly trained a finger for a spot that then opened the delete
+ * disclosure. Nothing is destroyed by that tap (the disclosure is non-dismissable and has to be
+ * answered) but a destructive control inheriting a safe one's position is a trap that only needs one
+ * distracted moment.
+ *
+ * Its own row, at the far end of the card from the dismissal, and **outlined rather than plain text**:
+ * the earlier shape of this — muted text under the message — is exactly how it came to read as a
+ * stray line of the summary, which is the bug that moved it up beside Done in the first place. A
+ * bordered control is unmistakably a control, while staying quieter than the accent on Done.
+ */
+@Composable
+private fun OriginalDeleteRow(count: Int, onDeleteOriginals: () -> Unit) {
+    val colors = DarkChamberTheme.colors
+    val spacing = DarkChamberTheme.spacing
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = spacing.spaceMd, end = spacing.spaceMd, bottom = spacing.spaceSm),
+    ) {
+        OutlinedButton(
+            onClick = onDeleteOriginals,
+            shape = DarkChamberTheme.shapes.medium,
+            border = BorderStroke(width = TILE_BORDER, color = colors.outline),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.textSecondary),
+        ) {
+            Text(
+                text = GalleryFormat.deleteOriginals(count),
+                style = DarkChamberTheme.typography.label,
+            )
         }
     }
 }
@@ -1123,6 +1193,8 @@ private fun ImportSummaryCard(
 @Composable
 private fun ItemGrid(
     items: List<GalleryItem>,
+    gridState: LazyGridState,
+    reordering: Boolean,
     now: Long,
     imageLoader: ImageLoader,
     bottomInset: Dp,
@@ -1131,8 +1203,10 @@ private fun ItemGrid(
     onToggleItem: (ByteArray) -> Unit,
 ) {
     val spacing = DarkChamberTheme.spacing
-    val arrival = tileArrival(DarkChamberTheme.motion, prefersReducedMotion())
+    val arrival = tileArrival(DarkChamberTheme.motion, prefersReducedMotion(), reordering)
+
     LazyVerticalGrid(
+        state = gridState,
         columns = GridCells.Adaptive(minSize = TILE_MIN_WIDTH),
         contentPadding = PaddingValues(
             start = spacing.spaceMd,
@@ -1150,6 +1224,12 @@ private fun ItemGrid(
         // Keyed by the object id, never by position. With newest-first ordering every existing tile
         // shifts down on each import, so an index key would tell Compose that every row changed —
         // animating the whole grid instead of the one tile that actually arrived.
+        //
+        // Putting the order in the key as well was tried, on the theory that a key the re-order could
+        // not match would leave the grid nothing to chase. It does not: measured on a device, the
+        // viewport still moved to the far end, so the move is not a key remap. It only cost every tile
+        // being composed again on each order change. Holding the position is done explicitly instead
+        // — see [rememberBrowsingScroll].
         items(items, key = { it.id.toListKey() }) { item ->
             ItemTile(
                 item = item,
@@ -1160,9 +1240,9 @@ private fun ItemGrid(
                 onLongPress = { onSelectItem(item.id) },
                 onTap = { onToggleItem(item.id) },
                 modifier = Modifier.animateItem(
-                    fadeInSpec = tween(arrival.fadeIn),
+                    fadeInSpec = arrival.fadeIn?.let { tween(it) },
                     placementSpec = arrival.placement?.let { tween<IntOffset>(it) },
-                    fadeOutSpec = tween(arrival.fadeOut),
+                    fadeOutSpec = arrival.fadeOut?.let { tween(it) },
                 ),
             )
         }
@@ -1287,6 +1367,66 @@ private fun ItemTile(
                 )
             }
 
+            // **Which album this is in**, on the one listing that mixes filed and unfiled items —
+            // and nowhere else, because the label itself is absent elsewhere: inside an album every
+            // item is in that album and in Unfiled none has one. The rendering has no scope to
+            // check; the listing stage decides it, and `ObserveGalleryAlbumsTest` pins it.
+            //
+            // Nothing at all on an unfiled item. An absence is the honest marker for "in no album",
+            // and a badge on every tile would be noise on the common case.
+            //
+            // Inside the media slot and in the corner **opposite the check mark**, so a filed item
+            // that is also selected shows both without one covering the other.
+            item.album?.let { album ->
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(spacing.spaceXs)
+                        // Capped, and the only reason this is a Box around a Row: the Row wraps its
+                        // content so the badge is as small as the name allows, while this bounds how
+                        // far a long one may grow — short of the check mark's corner.
+                        .fillMaxWidth(ALBUM_BADGE_MAX_FRACTION),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(spacing.spaceXxs),
+                        modifier = Modifier
+                            .background(
+                                color = colors.surface,
+                                // Rounded, never a circle: that radius is the aperture's alone
+                                // (docs/DESIGN.md §4).
+                                shape = DarkChamberTheme.shapes.small,
+                            )
+                            .border(
+                                width = TILE_BORDER,
+                                color = colors.outline,
+                                shape = DarkChamberTheme.shapes.small,
+                            )
+                            .padding(horizontal = spacing.spaceXxs, vertical = ALBUM_BADGE_INSET),
+                    ) {
+                        AlbumMark(
+                            // Named for a reader, unlike the album grid's badge: there the word
+                            // "Album" sits beside the mark, while here the only other text is the
+                            // album's own name.
+                            contentDescription = GalleryFormat.inAlbum(),
+                            tint = colors.textSecondary,
+                            modifier = Modifier.size(ALBUM_BADGE_MARK),
+                        )
+                        Text(
+                            text = album.label(),
+                            style = DarkChamberTheme.typography.caption,
+                            // The danger role when the album's name would not open, as everywhere
+                            // else that renders one — a badge is small, not a reason to say it
+                            // quietly.
+                            color = if (album is AlbumTileName.Unreadable) colors.danger else colors.textSecondary,
+                            maxLines = 1,
+                            // Truncated inside the badge rather than spanning the tile.
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+
             // Inside the media slot, which already reserves this square — **not** in the tile's own
             // corner. A badge drawn into the tile corner is the bug an earlier release shipped: the
             // tile is a Column of slot plus two lines of text, so its corners are over the caption,
@@ -1325,12 +1465,7 @@ private fun ItemTile(
         }
 
         Text(
-            text = when (val meta = item.meta) {
-                is GalleryItemMeta.Readable -> meta.name
-                // Honest, and no more than the threat model allows: we know the metadata did not
-                // verify, not whether it was tampered with or merely corrupted (hard rule #6).
-                GalleryItemMeta.Unreadable -> "Can't be verified"
-            },
+            text = item.meta.label(),
             style = DarkChamberTheme.typography.body,
             color = if (damaged) colors.danger else colors.textPrimary,
             maxLines = 1,
@@ -1349,13 +1484,18 @@ private fun ItemTile(
 }
 
 /**
- * An empty listing, which is four different situations — see [GalleryFormat.emptyListing]. The same
- * screen serves all of them, so the copy is the only thing that can tell them apart, and one of the
- * four is the grid being empty because it could not be read at all.
+ * An empty listing, which is five different situations — see [GalleryFormat.emptyListing]. The same
+ * screen serves all of them, so the copy is the only thing that can tell them apart, and two of the
+ * five are not about the vault's contents at all: the grid could not be read, or a search matched
+ * nothing in a listing that is not empty.
+ *
+ * Which of the five wins is decided in the formatter, and which state each of its questions is
+ * answered from is decided in [emptyListingMessage] — so both halves are something a test can assert
+ * on, and nothing is left here but drawing.
  */
 @Composable
-private fun EmptyListing(scope: GalleryScope, unreadable: Boolean) {
-    CenteredMessage(GalleryFormat.emptyListing(scope, unreadable), showSpinner = false)
+private fun EmptyListing(message: String) {
+    CenteredMessage(message, showSpinner = false)
 }
 
 @Composable
@@ -1407,30 +1547,6 @@ private fun ErrorBanner(error: GalleryError, onDismiss: () -> Unit) {
     }
 }
 
-/**
- * The load-bearing sentence of this screen. A lock or a background ends a batch, and
- * afterwards there is nobody left to tell — the state died with the session. Warning beforehand is
- * the only chance there is, so it stays visible for the whole import, not just at the start.
- */
-private const val KEEP_OPEN_NOTICE =
-    "Keep DarkChamber open — locking the vault or leaving the app stops the import."
-
-/**
- * Shown from the moment Stop is tapped until the batch actually ends.
- *
- * Says a stop *may take a moment* rather than naming what it is waiting for, because that now
- * depends on where the stop lands. Waiting for a provider to hand the file over is abandoned at
- * once; part-way through the encrypt the stop takes effect on the next read of the payload, which is
- * kilobytes away but still not instant (docs/THREAT_MODEL.md's note that a stop is cooperative).
- *
- * It used to say "once the current file finishes reading", which described the longer of those two
- * waits — correct when a blocked fetch could not be interrupted, and an understatement of the stop
- * now that it can be. Promising an instant stop would be the opposite error (hard rule #6), so it
- * promises neither. The second half is the part that stops the wait feeling like a loss.
- */
-private const val STOPPING_NOTICE =
-    "Stopping — this may take a moment. Everything already added stays in the vault."
-
 /** Tall enough for several albums, short enough to leave the dialog's buttons on screen. */
 private val CHOOSER_LIST_MAX = 260.dp
 
@@ -1446,3 +1562,18 @@ private val SELECTION_MARK = 22.dp
 
 /** The unselected mark sits over a thumbnail, so it needs to be visible without hiding it. */
 private const val MARK_UNSELECTED_ALPHA = 0.6f
+
+/**
+ * How much of the slot a filed item's album badge may take.
+ *
+ * Two thirds, so a long album name truncates well before the check mark's corner — the two are on
+ * opposite sides, and a badge allowed the full width would slide under the tick the moment selecting
+ * mode opened.
+ */
+private const val ALBUM_BADGE_MAX_FRACTION = 0.66f
+
+/** The badge's mark, sized to the caption beside it rather than to an icon's own 24 dp. */
+private val ALBUM_BADGE_MARK = 12.dp
+
+/** Vertical breathing room, so the name does not sit on the badge's own border. */
+private val ALBUM_BADGE_INSET = 2.dp

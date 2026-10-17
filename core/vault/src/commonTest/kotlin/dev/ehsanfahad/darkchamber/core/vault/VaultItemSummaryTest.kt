@@ -80,12 +80,18 @@ class VaultItemSummaryTest {
         return objects to catalog
     }
 
-    private fun VaultObjects.importFile(name: String, mime: String, data: ByteArray): ByteArray =
+    private fun VaultObjects.importFile(
+        name: String,
+        mime: String,
+        data: ByteArray,
+        albumId: ByteArray? = null,
+    ): ByteArray =
         (
             importObject(
                 kind = VaultItemKind.FILE.code,
                 name = name,
                 mime = mime,
+                albumId = albumId,
                 chunkSize = 64,
                 openSource = source(data),
             ) as Outcome.Ok
@@ -239,15 +245,69 @@ class VaultItemSummaryTest {
     @Test
     fun summaries_with_equal_content_are_equal() {
         val meta = Outcome.Ok(ObjectMeta("a.txt", "text/plain"))
-        val one = VaultItemSummary(byteArrayOf(1, 2), VaultItemKind.FILE, 3L, 4L, meta)
-        val two = VaultItemSummary(byteArrayOf(1, 2), VaultItemKind.FILE, 3L, 4L, meta)
-        val other = VaultItemSummary(byteArrayOf(9, 9), VaultItemKind.FILE, 3L, 4L, meta)
+        val one = VaultItemSummary(byteArrayOf(1, 2), null, VaultItemKind.FILE, 3L, 4L, meta)
+        val two = VaultItemSummary(byteArrayOf(1, 2), null, VaultItemKind.FILE, 3L, 4L, meta)
+        val other = VaultItemSummary(byteArrayOf(9, 9), null, VaultItemKind.FILE, 3L, 4L, meta)
 
         // The id is a ByteArray, so the generated data-class equals would compare by identity and
         // every re-emission would look like a change to the UI list.
         assertEquals(one, two, "equal content must compare equal")
         assertEquals(one.hashCode(), two.hashCode(), "equal values must share a hash")
         assertTrue(one != other, "a different id must not compare equal")
+    }
+
+    @Test
+    fun a_filed_item_carries_its_album_id_and_an_unfiled_one_carries_none() = runTest {
+        val (vo, catalog) = fixture()
+        val albumId = (vo.createAlbum("Trip") as Outcome.Ok).value
+        val filedId = vo.importFile("filed.txt", "text/plain", byteArrayOf(1), albumId = albumId)
+        val looseId = vo.importFile("loose.txt", "text/plain", byteArrayOf(2))
+
+        vo.observeItems().test {
+            val summaries = awaitItem()
+
+            val filed = summaries.single { it.id.contentEquals(filedId) }
+            assertContentEquals(albumId, filed.albumId, "a filed item must carry its album's id")
+
+            val loose = summaries.single { it.id.contentEquals(looseId) }
+            assertEquals(null, loose.albumId, "an unfiled item must carry no album id")
+            cancelAndIgnoreRemainingEvents()
+        }
+        catalog.close()
+    }
+
+    @Test
+    fun album_ids_are_compared_by_content_not_identity() {
+        val meta = Outcome.Ok(ObjectMeta("a.txt", "text/plain"))
+        fun summary(albumId: ByteArray?) =
+            VaultItemSummary(byteArrayOf(1, 2), albumId, VaultItemKind.FILE, 3L, 4L, meta)
+
+        // Distinct instances holding the same bytes: the listing rebuilds these on every emission,
+        // so an identity comparison would call two rows over the same album different.
+        val one = summary(byteArrayOf(7, 7))
+        val two = summary(byteArrayOf(7, 7))
+        assertEquals(one, two, "the same album by content must compare equal")
+        assertEquals(one.hashCode(), two.hashCode(), "equal values must share a hash")
+
+        assertTrue(one != summary(byteArrayOf(8, 8)), "a different album must not compare equal")
+        assertTrue(one != summary(null), "filed and unfiled must not compare equal")
+        assertEquals(summary(null), summary(null), "two unfiled items must still compare equal")
+    }
+
+    @Test
+    fun the_summary_never_prints_an_album_id() {
+        val meta = Outcome.Ok(ObjectMeta("a.txt", "text/plain"))
+        val filed = VaultItemSummary(byteArrayOf(1, 2), byteArrayOf(42, 43), VaultItemKind.FILE, 3L, 4L, meta)
+
+        // An album id is an opaque identifier rather than content, but this toString is the
+        // redaction boundary for the whole row, so it reports presence and never bytes (hard rule 4).
+        val printed = filed.toString()
+        assertTrue("42" !in printed, "an album id's bytes must not be printed, was $printed")
+        assertTrue("present" in printed, "a filed row should say an album is present, was $printed")
+        assertTrue(
+            "absent" in VaultItemSummary(byteArrayOf(1), null, VaultItemKind.FILE, 1L, 1L, meta).toString(),
+            "an unfiled row should say so",
+        )
     }
 }
 

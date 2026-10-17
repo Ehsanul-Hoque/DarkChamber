@@ -42,14 +42,18 @@ Package root: `dev.ehsanfahad.darkchamber`.
 >   album grid, create/rename/delete, a multi-select that moves items in and out, and imports landing in
 >   the album being viewed. An album is a **label, not a container** — deleting one keeps its items
 >   (they become unfiled) and an item is in one album at a time, so filing is a move; see
->   `docs/ARCHITECTURE.md` §5.1. Public surface is two factories plus the `api` package; everything else
->   is `internal`. Reaches the vault through `core:vault` only, and navigates only through callbacks the
->   host supplies.
+>   `docs/ARCHITECTURE.md` §5.1. Plus **browsing**: four orders (newest, oldest, A–Z, Z–A) and a
+>   name search, both applied *above* the catalog's query because a name lives in an opaque blob —
+>   the subscription is keyed by the listing filter alone, so re-ordering or typing never re-decrypts
+>   a row; a filed item's album drawn on its tile from the album listing, at no per-item cost; and the
+>   browse chrome (the controls row, the empty-result and damaged-item copy, the way back to a
+>   just-imported file a filter would hide). Public surface is two factories plus the `api` package;
+>   everything else is `internal`. Reaches the vault through `core:vault` only, and navigates only
+>   through callbacks the host supplies.
 > - **`:konsist`** — the architecture + **security-invariant** rules, running in CI on every PR.
 >
-> Still a stub (marker + smoke test): `:core:testing`. **In progress: Phase 1** — albums are in; next
-> are sort/search over the listing, the camera, the seek primitive and the in-app viewers (deferred
-> from Phase 0). **Planned, not yet wired:** ktlint/detekt/Kover, Lefthook and
+> Still a stub (marker + smoke test): `:core:testing`. **In progress: Phase 1** — albums and browsing
+> are in; next are the camera, the seek primitive and the in-app viewers (deferred from Phase 0). **Planned, not yet wired:** ktlint/detekt/Kover, Lefthook and
 > `migrationTest` — verify a Gradle task exists before assuming it runs. CI:
 > `pr.yml` is enabled (build + commit-message check + a gated macOS job that runs the **iOS unit
 > tests** and compiles the device architecture); its `quality` job stays
