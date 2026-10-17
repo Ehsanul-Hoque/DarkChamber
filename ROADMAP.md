@@ -81,69 +81,45 @@ Goal: a walking skeleton with the security core proven before any product UI.
 The complete free product. Everything here ships open source and free.
 
 > **Progress (2026-10): Phase 1 is under way — the vault half of it is in place; the camera is next.**
-> What a build can do today, on Android and iOS:
+> What a build can do today, on Android and iOS — the readme describes each of these for a reader
+> rather than a planner:
 >
-> - **Browse the vault.** An adaptive grid over the encrypted catalog, newest first, backed by the
->   session gate from Phase 0 — the item list cannot exist without an open vault.
-> - **Import files at scale.** Multi-select from both the system file picker and the photo picker,
->   encrypted one file at a time in bounded RAM. A batch reports which file it is on and how far into
->   it, keeps going when one file cannot be read, and can be stopped **during** a file rather than
->   after it.
-> - **See what is in there.** Previews are generated while a file is being imported, each sealed under
->   its own key alongside the file it previews. Nothing decrypted is ever written to storage — the
->   image loader keeps no disk cache, and its memory cache is emptied when the vault locks. A file
->   with no preview shows its type instead; a preview is a convenience and never evidence.
-> - **Delete the original after importing it**, where the system will allow it, behind a disclosure
->   that has to be answered and that states what deletion on flash storage can and cannot promise.
->   Most sources cannot offer it at all, and no offer is made where it cannot be honoured.
-> - **Keep the screen private** — whole-app rather than per-screen: screenshot and screen-recording
->   blocking plus a blank app-switcher card on Android, and an obscured app-switcher snapshot on
->   iOS. iOS gives apps no way to block a screenshot at all, which the threat model states and no
->   copy here softens. The screenshot flag turned out **not** to cover a second channel: Android
->   builds a structure of the foreground window for its autofill and content-capture services, which
->   run in other processes, and a device showed a vault text field travelling that way with the flag
->   set. Every window the app opens — each dialog, each menu — now excludes itself, and an
->   architecture rule fails the build when a new one forgets. The cost is stated rather than hidden:
->   a password manager cannot fill the passphrase.
-> - **Import from the cloud without the app seeming to hang.** A file stored in a cloud service has
->   to be downloaded before it can be encrypted, which the provider does on its own schedule and
->   reports nothing about — minutes, for a large file. The import now says it is waiting for the
->   file, and **stopping actually stops**: it gives up on the wait rather than sitting through the
->   rest of the download. The transfer itself carries on in the other app, because nothing can call
->   it off, and what it eventually hands over is thrown away unread.
->
-> - **Organise it into albums.** A grid of albums with their contents previewed, plus a view of
->   everything in no album. You can create, rename and delete an album, move a selection into one or
->   take it out again, and import straight into the album you are looking at. Two things are worth
->   stating plainly, because both are the opposite of what the words suggest: **deleting an album keeps
->   every file in it** — they become unfiled, and the confirmation says so before you commit — and an
->   item is in **one album at a time**, so filing it moves it rather than making a second copy. An
->   album organises; it is not a second lock, and nothing in the app implies that it is.
->
-> - **Find the one file you came for.** Four orders — newest, oldest, A–Z, Z–A — and a search over
->   names, with a line in the bar saying which listing you are looking at and an album's name drawn
->   on the tiles of the items filed in it. Both the ordering and the matching run on rows already on
->   screen, because a name lives inside the encrypted metadata and no database can sort or match what
->   it cannot open; what that buys is that changing the order, or typing another character, never
->   re-opens a single row. The search says it covers names on this listing and nothing else, an item
->   whose name will not open is counted out of the results rather than quietly dropped, and an empty
->   grid distinguishes a vault with nothing in it from an album with nothing in it, from nothing
->   unfiled, from a search that matched nothing, from a listing that could not be read.
+> - **Hold files.** An adaptive grid over the encrypted catalog, behind the Phase 0 session gate, with
+>   batch import from the file and photo pickers — bounded RAM, honest two-level progress, continue
+>   past an unreadable file, and a stop that lands **within** a file rather than after it.
+> - **Show what is in there.** Previews generated at import, each sealed under its own key, decoded to
+>   memory only. A file with no preview shows its type; a preview is a convenience, never evidence.
+> - **Offer to delete the original**, where the system allows it, behind a disclosure that says what
+>   deletion on flash storage can and cannot promise.
+> - **Organise into albums** — created, renamed, deleted, filled by moving a selection in, and the
+>   destination of an import made from inside one. Two things the words suggest and the app does not:
+>   **deleting an album keeps every file in it** (they become unfiled, and the confirmation says so),
+>   and an item is in **one album at a time**, so filing moves it. An album organises; it is not a
+>   second lock.
+> - **Find one file** among thousands: four orders, a search over names, and a line in the bar saying
+>   which listing you are looking at. Both run on rows already on screen, because a name lives inside
+>   the encrypted metadata and no query can sort or match what it cannot open — so re-ordering and
+>   typing never re-open a row. An empty grid names which of five reasons it is empty.
+> - **Survive the cloud.** A file that has to be downloaded before it can be encrypted says it is
+>   waiting, and **stopping actually stops** — the provider's transfer carries on, because nothing can
+>   call it off, and whatever it hands over is thrown away unread.
+> - **Give nothing to the rest of the phone.** Screenshot and recording blocking plus a blank
+>   app-switcher card on Android, an obscured snapshot on iOS (which offers no way to block a
+>   screenshot at all — the threat model says so and no copy here softens it), and every window kept
+>   out of the platform's autofill and content-capture structures. That second channel is **not**
+>   covered by the screenshot flag: a device showed a vault text field travelling it with the flag set.
+>   The cost is stated rather than hidden — a password manager cannot fill the passphrase.
 >
 > Still to come before v1.0: the private camera, the in-app viewers and the seekable reads they need,
 > export with metadata scrubbing, the settings screen and recovery-key entry, and the
 > release-readiness tooling.
 >
-> **Verified on Android hardware.** The iOS side is built and passes on the simulator, but the
-> platform-specific paths — the pickers and the preview encoder — have not yet been run on a device.
-> That is a pre-release gate, and it is stated here rather than implied away. The album surface's own
-> on-device pass is a gate of the same kind: what the automated tests cannot show is that an album name
-> never reaches the catalog file or a log line, which is checked on a device against
-> [`docs/verification/albums-manual.md`](./docs/verification/albums-manual.md). Browsing has a
-> checklist of the same kind in
-> [`docs/verification/browse-manual.md`](./docs/verification/browse-manual.md), where four sections
-> are release-blocking — including the one that asks the platform what a window actually handed it,
-> which no test off the device can answer.
+> **Verified on Android hardware; iOS only on the simulator.** The platform-specific paths there —
+> the pickers, the preview encoder — have not been run on a device, which is a pre-release gate rather
+> than something to imply away. What automated tests cannot show at all has its own checklists in
+> [`docs/verification/`](./docs/verification), one per area, with the release-blocking lines marked:
+> that a name never reaches the catalog file or a log line, that a layout holds at a large font scale,
+> and that no window hands its text to another process.
 
 | Feature                                | Notes                                                                                                                                                                                               |
 |----------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
