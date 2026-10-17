@@ -37,6 +37,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import dev.ehsanfahad.darkchamber.core.designsystem.DarkChamberTheme
 import dev.ehsanfahad.darkchamber.core.designsystem.DisclosureCaret
+import dev.ehsanfahad.darkchamber.core.designsystem.ExcludeFromPlatformStructures
 import dev.ehsanfahad.darkchamber.core.designsystem.MoreActions
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumState
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
@@ -580,6 +581,11 @@ private fun OrderControl(order: GalleryOrder, onChooseOrder: (GalleryOrder) -> U
         }
 
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            // A menu is its own window, like a dialog, so it excludes itself. Nothing in *this* one is
+            // vault content — four fixed order names — but the rule is per window rather than per
+            // wording: the menu that lists albums by name is the one that would otherwise be written
+            // without this, and by then nothing would be asking the question.
+            ExcludeFromPlatformStructures()
             // What to offer and which one to mark is decided in `orderOptions`, so that a fifth order
             // missing from this menu is a failing test rather than something to notice by eye.
             for (option in orderOptions(order)) {
@@ -646,6 +652,9 @@ private fun AlbumOverflow(actions: AlbumActions, onRename: () -> Unit, onDelete:
         }
 
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            // Its own window, so its own exclusion — see the order menu above for why this does not
+            // wait for a menu that shows content.
+            ExcludeFromPlatformStructures()
             if (actions.rename) {
                 DropdownMenuItem(
                     text = {
