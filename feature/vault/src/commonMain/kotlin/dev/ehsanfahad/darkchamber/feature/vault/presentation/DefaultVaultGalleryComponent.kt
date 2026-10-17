@@ -107,6 +107,16 @@ internal class DefaultVaultGalleryComponent(
     // different child from the one showing the whole vault, so changing it is navigation rather than
     // a state change, and the selection below cannot straddle two listings.
     private val filter: ItemFilter = ItemFilter.All,
+    // What the screen that opened this one already knew the album was called, when there was one.
+    //
+    // **A starting point, not a cache.** The album listing below decides what the album is called
+    // from its first emission onwards, and this exists only to fill the frames before that arrives:
+    // the name has to be read from the catalog, which is a round trip, while the album grid that
+    // pushed this screen has had the name on a tile all along. Without it the bar above the screen
+    // draws no album name for the first few frames and then adds one, which reads as a flicker.
+    //
+    // Null on every other way in, and ignored unless this screen is an album's — see [_state].
+    openedAlbumName: AlbumTileName? = null,
     // Where leaving an album goes — a successful delete, or the notice shown when it disappeared from
     // elsewhere. A callback rather than navigation performed here, like the album grid's openers: a
     // component that popped the stack itself would have to know the shape of the stack it sits in.
@@ -155,7 +165,12 @@ internal class DefaultVaultGalleryComponent(
     private val _state = MutableValue(
         // The scope is published once, at construction, because that is when it is decided: this
         // screen's identity is its filter, and changing it is a push rather than a state change.
-        GalleryState(scope = filter.toScope()),
+        GalleryState(
+            scope = filter.toScope(),
+            // Guarded on the filter rather than trusted from the caller: a name carried to a listing
+            // that is not an album would give a screen with no album a heading and two album actions.
+            album = openedAlbumName?.takeIf { albumId != null }?.let(AlbumState::Present),
+        ),
     )
     override val state: Value<GalleryState> = _state
 

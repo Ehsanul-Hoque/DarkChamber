@@ -29,6 +29,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.label
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -419,6 +420,39 @@ class UnlockedNavigationTest {
         advanceUntilIdle()
         val inAlbum = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance)
         assertEquals("Receipts", crumbFor(inAlbum, inAlbum.component.state.value), "the album, by name")
+    }
+
+    /**
+     * **The album's name is in the bar from the first frame**, not a few frames later.
+     *
+     * The bar reads live state, and an album's name is the one answer that has to be read from the
+     * catalog — so without the grid handing over the name it is already showing, the bar spends the
+     * first frames of the push saying only "Vault" and then adds the album, which reads as a flicker
+     * on a screen that has not begun to move.
+     *
+     * A driven dispatcher is what makes this discriminate: the grid's listing is let run first, and
+     * then nothing runs between the push and the assertion. An unconfined one would let the new
+     * screen's own listing emit inside `openAlbum` and the bar would be right either way.
+     */
+    @Test
+    fun the_bar_names_an_album_from_the_frame_it_is_opened_in() = runTest {
+        val open = openVault(StandardTestDispatcher(testScheduler))
+        val component = component(open, StandardTestDispatcher(testScheduler))
+        val albumId = (vaultObjects(open).createAlbum("Receipts") as Outcome.Ok).value
+
+        component.openAlbums()
+        val albums = assertIs<UnlockedChild.Albums>(component.stack.value.active.instance)
+        // The grid has read the catalog; from here on the scheduler is held.
+        advanceUntilIdle()
+
+        albums.component.openAlbum(albumId)
+
+        val child = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance)
+        assertEquals(
+            "Receipts",
+            crumbFor(child, child.component.state.value),
+            "named before its own listing has answered",
+        )
     }
 
     /**

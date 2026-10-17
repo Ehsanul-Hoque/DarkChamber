@@ -15,6 +15,7 @@ import com.arkivanov.essenty.lifecycle.doOnDestroy
 import coil3.ImageLoader
 import coil3.PlatformContext
 import com.arkivanov.essenty.lifecycle.doOnStop
+import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryScope
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultAlbumsComponent
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultGalleryComponent
@@ -364,6 +365,19 @@ class DefaultUnlockedComponent(
         _leaveNotice.value = false
     }
 
+    /**
+     * The name of the album currently being opened, from the grid that is showing it to the screen
+     * being built for it — paired with that album's id, so a name can never reach another screen.
+     *
+     * **Not in the [Config]**, and that is the whole reason this field exists. Configs are compared,
+     * kept in the stack for as long as the screen is, and serialized by any host that preserves
+     * state; a decrypted album name belongs in none of that. This is set as the grid's callback
+     * fires, read by the child factory the push runs synchronously, and cleared on the way out — so
+     * it holds a decrypted name for the length of one navigation and nothing restores or persists
+     * it. Null leaves the screen to read its own name from the catalog, as every other way in does.
+     */
+    private var openingAlbum: Pair<String, AlbumTileName>? = null
+
     private fun createChild(config: Config, context: ComponentContext): UnlockedChild =
         when (config) {
             is Config.Gallery -> {
@@ -379,6 +393,12 @@ class DefaultUnlockedComponent(
                     // felt.
                     ioContext = ioContext,
                     filter = config.filter.toItemFilter(),
+                    // What the album grid already knew this album was called, so the bar above has
+                    // its name in this first frame rather than a catalog round trip later. Matched
+                    // on the id: a name left over from anything else is not this screen's.
+                    openedAlbumName = (config.filter as? Config.Filter.Album)?.let { album ->
+                        openingAlbum?.takeIf { it.first == album.idHex }?.second
+                    },
                     // An album that has been deleted, or that disappeared while being looked at, has
                     // no screen left to be. `pop`, not a push: this child *is* the album, so leaving
                     // it means going back to whatever opened it — which is the album grid.
@@ -400,8 +420,14 @@ class DefaultUnlockedComponent(
                     // reachable with one finger: a double tap on an album tile fires this twice
                     // before the first screen is on top, and two identical configs is an exception
                     // rather than a second screen.
-                    onOpenAlbum = { id ->
-                        navigation.pushNew(Config.Gallery(Config.Filter.Album(id.toHex())))
+                    onOpenAlbum = { id, name ->
+                        val idHex = id.toHex()
+                        // Set, pushed, cleared — the push builds the child synchronously, so the
+                        // name is read inside this call and nothing holds it afterwards. Cleared
+                        // even when the push is dropped as a duplicate.
+                        openingAlbum = name?.let { idHex to it }
+                        navigation.pushNew(Config.Gallery(Config.Filter.Album(idHex)))
+                        openingAlbum = null
                     },
                     onOpenUnfiled = { navigation.pushNew(Config.Gallery(Config.Filter.Unfiled)) },
                 ),

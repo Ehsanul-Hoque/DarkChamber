@@ -10,6 +10,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.ExplodingVaultItems
 import dev.ehsanfahad.darkchamber.feature.vault.FakeVaultItems
 import dev.ehsanfahad.darkchamber.feature.vault.ManualDispatcher
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumDraftProblem
+import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumsError
 import dev.ehsanfahad.darkchamber.feature.vault.domain.CreateAlbum
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveAlbums
@@ -43,15 +44,23 @@ class DefaultVaultAlbumsComponentTest {
         // Defaults to a context the test scheduler drives, so a create completes within the test. A
         // ManualDispatcher is passed by the tests that need to stand *inside* a running create.
         ioContext: CoroutineContext = UnconfinedTestDispatcher(testScheduler),
+        onOpenAlbum: (ByteArray, AlbumTileName?) -> Unit = { _, _ -> },
     ): DefaultVaultAlbumsComponent =
         DefaultVaultAlbumsComponent(
             componentContext = DefaultComponentContext(lifecycle),
             observeAlbums = ObserveAlbums(vault),
             createAlbum = CreateAlbum(vault, ioContext = ioContext),
             mainContext = UnconfinedTestDispatcher(testScheduler),
-            onOpenAlbum = {},
+            onOpenAlbum = onOpenAlbum,
             onOpenUnfiled = {},
         )
+
+    /** One album in the grid, as the catalog would report it. */
+    private fun FakeVaultItems.hasAlbum(id: ByteArray, name: Outcome<String>) {
+        albums.value = listOf(
+            AlbumSummary(id = id, name = name, itemCount = 0, coverItemId = null, createdAt = 1L),
+        )
+    }
 
     /**
      * A catalog that will not read is **reported**, not rendered as a vault with no albums — the
@@ -65,7 +74,7 @@ class DefaultVaultAlbumsComponentTest {
             observeAlbums = ObserveAlbums(ExplodingVaultItems()),
             createAlbum = CreateAlbum(ExplodingVaultItems(), ioContext = UnconfinedTestDispatcher(testScheduler)),
             mainContext = UnconfinedTestDispatcher(testScheduler),
-            onOpenAlbum = {},
+            onOpenAlbum = { _, _ -> },
             onOpenUnfiled = {},
         )
         advanceUntilIdle()
@@ -313,5 +322,72 @@ class DefaultVaultAlbumsComponentTest {
 
         assertEquals(1, component.state.value.albums.size, "the listing still landed")
         assertEquals("Receip", assertNotNull(component.state.value.draft).name, "and the draft survived it")
+    }
+
+    /**
+     * Opening an album reports **what the tile said it was called**, beside its id.
+     *
+     * The screen being opened cannot have the name for a moment — it reads the catalog, and that is
+     * a round trip — while this one has had it on screen all along. Handing it over is what lets the
+     * album's own screen draw its name in its first frame instead of a few frames later.
+     *
+     * In memory and nowhere else: the name goes to the opener's callback, never into a navigation
+     * configuration, which carries ids only.
+     */
+    @Test
+    fun opening_an_album_reports_the_name_the_grid_is_showing() = runTest {
+        val vault = FakeVaultItems()
+        vault.hasAlbum(byteArrayOf(1, 2), Outcome.Ok("Receipts"))
+        var opened: Pair<ByteArray, AlbumTileName?>? = null
+        val component = component(vault, onOpenAlbum = { id, name -> opened = id to name })
+        advanceUntilIdle()
+
+        component.openAlbum(byteArrayOf(1, 2))
+
+        val (id, name) = assertNotNull(opened)
+        assertTrue(byteArrayOf(1, 2).contentEquals(id), "the album that was tapped")
+        assertEquals(AlbumTileName.Readable("Receipts"), name, "by the name on its tile")
+    }
+
+    /**
+     * A name that will not open is carried **as unreadable**, not as nothing: the screen opened says
+     * the same honest thing about it as the tile did, and from the same first frame.
+     */
+    @Test
+    fun opening_an_album_whose_name_will_not_open_carries_that_too() = runTest {
+        val vault = FakeVaultItems()
+        vault.hasAlbum(byteArrayOf(3), Outcome.Err(VaultError.Crypto.IntegrityFailure))
+        var name: AlbumTileName? = null
+        var opened = false
+        val component = component(vault, onOpenAlbum = { _, carried -> name = carried; opened = true })
+        advanceUntilIdle()
+
+        component.openAlbum(byteArrayOf(3))
+
+        assertTrue(opened, "it still opens")
+        assertEquals(AlbumTileName.Unreadable, name)
+    }
+
+    /**
+     * An id this grid is not showing carries **no name**, rather than a guess or the wrong tile's.
+     *
+     * Unreachable through the screen, which only offers the albums it has drawn — but the callback
+     * takes an id, so the answer has to be defined, and the one thing it must not do is name an
+     * album after a different one. With nothing carried, the screen opened simply waits for the
+     * catalog, which is what every screen did before this.
+     */
+    @Test
+    fun opening_an_album_the_grid_does_not_have_carries_no_name() = runTest {
+        val vault = FakeVaultItems()
+        vault.hasAlbum(byteArrayOf(1, 2), Outcome.Ok("Receipts"))
+        var name: AlbumTileName? = AlbumTileName.Readable("not this")
+        var opened = false
+        val component = component(vault, onOpenAlbum = { _, carried -> name = carried; opened = true })
+        advanceUntilIdle()
+
+        component.openAlbum(byteArrayOf(9, 9))
+
+        assertTrue(opened, "the id is still passed on")
+        assertNull(name, "and nothing is claimed about its name")
     }
 }

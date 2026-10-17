@@ -9,6 +9,7 @@ import dev.ehsanfahad.darkchamber.core.model.VaultError
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumDraft
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumDraftProblem
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTile
+import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumsError
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumsState
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultAlbumsComponent
@@ -43,7 +44,13 @@ internal class DefaultVaultAlbumsComponent(
     mainContext: CoroutineContext = Dispatchers.Main,
     // Where opening an album goes. A callback rather than navigation performed here: a component
     // that pushed screens itself would have to know the shape of the stack it sits in.
-    private val onOpenAlbum: (ByteArray) -> Unit,
+    //
+    // It reports the album's **name** beside its id, for the screen being opened to start from: that
+    // screen has to read the name from the catalog, which takes a round trip it spends with no name
+    // to draw, while this one is showing the name already. Null when the id is not one this grid is
+    // listing, which the screen cannot produce — then nothing is claimed and the screen opened waits
+    // for the catalog as it always did.
+    private val onOpenAlbum: (ByteArray, AlbumTileName?) -> Unit,
     private val onOpenUnfiled: () -> Unit,
 ) : VaultAlbumsComponent, ComponentContext by componentContext {
 
@@ -78,7 +85,8 @@ internal class DefaultVaultAlbumsComponent(
             .launchIn(scope)
     }
 
-    override fun openAlbum(id: ByteArray) = onOpenAlbum(id)
+    override fun openAlbum(id: ByteArray) =
+        onOpenAlbum(id, _state.value.albums.firstOrNull { it.id.contentEquals(id) }?.name)
 
     override fun openUnfiled() = onOpenUnfiled()
 

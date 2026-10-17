@@ -5,6 +5,7 @@ import dev.ehsanfahad.darkchamber.core.model.ItemFilter
 import dev.ehsanfahad.darkchamber.core.vault.VaultObjects
 import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
 import dev.ehsanfahad.darkchamber.feature.vault.api.PhotoPicker
+import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultAlbumsComponent
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultGalleryComponent
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultImports
@@ -87,6 +88,11 @@ fun vaultGalleryComponent(
     // A construction parameter rather than an intent, because it is the screen's identity — the
     // host pushes a new child to change it, and nothing on screen can.
     filter: ItemFilter = ItemFilter.All,
+    // What the screen that opened this one already knew the album was called — the album grid reports
+    // it beside the id it opens. The screen starts from it so its name is on the bar in the first
+    // frame, and the album listing replaces it from its first emission onwards. Held in memory only,
+    // like every other decrypted name: the host must not route it through a navigation config.
+    openedAlbumName: AlbumTileName? = null,
     // Where leaving an album goes: a successful delete, or the notice shown when the album disappeared
     // from somewhere else. Unused by the other two listings, which have no album to leave.
     onLeaveAlbum: () -> Unit = {},
@@ -104,6 +110,7 @@ fun vaultGalleryComponent(
         fileItems = FileItems(vault = items, ioContext = ioContext),
         mainContext = mainContext,
         filter = filter,
+        openedAlbumName = openedAlbumName,
         onLeaveAlbum = onLeaveAlbum,
     )
 }
@@ -122,7 +129,9 @@ fun vaultAlbumsComponent(
     // Where a create runs: it seals a name and writes a catalog row, which is small but blocking, and
     // the thread it must not run on is the one drawing the grid it will change.
     ioContext: CoroutineContext = Dispatchers.Default,
-    onOpenAlbum: (ByteArray) -> Unit,
+    // Reports the tapped album's name beside its id, for the screen being opened to start from —
+    // null when the grid is not listing that id. See `vaultGalleryComponent`'s `openedAlbumName`.
+    onOpenAlbum: (ByteArray, AlbumTileName?) -> Unit,
     onOpenUnfiled: () -> Unit,
 ): VaultAlbumsComponent {
     val items = VaultObjectsItems(vaultObjects)

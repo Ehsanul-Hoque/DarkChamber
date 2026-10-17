@@ -24,6 +24,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.domain.RenameAlbum
 import dev.ehsanfahad.darkchamber.feature.vault.readableMeta
 import dev.ehsanfahad.darkchamber.feature.vault.summary
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -58,6 +59,13 @@ class GalleryAlbumActionsTest {
         filter: ItemFilter = ItemFilter.Album(albumId),
         ioContext: CoroutineContext = UnconfinedTestDispatcher(testScheduler),
         onLeaveAlbum: () -> Unit = {},
+        // What the screen that opened this one already knew the album was called. None by default,
+        // which is how every screen opened any other way arrives.
+        openedAlbumName: AlbumTileName? = null,
+        // Unconfined by default, so the listing has emitted by the time a test asserts. The seeding
+        // tests pass a driven dispatcher instead: what they are about is the moment *before* the
+        // first emission, which an unconfined one leaves no room to stand in.
+        mainContext: CoroutineContext = UnconfinedTestDispatcher(testScheduler),
     ): DefaultVaultGalleryComponent =
         DefaultVaultGalleryComponent(
             componentContext = DefaultComponentContext(lifecycle),
@@ -69,7 +77,8 @@ class GalleryAlbumActionsTest {
             observeAlbums = ObserveAlbums(vault),
             createAlbum = CreateAlbum(vault, ioContext = ioContext),
             fileItems = FileItems(vault, ioContext = ioContext),
-            mainContext = UnconfinedTestDispatcher(testScheduler),
+            mainContext = mainContext,
+            openedAlbumName = openedAlbumName,
             progressInterval = Duration.ZERO,
             pickingDelay = Duration.ZERO,
             stageGrace = Duration.ZERO,
@@ -95,6 +104,94 @@ class GalleryAlbumActionsTest {
         advanceUntilIdle()
 
         assertEquals(AlbumTileName.Readable("Receipts"), component.present().name)
+    }
+
+    /**
+     * **The name is there in the first published state**, before the listing has said anything.
+     *
+     * The screen that opens this one is the album grid, which already holds the name it drew on the
+     * tile that was tapped. Without carrying it across, the album's name is missing from every frame
+     * until the catalog answers — which is long enough to read as the bar losing the name and
+     * getting it back, on a screen that has not started moving yet.
+     *
+     * A driven dispatcher, so the test stands where the first frame does: construction has happened,
+     * the listing has not emitted.
+     */
+    @Test
+    fun an_album_opened_by_name_has_it_before_the_listing_answers() = runTest {
+        val vault = FakeVaultItems()
+        vault.hasAlbum("Receipts")
+
+        val component = component(
+            vault = vault,
+            openedAlbumName = AlbumTileName.Readable("Receipts"),
+            mainContext = StandardTestDispatcher(testScheduler),
+        )
+
+        assertEquals(AlbumTileName.Readable("Receipts"), component.present().name)
+    }
+
+    /**
+     * And the listing still decides. The carried name is where the screen starts, not a copy it
+     * keeps: the album may have been renamed between the grid reading it and the tap, and from the
+     * first emission onwards the catalog is the only thing that says what an album is called.
+     */
+    @Test
+    fun the_listings_name_replaces_the_one_the_screen_was_opened_with() = runTest {
+        val vault = FakeVaultItems()
+        vault.hasAlbum("Tax")
+
+        val component = component(
+            vault = vault,
+            openedAlbumName = AlbumTileName.Readable("Receipts"),
+            mainContext = StandardTestDispatcher(testScheduler),
+        )
+        advanceUntilIdle()
+
+        assertEquals(AlbumTileName.Readable("Tax"), component.present().name)
+    }
+
+    /**
+     * An album deleted between the tap and the first emission is **gone**, carried name or not —
+     * otherwise the one case the album state exists for would be hidden by the optimisation that
+     * removed a flicker.
+     */
+    @Test
+    fun an_album_that_has_gone_overrides_the_name_it_was_opened_with() = runTest {
+        val vault = FakeVaultItems()
+
+        val component = component(
+            vault = vault,
+            openedAlbumName = AlbumTileName.Readable("Receipts"),
+            mainContext = StandardTestDispatcher(testScheduler),
+        )
+        advanceUntilIdle()
+
+        assertEquals(AlbumState.Gone, component.state.value.album)
+    }
+
+    /**
+     * A name carried to a screen that is not showing an album is **ignored**, not drawn: the two
+     * other listings have no album, and a state carrying one would put a name and two album actions
+     * on a screen that has neither.
+     */
+    @Test
+    fun a_listing_that_is_not_an_album_ignores_a_name_it_was_opened_with() = runTest {
+        val vault = FakeVaultItems()
+        vault.hasAlbum("Receipts")
+
+        val component = component(
+            vault = vault,
+            filter = ItemFilter.Unfiled,
+            openedAlbumName = AlbumTileName.Readable("Receipts"),
+            mainContext = StandardTestDispatcher(testScheduler),
+        )
+
+        assertNull(component.state.value.album, "nothing to name before the listing")
+
+        advanceUntilIdle()
+
+        assertNull(component.state.value.album, "and nothing after it")
     }
 
     /**
