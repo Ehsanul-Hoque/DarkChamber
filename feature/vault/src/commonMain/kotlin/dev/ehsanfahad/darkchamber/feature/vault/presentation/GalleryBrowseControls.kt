@@ -284,6 +284,13 @@ internal class BrowsingScroll(private val gridState: LazyGridState) {
      */
     fun rememberPlaceBeforeReordering(from: GalleryOrder, to: GalleryOrder) {
         if (from == to) return
+        // **A grid with nothing in it has no position to hold** — and, worse, no way to tell the new
+        // listing from the old one: an empty listing is the same instance every time (the ordering
+        // returns the one shared empty list and an empty query hands it straight on), so the arrival
+        // check below cannot see the second one. An armed capture would wait for a listing with items
+        // in it — an import, a filing — and spend a position taken from an empty grid on it, having
+        // suppressed that listing's arrival animation while it waited.
+        if (lastListing.isNullOrEmpty()) return
         wanted = Place(gridState.firstVisibleItemIndex, gridState.firstVisibleItemScrollOffset)
         isReordering = true
     }
