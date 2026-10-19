@@ -32,6 +32,12 @@ internal class FakeCaptureVault : CaptureVault {
     /** What the next import returns; the default succeeds with a fresh id. */
     var nextResult: () -> Outcome<ByteArray> = { Outcome.Ok(byteArrayOf(imported.size.toByte())) }
 
+    /**
+     * What each import's `isActive` said once [duringImport] had run — the real import polls it on
+     * every read, so `false` here is an import that would have stopped.
+     */
+    val activeAfterImports = mutableListOf<Boolean>()
+
     /** The source factory the last import was handed — kept so a test can read the payload again. */
     var lastOpenSource: (() -> RawSource)? = null
         private set
@@ -50,6 +56,7 @@ internal class FakeCaptureVault : CaptureVault {
         val counted = { opens++; openSource() }
         lastOpenSource = openSource
         duringImport(counted)
+        activeAfterImports += isActive()
         val bytes = Buffer()
         counted().use { source ->
             do {
