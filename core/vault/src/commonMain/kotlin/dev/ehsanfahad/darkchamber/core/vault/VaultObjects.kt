@@ -715,14 +715,16 @@ class VaultObjects(
             is Outcome.Err -> return got
             is Outcome.Ok -> if (got.value == null) return absent(id)
         }
-        return catalog.deleteItem(id).map {
-            storage.deleteObject(id) // best-effort; the DEK is already gone, so ignore any failure
-            // The thumbnail's key lived in the row's enc_meta, so deleting the row already shredded
-            // it — this only stops an unopenable blob sitting in `thumbs/` for the life of the
-            // vault, invisible to every listing and therefore to everything that would clean it up.
-            storage.deleteThumbnail(id)
-            Unit
+        when (val deleted = catalog.deleteItem(id)) {
+            is Outcome.Err -> return deleted
+            is Outcome.Ok -> Unit
         }
+        storage.deleteObject(id) // best-effort; the DEK is already gone, so ignore any failure
+        // The thumbnail's key lived in the row's enc_meta, so deleting the row already shredded
+        // it — this only stops an unopenable blob sitting in `thumbs/` for the life of the
+        // vault, invisible to every listing and therefore to everything that would clean it up.
+        storage.deleteThumbnail(id)
+        return Outcome.Ok(Unit)
     }
 
     // Runs the encrypt inside a scoped DEK + an atomic object write, returning the measured size.
