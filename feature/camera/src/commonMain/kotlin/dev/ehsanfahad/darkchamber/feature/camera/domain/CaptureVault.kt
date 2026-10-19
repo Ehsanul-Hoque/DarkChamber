@@ -1,6 +1,9 @@
 package dev.ehsanfahad.darkchamber.feature.camera.domain
 
+import dev.ehsanfahad.darkchamber.core.model.ItemFilter
 import dev.ehsanfahad.darkchamber.core.model.Outcome
+import dev.ehsanfahad.darkchamber.core.vault.AlbumSummary
+import kotlinx.coroutines.flow.Flow
 import kotlinx.io.RawSource
 
 /**
@@ -30,4 +33,13 @@ internal interface CaptureVault {
         isActive: () -> Boolean,
         openSource: () -> RawSource,
     ): Outcome<ByteArray>
+
+    /**
+     * The album listing: each album's opened name, its item count and its cover, one small decrypt
+     * per album and nothing per item. Re-emits on every catalog write, items included.
+     */
+    fun observeAlbums(): Flow<List<AlbumSummary>>
+
+    /** How many items [filter] covers, from the catalog's plaintext index — it opens nothing. */
+    fun observeItemCount(filter: ItemFilter): Flow<Long>
 }

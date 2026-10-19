@@ -1,7 +1,13 @@
 package dev.ehsanfahad.darkchamber.feature.camera
 
+import dev.ehsanfahad.darkchamber.core.model.ItemFilter
 import dev.ehsanfahad.darkchamber.core.model.Outcome
+import dev.ehsanfahad.darkchamber.core.vault.AlbumSummary
 import dev.ehsanfahad.darkchamber.feature.camera.domain.CaptureVault
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.onStart
 import kotlinx.io.Buffer
 import kotlinx.io.RawSource
 import kotlinx.io.readByteArray
@@ -24,6 +30,35 @@ internal class FakeCaptureVault : CaptureVault {
     )
 
     val imported = mutableListOf<Imported>()
+
+    /** The album listing, as `VaultObjects.observeAlbums` would emit it. */
+    val albums = MutableStateFlow<List<AlbumSummary>>(emptyList())
+
+    /** One live count per listing filter. */
+    val counts: Map<ItemFilter, MutableStateFlow<Long>> =
+        listOf(ItemFilter.All, ItemFilter.Unfiled).associateWith { MutableStateFlow(0L) }
+
+    /** When set, every count flow fails with it, the way a broken catalog surfaces. */
+    var countFailure: Throwable? = null
+
+    var albumSubscriptions = 0
+        private set
+    var countSubscriptions = 0
+        private set
+
+    /** When set, the album listing fails with it. */
+    var albumFailure: Throwable? = null
+
+    override fun observeAlbums(): Flow<List<AlbumSummary>> {
+        albumFailure?.let { failure -> return flow { throw failure } }
+        return albums.onStart { albumSubscriptions++ }
+    }
+
+    override fun observeItemCount(filter: ItemFilter): Flow<Long> {
+        countSubscriptions++
+        countFailure?.let { failure -> return flow { throw failure } }
+        return counts.getValue(filter)
+    }
 
     /** Sources opened by every import, so a test can check they were independent. */
     var opens = 0
