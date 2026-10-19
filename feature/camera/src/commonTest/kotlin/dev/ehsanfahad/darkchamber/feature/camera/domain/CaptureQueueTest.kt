@@ -167,5 +167,42 @@ class CaptureQueueTest {
         assertEquals(0, h.vault.imported.size)
     }
 
+    /**
+     * Closing the camera finishes the queue rather than cancelling it: the photo still in the
+     * platform's hands is saved, a press after it is refused, and only then does the queue stop
+     * running in the session's scope.
+     */
+    @Test
+    fun a_finished_queue_saves_what_it_holds_then_stops() = runTest {
+        val h = Harness(this)
+        h.queue.shoot()
+        testScheduler.advanceUntilIdle()
+
+        h.queue.finish()
+        assertFalse(h.queue.shoot(), "a finished queue takes no more")
+        testScheduler.advanceUntilIdle()
+        assertTrue(h.sessionJob.children.any { it.isActive }, "it waits for the photo it holds")
+
+        h.camera.release(captured(1))
+        testScheduler.advanceUntilIdle()
+        assertEquals(1, h.vault.imported.size, "that photo is saved")
+        assertTrue(h.sessionJob.children.none { it.isActive }, "and nothing is left running in the session")
+        h.sessionJob.cancel()
+    }
+
+    /** With nothing held, finishing stops the queue at once — a closed camera leaves nothing behind. */
+    @Test
+    fun an_idle_queue_stops_as_soon_as_it_is_finished() = runTest {
+        val h = Harness(this)
+        testScheduler.advanceUntilIdle()
+        assertTrue(h.sessionJob.children.any { it.isActive }, "an open camera's queue is waiting for photos")
+
+        h.queue.finish()
+        testScheduler.advanceUntilIdle()
+
+        assertTrue(h.sessionJob.children.none { it.isActive })
+        h.sessionJob.cancel()
+    }
+
     private fun captured(seed: Int): CaptureResult = CaptureResult.Captured(CapturedPhoto(jpegLike(seed), 0))
 }

@@ -15,5 +15,23 @@ kotlin {
             // scope), so the type is part of this module's public surface.
             api(project(":core:vault"))
         }
+        commonTest.dependencies {
+            // A few tests save through a real VaultObjects rather than a fake: that a photo raises the
+            // live count, and that a lock leaves nothing behind, are claims about the real catalog.
+            // They build one the way core:vault's own tests do — a live session, a temp-dir storage,
+            // an in-memory catalog — so the engine modules are on the test classpath only.
+            implementation(project(":core:crypto"))
+            implementation(project(":core:storage"))
+            implementation(project(":core:db"))
+            implementation(libs.sqldelight.runtime)
+        }
+        getByName("androidHostTest").dependencies {
+            implementation(libs.sqldelight.driver.sqlite)
+        }
+        listOf("iosArm64Test", "iosSimulatorArm64Test").forEach { name ->
+            getByName(name).dependencies {
+                implementation(libs.sqldelight.driver.native)
+            }
+        }
     }
 }

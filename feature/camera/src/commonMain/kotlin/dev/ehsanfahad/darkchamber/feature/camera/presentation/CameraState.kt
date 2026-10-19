@@ -3,6 +3,8 @@ package dev.ehsanfahad.darkchamber.feature.camera.presentation
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraAvailability
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraCapabilities
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraPermission
+import dev.ehsanfahad.darkchamber.feature.camera.api.FlashMode
+import dev.ehsanfahad.darkchamber.feature.camera.api.Lens
 import dev.ehsanfahad.darkchamber.feature.camera.domain.CaptureProblem
 import dev.ehsanfahad.darkchamber.feature.camera.domain.CaptureQueueState
 import dev.ehsanfahad.darkchamber.feature.camera.domain.DestinationInfo
@@ -25,6 +27,10 @@ internal class CameraState(
     val availability: CameraAvailability,
     val capabilities: CameraCapabilities,
     val queue: CaptureQueueState,
+    /** The lens, flash setting and zoom last asked of the camera — what the controls draw. */
+    val lens: Lens = Lens.Back,
+    val flash: FlashMode = FlashMode.Off,
+    val zoom: Float = 1f,
 ) {
     private val albumGone: Boolean get() = destination?.title == DestinationTitle.AlbumGone
 
@@ -78,7 +84,8 @@ internal class CameraState(
     val flashOffered: Boolean get() = capabilities.hasFlash
 
     override fun toString(): String =
-        "CameraState(destination=$destination, permission=$permission, availability=$availability, queue=$queue)"
+        "CameraState(destination=$destination, permission=$permission, availability=$availability, " +
+            "queue=$queue, lens=$lens, flash=$flash, zoom=$zoom)"
 }
 
 /** What replaces the viewfinder when the camera cannot be shown. */

@@ -63,9 +63,11 @@ internal class CaptureQueue(
         }
     }
 
+    private var finishing = false
+
     /** Take one photo. Returns `false`, doing nothing, when [bound] photos are already held. */
     fun shoot(): Boolean {
-        if (!scope.isActive || !_state.value.shutterEnabled) return false
+        if (finishing || !scope.isActive || !_state.value.shutterEnabled) return false
         _state.update { it.copy(holding = it.holding + 1) }
         scope.launch {
             when (val result = camera.capture()) {
@@ -75,11 +77,24 @@ internal class CaptureQueue(
                 // kept because if it ever is reached, what it would otherwise drop is plaintext.
                 is CaptureResult.Captured ->
                     if (waiting.trySend(result.photo).isFailure) result.photo.jpeg.fill(0)
-                CaptureResult.Failed ->
+                CaptureResult.Failed -> {
                     _state.update { it.copy(holding = it.holding - 1, problem = CaptureProblem.CaptureFailed) }
+                    stopIfFinished()
+                }
             }
         }
         return true
+    }
+
+    /**
+     * The camera has closed: take no more photos, save the ones already held, then stop.
+     *
+     * Not a cancel — those photos were taken on purpose. Without it the queue would wait for photos
+     * in the session's scope until the next lock, one idle queue for every time the camera opened.
+     */
+    fun finish() {
+        finishing = true
+        stopIfFinished()
     }
 
     private suspend fun persist(photo: CapturedPhoto) {
@@ -90,6 +105,13 @@ internal class CaptureQueue(
                 is Outcome.Err -> it.copy(holding = it.holding - 1, problem = CaptureProblem.SaveFailed)
             }
         }
+        stopIfFinished()
+    }
+
+    // Only once nothing is held: a photo is counted from its press, so at zero none is in the
+    // platform's hands and none is waiting, and closing the channel can refuse nobody.
+    private fun stopIfFinished() {
+        if (finishing && _state.value.holding == 0) waiting.close()
     }
 
     companion object {
