@@ -522,6 +522,23 @@ class VaultObjects(
             .flowOn(mapContext)
 
     /**
+     * How many items [filter] covers, live — for a screen that shows a count beside a listing
+     * without showing the listing itself.
+     *
+     * **Opens nothing.** The number comes from the catalog's plaintext `album_id` index, so it costs
+     * the same in a vault of ten files as in one of ten thousand. Sizing [observeItems] would give the
+     * same number at the price of one metadata decrypt per row per emission; that is the trade this
+     * function exists to refuse.
+     *
+     * No [mapContext] hop, unlike the two listings: there is no decrypt to move off the collector's
+     * thread, and the catalog already runs the query on its own dispatcher. Inherits
+     * `CatalogStore.observeItemCount`'s failure contract — a driver failure arrives as an exception in
+     * the flow, never as a zero that would claim the listing is empty.
+     */
+    fun observeItemCount(filter: ItemFilter = ItemFilter.All): Flow<Long> =
+        catalog.observeItemCount(filter)
+
+    /**
      * The listing feeding the album grid: every album with its name opened, its item count and the
      * id of the item that represents it. Re-emits whenever the catalog changes — **including when
      * only the `items` table does**, which is what keeps a count and a cover current while every

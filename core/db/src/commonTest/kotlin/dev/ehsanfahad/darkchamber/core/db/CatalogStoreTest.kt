@@ -546,6 +546,106 @@ class CatalogStoreTest {
         obsDriver.close()
     }
 
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    @Test
+    fun observeItemCount_all_emits_initial_then_reemits_on_insert_and_delete() = runTest {
+        val obsDriver = testSqlDriver()
+        val obsStore = CatalogStore.create(obsDriver, UnconfinedTestDispatcher(testScheduler)).unwrap()
+        obsStore.observeItemCount(ItemFilter.All).test {
+            assertEquals(0L, awaitItem(), "an empty vault counts zero")
+
+            obsStore.upsertItem(item(1)).unwrap()
+            assertEquals(1L, awaitItem(), "re-emits after insert")
+
+            obsStore.upsertItem(item(2, albumId = byteArrayOf(0xA1.toByte()))).unwrap()
+            assertEquals(2L, awaitItem(), "a filed item still counts towards the whole vault")
+
+            obsStore.deleteItem(byteArrayOf(1)).unwrap()
+            assertEquals(1L, awaitItem(), "re-emits after delete")
+
+            cancelAndIgnoreRemainingEvents()
+        }
+        obsDriver.close()
+    }
+
+    /**
+     * Filing an item changes no row count across the vault, so this is the case a total would miss:
+     * the unfiled count must fall when an unfiled item moves into an album, and rise when it moves
+     * back.
+     */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    @Test
+    fun observeItemCount_unfiled_counts_only_items_with_no_album_and_follows_a_move() = runTest {
+        val obsDriver = testSqlDriver()
+        val obsStore = CatalogStore.create(obsDriver, UnconfinedTestDispatcher(testScheduler)).unwrap()
+        val albumId = byteArrayOf(0xA1.toByte())
+        obsStore.upsertAlbum(album(0xA1.toByte())).unwrap()
+        obsStore.upsertItem(item(1)).unwrap()
+        obsStore.upsertItem(item(2)).unwrap()
+        obsStore.upsertItem(item(3, albumId = albumId)).unwrap()
+
+        obsStore.observeItemCount(ItemFilter.Unfiled).test {
+            assertEquals(2L, awaitItem(), "the filed item is not counted")
+
+            obsStore.updateItemAlbum(listOf(byteArrayOf(1)), albumId).unwrap()
+            assertEquals(1L, awaitItem(), "filing an unfiled item lowers the count")
+
+            obsStore.updateItemAlbum(listOf(byteArrayOf(3)), null).unwrap()
+            assertEquals(2L, awaitItem(), "unfiling one raises it")
+
+            cancelAndIgnoreRemainingEvents()
+        }
+        obsDriver.close()
+    }
+
+    /**
+     * The filter is handed **its own copy** of the album id, as production's would be: an id decoded
+     * out of SQLite is never the same array instance as one held by a caller, so a fixture sharing one
+     * array would let an identity comparison pass for content.
+     */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    @Test
+    fun observeItemCount_album_counts_only_that_album_and_follows_a_move_between_albums() = runTest {
+        val obsDriver = testSqlDriver()
+        val obsStore = CatalogStore.create(obsDriver, UnconfinedTestDispatcher(testScheduler)).unwrap()
+        obsStore.upsertAlbum(album(1)).unwrap()
+        obsStore.upsertAlbum(album(2)).unwrap()
+        obsStore.upsertItem(item(10, albumId = byteArrayOf(1))).unwrap()
+        obsStore.upsertItem(item(11, albumId = byteArrayOf(1))).unwrap()
+        obsStore.upsertItem(item(12, albumId = byteArrayOf(2))).unwrap()
+        obsStore.upsertItem(item(13)).unwrap()
+
+        obsStore.observeItemCount(ItemFilter.Album(byteArrayOf(1))).test {
+            assertEquals(2L, awaitItem(), "neither the other album's item nor the unfiled one is counted")
+
+            obsStore.updateItemAlbum(listOf(byteArrayOf(11)), byteArrayOf(2)).unwrap()
+            assertEquals(1L, awaitItem(), "moving an item out to another album lowers the count")
+
+            obsStore.upsertItem(item(14, albumId = byteArrayOf(1))).unwrap()
+            assertEquals(2L, awaitItem(), "an item created into the album raises it")
+
+            cancelAndIgnoreRemainingEvents()
+        }
+        obsDriver.close()
+    }
+
+    /**
+     * A broken catalog must not read as an empty one. A count of zero is a claim about the vault
+     * ("nothing here"), so a driver failure has to reach the collector as a failure.
+     */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    @Test
+    fun observeItemCount_surfaces_a_driver_failure_in_the_flow_rather_than_a_zero() = runTest {
+        val obsDriver = testSqlDriver()
+        val obsStore = CatalogStore.create(obsDriver, UnconfinedTestDispatcher(testScheduler)).unwrap()
+        obsDriver.execute(identifier = null, sql = "DROP TABLE items", parameters = 0)
+
+        obsStore.observeItemCount(ItemFilter.Unfiled).test {
+            awaitError()
+        }
+        obsDriver.close()
+    }
+
     @Test
     fun create_fails_closed_on_a_newer_catalog_version() {
         val newer = testSqlDriver()

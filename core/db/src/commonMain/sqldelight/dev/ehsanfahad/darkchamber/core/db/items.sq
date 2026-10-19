@@ -65,3 +65,12 @@ DELETE FROM items WHERE id = ?;
 
 countItems:
 SELECT count(*) FROM items;
+
+-- The per-listing counts, one per filter shape for the same NULL reason as selectUnfiledItems. They
+-- read the plaintext album_id index and nothing else, so a live count costs no decrypt however large
+-- the vault is — unlike counting the listing, which opens every row's enc_meta on every emission.
+countUnfiledItems:
+SELECT count(*) FROM items WHERE album_id IS NULL;
+
+countItemsByAlbum:
+SELECT count(*) FROM items WHERE album_id = ?;
