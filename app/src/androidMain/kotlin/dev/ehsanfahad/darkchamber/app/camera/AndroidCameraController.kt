@@ -160,7 +160,7 @@ class AndroidCameraController(
         started = false
         tilt.disable()
         provider?.unbindAll()
-        camera = null
+        forgetCamera()
         owner.moveTo(Lifecycle.State.CREATED)
     }
 
@@ -254,6 +254,7 @@ class AndroidCameraController(
 
     private fun bind(provider: ProcessCameraProvider) {
         provider.unbindAll()
+        forgetCamera()
         val lenses = buildSet {
             if (provider.has(CameraSelector.DEFAULT_BACK_CAMERA)) add(Lens.Back)
             if (provider.has(CameraSelector.DEFAULT_FRONT_CAMERA)) add(Lens.Front)
@@ -291,6 +292,16 @@ class AndroidCameraController(
                 )
             }
         }
+    }
+
+    // The observers above live as long as [owner], which is never destroyed, so they are removed by
+    // hand — otherwise every open would add two more to the same camera's state.
+    private fun forgetCamera() {
+        camera?.cameraInfo?.let { info ->
+            info.cameraState.removeObservers(owner)
+            info.zoomState.removeObservers(owner)
+        }
+        camera = null
     }
 
     private fun ProcessCameraProvider.has(selector: CameraSelector): Boolean =
