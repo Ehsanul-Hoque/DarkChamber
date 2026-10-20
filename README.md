@@ -35,15 +35,19 @@ A Kotlin Multiplatform app for **Android** and **iOS** that encrypts, stores, an
 >   changing the order or typing never re-decrypts a row. The search covers names on the current
 >   listing and says so, an item whose name will not open is counted out rather than quietly dropped,
 >   and an empty grid names which of the five reasons it is empty;
+> - **a private camera, for photos** — opened from any listing, it files each shot where an import
+>   from there would and shows that listing's count live. A photo goes from the camera into memory
+>   and from memory into the vault's encryption: no file, nothing in the system photo library, no
+>   location attached;
 > - **nothing handed to the rest of the phone** — screenshots and screen recording are blocked, and
 >   every window the app opens, each dialog included, keeps itself out of the platform's autofill and
 >   content-capture structures. That channel is **not** covered by the screenshot flag: it was
 >   measured sending a vault text field to another process, which is why a password manager cannot
 >   fill the passphrase here.
 >
-> What's left before the vault is usable: the **private camera** and the **in-app viewers** — tapping
-> an item is deliberately inert until those land — then export with metadata scrubbing and the
-> settings screen. The documents under [`docs/`](./docs) describe the target design.
+> What's left before the vault is usable: the camera's **video** and the **in-app viewers** — tapping
+> an item, or the camera's last-shot tile, is deliberately inert until those land — then export with
+> metadata scrubbing and the settings screen. The documents under [`docs/`](./docs) describe the target design.
 
 ---
 
