@@ -6,6 +6,8 @@ import dev.ehsanfahad.darkchamber.app.VaultRootResolver
 import dev.ehsanfahad.darkchamber.app.auth.ActivityHolder
 import dev.ehsanfahad.darkchamber.app.auth.AndroidBiometricAuthenticator
 import dev.ehsanfahad.darkchamber.app.auth.DefaultActivityHolder
+import dev.ehsanfahad.darkchamber.app.camera.AndroidCameraController
+import dev.ehsanfahad.darkchamber.feature.camera.api.CameraController
 import dev.ehsanfahad.darkchamber.app.picker.AndroidFilePicker
 import dev.ehsanfahad.darkchamber.app.picker.AndroidPhotoPicker
 import dev.ehsanfahad.darkchamber.app.system.AndroidSecretClipboard
@@ -41,6 +43,9 @@ actual fun platformModule(): Module = module {
     // one shared SystemUiHandoff: each is a separate activity, so each stops ours while it is up.
     single<FilePicker> { AndroidFilePicker({ get<ActivityHolder>().activity }, get()) }
     single<PhotoPicker> { AndroidPhotoPicker({ get<ActivityHolder>().activity }, get()) }
+    // The camera feature's seam. The application context for CameraX itself; the current activity
+    // only for what needs one — the permission prompt, its rationale flag, and the settings page.
+    single<CameraController> { AndroidCameraController(androidContext(), { get<ActivityHolder>().activity }) }
 
     // ---------------------------------------------------------------------------------------------
     // No `PlatformContext` binding here, deliberately — this note stands in for the line that used
