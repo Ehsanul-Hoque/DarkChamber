@@ -640,6 +640,16 @@ class GalleryFormatTest {
     }
 
     /**
+     * The camera button opens the camera; it takes nothing. A name that said "Take photo" would
+     * promise a capture from the gallery, and the button is a round drawing with no text, so these
+     * are its only words.
+     */
+    @Test
+    fun the_camera_button_says_it_opens_the_camera() {
+        assertEquals("Open camera", GalleryFormat.openCamera())
+    }
+
+    /**
      * A preview whose bytes failed their tag is spoken as exactly that: it could not be checked.
      * Not tampering and not corruption — a failed tag cannot say which — and nothing about the item
      * itself, whose own bytes are separate and may be fine.

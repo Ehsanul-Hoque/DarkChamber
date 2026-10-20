@@ -157,6 +157,13 @@ interface VaultGalleryComponent {
      */
     fun leaveAlbum()
 
+    /**
+     * Open the camera on this listing: its photos go where an import from here would, and it counts
+     * this listing's items. Navigation, so it leaves through the host's callback. Ignored whenever
+     * the button is not on screen — while selecting, during a batch, over a summary.
+     */
+    fun openCamera()
+
     /** Clear a surfaced [GalleryError] after the user acknowledges it. */
     fun dismissError()
 }

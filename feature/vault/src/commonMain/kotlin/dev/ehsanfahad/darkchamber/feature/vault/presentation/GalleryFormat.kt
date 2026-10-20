@@ -570,6 +570,9 @@ internal object GalleryFormat {
             "data around as it wears, and copies can survive where no app can reach them."
     }
 
+    /** The camera button's spoken name. It opens the camera; it does not take a photo. */
+    fun openCamera(): String = "Open camera"
+
     /**
      * The spoken words for a preview whose bytes failed their integrity tag — where no name is read
      * out beside it to carry the meaning, as one is under a gallery tile. A failed tag cannot say
