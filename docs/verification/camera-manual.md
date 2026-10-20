@@ -21,8 +21,10 @@ releasable.
 3. **A stored shot is upright.** Taken at each of the four ways the phone can be held, on each lens,
    it displays the way the scene looked — the orientation is written into the photo before it is
    encrypted, and no pixel is re-encoded.
-4. **Nothing on the camera screen leaves the app as an image.** The viewfinder and the last-shot tile
-   are covered by screenshot blocking and by the app-switcher protection, like every other screen.
+4. **Nothing on the camera screen leaves the app as an image on Android.** The viewfinder and the
+   last-shot tile are covered by screenshot blocking and by the app-switcher protection, like every
+   other screen. iOS cannot block screenshots (`docs/THREAT_MODEL.md`); there only the app-switcher
+   snapshot is covered.
 5. **The camera is released whenever its screen is not in front.** The platform's camera indicator
    goes off when the camera is closed, when the app goes to the background, and when the vault locks.
 6. **Asking for the camera does not lock the vault.** The system's permission prompt is not a trip to
