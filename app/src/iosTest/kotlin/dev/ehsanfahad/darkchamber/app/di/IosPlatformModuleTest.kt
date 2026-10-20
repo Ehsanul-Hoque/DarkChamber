@@ -1,6 +1,8 @@
 package dev.ehsanfahad.darkchamber.app.di
 
+import dev.ehsanfahad.darkchamber.app.camera.IosCameraController
 import dev.ehsanfahad.darkchamber.app.thumbnail.IosThumbnailEncoder
+import dev.ehsanfahad.darkchamber.feature.camera.api.CameraController
 import dev.ehsanfahad.darkchamber.core.vault.ThumbnailEncoder
 import coil3.PlatformContext
 import org.koin.dsl.koinApplication
@@ -20,6 +22,20 @@ class IosPlatformModuleTest {
         val app = koinApplication { modules(platformModule()) }
         try {
             assertIs<IosThumbnailEncoder>(app.koin.get<ThumbnailEncoder>())
+        } finally {
+            app.close()
+        }
+    }
+
+    /**
+     * The real camera is bound — the session falls back to one that says it is unavailable, so a
+     * missing binding would otherwise ship as a camera that never works with nothing complaining.
+     */
+    @Test
+    fun the_platform_module_binds_the_ios_camera() {
+        val app = koinApplication { modules(platformModule()) }
+        try {
+            assertIs<IosCameraController>(app.koin.get<CameraController>())
         } finally {
             app.close()
         }
