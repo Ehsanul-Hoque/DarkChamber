@@ -45,7 +45,9 @@ internal class CaptureQueue(
     private val _state = MutableStateFlow(CaptureQueueState(holding = 0, bound = bound))
     val state: StateFlow<CaptureQueueState> = _state.asStateFlow()
 
-    private val waiting = Channel<CapturedPhoto>(Channel.UNLIMITED)
+    // A photo handed to the saver as a lock cancels it never reaches the saver, and is in the queue
+    // no longer, so the drain below cannot find it: the channel clears it instead.
+    private val waiting = Channel<CapturedPhoto>(Channel.UNLIMITED) { it.jpeg.fill(0) }
 
     init {
         scope.launch {
@@ -98,7 +100,13 @@ internal class CaptureQueue(
     }
 
     private suspend fun persist(photo: CapturedPhoto) {
-        val saved = withContext(ioContext) { save(photo, albumId) { scope.isActive } }
+        // Cleared here as well as by the save: a lock landing before the encrypt starts on its own
+        // thread cancels the save before it runs, and its clearing with it.
+        val saved = try {
+            withContext(ioContext) { save(photo, albumId) { scope.isActive } }
+        } finally {
+            photo.jpeg.fill(0)
+        }
         _state.update {
             when (saved) {
                 is Outcome.Ok -> it.copy(holding = it.holding - 1, saved = it.saved + 1, lastSavedId = saved.value, problem = null)

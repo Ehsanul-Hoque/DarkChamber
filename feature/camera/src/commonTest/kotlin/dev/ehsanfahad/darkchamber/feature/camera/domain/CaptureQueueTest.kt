@@ -7,12 +7,15 @@ import dev.ehsanfahad.darkchamber.feature.camera.FakeCaptureVault
 import dev.ehsanfahad.darkchamber.feature.camera.api.CaptureResult
 import dev.ehsanfahad.darkchamber.feature.camera.api.CapturedPhoto
 import dev.ehsanfahad.darkchamber.feature.camera.jpegLike
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.Runnable
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
+import kotlin.coroutines.CoroutineContext
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -152,6 +155,74 @@ class CaptureQueueTest {
         assertFalse(h.queue.shoot(), "and a locked queue takes no more")
     }
 
+    /**
+     * The lock lands after a photo has left the queue for the encrypt but before the encrypt has
+     * started on its own thread — so the save never runs, and its clearing with it. The photo is no
+     * longer waiting, so draining the queue cannot reach it either; it must still be cleared.
+     */
+    @Test
+    fun a_lock_before_the_encrypt_starts_still_clears_the_photo() = runTest {
+        val camera = FakeCameraController().apply { holdCaptures() }
+        val vault = FakeCaptureVault()
+        val sessionJob = Job()
+        val worker = GateDispatcher()
+        val queue = CaptureQueue(
+            camera = camera,
+            save = SavePhoto(vault, clock = { 0L }, nameFor = { "p.jpg" }),
+            albumId = null,
+            scope = CoroutineScope(StandardTestDispatcher(testScheduler) + sessionJob),
+            ioContext = worker,
+        )
+        val photo = captured(1)
+
+        queue.shoot()
+        testScheduler.advanceUntilIdle()
+        camera.release(photo)
+        testScheduler.advanceUntilIdle()
+        assertEquals(1, worker.pending, "the photo is waiting on the encrypt")
+
+        sessionJob.cancel()
+        worker.runAll()
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(0, vault.imported.size, "the encrypt never ran")
+        val jpeg = (photo as CaptureResult.Captured).photo.jpeg
+        assertTrue(jpeg.all { it == 0.toByte() }, "and the photo's bytes are cleared anyway")
+    }
+
+    /**
+     * The lock lands after a photo has been handed to the waiting saver but before the saver has
+     * resumed with it — so the photo is neither in the queue for the drain nor in a save that clears
+     * it. It must still be cleared.
+     */
+    @Test
+    fun a_lock_while_a_photo_is_being_handed_to_the_saver_still_clears_it() = runTest {
+        val photo = captured(1)
+        val camera = FakeCameraController().apply { nextCapture = { photo } }
+        val vault = FakeCaptureVault()
+        val sessionJob = Job()
+        val main = GateDispatcher()
+        val queue = CaptureQueue(
+            camera = camera,
+            save = SavePhoto(vault, clock = { 0L }, nameFor = { "p.jpg" }),
+            albumId = null,
+            scope = CoroutineScope(main + sessionJob),
+            ioContext = main,
+        )
+        main.runAll() // the saver is now waiting for a photo
+
+        queue.shoot()
+        main.runOne() // the capture returns and hands its photo over; the saver's resumption is queued
+        assertEquals(1, main.pending, "the saver has been handed the photo but not yet run")
+
+        sessionJob.cancel()
+        main.runAll()
+
+        assertEquals(0, vault.imported.size, "the save never ran")
+        val jpeg = (photo as CaptureResult.Captured).photo.jpeg
+        assertTrue(jpeg.all { it == 0.toByte() }, "and the photo's bytes are cleared anyway")
+    }
+
     /** A capture still in the platform's hands when the vault locks is never received. */
     @Test
     fun a_capture_that_returns_after_a_lock_is_never_saved() = runTest {
@@ -205,4 +276,22 @@ class CaptureQueueTest {
     }
 
     private fun captured(seed: Int): CaptureResult = CaptureResult.Captured(CapturedPhoto(jpegLike(seed), 0))
+
+    /** Runs what it is handed only when the test says so — the encrypt, held at its doorstep. */
+    private class GateDispatcher : CoroutineDispatcher() {
+        private val tasks = ArrayDeque<Runnable>()
+        val pending: Int get() = tasks.size
+
+        override fun dispatch(context: CoroutineContext, block: Runnable) {
+            tasks.addLast(block)
+        }
+
+        fun runOne() {
+            tasks.removeFirst().run()
+        }
+
+        fun runAll() {
+            while (tasks.isNotEmpty()) runOne()
+        }
+    }
 }
