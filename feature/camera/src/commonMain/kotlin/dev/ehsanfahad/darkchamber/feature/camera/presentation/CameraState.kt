@@ -62,6 +62,12 @@ internal class CameraState(
             }
         }
 
+    /**
+     * Whether the viewfinder is drawn: exactly when no explainer stands in its place, so an
+     * explainer is never read over a live preview.
+     */
+    val showsViewfinder: Boolean get() = explainer == CameraExplainer.None
+
     /** The destination's item count, or `null` when it is not known — never a stand-in zero. */
     val count: Long? get() = destination?.count
 
