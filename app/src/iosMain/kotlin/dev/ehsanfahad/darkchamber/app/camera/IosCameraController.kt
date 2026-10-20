@@ -89,8 +89,8 @@ import kotlin.coroutines.resume
  * carry no metadata of ours, and the app holds no location permission.
  *
  * **Orientation travels in the photo's own EXIF**, set from the system's rotation coordinator at the
- * moment of capture, so the rotation reported to the save path is always 0 and the orientation
- * patch leaves the bytes as they are.
+ * moment of capture, so no rotation is reported to the save path and the orientation patch leaves
+ * the bytes as they are.
  *
  * Main-thread confined like the seam, except `startRunning` / `stopRunning`, which block and run on
  * a serial queue of their own as Apple asks.
@@ -217,7 +217,7 @@ class IosCameraController : CameraController {
                     // Lock arrived while the photo was being taken: drop the copy, report nothing.
                     !continuation.isActive -> jpeg?.fill(0)
                     jpeg == null -> continuation.resume(CaptureResult.Failed)
-                    else -> continuation.resume(CaptureResult.Captured(CapturedPhoto(jpeg, rotationDegrees = 0))) { _, _, _ ->
+                    else -> continuation.resume(CaptureResult.Captured(CapturedPhoto(jpeg, rotationDegrees = null))) { _, _, _ ->
                         jpeg.fill(0)
                     }
                 }

@@ -5,7 +5,8 @@ import dev.ehsanfahad.darkchamber.core.model.VaultItemKind
 import dev.ehsanfahad.darkchamber.feature.camera.api.CapturedPhoto
 
 /**
- * Save one captured photo into the vault, from memory: write its orientation into the JPEG, encrypt
+ * Save one captured photo into the vault, from memory: write its orientation into the JPEG unless the
+ * platform already has, encrypt
  * it into the vault filed in the destination album, and clear the plaintext this code holds.
  *
  * **Nothing is written to disk on the way.** The payload reaches the import as a re-openable source
@@ -31,7 +32,7 @@ internal class SavePhoto(
         val captured = photo.jpeg
         var oriented = captured
         try {
-            oriented = withOrientation(captured, photo.rotationDegrees)
+            oriented = photo.rotationDegrees?.let { withOrientation(captured, it) } ?: captured
             return vault.import(
                 kind = VaultItemKind.FILE.code,
                 name = nameFor(clock()),

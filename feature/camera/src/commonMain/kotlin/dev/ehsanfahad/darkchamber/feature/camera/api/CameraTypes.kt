@@ -71,14 +71,15 @@ class CameraCapabilities(
  * screen state; whoever receives it owns it, and zeroes it once it has been sealed. Zeroing reaches
  * this array only: the platform's own capture buffers are copies outside our control.
  *
- * [rotationDegrees] is 0, 90, 180 or 270 clockwise. Some platforms rotate the pixels or write the
- * orientation into the JPEG themselves and report 0; others report the rotation here and leave the
- * bytes as the sensor produced them.
+ * [rotationDegrees] is 0, 90, 180 or 270 clockwise, written into the JPEG's orientation tag before it
+ * is saved — so 0 means the pixels are upright as they stand, and a tag saying otherwise is reset.
+ * `null` means the platform has already written the orientation into the JPEG itself, and the bytes
+ * are saved as they came.
  *
  * Not a data class: the generated `equals` would compare the array by identity and the generated
  * `toString` would print its contents.
  */
-class CapturedPhoto(val jpeg: ByteArray, val rotationDegrees: Int) {
+class CapturedPhoto(val jpeg: ByteArray, val rotationDegrees: Int?) {
     /** The size only — never the bytes (hard rule #4). */
     override fun toString(): String = "CapturedPhoto(jpeg=${jpeg.size}B, rotation=$rotationDegrees)"
 }

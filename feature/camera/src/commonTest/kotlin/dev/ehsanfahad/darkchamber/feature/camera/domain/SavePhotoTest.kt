@@ -42,6 +42,16 @@ class SavePhotoTest {
         assertContentEquals(OrientationFixtures.JFIF_EXIF_MM_6, vault.imported.single().bytes)
     }
 
+    /**
+     * A platform that writes the orientation into the photo itself reports no rotation, and its tag
+     * is kept — a rotation of 0 there would reset it, and the photo would be stored on its side.
+     */
+    @Test
+    fun a_photo_whose_platform_wrote_its_orientation_is_saved_as_it_came() {
+        save(CapturedPhoto(OrientationFixtures.JFIF_EXIF_MM_6.copyOf(), rotationDegrees = null), null) { true }
+        assertContentEquals(OrientationFixtures.JFIF_EXIF_MM_6, vault.imported.single().bytes)
+    }
+
     // Only our arrays are claimed to be cleared; the names say so.
 
     @Test
