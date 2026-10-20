@@ -41,7 +41,7 @@
 10. **What a photo from the in-app camera carries, and what of it the app can clear.** A shot goes from the camera into memory and from memory into the vault's encryption, with no file on the way — but it is a photo like any other, and two limits follow.
     - **Its metadata.** The app requests no location permission, so no position can be attached; it adds no metadata of its own beyond the orientation tag the photo needs to display upright. What the platform's camera writes — orientation, capture time, the device's make and model — stays in the photo, **inside the encrypted object**, under the same protection as everything else in the vault. As with an imported photo (item 4), it matters when the photo leaves, which is where scrubbing belongs.
     - **Its bytes in memory.** The app zeroes **its own** copies of a shot — after it is saved, after a save fails, and when a lock abandons it. The camera framework's capture buffers, and any copy a decoder makes while generating the thumbnail, belong to the platform and are outside the app's reach; they are freed when the platform frees them, not wiped. No copy may claim that a shot's memory is erased.
-    - **Its sound.** On Android the app asks for no shutter sound. iOS plays one in some regions whatever an app does; the app cannot mute it, and no copy may call the camera silent.
+    - **Its sound.** On Android the app plays a shutter sound only where the platform reports that the region requires one, and none elsewhere. iOS plays one in some regions whatever an app does; the app cannot mute it, and no copy may call the camera silent.
 
 ## Security invariants (enforced in code review)
 

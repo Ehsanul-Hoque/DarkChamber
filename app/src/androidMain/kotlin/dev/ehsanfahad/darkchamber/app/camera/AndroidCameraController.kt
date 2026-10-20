@@ -5,11 +5,13 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.ImageFormat
+import android.media.MediaActionSound
 import android.net.Uri
 import android.provider.Settings
 import android.view.OrientationEventListener
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.Camera
+import androidx.camera.core.CameraInfo
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.FocusMeteringAction
 import androidx.camera.core.ImageCapture
@@ -48,6 +50,10 @@ import kotlin.coroutines.resume
  * plane is copied into a `ByteArray` and the `ImageProxy` closed; the `OutputFileOptions` overload is
  * never used — CameraX's saver stages through a file even when handed a stream (hard rule #1). No
  * location is ever set on a capture, and the app holds no location permission.
+ *
+ * **A shutter sound only where the law asks for one.** CameraX plays none itself; where the device's
+ * region requires one (`CameraInfo.mustPlayShutterSound`), the system's shutter click is played as
+ * each capture starts. Everywhere else a capture makes no sound of its own.
  *
  * **Bound to a lifecycle of its own**, driven by [start] and [stop], rather than to the activity.
  * The camera screen survives a rotation (the session is retained while the activity is recreated),
@@ -91,6 +97,11 @@ class AndroidCameraController(
     private var lens = Lens.Back
     private var flash = FlashMode.Off
     private var started = false
+
+    // Loaded once, on the first capture, and only where a shutter sound is required.
+    private val shutterSound: MediaActionSound? by lazy {
+        if (CameraInfo.mustPlayShutterSound()) MediaActionSound().apply { load(MediaActionSound.SHUTTER_CLICK) } else null
+    }
 
     // Whether this process has raised the system prompt — see [permissionState]. Memory only.
     private var asked = false
@@ -195,6 +206,10 @@ class AndroidCameraController(
                 // thread.
                 mainExecutor,
                 object : ImageCapture.OnImageCapturedCallback() {
+                    override fun onCaptureStarted() {
+                        shutterSound?.play(MediaActionSound.SHUTTER_CLICK)
+                    }
+
                     override fun onCaptureSuccess(image: ImageProxy) {
                         try {
                             // Lock arrived while the platform was capturing: read nothing at all.

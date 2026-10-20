@@ -126,7 +126,9 @@ carries — never the bytes, never a name. Remove it afterwards and reinstall th
 - [ ] Pinch zooms in and out, stopping at the lens's limits.
 - [ ] A shot darkens the viewfinder briefly — a cut rather than a fade with reduced motion on — and
       the iris of the shutter blinks.
-- [ ] **No shutter sound** on Android with the ringer on.
+- [ ] With the ringer on, a shot makes **no shutter sound** on a phone sold where none is required.
+      Where the platform reports that one is required (in Japan and Korea, for example), each shot
+      plays the system's shutter click.
 - [ ] Before the first shot the tile is a plain placeholder; after it, the tile shows that photo. It
       does nothing when touched — no ripple, no highlight, no screen — and a screen reader reads "No
       photo taken yet", then "Last photo saved".
