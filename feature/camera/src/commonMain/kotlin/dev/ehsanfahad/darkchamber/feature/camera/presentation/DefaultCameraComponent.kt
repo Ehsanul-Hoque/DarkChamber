@@ -113,12 +113,27 @@ internal class DefaultCameraComponent(
      */
     private fun bind() {
         binding = camera.permission
-            .onEach { if (it == CameraPermission.Granted) camera.start() }
+            .onEach {
+                if (it == CameraPermission.Granted) {
+                    camera.start()
+                    applyControls()
+                }
+            }
             .launchIn(scope)
         if (!asked && camera.permission.value == CameraPermission.NotAsked) {
             asked = true
             scope.launch { camera.requestPermission() }
         }
+    }
+
+    // The platform's camera is one for the app and keeps what the last screen set, so this screen's
+    // own settings are put back on every open — otherwise it would draw "Flash: off" over a flash
+    // left on. After the start: before it, there may be no camera to apply them to.
+    private fun applyControls() {
+        val wanted = controls.value
+        camera.setLens(wanted.lens)
+        camera.setFlash(wanted.flash)
+        camera.setZoom(wanted.zoom)
     }
 
     // Also reached on destroy: a lifecycle is stopped before it is destroyed, so a lock tearing the

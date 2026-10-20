@@ -198,6 +198,27 @@ class CameraComponentTest {
     }
 
     /** Zoom stays inside the range the camera reports; a focus point stays inside the viewfinder. */
+    /**
+     * The platform's camera outlives the screen — one for the app — so what a previous visit set is
+     * still set there. A new screen starts at the back lens with the flash off and says so; the
+     * camera has to agree, or "Flash: off" is drawn over a flash that fires.
+     */
+    @Test
+    fun a_new_screen_puts_the_camera_back_to_its_own_settings() = runTest {
+        val camera = FakeCameraController().apply {
+            setLens(Lens.Front)
+            setFlash(FlashMode.On)
+            setZoom(4f)
+        }
+        val h = Harness(this, camera)
+        h.lifecycle.resume()
+
+        assertEquals(Lens.Back to Lens.Back, camera.lens to h.state.lens)
+        assertEquals(FlashMode.Off to FlashMode.Off, camera.flash to h.state.flash)
+        assertEquals(1f to 1f, camera.zoom to h.state.zoom)
+        h.sessionJob.cancel()
+    }
+
     @Test
     fun zoom_and_focus_are_kept_in_range() = runTest {
         val h = Harness(this)
