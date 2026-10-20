@@ -17,6 +17,9 @@ import dev.ehsanfahad.darkchamber.feature.camera.presentation.CameraState
  */
 abstract class CameraComponent internal constructor() {
 
+    /** Where this camera's photos go — the listing it was opened from. Fixed for its lifetime. */
+    abstract val destination: CameraDestination
+
     internal abstract val state: Value<CameraState>
 
     /** The seam, for the screen to draw its viewfinder. */

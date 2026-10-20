@@ -43,7 +43,7 @@ internal class DefaultCameraComponent(
     componentContext: ComponentContext,
     override val camera: CameraController,
     observeDestination: ObserveDestination,
-    destination: CameraDestination,
+    override val destination: CameraDestination,
     private val queue: CaptureQueue,
     override val unreadableNameLabel: String,
     mainContext: CoroutineContext,

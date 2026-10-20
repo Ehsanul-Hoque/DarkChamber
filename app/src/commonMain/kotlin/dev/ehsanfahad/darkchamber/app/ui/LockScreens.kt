@@ -53,7 +53,9 @@ import dev.ehsanfahad.darkchamber.core.designsystem.Aperture
 import dev.ehsanfahad.darkchamber.core.designsystem.ApertureState
 import dev.ehsanfahad.darkchamber.core.designsystem.DarkChamberTheme
 import dev.ehsanfahad.darkchamber.core.designsystem.prefersReducedMotion
+import dev.ehsanfahad.darkchamber.feature.camera.presentation.CameraContent
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryScope
+import dev.ehsanfahad.darkchamber.feature.vault.api.VaultThumbnail
 import dev.ehsanfahad.darkchamber.feature.vault.presentation.VaultAlbumsContent
 import dev.ehsanfahad.darkchamber.feature.vault.presentation.VaultGalleryContent
 
@@ -290,19 +292,21 @@ private fun UnlockedContent(component: UnlockedComponent) {
         // sitting above, and a crumb that did not follow it would be the only stale name on screen.
         val gallery = when (child) {
             is UnlockedChild.Gallery -> child.component.state.subscribeAsState().value
-            is UnlockedChild.Albums -> null
+            is UnlockedChild.Albums, is UnlockedChild.Camera -> null
         }
 
-        UnlockedBar(
-            onLock = component::lock,
-            // Offered from the vault's own grid only. From inside an album, or from the album grid
-            // itself, the way onward is back — a second entry point to the screen you are standing
-            // next to is noise.
-            onAlbums = component::openAlbums.takeIf {
-                child is UnlockedChild.Gallery && child.scope == GalleryScope.WholeVault
-            },
-            crumb = crumbFor(child, gallery),
-        )
+        if (showsUnlockedBar(child)) {
+            UnlockedBar(
+                onLock = component::lock,
+                // Offered from the vault's own grid only. From inside an album, or from the album
+                // grid itself, the way onward is back — a second entry point to the screen you are
+                // standing next to is noise.
+                onAlbums = component::openAlbums.takeIf {
+                    child is UnlockedChild.Gallery && child.scope == GalleryScope.WholeVault
+                },
+                crumb = crumbFor(child, gallery),
+            )
+        }
 
         // The offer to leave, which only the vault's own grid ever makes. Drawn over the screen
         // rather than above it in the column: it is transient, and a row appearing and disappearing
@@ -342,6 +346,15 @@ private fun UnlockedContent(component: UnlockedComponent) {
                     is UnlockedChild.Albums ->
                         component.imageLoader?.let { loader ->
                             VaultAlbumsContent(instance.component, loader)
+                        }
+                    // The last-shot tile draws through the same loader, handed in as a slot: the
+                    // camera never builds a loader of its own, so the lock's cache clear covers it.
+                    is UnlockedChild.Camera ->
+                        component.imageLoader?.let { loader ->
+                            CameraContent(
+                                component = instance.component,
+                                lastShot = { id, modifier -> VaultThumbnail(id, loader, modifier) },
+                            )
                         }
                 }
             }

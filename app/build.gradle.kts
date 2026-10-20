@@ -38,6 +38,9 @@ kotlin {
             // The vault feature: the gallery child of the unlocked subtree. The app is the only
             // module that may depend on a feature (docs/engineering/MODULES.md §1).
             implementation(project(":feature:vault"))
+            // The camera: another child of the unlocked subtree, opened from the gallery. The two
+            // features do not know each other — this module hands one's thumbnail to the other.
+            implementation(project(":feature:camera"))
             implementation(libs.koin.core)
             // The gallery's image loader is session-scoped, so the composition root builds it and
             // the session's teardown empties it — :app needs Coil's ImageLoader/PlatformContext
