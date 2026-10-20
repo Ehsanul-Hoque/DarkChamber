@@ -76,6 +76,7 @@ import platform.UIKit.UIView
 import platform.darwin.NSObject
 import platform.darwin.NSObjectProtocol
 import platform.darwin.dispatch_async
+import platform.darwin.dispatch_get_main_queue
 import platform.darwin.dispatch_queue_create
 import platform.posix.memcpy
 import kotlin.coroutines.resume
@@ -310,18 +311,20 @@ class IosCameraController : CameraController {
 
 /** Hands one capture's encoded bytes back, copied out of the system's buffer — or `null`. */
 @OptIn(ExperimentalForeignApi::class)
+// The photo output calls back on a queue of its own, not the main one, so [done] — which touches the
+// controller's main-confined state — is handed to the main queue. The copy is made here, while the
+// photo's data is certain to be alive.
 private class PhotoDelegate(private val done: (ByteArray?) -> Unit) : NSObject(), AVCapturePhotoCaptureDelegateProtocol {
     @ObjCSignatureOverride
     override fun captureOutput(output: AVCapturePhotoOutput, didFinishProcessingPhoto: AVCapturePhoto, error: NSError?) {
         val data = if (error == null) didFinishProcessingPhoto.fileDataRepresentation() else null
         val length = data?.length?.toInt() ?: 0
-        if (data == null || length == 0) {
-            done(null)
-            return
+        val bytes = if (data == null || length == 0) {
+            null
+        } else {
+            ByteArray(length).also { copy -> copy.usePinned { memcpy(it.addressOf(0), data.bytes, data.length) } }
         }
-        val bytes = ByteArray(length)
-        bytes.usePinned { memcpy(it.addressOf(0), data.bytes, data.length) }
-        done(bytes)
+        dispatch_async(dispatch_get_main_queue()) { done(bytes) }
     }
 }
 
