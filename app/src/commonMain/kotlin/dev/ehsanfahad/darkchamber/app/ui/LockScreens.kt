@@ -30,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.animation.core.tween
@@ -502,7 +503,14 @@ private fun GateScaffold(
         Aperture(state = aperture, contentDescription = title)
         Text(title, style = DarkChamberTheme.typography.titleLarge, color = DarkChamberTheme.colors.textPrimary)
         if (error != null) {
-            Text(error.message(), style = DarkChamberTheme.typography.body, color = DarkChamberTheme.colors.danger)
+            // Centred like everything else in the column: a message that wraps would otherwise sit
+            // flush left under a centred title.
+            Text(
+                error.message(),
+                style = DarkChamberTheme.typography.body,
+                color = DarkChamberTheme.colors.danger,
+                textAlign = TextAlign.Center,
+            )
         }
         content()
         if (busy) {
