@@ -112,6 +112,9 @@ internal class DefaultCameraComponent(
      * answered. Not asked yet, on the first start, raises the system prompt.
      */
     private fun bind() {
+        // Unconditionally first: the seam reads the platform's permission afresh in its start, and
+        // that is the only way a change made in the system's settings is ever seen.
+        camera.start()
         binding = camera.permission
             .onEach {
                 if (it == CameraPermission.Granted) {

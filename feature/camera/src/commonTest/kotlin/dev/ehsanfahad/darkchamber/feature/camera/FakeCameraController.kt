@@ -95,8 +95,17 @@ internal class FakeCameraController(
         settingsOpened++
     }
 
+    /**
+     * What the platform would answer if asked now — changed in the system's settings, say, while the
+     * app was away. Like the real seams, [start] reads it before deciding; `null` leaves [permission]
+     * as the test set it.
+     */
+    var platformPermission: CameraPermission? = null
+
+    /** As the seam promises: a no-op without permission, which it reads afresh first. */
     override fun start() {
-        if (isOpen) return
+        platformPermission?.let { permission.value = it }
+        if (isOpen || permission.value != CameraPermission.Granted) return
         starts++
     }
 

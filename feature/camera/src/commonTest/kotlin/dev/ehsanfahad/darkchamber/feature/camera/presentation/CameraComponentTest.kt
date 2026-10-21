@@ -116,6 +116,27 @@ class CameraComponentTest {
         h.sessionJob.cancel()
     }
 
+    /**
+     * Access turned on in the system's settings is not announced to the app: the platform is only
+     * asked again when the camera starts. A screen that waits for "granted" before starting would
+     * keep saying access is off over a camera it may now open.
+     */
+    @Test
+    fun access_turned_on_in_settings_opens_the_camera_on_the_next_start() = runTest {
+        val camera = FakeCameraController(permission = CameraPermission.PermanentlyDenied)
+        val h = Harness(this, camera)
+        h.lifecycle.resume()
+        assertFalse(camera.isOpen)
+
+        h.lifecycle.stop()
+        camera.platformPermission = CameraPermission.Granted
+        h.lifecycle.resume()
+
+        assertTrue(camera.isOpen, "the next start finds the camera allowed and opens it")
+        assertEquals(CameraPermission.Granted, h.state.permission, "and the screen stops saying it is off")
+        h.sessionJob.cancel()
+    }
+
     /** Only "Allow" asks again once the first answer was no. */
     @Test
     fun allow_asks_again() = runTest {
