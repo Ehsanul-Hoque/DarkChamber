@@ -69,4 +69,16 @@ class CameraScreenDecisionsTest {
     fun an_unmeasured_viewfinder_takes_no_focus_point() {
         assertEquals(null, focusFractions(Offset(10f, 10f), IntSize.Zero))
     }
+
+    /**
+     * A screen wider than it is tall puts the controls beside the viewfinder rather than under it —
+     * stacked under, they leave a landscape viewfinder a thin strip. A square screen keeps the
+     * portrait layout, which is the one every other screen of the app uses.
+     */
+    @Test
+    fun the_controls_go_beside_the_viewfinder_only_on_a_wide_screen() {
+        assertEquals(CameraLayout.Beside, cameraLayout(IntSize(width = 3120, height = 1440)))
+        assertEquals(CameraLayout.Below, cameraLayout(IntSize(width = 1440, height = 3120)))
+        assertEquals(CameraLayout.Below, cameraLayout(IntSize(width = 1000, height = 1000)))
+    }
 }

@@ -9,10 +9,14 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
@@ -34,6 +38,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
@@ -90,7 +95,45 @@ internal fun CameraScreen(
     // Bumped once per accepted press; the viewfinder and the aperture each blink on it.
     var blinks by remember { mutableIntStateOf(0) }
 
-    Column(
+    val shoot = {
+        blinks++
+        onShoot()
+    }
+    val main: @Composable (Modifier) -> Unit = { area ->
+        Column(modifier = area) {
+            TopBar(state = state, unreadableNameLabel = unreadableNameLabel, onClose = onClose)
+
+            Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                if (state.showsViewfinder) {
+                    Viewfinder(
+                        zoom = state.zoom,
+                        blinks = blinks,
+                        preview = preview,
+                        onZoom = onZoom,
+                        onFocus = onFocus,
+                    )
+                } else {
+                    Explainer(
+                        explainer = state.explainer,
+                        onAllow = onAllow,
+                        onOpenSettings = onOpenSettings,
+                    )
+                }
+            }
+
+            state.message?.let { message ->
+                Text(
+                    text = CameraFormat.message(message),
+                    style = DarkChamberTheme.typography.body,
+                    color = DarkChamberTheme.colors.textPrimary,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = spacing.spaceMd, vertical = spacing.spaceXs),
+                )
+            }
+        }
+    }
+
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
             // Pure black, whatever the theme: a media surface (docs/DESIGN.md §2), and the one place
@@ -98,47 +141,30 @@ internal fun CameraScreen(
             .background(Color.Black)
             .safeDrawingPadding(),
     ) {
-        TopBar(state = state, unreadableNameLabel = unreadableNameLabel, onClose = onClose)
-
-        Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-            if (state.showsViewfinder) {
-                Viewfinder(
-                    zoom = state.zoom,
+        when (cameraLayout(IntSize(constraints.maxWidth, constraints.maxHeight))) {
+            CameraLayout.Below -> Column(modifier = Modifier.fillMaxSize()) {
+                main(Modifier.weight(1f).fillMaxWidth())
+                BottomRow(
+                    state = state,
                     blinks = blinks,
-                    preview = preview,
-                    onZoom = onZoom,
-                    onFocus = onFocus,
+                    lastShot = lastShot,
+                    onShoot = shoot,
+                    onFlip = onFlip,
+                    onCycleFlash = onCycleFlash,
                 )
-            } else {
-                Explainer(
-                    explainer = state.explainer,
-                    onAllow = onAllow,
-                    onOpenSettings = onOpenSettings,
+            }
+            CameraLayout.Beside -> Row(modifier = Modifier.fillMaxSize()) {
+                main(Modifier.weight(1f).fillMaxHeight())
+                SideColumn(
+                    state = state,
+                    blinks = blinks,
+                    lastShot = lastShot,
+                    onShoot = shoot,
+                    onFlip = onFlip,
+                    onCycleFlash = onCycleFlash,
                 )
             }
         }
-
-        state.message?.let { message ->
-            Text(
-                text = CameraFormat.message(message),
-                style = DarkChamberTheme.typography.body,
-                color = DarkChamberTheme.colors.textPrimary,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = spacing.spaceMd, vertical = spacing.spaceXs),
-            )
-        }
-
-        BottomRow(
-            state = state,
-            blinks = blinks,
-            lastShot = lastShot,
-            onShoot = {
-                blinks++
-                onShoot()
-            },
-            onFlip = onFlip,
-            onCycleFlash = onCycleFlash,
-        )
     }
 }
 
@@ -207,6 +233,9 @@ private fun Viewfinder(
     Box(
         modifier = Modifier
             .fillMaxSize()
+            // The platform's preview fills by scaling its picture past its own bounds; unclipped, it
+            // draws over the bar and under the controls whenever the box is not the camera's shape.
+            .clipToBounds()
             .onSizeChanged { size = it }
             .pointerInput(Unit) {
                 detectTapGestures { tap ->
@@ -245,7 +274,8 @@ private fun Viewfinder(
 
 /**
  * The brief darkening over the viewfinder that says a photo was taken — the visual half of shutter
- * feedback, since no sound is asked for. Under reduced motion it is a cut, not a fade.
+ * feedback, since in most regions the camera makes no sound. Under reduced motion it is a cut, not a
+ * fade.
  */
 @Composable
 private fun CaptureBlink(blinks: Int) {
@@ -338,6 +368,54 @@ private fun BottomRow(
                 }
             }
         }
+    }
+}
+
+/**
+ * The bottom row turned on its side, for a wide screen: flash at the top, then flip · shutter ·
+ * last-shot tile down the middle. As below, a control the camera does not support is left out and
+ * its place kept, and the space above and below is shared equally, so the shutter stays centred.
+ */
+@Composable
+private fun SideColumn(
+    state: CameraState,
+    blinks: Int,
+    lastShot: @Composable (itemId: ByteArray, modifier: Modifier) -> Unit,
+    onShoot: () -> Unit,
+    onFlip: () -> Unit,
+    onCycleFlash: () -> Unit,
+) {
+    val spacing = DarkChamberTheme.spacing
+    Column(
+        modifier = Modifier.fillMaxHeight().padding(horizontal = spacing.spaceSm, vertical = spacing.spaceMd),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.TopCenter) {
+            if (state.flashOffered && state.showsViewfinder) {
+                IconButton(onClick = onCycleFlash, modifier = Modifier.size(spacing.spaceXxl)) {
+                    FlashMark(
+                        glyph = flashGlyph(state.flash),
+                        contentDescription = CameraFormat.flashDescription(state.flash),
+                        modifier = Modifier.size(spacing.spaceLg),
+                    )
+                }
+            }
+        }
+        Box(modifier = Modifier.size(TileSize), contentAlignment = Alignment.Center) {
+            if (state.flipOffered && state.showsViewfinder) {
+                IconButton(onClick = onFlip, modifier = Modifier.size(spacing.spaceXxl)) {
+                    SwitchCameraMark(
+                        contentDescription = CameraFormat.flipDescription(),
+                        modifier = Modifier.size(spacing.spaceLg),
+                    )
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(spacing.spaceMd))
+        Shutter(enabled = state.shutterEnabled, blinks = blinks, onShoot = onShoot)
+        Spacer(modifier = Modifier.height(spacing.spaceMd))
+        LastShotTile(itemId = state.queue.lastSavedId, lastShot = lastShot)
+        Spacer(modifier = Modifier.weight(1f))
     }
 }
 
