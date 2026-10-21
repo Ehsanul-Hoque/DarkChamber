@@ -263,8 +263,8 @@ class VaultSession private constructor(
          * Unlocks a vault via its HARDWARE slot: presents a biometric prompt through [authenticator],
          * then recovers MK from [keyStore]'s `hardwareWrap` through [sks] (no user secret, no KDF — the
          * platform key gates it). A KeyStore with no hardware slot → `MalformedContainer`; a cancelled
-         * prompt / missing enrollment → `Auth`; an invalidated/deleted key or tampered blob →
-         * `IntegrityFailure` (from [SecureKeyStore.unwrap]). Callers fall back to [unlock] with the
+         * prompt / missing enrollment / a key refused this time → `Auth`; an invalidated/deleted key or
+         * tampered blob → `IntegrityFailure` (from [SecureKeyStore.unwrap]). Callers fall back to [unlock] with the
          * PASSPHRASE slot when the hardware path fails (§3.3).
          */
         suspend fun unlockWithHardware(

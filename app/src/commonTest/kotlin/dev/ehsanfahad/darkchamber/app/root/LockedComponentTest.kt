@@ -143,7 +143,7 @@ class LockedComponentTest {
 
         c.skipBiometric()
         assertTrue(unlocked != null, "skipping biometric must still unlock")
-        unlocked?.session?.close()
+        unlocked.session.close()
     }
 
     // Argon2id at the production cost is ~1 s of CPU on a fast device. Run on the main context it
@@ -205,7 +205,7 @@ class LockedComponentTest {
         c.enableBiometric()
 
         assertTrue(unlocked != null, "enabling biometric must unlock")
-        unlocked?.session?.close()
+        unlocked.session.close()
     }
 
     @Test
@@ -218,7 +218,7 @@ class LockedComponentTest {
 
         c.submitPassphraseUnlock(pw())
         assertTrue(unlocked != null, "correct passphrase must unlock")
-        unlocked?.session?.close()
+        unlocked.session.close()
     }
 
     @Test
@@ -246,7 +246,7 @@ class LockedComponentTest {
 
         c2.startBiometricUnlock()
         assertTrue(unlocked != null, "approved biometric must unlock")
-        unlocked?.session?.close()
+        unlocked.session.close()
     }
 
     @Test
@@ -270,6 +270,24 @@ class LockedComponentTest {
         assertEquals(LockError.HardwareInvalidated, c2.state.value.error)
         assertTrue(c2.state.value.forcePassphrase, "§3.3: invalidation forces the passphrase path")
         assertTrue(!c2.state.value.hasBiometric, "the dead hardware slot is dropped from the UI")
+    }
+
+    /**
+     * A key that could not be used this time — just after the phone was unlocked, say — is not a key
+     * that is gone. Saying the biometrics changed would name a cause nobody knows, and dropping the
+     * biometric button would take away the retry that works.
+     */
+    @Test
+    fun a_key_that_could_not_be_used_this_time_offers_a_retry() = runTest {
+        val c1 = component()
+        c1.submitCreate(pw()); c1.confirmRecoverySaved(); c1.enableBiometric()
+
+        val c2 = component(authenticator = FakeBiometricAuthenticator(FakeBiometricAuthenticator.Mode.NotUsable))
+        c2.startBiometricUnlock()
+
+        assertEquals(LockError.BiometricFailed, c2.state.value.error)
+        assertTrue(!c2.state.value.forcePassphrase, "biometric unlock stays offered")
+        assertTrue(c2.state.value.hasBiometric, "and its button stays")
     }
 
     private fun deleteRecursively(path: Path) {

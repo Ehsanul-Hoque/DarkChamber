@@ -517,6 +517,7 @@ private fun LockError.message(): String = when (this) {
     LockError.WrongPassphrase -> "That passphrase didn't work. Try again."
     LockError.BiometricCanceled -> "Biometric unlock was canceled. Use your passphrase or try again."
     LockError.BiometricUnavailable -> "Biometrics aren't available. Use your passphrase."
+    LockError.BiometricFailed -> "Biometric unlock didn't work this time. Try again or use your passphrase."
     LockError.HardwareInvalidated ->
         "Your biometrics changed, so biometric unlock is disabled. Unlock with your passphrase, then re-enable it."
     LockError.CreateFailed -> "Couldn't create the vault. Please try again."

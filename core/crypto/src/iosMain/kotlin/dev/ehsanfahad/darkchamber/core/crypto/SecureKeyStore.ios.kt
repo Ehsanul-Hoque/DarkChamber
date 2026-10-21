@@ -42,6 +42,7 @@ import platform.Security.SecAccessControlRef
 import platform.Security.SecItemAdd
 import platform.Security.SecItemCopyMatching
 import platform.Security.SecItemDelete
+import platform.Security.errSecInteractionNotAllowed
 import platform.Security.errSecItemNotFound
 import platform.Security.errSecParam
 import platform.Security.errSecSuccess
@@ -152,8 +153,7 @@ class IosSecureKeyStore(
                 val dataPtr = result.value
                 if (status != errSecSuccess || dataPtr == null) {
                     if (dataPtr != null) CFRelease(dataPtr)
-                    // item deleted / not found / auth failed / key invalidated (re-enrolled biometrics)
-                    Outcome.Err(VaultError.Crypto.IntegrityFailure)
+                    Outcome.Err(if (status == errSecSuccess) VaultError.Crypto.IntegrityFailure else keychainReadFailure(status))
                 } else {
                     val bytes = cfDataToBytes(dataPtr.reinterpret())
                     CFRelease(dataPtr)
@@ -237,3 +237,13 @@ class IosSecureKeyStore(
         )
     }
 }
+
+/**
+ * What a failed read of the hardware MK-wrap item means. A read refused because the device is locked
+ * says nothing about the item, so it is [VaultError.Auth.Failed]: a retry that names no cause.
+ * Anything else — the item deleted, not found, or failing authentication, which is what a biometric
+ * re-enrollment leaves behind under `.biometryCurrentSet` — is [VaultError.Crypto.IntegrityFailure],
+ * the forced-passphrase path.
+ */
+internal fun keychainReadFailure(status: Int): VaultError =
+    if (status == errSecInteractionNotAllowed) VaultError.Auth.Failed else VaultError.Crypto.IntegrityFailure

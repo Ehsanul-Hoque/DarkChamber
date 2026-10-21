@@ -11,6 +11,7 @@ import dev.ehsanfahad.darkchamber.core.model.VaultError
 import dev.ehsanfahad.darkchamber.core.model.flatMap
 import java.security.GeneralSecurityException
 import java.security.KeyStore
+import javax.crypto.AEADBadTagException
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -51,13 +52,12 @@ class AndroidSecureKeyStore(
     override fun isAvailable(): Boolean = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
 
     override suspend fun wrap(mk: ByteArray, authenticator: BiometricAuthenticator): Outcome<ByteArray> {
-        // init can throw KeyPermanentlyInvalidatedException (re-enrolled biometrics) — map to key-gone.
+        // init can throw KeyPermanentlyInvalidatedException (re-enrolled biometrics) — key-gone; any
+        // other refusal is a retry (see keyUseFailure).
         val cipher = try {
             Cipher.getInstance(TRANSFORMATION).apply { init(Cipher.ENCRYPT_MODE, getOrCreateKey()) }
-        } catch (_: KeyPermanentlyInvalidatedException) {
-            return Outcome.Err(VaultError.Crypto.IntegrityFailure)
-        } catch (_: GeneralSecurityException) {
-            return Outcome.Err(VaultError.Crypto.IntegrityFailure)
+        } catch (e: GeneralSecurityException) {
+            return Outcome.Err(keyUseFailure(e))
         }
         // Authenticate THIS CryptoObject; only its authorised Cipher can doFinal (never a throw out).
         return authenticator.authenticate(request(BiometricPrompt.CryptoObject(cipher))).flatMap { auth ->
@@ -65,8 +65,8 @@ class AndroidSecureKeyStore(
                 ?: return@flatMap Outcome.Err(VaultError.Crypto.IntegrityFailure)
             try {
                 Outcome.Ok(authorized.iv + authorized.doFinal(mk)) // iv is the 12-byte GCM nonce
-            } catch (_: GeneralSecurityException) {
-                Outcome.Err(VaultError.Crypto.IntegrityFailure)
+            } catch (e: GeneralSecurityException) {
+                Outcome.Err(keyUseFailure(e))
             }
         }
     }
@@ -77,11 +77,10 @@ class AndroidSecureKeyStore(
             val key = loadKey() ?: return Outcome.Err(VaultError.Crypto.IntegrityFailure)
             val iv = blob.copyOfRange(0, GCM_IV_SIZE)
             Cipher.getInstance(TRANSFORMATION).apply { init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(GCM_TAG_BITS, iv)) }
-        } catch (_: KeyPermanentlyInvalidatedException) {
-            // Key wiped by a device credential change / biometric enrolment — treat as key-gone (§3.3).
-            return Outcome.Err(VaultError.Crypto.IntegrityFailure)
-        } catch (_: GeneralSecurityException) {
-            return Outcome.Err(VaultError.Crypto.IntegrityFailure)
+        } catch (e: GeneralSecurityException) {
+            // Key wiped by a device credential change / biometric enrolment → key-gone (§3.3);
+            // anything else → a retry (see keyUseFailure).
+            return Outcome.Err(keyUseFailure(e))
         }
         return authenticator.authenticate(request(BiometricPrompt.CryptoObject(cipher))).flatMap { auth ->
             val authorized = (auth.handle as? BiometricPrompt.CryptoObject)?.cipher
@@ -89,9 +88,9 @@ class AndroidSecureKeyStore(
             val ciphertext = blob.copyOfRange(GCM_IV_SIZE, blob.size)
             try {
                 Outcome.Ok(authorized.doFinal(ciphertext))
-            } catch (_: GeneralSecurityException) {
-                // GCM tag mismatch (AEADBadTagException), locked device — the single tamper/auth outcome.
-                Outcome.Err(VaultError.Crypto.IntegrityFailure)
+            } catch (e: GeneralSecurityException) {
+                // A GCM tag mismatch is possible tampering; a refused key (a locked device) is a retry.
+                Outcome.Err(keyUseFailure(e))
             }
         }
     }
@@ -165,3 +164,17 @@ class AndroidSecureKeyStore(
         private const val PROMPT_CANCEL = "Use passphrase"
     }
 }
+
+/**
+ * What a failure to use the hardware MK-wrap key means. Only a key the platform reports as
+ * permanently invalidated (biometrics re-enrolled, credential changed) is gone, and only a GCM tag
+ * that does not verify is possible tampering — both [VaultError.Crypto.IntegrityFailure], which
+ * drives the forced-passphrase path. Anything else the keystore throws (a key refused just after the
+ * device unlocked, a busy keystore) says nothing about the key or the blob, so it is
+ * [VaultError.Auth.Failed]: a retry that names no cause.
+ */
+internal fun keyUseFailure(e: GeneralSecurityException): VaultError =
+    when (e) {
+        is KeyPermanentlyInvalidatedException, is AEADBadTagException -> VaultError.Crypto.IntegrityFailure
+        else -> VaultError.Auth.Failed
+    }
