@@ -12,8 +12,9 @@ import kotlinx.io.files.Path
  * (flat). Pure I/O over opaque bytes — it never sees ciphers; `.dchm`/`.tdchm`
  * content streams through the scoped [write]/[read] blocks as a [RawSink]/[RawSource].
  *
- * Every operation returns an [Outcome]; any failure is mapped to [VaultError.Io] and no
- * exception crosses the boundary. Nothing here logs a path, id, or content (#4).
+ * Every operation returns an [Outcome]; any failure is mapped to [VaultError.Io] — or, for a
+ * write the platform says ran out of space, [VaultError.Storage.Full] — and no exception crosses
+ * the boundary. Nothing here logs a path, id, or content (#4).
  *
  * @param baseDir the store root (e.g. `root/objects` or `root/thumbs`).
  * @param extension on-disk suffix including the dot (`.dchm` / `.tdchm`).
@@ -40,7 +41,7 @@ internal class BlobStore(
             tmp = Path(target.parent!!, "${target.name}.tmp")
             fs.createDirectories(target.parent!!)
         } catch (e: Exception) {
-            return Outcome.Err(VaultError.Io(e))
+            return Outcome.Err(writeFailure(e))
         }
         return try {
             fs.sink(tmp).use { block(it) }
@@ -52,7 +53,7 @@ internal class BlobStore(
             } catch (_: Exception) {
                 // best-effort cleanup — the original failure is what we report
             }
-            Outcome.Err(VaultError.Io(e))
+            Outcome.Err(writeFailure(e))
         }
     }
 

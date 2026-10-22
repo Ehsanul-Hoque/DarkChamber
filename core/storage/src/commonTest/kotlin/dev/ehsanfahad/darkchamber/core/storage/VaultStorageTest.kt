@@ -295,6 +295,72 @@ class VaultStorageTest {
         assertFalse(exists(captured!!), "scratch deleted even when the block throws")
     }
 
+    /**
+     * A scratch file is a reserved name, not a file: a recorder that refuses to write over an
+     * existing file must be able to create it. It lives directly in `tmp/`, so a lock's purge
+     * reaches it unchanged.
+     */
+    @Test
+    fun a_scratch_file_is_a_free_name_inside_tmp() {
+        val root = freshRoot()
+        val storage = VaultStorage(root)
+
+        val scratch = storage.newScratchFile(suffix = ".mp4")
+
+        assertEquals(Path(root, "tmp"), scratch.path.parent, "directly inside tmp/")
+        assertTrue(scratch.path.name.endsWith(".mp4"), "keeps the suffix the recorder needs")
+        assertFalse(exists(scratch.path), "nothing is created until the caller writes")
+    }
+
+    @Test
+    fun deleting_a_scratch_file_removes_it_and_can_be_repeated() {
+        val storage = VaultStorage(freshRoot())
+        val scratch = storage.newScratchFile(suffix = ".mp4")
+        SystemFileSystem.sink(scratch.path).buffered().use { it.write(Random.nextBytes(64)) }
+
+        assertIs<Outcome.Ok<Unit>>(scratch.delete())
+        assertFalse(exists(scratch.path), "deleted")
+        assertIs<Outcome.Ok<Unit>>(scratch.delete(), "a second delete is not an error")
+    }
+
+    @Test
+    fun a_scratch_file_nobody_deleted_is_removed_by_the_purge() {
+        val root = freshRoot()
+        val storage = VaultStorage(root)
+        val scratch = storage.newScratchFile(suffix = ".mp4")
+        SystemFileSystem.sink(scratch.path).buffered().use { it.write(Random.nextBytes(64)) }
+
+        storage.purgeTmp()
+
+        assertFalse(exists(scratch.path), "the crash case: the next launch's purge removes it")
+    }
+
+    /**
+     * Never the name of a file already there — even one this storage did not hand out — so two
+     * recordings can never share a file.
+     */
+    @Test
+    fun a_scratch_file_never_reuses_a_name_already_in_tmp() {
+        // A random token practically never collides, so force one: the first two draws agree.
+        val tokens = ArrayDeque(listOf("1", "1", "2"))
+        val storage = VaultStorage(freshRoot(), SystemFileSystem) { tokens.removeFirst() }
+
+        val first = storage.newScratchFile(suffix = ".mp4")
+        SystemFileSystem.sink(first.path).buffered().use { it.write(Random.nextBytes(1)) }
+        val second = storage.newScratchFile(suffix = ".mp4")
+
+        assertTrue(first.path.name != second.path.name, "a taken name is skipped")
+        assertFalse(exists(second.path), "and the one handed out is free")
+    }
+
+    @Test
+    fun a_scratch_suffix_cannot_leave_tmp() {
+        val storage = VaultStorage(freshRoot())
+        for (bad in listOf("/../x", "../", ".mp4/x", "a b")) {
+            assertFailsWith<IllegalArgumentException>(bad) { storage.newScratchFile(suffix = bad) }
+        }
+    }
+
     @Test
     fun useSpilledCopy_gives_a_reopenable_view_of_a_one_shot_source() {
         val storage = VaultStorage(freshRoot())
