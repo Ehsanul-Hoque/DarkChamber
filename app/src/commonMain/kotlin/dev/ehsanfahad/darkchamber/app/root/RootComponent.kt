@@ -87,6 +87,13 @@ class DefaultRootComponent(
     /** Gate-lifetime scope, for the deferred-lock watchdog only. Nothing here touches the session. */
     private val scope = CoroutineScope(mainContext + SupervisorJob())
 
+    /**
+     * What did not make it into the vault, kept **here** because a lock destroys the unlocked
+     * subtree that would otherwise hold it — and a lock is the usual reason something was lost.
+     * Counts only (see [NotSavedRecord]); nothing in it is vault content.
+     */
+    internal val notSaved = NotSavedRecord()
+
     /** The armed watchdog for a lock deferred by a system-UI handoff, or null when none is pending. */
     private var pendingLock: Job? = null
 

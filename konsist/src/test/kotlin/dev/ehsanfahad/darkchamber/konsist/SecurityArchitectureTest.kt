@@ -190,6 +190,35 @@ class SecurityArchitectureTest {
         )
     }
 
+    @Test
+    fun `the not-saved record holds counts, never content`() {
+        // The record of what did not make it into the vault is kept above the session gate so that
+        // a lock cannot destroy the news of what it abandoned — which makes it the one place in the
+        // app that deliberately outlives a lock. It may therefore hold counts, kinds and reasons
+        // and nothing else: an id, a name or a path in it would survive the teardown that exists to
+        // remove exactly those. A source rule because common tests have no reflection to inspect a
+        // type's fields with, and because it must also cover whatever gets added to it later.
+        //
+        // Every file declaring a `NotSaved…` type is read whole, so a field whose type is inferred
+        // rather than written cannot slip past a declaration-based check.
+        val files = productionFiles.filter { DECLARES_A_NOT_SAVED_TYPE.containsMatchIn(codeOf(it)) }
+        assertTrue(files.size >= 2, "the rule found no not-saved types to check — has it moved?")
+
+        val violations = files.filter { HOLDS_CONTENT.containsMatchIn(codeOf(it)) }
+
+        assertTrue(
+            violations.isEmpty(),
+            buildString {
+                appendLine(
+                    "A not-saved type mentions a type that can carry content. The record outlives a " +
+                        "lock, so it may hold counts, kinds and reasons only — never an id, a name or " +
+                        "a path. Put the wording in a formatter file instead.",
+                )
+                violations.forEach { appendLine("  ${it.projectPath}") }
+            },
+        )
+    }
+
     private fun assertNoForbiddenImports(
         rule: String,
         forbidden: (String) -> Boolean,
@@ -270,6 +299,22 @@ class SecurityArchitectureTest {
             "IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS",
             "IMPORTANT_FOR_CONTENT_CAPTURE_NO_EXCLUDE_DESCENDANTS",
         )
+
+        /** A class, interface or enum whose name begins `NotSaved`. */
+        val DECLARES_A_NOT_SAVED_TYPE =
+            Regex("""(class|interface)\s+NotSaved[A-Za-z0-9_]*""")
+
+        /**
+         * Types that can carry an id, a name, a path or bytes — named, or arrived at by inference
+         * from a string literal or a byte-array builder, which mention no type at all. The files
+         * these are matched against hold no text of their own (wording lives in a formatter), so a
+         * quote mark there is already a finding.
+         */
+        val HOLDS_CONTENT =
+            Regex(
+                """(?<![A-Za-z0-9_])(ByteArray|String|CharSequence|Path|RawSource|UByteArray|byteArrayOf)""" +
+                    """(?![A-Za-z0-9_])|"""",
+            )
 
         /** The helper that excludes the window it is composed in. */
         const val EXCLUDES_FROM_STRUCTURES = "ExcludeFromPlatformStructures"
