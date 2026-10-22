@@ -50,6 +50,8 @@ public fun redactCause(error: VaultError): String =
         VaultError.Auth.Cancelled -> "Auth.Cancelled"
         VaultError.Auth.Unavailable -> "Auth.Unavailable"
         VaultError.Auth.Failed -> "Auth.Failed"
+        VaultError.Storage.Full -> "Storage.Full"
+        VaultError.Storage.DestinationMissing -> "Storage.DestinationMissing"
         is VaultError.Io -> "Io"
         is VaultError.Db -> "Db"
         is VaultError.Unexpected -> "Unexpected"
