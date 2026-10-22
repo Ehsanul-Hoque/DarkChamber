@@ -6,12 +6,18 @@ import dev.ehsanfahad.darkchamber.feature.camera.api.CameraAvailability
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraCapabilities
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraController
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraPermission
+import dev.ehsanfahad.darkchamber.feature.camera.api.CaptureMode
 import dev.ehsanfahad.darkchamber.feature.camera.api.CaptureResult
 import dev.ehsanfahad.darkchamber.feature.camera.api.CapturedPhoto
 import dev.ehsanfahad.darkchamber.feature.camera.api.FlashMode
 import dev.ehsanfahad.darkchamber.feature.camera.api.Lens
+import dev.ehsanfahad.darkchamber.feature.camera.api.MicrophonePermission
+import dev.ehsanfahad.darkchamber.feature.camera.api.Recording
+import dev.ehsanfahad.darkchamber.feature.camera.api.ReportedRecording
+import dev.ehsanfahad.darkchamber.feature.camera.api.VideoQuality
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.io.files.Path
 
 /**
  * A granted, available camera for the host's tests: whether it is open, and captures that can be
@@ -45,7 +51,12 @@ class FakeCameraController : CameraController {
         held.removeFirst().complete(CaptureResult.Captured(CapturedPhoto(jpeg(), rotationDegrees = 0)))
     }
 
+    override val microphonePermission = MutableStateFlow(MicrophonePermission.Granted)
+    override val deviceRotation = MutableStateFlow(0)
+
     override suspend fun requestPermission() = Unit
+
+    override suspend fun requestMicrophonePermission() = Unit
 
     override fun openSettings() = Unit
 
@@ -56,6 +67,14 @@ class FakeCameraController : CameraController {
     override fun stop() {
         if (isOpen) stops++
     }
+
+    override fun setMode(mode: CaptureMode) = Unit
+
+    override fun setQuality(quality: VideoQuality) = Unit
+
+    override fun setTorch(on: Boolean) = Unit
+
+    override fun record(file: Path, sizeLimitBytes: Long, withAudio: Boolean): Recording = ReportedRecording.refused()
 
     override fun setLens(lens: Lens) = Unit
 

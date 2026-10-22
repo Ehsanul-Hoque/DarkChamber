@@ -33,14 +33,20 @@ import dev.ehsanfahad.darkchamber.feature.camera.api.CameraAvailability
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraCapabilities
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraController
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraPermission
+import dev.ehsanfahad.darkchamber.feature.camera.api.CaptureMode
 import dev.ehsanfahad.darkchamber.feature.camera.api.CaptureResult
 import dev.ehsanfahad.darkchamber.feature.camera.api.CapturedPhoto
 import dev.ehsanfahad.darkchamber.feature.camera.api.FlashMode
 import dev.ehsanfahad.darkchamber.feature.camera.api.Lens
+import dev.ehsanfahad.darkchamber.feature.camera.api.MicrophonePermission
+import dev.ehsanfahad.darkchamber.feature.camera.api.Recording
+import dev.ehsanfahad.darkchamber.feature.camera.api.ReportedRecording
+import dev.ehsanfahad.darkchamber.feature.camera.api.VideoQuality
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.io.files.Path
 import kotlin.coroutines.resume
 
 /**
@@ -77,6 +83,11 @@ class AndroidCameraController(
 
     private val _capabilities = MutableStateFlow(CameraCapabilities.None)
     override val capabilities: StateFlow<CameraCapabilities> = _capabilities.asStateFlow()
+
+    // Video is not wired to CameraX yet: no microphone is asked for, the tilt is not reported, and
+    // [record] refuses — so a recording that cannot happen says so rather than pretending.
+    override val microphonePermission: StateFlow<MicrophonePermission> = MutableStateFlow(MicrophonePermission.NotAsked)
+    override val deviceRotation: StateFlow<Int> = MutableStateFlow(0)
 
     private val owner = SeamLifecycle()
 
@@ -132,6 +143,8 @@ class AndroidCameraController(
         // calling start, which is idempotent.
     }
 
+    override suspend fun requestMicrophonePermission() = Unit
+
     override fun openSettings() {
         val host = activity() ?: return
         host.startActivity(
@@ -174,6 +187,14 @@ class AndroidCameraController(
         forgetCamera()
         owner.moveTo(Lifecycle.State.CREATED)
     }
+
+    override fun setMode(mode: CaptureMode) = Unit
+
+    override fun setQuality(quality: VideoQuality) = Unit
+
+    override fun setTorch(on: Boolean) = Unit
+
+    override fun record(file: Path, sizeLimitBytes: Long, withAudio: Boolean): Recording = ReportedRecording.refused()
 
     override fun setLens(lens: Lens) {
         if (lens == this.lens || lens !in _capabilities.value.lenses) return

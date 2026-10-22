@@ -3,6 +3,7 @@ package dev.ehsanfahad.darkchamber.feature.camera.api
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.io.files.Path
 
 /**
  * The platform seam for the camera — CameraX on Android, AVFoundation on iOS. The implementations
@@ -14,12 +15,18 @@ import kotlinx.coroutines.flow.StateFlow
  * module cannot reach (an activity's lifecycle, a capture session), and tests drive every path —
  * a denied permission, a camera in use, a capture that fails or takes its time — through a fake.
  *
- * **The one rule every implementation keeps: a capture never touches a file.** The photo arrives in
+ * **The one rule every implementation keeps: a photo never touches a file.** The photo arrives in
  * [capture]'s result as bytes in memory and goes from there straight into the vault's encrypting
  * import. Both platforms offer a "save to file" capture as the convenient path, and both would put
  * plaintext on disk (hard rule #1) — CameraX's own file saver even stages through a temporary file
  * when it is handed a stream. Location is never attached to a capture either; the app holds no
  * location permission.
+ *
+ * **A video is the one exception, and goes only where it is told.** A clip is too large to hold in
+ * memory, so [record] writes it to the file it is handed — a scratch file in the vault's private
+ * `tmp/`, which the caller encrypts from and deletes, and which a lock or the next launch purges. An
+ * implementation never chooses a path of its own, never writes anywhere else, and never logs the one
+ * it was given.
  *
  * Main-thread confined, like the pickers: the screen drives it from its own lifecycle, and the
  * platform camera stacks expect configuration calls from the thread that owns the view.
@@ -34,11 +41,23 @@ interface CameraController {
     /** What the open camera supports. [CameraCapabilities.None] until one has opened. */
     val capabilities: StateFlow<CameraCapabilities>
 
+    /** Whether a recording may have sound. Re-read from the platform on every [start]. */
+    val microphonePermission: StateFlow<MicrophonePermission>
+
+    /**
+     * How far the device is turned from upright portrait: 0, 90, 180 or 270 degrees clockwise. The
+     * same reading that tags each capture, so an icon turned by it agrees with the saved picture.
+     */
+    val deviceRotation: StateFlow<Int>
+
     /**
      * Ask for the camera permission and suspend until the user answers; [permission] carries the
      * result. On Android the prompt is a dialog over this app, so it does not background it.
      */
     suspend fun requestPermission()
+
+    /** Ask for the microphone permission and suspend until the user answers, as [requestPermission]. */
+    suspend fun requestMicrophonePermission()
 
     /**
      * Open the platform's settings page for this app — the only place a permanently denied
@@ -50,14 +69,30 @@ interface CameraController {
     /**
      * Open the camera and start the preview. Called when the screen starts; a no-op without
      * permission. Idempotent.
+     *
+     * Reads both permissions afresh first: a grant made in the system's settings while the app was
+     * away is seen only here.
      */
     fun start()
 
     /**
      * Release the camera, so the platform's in-use indicator goes off. Called when the screen stops
      * and when it is destroyed — including by a lock tearing the screen down. Idempotent.
+     *
+     * A recording still running is **abandoned**, not finalized: its end is
+     * [RecordingEnd.Abandoned], whatever the platform does with the file afterwards. A caller that
+     * wants the clip calls [Recording.stop] and waits for the end before releasing the camera.
      */
     fun stop()
+
+    /** Photo or video. Video rebinds the camera for recording; set it before [record]. */
+    fun setMode(mode: CaptureMode)
+
+    /** The resolution the next recording uses. Ignored for a quality the open lens does not list. */
+    fun setQuality(quality: VideoQuality)
+
+    /** Turn the light on or off, in video, including mid-recording. Ignored when the lens has none. */
+    fun setTorch(on: Boolean)
 
     /** Switch lens. Ignored for a lens [capabilities] does not list. */
     fun setLens(lens: Lens)
@@ -79,6 +114,16 @@ interface CameraController {
      * failure is [CaptureResult.Failed], not an exception.
      */
     suspend fun capture(): CaptureResult
+
+    /**
+     * Start recording video into [file], stopping by itself once the file reaches [sizeLimitBytes],
+     * with sound only when [withAudio] is true. Returns at once; the recording reports its progress
+     * and its end through the handle. A recording that cannot start — no camera open, not in video
+     * mode, one already running — comes back already ended as [RecordingFailure.Other].
+     *
+     * The file is the caller's: an implementation writes there and nowhere else, and never deletes it.
+     */
+    fun record(file: Path, sizeLimitBytes: Long, withAudio: Boolean): Recording
 
     /**
      * The live viewfinder, drawn by the platform's own preview view. Draws nothing until [start]
