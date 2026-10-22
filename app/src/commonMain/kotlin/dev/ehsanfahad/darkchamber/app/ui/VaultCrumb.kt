@@ -37,6 +37,9 @@ internal fun crumbFor(child: UnlockedChild, gallery: GalleryState?): String? =
         // so without a word here the bar is identical to the one the user just left.
         is UnlockedChild.Albums -> ALBUMS
 
+        // Drawn without the bar (see [showsUnlockedBar]); its own top bar names its destination.
+        is UnlockedChild.Camera -> null
+
         is UnlockedChild.Gallery -> when (val listing = child.scope) {
             // The vault *is* the destination, so a second label would repeat the name beside it.
             GalleryScope.WholeVault -> null
@@ -46,6 +49,13 @@ internal fun crumbFor(child: UnlockedChild, gallery: GalleryState?): String? =
             GalleryScope.Album -> (gallery?.album as? AlbumState.Present)?.name?.label()
         }
     }
+
+/**
+ * Whether the vault's bar is drawn above [child]. Not above the camera: it has its own top bar with
+ * ✕, and the vault's lock button and crumb would sit over the viewfinder. The vault still locks on
+ * background and from the power button, so nothing about locking is lost with the button.
+ */
+internal fun showsUnlockedBar(child: UnlockedChild): Boolean = child !is UnlockedChild.Camera
 
 /** The same word the entry point that leads here uses, and the one the feature's own copy uses. */
 private const val ALBUMS = "Albums"

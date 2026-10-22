@@ -570,6 +570,17 @@ internal object GalleryFormat {
             "data around as it wears, and copies can survive where no app can reach them."
     }
 
+    /** The camera button's spoken name. It opens the camera; it does not take a photo. */
+    fun openCamera(): String = "Open camera"
+
+    /**
+     * The spoken words for a preview whose bytes failed their integrity tag — where no name is read
+     * out beside it to carry the meaning, as one is under a gallery tile. A failed tag cannot say
+     * whether it was tampering or decay, and says nothing about the item's own bytes, so neither is
+     * claimed (hard rule #6).
+     */
+    fun unverifiedPreview(): String = "Preview couldn't be verified"
+
     private fun oneDecimal(value: Double): String {
         val scaled = (value * 10).toLong()
         return "${scaled / 10}.${scaled % 10}"

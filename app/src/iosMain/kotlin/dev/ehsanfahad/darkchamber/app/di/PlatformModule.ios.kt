@@ -4,6 +4,8 @@ import coil3.PlatformContext
 import dev.ehsanfahad.darkchamber.app.IosVaultRootResolver
 import dev.ehsanfahad.darkchamber.app.VaultRootResolver
 import dev.ehsanfahad.darkchamber.app.auth.IosBiometricAuthenticator
+import dev.ehsanfahad.darkchamber.app.camera.IosCameraController
+import dev.ehsanfahad.darkchamber.feature.camera.api.CameraController
 import dev.ehsanfahad.darkchamber.app.picker.IosFilePicker
 import dev.ehsanfahad.darkchamber.app.picker.IosPhotoPicker
 import dev.ehsanfahad.darkchamber.app.system.IosSecretClipboard
@@ -45,6 +47,9 @@ actual fun platformModule(): Module = module {
         val rootResolver = get<VaultRootResolver>()
         IosPhotoPicker(::rootViewController) { rootResolver.resolve().getOrNull()?.let { Path(it, "tmp") } }
     }
+    // The camera feature's seam. Presented inside our own window, like the pickers; the permission
+    // alert is a system alert over it, which makes the app inactive rather than backgrounded.
+    single<CameraController> { IosCameraController() }
     // Coil's context carries nothing on iOS, but the loader still asks for one.
     single<PlatformContext> { PlatformContext.INSTANCE }
     // Decodes a preview during import. Stateless: ImageIO works on the bytes the vault hands it,

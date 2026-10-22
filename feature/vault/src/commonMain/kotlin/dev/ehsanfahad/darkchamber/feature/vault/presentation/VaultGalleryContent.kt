@@ -42,6 +42,7 @@ fun VaultGalleryContent(
         onCloseSearch = component::closeSearch,
         onAddPhotos = component::importPhotos,
         onAddFiles = component::importFiles,
+        onOpenCamera = component::openCamera,
         onCancelImport = component::cancelImport,
         onAcknowledgeImport = component::acknowledgeImport,
         onRequestOriginalDelete = component::requestOriginalDelete,

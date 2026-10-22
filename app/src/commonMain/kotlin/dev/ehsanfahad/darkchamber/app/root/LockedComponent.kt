@@ -37,6 +37,7 @@ enum class LockError {
     WrongPassphrase,
     BiometricCanceled,
     BiometricUnavailable,
+    BiometricFailed,
     HardwareInvalidated,
     CreateFailed,
     ProbeFailed,
@@ -191,6 +192,8 @@ class DefaultLockedComponent(
         return when (error) {
             VaultError.Auth.Cancelled -> cleared.copy(error = LockError.BiometricCanceled)
             VaultError.Auth.Unavailable -> cleared.copy(error = LockError.BiometricUnavailable, forcePassphrase = true)
+            // The key is there but was refused this time: a retry, not the re-enrollment path.
+            VaultError.Auth.Failed -> cleared.copy(error = LockError.BiometricFailed)
             // §3.3: re-enrolled biometrics killed the hardware key — force passphrase, drop the biometric CTA.
             VaultError.Crypto.IntegrityFailure ->
                 cleared.copy(error = LockError.HardwareInvalidated, forcePassphrase = true, hasBiometric = false)

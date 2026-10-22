@@ -522,6 +522,23 @@ class VaultObjects(
             .flowOn(mapContext)
 
     /**
+     * How many items [filter] covers, live — for a screen that shows a count beside a listing
+     * without showing the listing itself.
+     *
+     * **Opens nothing.** The number comes from the catalog's plaintext `album_id` index, so it costs
+     * the same in a vault of ten files as in one of ten thousand. Sizing [observeItems] would give the
+     * same number at the price of one metadata decrypt per row per emission; that is the trade this
+     * function exists to refuse.
+     *
+     * No [mapContext] hop, unlike the two listings: there is no decrypt to move off the collector's
+     * thread, and the catalog already runs the query on its own dispatcher. Inherits
+     * `CatalogStore.observeItemCount`'s failure contract — a driver failure arrives as an exception in
+     * the flow, never as a zero that would claim the listing is empty.
+     */
+    fun observeItemCount(filter: ItemFilter = ItemFilter.All): Flow<Long> =
+        catalog.observeItemCount(filter)
+
+    /**
      * The listing feeding the album grid: every album with its name opened, its item count and the
      * id of the item that represents it. Re-emits whenever the catalog changes — **including when
      * only the `items` table does**, which is what keeps a count and a cover current while every
@@ -715,14 +732,16 @@ class VaultObjects(
             is Outcome.Err -> return got
             is Outcome.Ok -> if (got.value == null) return absent(id)
         }
-        return catalog.deleteItem(id).map {
-            storage.deleteObject(id) // best-effort; the DEK is already gone, so ignore any failure
-            // The thumbnail's key lived in the row's enc_meta, so deleting the row already shredded
-            // it — this only stops an unopenable blob sitting in `thumbs/` for the life of the
-            // vault, invisible to every listing and therefore to everything that would clean it up.
-            storage.deleteThumbnail(id)
-            Unit
+        when (val deleted = catalog.deleteItem(id)) {
+            is Outcome.Err -> return deleted
+            is Outcome.Ok -> Unit
         }
+        storage.deleteObject(id) // best-effort; the DEK is already gone, so ignore any failure
+        // The thumbnail's key lived in the row's enc_meta, so deleting the row already shredded
+        // it — this only stops an unopenable blob sitting in `thumbs/` for the life of the
+        // vault, invisible to every listing and therefore to everything that would clean it up.
+        storage.deleteThumbnail(id)
+        return Outcome.Ok(Unit)
     }
 
     // Runs the encrypt inside a scoped DEK + an atomic object write, returning the measured size.

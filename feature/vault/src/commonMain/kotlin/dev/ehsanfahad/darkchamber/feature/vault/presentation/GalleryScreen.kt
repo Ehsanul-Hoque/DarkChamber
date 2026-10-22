@@ -31,7 +31,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -61,6 +63,7 @@ import coil3.ImageLoader
 import coil3.compose.AsyncImagePainter
 import coil3.compose.SubcomposeAsyncImage
 import dev.ehsanfahad.darkchamber.core.designsystem.AlbumMark
+import dev.ehsanfahad.darkchamber.core.designsystem.CameraMark
 import dev.ehsanfahad.darkchamber.core.designsystem.DarkChamberTheme
 import dev.ehsanfahad.darkchamber.core.designsystem.ExcludeFromPlatformStructures
 import dev.ehsanfahad.darkchamber.core.designsystem.prefersReducedMotion
@@ -99,6 +102,7 @@ internal fun GalleryScreen(
     onCloseSearch: () -> Unit,
     onAddPhotos: () -> Unit,
     onAddFiles: () -> Unit,
+    onOpenCamera: () -> Unit,
     onCancelImport: () -> Unit,
     onAcknowledgeImport: () -> Unit,
     onRequestOriginalDelete: () -> Unit,
@@ -218,17 +222,19 @@ internal fun GalleryScreen(
                 .bottomBarScrim()
                 .padding(spacing.spaceLg),
         ) {
+            // One bar at a time, chosen by `bottomBar` — which is tested, and is also what the camera
+            // button's intent checks, so a tap can never open what this layout is not showing.
+            //
             // A move in progress, or its report, takes the bottom area ahead of everything — including
             // the selection bar, which is where it was started from and which has nothing left to say
             // while it runs.
-            val filing = state.filing
-            if (filing is Filing.Moving || filing is Filing.Moved) {
-                FilingCard(filing = filing, onDismiss = onAcknowledgeFiling)
-            } else if (state.selection.active) {
+            when (state.bottomBar()) {
+                GalleryBottomBar.FilingReport ->
+                    FilingCard(filing = state.filing as Filing, onDismiss = onAcknowledgeFiling)
                 // Selecting takes the bottom area over entirely, ahead of any batch state. That is also
                 // why nothing guards against starting an import mid-selection: the buttons that would
                 // start one are not on screen while this is.
-                SelectionBar(
+                GalleryBottomBar.Selection -> SelectionBar(
                     count = state.selection.count,
                     // Offered only where every selected item is in the album being viewed. On the whole
                     // vault the selection is a mix of filed and unfiled items, so the button would
@@ -240,17 +246,17 @@ internal fun GalleryScreen(
                     onSelectAll = onSelectAll,
                     onClear = onClearSelection,
                 )
-            } else when (val batch = state.batch) {
-                is ImportState.Running -> ImportProgressCard(batch = batch, onCancel = onCancelImport)
+                GalleryBottomBar.Progress ->
+                    ImportProgressCard(batch = state.batch as ImportState.Running, onCancel = onCancelImport)
                 // Not "Choose what to add…" any more. This card is held back until a pick is taking
                 // long enough to be worth explaining, and by then the likeliest reason it is showing
                 // is the stretch *after* choosing, while the system materialises the selection — at
                 // which point telling the user to choose is telling them to do something they have
                 // already done. Vague on purpose: this layer cannot tell which of the two waits it
                 // is in, and naming the wrong one would be worse than naming neither.
-                ImportState.Picking -> ImportNoticeCard(text = "Getting things ready…")
-                is ImportState.Finished -> ImportSummaryCard(
-                    batch = batch,
+                GalleryBottomBar.Picking -> ImportNoticeCard(text = "Getting things ready…")
+                GalleryBottomBar.Summary -> ImportSummaryCard(
+                    batch = state.batch as ImportState.Finished,
                     offer = state.importOffer(),
                     onDismiss = onAcknowledgeImport,
                     onDeleteOriginals = onRequestOriginalDelete,
@@ -260,14 +266,19 @@ internal fun GalleryScreen(
                         offer.take(onCloseSearch = onCloseSearch, onChooseOrder = onChooseOrder)
                     },
                 )
-                ImportState.Idle -> ImportActions(onAddPhotos = onAddPhotos, onAddFiles = onAddFiles)
+                GalleryBottomBar.Actions -> ImportActions(
+                    onAddPhotos = onAddPhotos,
+                    onAddFiles = onAddFiles,
+                    onOpenCamera = onOpenCamera,
+                )
                 // Not the failed-file banner: nothing was chosen, so there is no file to blame
                 // (hard rule 6). It sits above the actions rather than replacing them, because the
                 // fix for a picker that would not open is usually to tap again.
-                ImportState.PickerUnavailable -> PickerUnavailableCard(
+                GalleryBottomBar.PickerUnavailable -> PickerUnavailableCard(
                     onDismiss = onAcknowledgeImport,
                     onAddPhotos = onAddPhotos,
                     onAddFiles = onAddFiles,
+                    onOpenCamera = onOpenCamera,
                 )
             }
         }
@@ -748,9 +759,12 @@ private fun Modifier.bottomBarScrim(): Modifier {
     )
 }
 
-/** "Add photos" leads, because the library is where most of what people vault already lives. */
+/**
+ * "Add photos" leads, because the library is where most of what people vault already lives. The
+ * camera comes last, at the end of the row: a third way to add things, drawn as the aperture.
+ */
 @Composable
-private fun ImportActions(onAddPhotos: () -> Unit, onAddFiles: () -> Unit) {
+private fun ImportActions(onAddPhotos: () -> Unit, onAddFiles: () -> Unit, onOpenCamera: () -> Unit) {
     val spacing = DarkChamberTheme.spacing
 
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -770,6 +784,22 @@ private fun ImportActions(onAddPhotos: () -> Unit, onAddFiles: () -> Unit) {
             shape = DarkChamberTheme.shapes.large,
         ) {
             Text(text = "Add photos", style = DarkChamberTheme.typography.label)
+        }
+        Spacer(Modifier.width(spacing.spaceSm))
+        FloatingActionButton(
+            onClick = onOpenCamera,
+            containerColor = DarkChamberTheme.colors.accent,
+            contentColor = DarkChamberTheme.colors.onAccent,
+            // A full circle on purpose, beside the rounded pill: this is an aperture element, the
+            // one kind that radius belongs to (DESIGN.md §4, §7), so the camera reads as the brand.
+            shape = CircleShape,
+        ) {
+            CameraMark(
+                // A drawing with no text, so these are its only words.
+                contentDescription = GalleryFormat.openCamera(),
+                tint = DarkChamberTheme.colors.onAccent,
+                modifier = Modifier.size(DarkChamberTheme.spacing.spaceLg),
+            )
         }
     }
 }
@@ -987,7 +1017,12 @@ private fun ImportProgressCard(batch: ImportState.Running, onCancel: () -> Unit)
  * again, and a notice that took the buttons away would leave the screen with nothing to do.
  */
 @Composable
-private fun PickerUnavailableCard(onDismiss: () -> Unit, onAddPhotos: () -> Unit, onAddFiles: () -> Unit) {
+private fun PickerUnavailableCard(
+    onDismiss: () -> Unit,
+    onAddPhotos: () -> Unit,
+    onAddFiles: () -> Unit,
+    onOpenCamera: () -> Unit,
+) {
     val colors = DarkChamberTheme.colors
     val spacing = DarkChamberTheme.spacing
 
@@ -1012,7 +1047,7 @@ private fun PickerUnavailableCard(onDismiss: () -> Unit, onAddPhotos: () -> Unit
                 Text("OK", style = DarkChamberTheme.typography.label, color = colors.accent)
             }
         }
-        ImportActions(onAddPhotos = onAddPhotos, onAddFiles = onAddFiles)
+        ImportActions(onAddPhotos = onAddPhotos, onAddFiles = onAddFiles, onOpenCamera = onOpenCamera)
     }
 }
 

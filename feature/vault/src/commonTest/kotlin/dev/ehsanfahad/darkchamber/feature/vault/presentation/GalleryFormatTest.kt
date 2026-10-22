@@ -640,6 +640,33 @@ class GalleryFormatTest {
     }
 
     /**
+     * The camera button opens the camera; it takes nothing. A name that said "Take photo" would
+     * promise a capture from the gallery, and the button is a round drawing with no text, so these
+     * are its only words.
+     */
+    @Test
+    fun the_camera_button_says_it_opens_the_camera() {
+        assertEquals("Open camera", GalleryFormat.openCamera())
+    }
+
+    /**
+     * A preview whose bytes failed their tag is spoken as exactly that: it could not be checked.
+     * Not tampering and not corruption — a failed tag cannot say which — and nothing about the item
+     * itself, whose own bytes are separate and may be fine.
+     */
+    @Test
+    fun an_unverified_preview_says_only_that_it_could_not_be_checked() {
+        val copy = GalleryFormat.unverifiedPreview()
+        val lower = copy.lowercase()
+
+        assertTrue("preview" in lower, "it is about the preview: $copy")
+        assertTrue("verif" in lower, "and says it could not be verified: $copy")
+        for (claim in listOf("tamper", "corrupt", "damaged", "broken", "file", "photo", "item")) {
+            assertFalse(claim in lower, "a failed tag on a preview claims nothing more: $copy")
+        }
+    }
+
+    /**
      * The collapsed control names the order the grid is in, so every order needs a label of its own —
      * two orders reading alike would make the control say nothing while appearing to.
      */

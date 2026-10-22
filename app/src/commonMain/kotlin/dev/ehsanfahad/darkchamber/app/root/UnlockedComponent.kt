@@ -15,8 +15,14 @@ import com.arkivanov.essenty.lifecycle.doOnDestroy
 import coil3.ImageLoader
 import coil3.PlatformContext
 import com.arkivanov.essenty.lifecycle.doOnStop
+import dev.ehsanfahad.darkchamber.app.camera.UnavailableCamera
+import dev.ehsanfahad.darkchamber.feature.camera.api.CameraComponent
+import dev.ehsanfahad.darkchamber.feature.camera.api.CameraController
+import dev.ehsanfahad.darkchamber.feature.camera.api.CameraDestination
+import dev.ehsanfahad.darkchamber.feature.camera.cameraComponent
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryScope
+import dev.ehsanfahad.darkchamber.feature.vault.api.label
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultAlbumsComponent
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultGalleryComponent
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultImports
@@ -123,6 +129,9 @@ sealed interface UnlockedChild {
     class Gallery(val component: VaultGalleryComponent, val scope: GalleryScope) : UnlockedChild
 
     class Albums(val component: VaultAlbumsComponent) : UnlockedChild
+
+    /** The camera, opened on the listing beneath it and drawn full-screen over the chrome. */
+    class Camera(val component: CameraComponent) : UnlockedChild
 }
 
 class DefaultUnlockedComponent(
@@ -403,6 +412,10 @@ class DefaultUnlockedComponent(
                     // no screen left to be. `pop`, not a push: this child *is* the album, so leaving
                     // it means going back to whatever opened it — which is the album grid.
                     onLeaveAlbum = { navigation.pop() },
+                    // The camera opens on this listing: the config's own filter, so its photos go
+                    // where an import from here would. `pushNew` for the reason the albums entry
+                    // gives — a double tap must be one camera, not a duplicate-config exception.
+                    onOpenCamera = { navigation.pushNew(Config.Camera(config.filter)) },
                 )
                 // Read back off the component rather than mapped from the config a second time.
                 // The feature decides what its filter means for a screen, and it publishes that
@@ -432,6 +445,27 @@ class DefaultUnlockedComponent(
                     onOpenUnfiled = { navigation.pushNew(Config.Gallery(Config.Filter.Unfiled)) },
                 ),
             )
+            is Config.Camera -> UnlockedChild.Camera(
+                cameraComponent(
+                    componentContext = context,
+                    vaultObjects = scope.get(),
+                    // Optional, for the thumbnail encoder's reason: see [UnavailableCamera].
+                    camera = koin.getOrNull<CameraController>() ?: UnavailableCamera,
+                    destination = config.filter.toCameraDestination(),
+                    // **The session's scope, not the screen's.** Closing the camera destroys this
+                    // child while a photo may still be saving, and that photo was taken on purpose;
+                    // only a lock — cancelling [featureWork] — may abandon it.
+                    saveScope = CoroutineScope(mainContext + featureWork),
+                    // The app's one sentence for a name that will not open, from the feature that
+                    // draws every other damaged name, so the camera never spells it.
+                    unreadableNameLabel = AlbumTileName.Unreadable.label(),
+                    onClose = { navigation.pop() },
+                    mainContext = mainContext + featureWork,
+                    // The import's dispatcher: the whole photo goes through AES-GCM.
+                    ioContext = ioContext,
+                    clock = ::nowEpochMillis,
+                ),
+            )
         }
 
     /**
@@ -442,6 +476,9 @@ class DefaultUnlockedComponent(
         data class Gallery(val filter: Filter = Filter.All) : Config
 
         data object Albums : Config
+
+        /** The camera, filing into and counting [filter] — the listing it was opened from. */
+        data class Camera(val filter: Filter) : Config
 
         /**
          * Which items a gallery child lists.
@@ -467,6 +504,13 @@ class DefaultUnlockedComponent(
             Config.Filter.All -> ItemFilter.All
             Config.Filter.Unfiled -> ItemFilter.Unfiled
             is Config.Filter.Album -> ItemFilter.Album(idHex.hexToBytes())
+        }
+
+    private fun Config.Filter.toCameraDestination(): CameraDestination =
+        when (this) {
+            Config.Filter.All -> CameraDestination.AllItems
+            Config.Filter.Unfiled -> CameraDestination.Unfiled
+            is Config.Filter.Album -> CameraDestination.Album(idHex.hexToBytes())
         }
 
     private companion object {

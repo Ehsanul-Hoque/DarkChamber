@@ -24,3 +24,6 @@ node_modules/
 # adb backup archives (e.g. from an `adb backup` verification run). Not a project file —
 # with allowBackup=false the archive comes out empty anyway.
 *.ab
+
+# Brainstorm mockups from the visual companion. Local scratch, not a project file.
+.superpowers

@@ -1,8 +1,13 @@
 package dev.ehsanfahad.darkchamber.app.di
 
+import android.content.Context
+import android.content.ContextWrapper
+import dev.ehsanfahad.darkchamber.app.camera.AndroidCameraController
 import dev.ehsanfahad.darkchamber.app.thumbnail.AndroidThumbnailEncoder
 import dev.ehsanfahad.darkchamber.core.vault.ThumbnailEncoder
+import dev.ehsanfahad.darkchamber.feature.camera.api.CameraController
 import org.koin.dsl.koinApplication
+import org.koin.dsl.module
 import kotlin.test.Test
 import kotlin.test.assertIs
 
@@ -25,6 +30,24 @@ import kotlin.test.assertIs
  * there the type is Coil's own and can simply be asked for.
  */
 class AndroidPlatformModuleTest {
+    /**
+     * The real camera is bound — for the encoder's reason: the session falls back to a camera that
+     * says it is unavailable when none is, so a deleted binding would ship as a camera that never
+     * works and nothing else would complain. Constructing it touches no framework API, so a bare
+     * context is enough to resolve it here.
+     */
+    @Test
+    fun the_platform_module_binds_the_android_camera() {
+        val app = koinApplication {
+            modules(module { single<Context> { ContextWrapper(null) } }, platformModule())
+        }
+        try {
+            assertIs<AndroidCameraController>(app.koin.get<CameraController>())
+        } finally {
+            app.close()
+        }
+    }
+
     @Test
     fun the_platform_module_binds_the_android_thumbnail_encoder() {
         val app = koinApplication { modules(platformModule()) }

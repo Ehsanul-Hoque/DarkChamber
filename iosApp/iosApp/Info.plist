@@ -4,5 +4,7 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>DarkChamber uses the camera to take photos that are encrypted straight into your vault.</string>
 </dict>
 </plist>

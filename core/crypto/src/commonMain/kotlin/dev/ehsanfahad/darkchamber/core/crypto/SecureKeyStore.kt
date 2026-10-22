@@ -41,8 +41,9 @@ interface SecureKeyStore {
     /**
      * Recover MK from a [blob] produced by [wrap], prompting through [authenticator]. A cancelled
      * prompt / missing enrollment → [Outcome.Err] of [VaultError.Auth]; a deleted/invalidated key or
-     * any tamper → [Outcome.Err] of [VaultError.Crypto.IntegrityFailure] — never a throw across the
-     * boundary, never a partial result.
+     * any tamper → [Outcome.Err] of [VaultError.Crypto.IntegrityFailure]; a key the platform refused
+     * this time without saying it is gone (a device just unlocked) → [VaultError.Auth.Failed], a
+     * retry — never a throw across the boundary, never a partial result.
      */
     suspend fun unwrap(blob: ByteArray, authenticator: BiometricAuthenticator): Outcome<ByteArray>
 

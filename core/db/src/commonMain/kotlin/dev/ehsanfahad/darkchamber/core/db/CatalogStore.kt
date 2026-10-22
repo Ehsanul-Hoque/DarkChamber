@@ -3,6 +3,7 @@ package dev.ehsanfahad.darkchamber.core.db
 import app.cash.sqldelight.Query
 import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
+import app.cash.sqldelight.coroutines.mapToOne
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.db.SqlDriver
 import dev.ehsanfahad.darkchamber.core.model.ItemFilter
@@ -133,6 +134,27 @@ class CatalogStore private constructor(
         itemQuery(filter)
             .asFlow()
             .mapToList(dispatcher)
+
+    /**
+     * A live count of the items [filter] covers, re-emitting on every write to `items`.
+     *
+     * Reads the plaintext `album_id` index only — no row is returned, so nothing above this can be
+     * tempted to open one. That is the reason it exists: counting [observeItems]' list would cost a
+     * metadata decrypt per row per emission in the layer above, for a number. Raw [Flow] with the
+     * same failure contract as [observeItems]: a driver failure surfaces in the flow, never as a zero.
+     */
+    fun observeItemCount(filter: ItemFilter = ItemFilter.All): Flow<Long> =
+        countQuery(filter)
+            .asFlow()
+            .mapToOne(dispatcher)
+
+    /** [itemQuery]'s twin for counts, exhaustive for the same reason. */
+    private fun countQuery(filter: ItemFilter): Query<Long> =
+        when (filter) {
+            ItemFilter.All -> items.countItems()
+            ItemFilter.Unfiled -> items.countUnfiledItems()
+            is ItemFilter.Album -> items.countItemsByAlbum(filter.id)
+        }
 
     /**
      * The one place a filter becomes a query, shared by the listing and the stream so the two can

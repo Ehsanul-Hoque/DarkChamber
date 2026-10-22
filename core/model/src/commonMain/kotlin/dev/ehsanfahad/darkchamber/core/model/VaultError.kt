@@ -31,6 +31,13 @@ sealed interface VaultError {
 
         /** No usable biometric — none enrolled, hardware absent, or temporary lockout. */
         data object Unavailable : Auth
+
+        /**
+         * The platform key exists but could not be used this time — e.g. the keystore refused it
+         * just after the device was unlocked. Nothing says it is gone or tampered with, so this is a
+         * retry, never the re-enrollment path, and no cause is claimed.
+         */
+        data object Failed : Auth
     }
 
     /** Underlying I/O failure while reading or writing a container. */

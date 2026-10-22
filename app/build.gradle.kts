@@ -38,6 +38,9 @@ kotlin {
             // The vault feature: the gallery child of the unlocked subtree. The app is the only
             // module that may depend on a feature (docs/engineering/MODULES.md §1).
             implementation(project(":feature:vault"))
+            // The camera: another child of the unlocked subtree, opened from the gallery. The two
+            // features do not know each other — this module hands one's thumbnail to the other.
+            implementation(project(":feature:camera"))
             implementation(libs.koin.core)
             // The gallery's image loader is session-scoped, so the composition root builds it and
             // the session's teardown empties it — :app needs Coil's ImageLoader/PlatformContext
@@ -70,6 +73,12 @@ kotlin {
             // sideways. BitmapFactory ignores it, and the compressed preview carries no EXIF of its
             // own, so unread here means lost for good.
             implementation(libs.androidx.exifinterface)
+            // The camera seam's Android actual. Capture is to memory only: the JPEG plane is copied
+            // into a ByteArray and handed to the vault's encrypting import (hard rule #1).
+            implementation(libs.androidx.camera.core)
+            implementation(libs.androidx.camera.camera2)
+            implementation(libs.androidx.camera.lifecycle)
+            implementation(libs.androidx.camera.view)
         }
         // iOS platform module builds the native driver + opens the catalog (SqlDriver type).
         listOf("iosArm64Main", "iosSimulatorArm64Main").forEach { name ->

@@ -75,6 +75,7 @@ class DefaultVaultGalleryComponentTest {
         // Where the album writes run. Held by the tests that need to stand inside one.
         ioContext: CoroutineContext = UnconfinedTestDispatcher(testScheduler),
         onLeaveAlbum: () -> Unit = {},
+        onOpenCamera: () -> Unit = {},
     ): DefaultVaultGalleryComponent {
         val dispatcher = UnconfinedTestDispatcher(testScheduler)
         return DefaultVaultGalleryComponent(
@@ -94,7 +95,42 @@ class DefaultVaultGalleryComponentTest {
             stageGrace = stageGrace,
             filter = filter,
             onLeaveAlbum = onLeaveAlbum,
+            onOpenCamera = onOpenCamera,
         )
+    }
+
+    /**
+     * Opening the camera is the host's navigation, reported once per tap — and only while the button
+     * is on screen. A tap racing a long-press into selecting mode lands after the bar has gone, and
+     * must not open a camera over a selection the user is in the middle of.
+     */
+    @Test
+    fun opening_the_camera_reports_once_per_tap_and_only_while_offered() = runTest {
+        val vault = FakeVaultItems()
+        vault.summaries.value = listOf(summary(byteArrayOf(1), readableMeta("a.txt", "text/plain")))
+        var opened = 0
+        val imports = FakeImports()
+        val component = component(vault, imports = imports, onOpenCamera = { opened++ })
+
+        component.openCamera()
+        assertEquals(1, opened, "one tap, one report")
+
+        component.selectItem(byteArrayOf(1))
+        component.openCamera()
+        assertEquals(1, opened, "not while selecting")
+        component.clearSelection()
+
+        imports.emit(ImportState.Running(index = 0, total = 1, name = "a.jpg", fileFraction = 0.5f))
+        component.openCamera()
+        assertEquals(1, opened, "not during a batch")
+
+        imports.emit(ImportState.Finished(imported = 1, failed = emptyList()))
+        component.openCamera()
+        assertEquals(1, opened, "nor over its summary")
+
+        imports.emit(ImportState.Idle)
+        component.openCamera()
+        assertEquals(2, opened, "and again once the add buttons are back")
     }
 
     @Test

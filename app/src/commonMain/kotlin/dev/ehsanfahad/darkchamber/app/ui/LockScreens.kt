@@ -30,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.animation.core.tween
@@ -53,7 +54,9 @@ import dev.ehsanfahad.darkchamber.core.designsystem.Aperture
 import dev.ehsanfahad.darkchamber.core.designsystem.ApertureState
 import dev.ehsanfahad.darkchamber.core.designsystem.DarkChamberTheme
 import dev.ehsanfahad.darkchamber.core.designsystem.prefersReducedMotion
+import dev.ehsanfahad.darkchamber.feature.camera.presentation.CameraContent
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryScope
+import dev.ehsanfahad.darkchamber.feature.vault.api.VaultThumbnail
 import dev.ehsanfahad.darkchamber.feature.vault.presentation.VaultAlbumsContent
 import dev.ehsanfahad.darkchamber.feature.vault.presentation.VaultGalleryContent
 
@@ -282,75 +285,95 @@ private fun UnlockedContent(component: UnlockedComponent) {
     // feature screen below it. Applying them again inside a screen would inset twice (a gap under
     // the bar), and leaving them to each screen means the first one that forgets sits under the
     // system bars.
-    Column(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
+    Box(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
         val stack by component.stack.subscribeAsState()
-        val child = stack.active.instance
-
-        // Subscribed rather than read once: an album can be renamed from the screen the bar is
-        // sitting above, and a crumb that did not follow it would be the only stale name on screen.
-        val gallery = when (child) {
-            is UnlockedChild.Gallery -> child.component.state.subscribeAsState().value
-            is UnlockedChild.Albums -> null
-        }
-
-        UnlockedBar(
-            onLock = component::lock,
-            // Offered from the vault's own grid only. From inside an album, or from the album grid
-            // itself, the way onward is back — a second entry point to the screen you are standing
-            // next to is noise.
-            onAlbums = component::openAlbums.takeIf {
-                child is UnlockedChild.Gallery && child.scope == GalleryScope.WholeVault
-            },
-            crumb = crumbFor(child, gallery),
-        )
 
         // The offer to leave, which only the vault's own grid ever makes. Drawn over the screen
-        // rather than above it in the column: it is transient, and a row appearing and disappearing
-        // in the chrome would move the grid under the user's finger.
+        // rather than above it: it is transient, and a row appearing and disappearing in the chrome
+        // would move the grid under the user's finger.
         val offeringToLeave by component.leaveNotice.subscribeAsState()
 
-        Box(modifier = Modifier.weight(1f)) {
-            // `Children`, not a `when` over the active child: read directly, a screen is simply
-            // replaced in one frame, which on a stack of siblings leaves nothing to say which way
-            // the user went.
-            Children(
-                stack = stack,
-                animation = predictiveBackAnimation(
-                    // The host's handler, which the gate wired up — the same one the gallery's
-                    // selection callback uses. This is what lets the user's own gesture drag the
-                    // outgoing screen on Android 13 and later rather than only animating after the
-                    // press.
-                    backHandler = component.backHandler,
-                    // **The only pop.** The stack is built with `handleBackButton = false` for this
-                    // reason: two registered handlers would pop twice on one gesture.
-                    onBack = component::onBack,
-                    fallbackAnimation = navigationAnimation(),
-                ),
-            ) { created ->
-                when (val instance = created.instance) {
-                    is UnlockedChild.Gallery ->
-                        // The session owns the loader (it decrypts through the session's vault and
-                        // holds previews in memory), so the screen is handed one rather than making
-                        // its own. Absent only in a graph with no platform context, which production
-                        // never is — both platform modules bind one and a test says so.
-                        component.imageLoader?.let { loader ->
-                            VaultGalleryContent(instance.component, loader)
-                        }
-                    // The same loader, for the same reason: an album's cover is one of its items, so
-                    // it is drawn through the session's encrypted-preview path rather than a second
-                    // one.
-                    is UnlockedChild.Albums ->
-                        component.imageLoader?.let { loader ->
-                            VaultAlbumsContent(instance.component, loader)
-                        }
-                }
+        // `Children`, not a `when` over the active child: read directly, a screen is simply replaced
+        // in one frame, which on a stack of siblings leaves nothing to say which way the user went.
+        Children(
+            stack = stack,
+            animation = predictiveBackAnimation(
+                // The host's handler, which the gate wired up — the same one the gallery's selection
+                // callback uses. This is what lets the user's own gesture drag the outgoing screen on
+                // Android 13 and later rather than only animating after the press.
+                backHandler = component.backHandler,
+                // **The only pop.** The stack is built with `handleBackButton = false` for this
+                // reason: two registered handlers would pop twice on one gesture.
+                onBack = component::onBack,
+                fallbackAnimation = navigationAnimation(),
+            ),
+        ) { created ->
+            // Each screen carries its own bar, so the bar slides with the screen it describes. One
+            // bar shared above the stack would follow the active child, which changes when a push
+            // starts and only when a back gesture's slide has finished — so it changed, or vanished
+            // for the camera, at the wrong end of every transition and moved the grid.
+            val instance = created.instance
+            Column(modifier = Modifier.fillMaxSize()) {
+                if (showsUnlockedBar(instance)) ScreenBar(component = component, child = instance)
+                Box(modifier = Modifier.weight(1f)) { UnlockedScreen(component = component, child = instance) }
             }
-
-            // Only while the offer stands. No animation and no timer of its own: the component owns
-            // how long the offer lasts, and a notice that faded out on its own schedule would be on
-            // screen when the next press no longer leaves — or gone while it still does.
-            if (offeringToLeave) LeaveNotice(modifier = Modifier.align(Alignment.BottomCenter))
         }
+
+        // Only while the offer stands. No animation and no timer of its own: the component owns how
+        // long the offer lasts, and a notice that faded out on its own schedule would be on screen
+        // when the next press no longer leaves — or gone while it still does.
+        if (offeringToLeave) LeaveNotice(modifier = Modifier.align(Alignment.BottomCenter))
+    }
+}
+
+/** The vault's bar as it reads above [child]: where it is, the way into albums, and the lock. */
+@Composable
+private fun ScreenBar(component: UnlockedComponent, child: UnlockedChild) {
+    // Subscribed rather than read once: an album can be renamed from the screen the bar is sitting
+    // above, and a crumb that did not follow it would be the only stale name on screen.
+    val gallery = when (child) {
+        is UnlockedChild.Gallery -> child.component.state.subscribeAsState().value
+        is UnlockedChild.Albums, is UnlockedChild.Camera -> null
+    }
+    UnlockedBar(
+        onLock = component::lock,
+        // Offered from the vault's own grid only. From inside an album, or from the album grid
+        // itself, the way onward is back — a second entry point to the screen you are standing next
+        // to is noise.
+        onAlbums = component::openAlbums.takeIf {
+            child is UnlockedChild.Gallery && child.scope == GalleryScope.WholeVault
+        },
+        crumb = crumbFor(child, gallery),
+    )
+}
+
+/** One unlocked screen, below its bar. */
+@Composable
+private fun UnlockedScreen(component: UnlockedComponent, child: UnlockedChild) {
+    when (child) {
+        is UnlockedChild.Gallery ->
+            // The session owns the loader (it decrypts through the session's vault and holds previews
+            // in memory), so the screen is handed one rather than making its own. Absent only in a
+            // graph with no platform context, which production never is — both platform modules bind
+            // one and a test says so.
+            component.imageLoader?.let { loader ->
+                VaultGalleryContent(child.component, loader)
+            }
+        // The same loader, for the same reason: an album's cover is one of its items, so it is drawn
+        // through the session's encrypted-preview path rather than a second one.
+        is UnlockedChild.Albums ->
+            component.imageLoader?.let { loader ->
+                VaultAlbumsContent(child.component, loader)
+            }
+        // The last-shot tile draws through the same loader, handed in as a slot: the camera never
+        // builds a loader of its own, so the lock's cache clear covers it.
+        is UnlockedChild.Camera ->
+            component.imageLoader?.let { loader ->
+                CameraContent(
+                    component = child.component,
+                    lastShot = { id, modifier -> VaultThumbnail(id, loader, modifier) },
+                )
+            }
     }
 }
 
@@ -489,7 +512,14 @@ private fun GateScaffold(
         Aperture(state = aperture, contentDescription = title)
         Text(title, style = DarkChamberTheme.typography.titleLarge, color = DarkChamberTheme.colors.textPrimary)
         if (error != null) {
-            Text(error.message(), style = DarkChamberTheme.typography.body, color = DarkChamberTheme.colors.danger)
+            // Centred like everything else in the column: a message that wraps would otherwise sit
+            // flush left under a centred title.
+            Text(
+                error.message(),
+                style = DarkChamberTheme.typography.body,
+                color = DarkChamberTheme.colors.danger,
+                textAlign = TextAlign.Center,
+            )
         }
         content()
         if (busy) {
@@ -504,6 +534,7 @@ private fun LockError.message(): String = when (this) {
     LockError.WrongPassphrase -> "That passphrase didn't work. Try again."
     LockError.BiometricCanceled -> "Biometric unlock was canceled. Use your passphrase or try again."
     LockError.BiometricUnavailable -> "Biometrics aren't available. Use your passphrase."
+    LockError.BiometricFailed -> "Biometric unlock didn't work this time. Try again or use your passphrase."
     LockError.HardwareInvalidated ->
         "Your biometrics changed, so biometric unlock is disabled. Unlock with your passphrase, then re-enable it."
     LockError.CreateFailed -> "Couldn't create the vault. Please try again."

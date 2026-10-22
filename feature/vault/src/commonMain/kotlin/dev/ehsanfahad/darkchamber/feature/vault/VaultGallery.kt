@@ -96,6 +96,9 @@ fun vaultGalleryComponent(
     // Where leaving an album goes: a successful delete, or the notice shown when the album disappeared
     // from somewhere else. Unused by the other two listings, which have no album to leave.
     onLeaveAlbum: () -> Unit = {},
+    // Where the camera button goes. The host opens the camera with this listing's filter as its
+    // destination; this component never learns that a camera exists.
+    onOpenCamera: () -> Unit = {},
 ): VaultGalleryComponent {
     val items = VaultObjectsItems(vaultObjects)
     return DefaultVaultGalleryComponent(
@@ -112,6 +115,7 @@ fun vaultGalleryComponent(
         filter = filter,
         openedAlbumName = openedAlbumName,
         onLeaveAlbum = onLeaveAlbum,
+        onOpenCamera = onOpenCamera,
     )
 }
 

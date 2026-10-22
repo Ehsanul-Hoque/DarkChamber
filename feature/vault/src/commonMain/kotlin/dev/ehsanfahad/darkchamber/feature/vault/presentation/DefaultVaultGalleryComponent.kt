@@ -43,6 +43,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.domain.RenameAlbum
 import dev.ehsanfahad.darkchamber.feature.vault.domain.RenameAlbumResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -121,6 +122,9 @@ internal class DefaultVaultGalleryComponent(
     // elsewhere. A callback rather than navigation performed here, like the album grid's openers: a
     // component that popped the stack itself would have to know the shape of the stack it sits in.
     private val onLeaveAlbum: () -> Unit = {},
+    // Where the camera button goes. The host opens the camera on this listing — the destination is
+    // the screen's own filter, which the host already holds.
+    private val onOpenCamera: () -> Unit = {},
 ) : VaultGalleryComponent, ComponentContext by componentContext {
 
     /**
@@ -618,6 +622,13 @@ internal class DefaultVaultGalleryComponent(
 
     override fun leaveAlbum() = onLeaveAlbum()
 
+    override fun openCamera() {
+        // The same rule that draws the button: a tap that lands after the bar changed — a long-press
+        // into selecting, a batch starting — opens nothing.
+        if (!_state.value.bottomBar().offersCamera) return
+        onOpenCamera()
+    }
+
     private fun publishAlbum(album: AlbumState) {
         _state.value = _state.value.copy(album = album)
     }
@@ -675,7 +686,11 @@ internal class DefaultVaultGalleryComponent(
      * a batch that has already started, which is worse than the flicker this exists to remove.
      *
      * Only `Picking` is delayed; a running or finished batch is never held back for any reason.
+     *
+     * `transformLatest` is still marked experimental. Accepted: its cancel-on-new-value behaviour is
+     * exactly what is wanted here, and the tests pin that behaviour rather than the operator.
      */
+    @OptIn(ExperimentalCoroutinesApi::class)
     private fun Flow<ImportState>.holdBackPicking(after: Duration): Flow<ImportState> =
         transformLatest { value ->
             if (value is ImportState.Picking) delay(after)
@@ -704,6 +719,8 @@ internal class DefaultVaultGalleryComponent(
      * before restoring it. The grace exists to keep a label from flashing on, not to make one flash
      * off, so an announcement already made stands until the stage actually changes.
      */
+    // Experimental `transformLatest`, accepted for the reason given on [holdBackPicking].
+    @OptIn(ExperimentalCoroutinesApi::class)
     private fun Flow<ImportState>.holdBackUnmeasurableStages(after: Duration): Flow<ImportState> =
         flow {
             // Inside the returned flow, not captured beside it: a flow may be collected more than
