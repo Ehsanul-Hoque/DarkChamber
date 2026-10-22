@@ -16,7 +16,7 @@ import kotlinx.coroutines.flow.update
  * Memory only. Process death drops it, and that is accepted: writing it down would mean persisting
  * something across a lock, and a count is not worth a file the lock would then have to reason about.
  */
-internal class NotSavedRecord : NotSavedReporter {
+class NotSavedRecord : NotSavedReporter {
     private val _summary = MutableStateFlow(NotSavedSummary.Empty)
     val summary: StateFlow<NotSavedSummary> = _summary.asStateFlow()
 
@@ -34,7 +34,7 @@ internal class NotSavedRecord : NotSavedReporter {
 }
 
 /** An immutable snapshot of the record: a count per kind and reason. */
-internal class NotSavedSummary private constructor(
+class NotSavedSummary private constructor(
     private val counts: Map<NotSavedReason, Map<NotSavedKind, Int>>,
 ) {
     fun isEmpty(): Boolean = counts.isEmpty()

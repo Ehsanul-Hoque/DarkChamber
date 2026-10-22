@@ -1,5 +1,7 @@
 package dev.ehsanfahad.darkchamber.feature.camera.domain
 
+import dev.ehsanfahad.darkchamber.core.model.NotSavedKind
+import dev.ehsanfahad.darkchamber.core.model.NotSavedReason
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
 import dev.ehsanfahad.darkchamber.feature.camera.FakeCameraController
@@ -37,6 +39,7 @@ class CaptureQueueTest {
         val camera = FakeCameraController().apply { holdCaptures() }
         val vault = FakeCaptureVault()
         val sessionJob = Job()
+        val reports = mutableListOf<Triple<NotSavedKind, NotSavedReason, Int>>()
         private val dispatcher = StandardTestDispatcher(test.testScheduler)
         val queue = CaptureQueue(
             camera = camera,
@@ -44,6 +47,7 @@ class CaptureQueueTest {
             albumId = byteArrayOf(9),
             scope = CoroutineScope(dispatcher + sessionJob),
             ioContext = dispatcher,
+            notSaved = { kind, reason, count -> reports += Triple(kind, reason, count) },
         )
     }
 
@@ -172,6 +176,7 @@ class CaptureQueueTest {
             albumId = null,
             scope = CoroutineScope(StandardTestDispatcher(testScheduler) + sessionJob),
             ioContext = worker,
+            notSaved = { _, _, _ -> },
         )
         val photo = captured(1)
 
@@ -208,6 +213,7 @@ class CaptureQueueTest {
             albumId = null,
             scope = CoroutineScope(main + sessionJob),
             ioContext = main,
+            notSaved = { _, _, _ -> },
         )
         main.runAll() // the saver is now waiting for a photo
 
@@ -221,6 +227,77 @@ class CaptureQueueTest {
         assertEquals(0, vault.imported.size, "the save never ran")
         val jpeg = (photo as CaptureResult.Captured).photo.jpeg
         assertTrue(jpeg.all { it == 0.toByte() }, "and the photo's bytes are cleared anyway")
+    }
+
+    /**
+     * **What a lock abandoned is told after the next unlock.** Every photo held — waiting, in the
+     * encrypt, or still in the platform's hands — counts, because each was a press the user made and
+     * none of them reached the vault.
+     */
+    @Test
+    fun a_lock_reports_every_photo_it_abandoned() = runTest {
+        val h = Harness(this)
+        val photos = (1..2).map { captured(it) }
+        h.vault.duringImport = { h.sessionJob.cancel() }
+        repeat(3) { h.queue.shoot() }
+        testScheduler.advanceUntilIdle()
+        photos.forEach { h.camera.release(it) } // the third stays in the platform's hands
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(listOf(Triple(NotSavedKind.Photo, NotSavedReason.Locked, 3)), h.reports)
+    }
+
+    @Test
+    fun a_lock_with_nothing_held_reports_nothing() = runTest {
+        val h = Harness(this)
+        h.queue.shoot()
+        testScheduler.advanceUntilIdle()
+        h.camera.release(captured(1))
+        testScheduler.advanceUntilIdle()
+
+        h.sessionJob.cancel()
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(emptyList(), h.reports, "the one photo was saved; nothing was lost")
+    }
+
+    /** While the camera is open its own screen says a save failed, so nothing is reported for later. */
+    @Test
+    fun a_failed_save_while_the_camera_is_open_is_left_to_its_screen() = runTest {
+        val h = Harness(this)
+        h.vault.nextResult = { Outcome.Err(VaultError.Storage.Full) }
+        h.queue.shoot()
+        testScheduler.advanceUntilIdle()
+        h.camera.release(captured(1))
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(CaptureProblem.SaveFailed, h.queue.state.value.problem)
+        assertEquals(emptyList(), h.reports)
+        h.sessionJob.cancel()
+    }
+
+    /**
+     * Closed, nothing is left to say it — so a photo that fails to save after the camera has gone is
+     * reported, naming a full disk only when the vault said that is what happened.
+     */
+    @Test
+    fun a_failed_save_after_the_camera_closed_is_reported_with_what_is_known() = runTest {
+        for ((error, reason) in listOf(
+            VaultError.Storage.Full to NotSavedReason.OutOfSpace,
+            VaultError.Io(IllegalStateException()) to NotSavedReason.CouldNotSave,
+            VaultError.Storage.DestinationMissing to NotSavedReason.CouldNotSave,
+        )) {
+            val h = Harness(this)
+            h.vault.nextResult = { Outcome.Err(error) }
+            h.queue.shoot()
+            testScheduler.advanceUntilIdle()
+            h.queue.finish()
+            h.camera.release(captured(1))
+            testScheduler.advanceUntilIdle()
+
+            assertEquals(listOf(Triple(NotSavedKind.Photo, reason, 1)), h.reports, "$error")
+            h.sessionJob.cancel()
+        }
     }
 
     /** A capture still in the platform's hands when the vault locks is never received. */

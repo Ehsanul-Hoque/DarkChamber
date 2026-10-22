@@ -108,7 +108,7 @@ class RootComponentTest {
                 backHandler = backDispatcher,
             ),
             lockedFactory = { _, onUnlocked -> lockedOnUnlocked = onUnlocked; FakeLockedComponent() },
-            unlockedFactory = { ctx, vault, onLock ->
+            unlockedFactory = { ctx, vault, notSaved, onLock ->
                 DefaultUnlockedComponent(
                     ctx,
                     vault,
@@ -116,6 +116,7 @@ class RootComponentTest {
                     mainContext = unlockedContext,
                     leaveWindow = WINDOW,
                     timeSource = timeSource,
+                    notSavedRecord = notSaved,
                     onLock = onLock,
                     onLeave = { leaves++ },
                 )
@@ -216,8 +217,9 @@ class RootComponentTest {
         assertIs<RootChild.Locked>(root.child.value)
         lockedOnUnlocked!!(openVault())
 
-        assertIs<RootChild.Unlocked>(root.child.value)
-        assertEquals(1, root.notSaved.summary.value.count(NotSavedKind.Video, NotSavedReason.Locked))
+        // Read through the *new* subtree: the gate must hand its own record on, not a fresh one.
+        val next = assertIs<RootChild.Unlocked>(root.child.value).component
+        assertEquals(1, next.notSaved.value.count(NotSavedKind.Video, NotSavedReason.Locked))
     }
 
     @Test

@@ -170,6 +170,7 @@ class SessionImageCacheTest {
             koin = graph,
             mainContext = dispatcher,
             ioContext = dispatcher,
+            notSavedRecord = NotSavedRecord(),
             onLock = {},
             onLeave = {},
         )

@@ -103,6 +103,7 @@ class UnlockedNavigationTest {
             mainContext = mainContext,
             ioContext = ioContext,
             mapContext = mainContext,
+            notSavedRecord = NotSavedRecord(),
             onLock = {},
             onLeave = { leaves++ },
         )

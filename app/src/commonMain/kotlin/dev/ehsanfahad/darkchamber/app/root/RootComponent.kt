@@ -62,13 +62,19 @@ sealed interface RootChild {
 /**
  * @param lockedFactory builds the locked child, given a context and the `onUnlocked` hook it calls
  *   once its create/unlock flow produces a live [VaultBootstrap.OpenVault].
- * @param unlockedFactory builds the unlocked child, given a context, the live vault, and the `onLock`
- *   hook it calls to tear down and return to locked.
+ * @param unlockedFactory builds the unlocked child, given a context, the live vault, the gate's
+ *   [NotSavedRecord] — which it must report into and never replace — and the `onLock` hook it calls
+ *   to tear down and return to locked.
  */
 class DefaultRootComponent(
     componentContext: ComponentContext,
     private val lockedFactory: (ComponentContext, onUnlocked: (VaultBootstrap.OpenVault) -> Unit) -> LockedComponent,
-    private val unlockedFactory: (ComponentContext, vault: VaultBootstrap.OpenVault, onLock: () -> Unit) -> UnlockedComponent,
+    private val unlockedFactory: (
+        ComponentContext,
+        vault: VaultBootstrap.OpenVault,
+        notSaved: NotSavedRecord,
+        onLock: () -> Unit,
+    ) -> UnlockedComponent,
     private val handoff: SystemUiHandoff = SystemUiHandoff(),
     // Injected so host tests can drive the abandoned-handoff watchdog on virtual time.
     mainContext: CoroutineContext = Dispatchers.Main,
@@ -124,7 +130,7 @@ class DefaultRootComponent(
 
     private fun toUnlocked(vault: VaultBootstrap.OpenVault) {
         _child.value = RootChild.Unlocked(
-            unlockedFactory(newChildContext(), vault) { toLocked() },
+            unlockedFactory(newChildContext(), vault, notSaved) { toLocked() },
         )
     }
 

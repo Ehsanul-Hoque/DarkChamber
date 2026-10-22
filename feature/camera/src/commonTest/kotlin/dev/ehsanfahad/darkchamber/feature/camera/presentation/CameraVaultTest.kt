@@ -97,6 +97,7 @@ class CameraVaultTest {
             camera = FakeCameraController(),
             destination = destination,
             saveScope = CoroutineScope(main + sessionJob),
+            notSaved = { _, _, _ -> },
             unreadableNameLabel = "Name can't be read",
             onClose = {},
             mainContext = main,

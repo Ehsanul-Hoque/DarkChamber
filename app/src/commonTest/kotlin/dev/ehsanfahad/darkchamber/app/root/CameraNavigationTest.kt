@@ -20,6 +20,8 @@ import dev.ehsanfahad.darkchamber.core.crypto.PassphraseKdfProfile
 import dev.ehsanfahad.darkchamber.core.crypto.VaultSession
 import dev.ehsanfahad.darkchamber.core.db.CatalogStore
 import dev.ehsanfahad.darkchamber.core.model.ItemFilter
+import dev.ehsanfahad.darkchamber.core.model.NotSavedKind
+import dev.ehsanfahad.darkchamber.core.model.NotSavedReason
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.storage.VaultStorage
 import dev.ehsanfahad.darkchamber.core.vault.VaultObjects
@@ -78,6 +80,9 @@ class CameraNavigationTest {
     private val lifecycle = LifecycleRegistry().apply { resume() }
     private var locks = 0
 
+    // Owned by the test the way the gate owns it in the app: outside the subtree a lock destroys.
+    private val notSaved = NotSavedRecord()
+
     @AfterTest
     fun cleanup() = deleteRecursively(testDir)
 
@@ -93,9 +98,33 @@ class CameraNavigationTest {
             mainContext = dispatcher,
             ioContext = dispatcher,
             mapContext = dispatcher,
+            notSavedRecord = notSaved,
             onLock = { locks++ },
             onLeave = {},
         )
+    }
+
+    /**
+     * A photo still waiting when the vault locks is **told about, after the next unlock**: the camera
+     * reports what the lock abandoned to the gate's record, which the lock cannot reach. The subtree
+     * shows it, and dismissing it clears it so the next unlock says nothing about it again.
+     */
+    @Test
+    fun a_photo_a_lock_discards_is_reported_where_the_next_unlock_finds_it() = runTest {
+        val open = openVault()
+        val component = component(open)
+        camera.holdCaptures()
+        component.openCameraFromTop()
+        assertIs<UnlockedChild.Camera>(component.active).component.shoot()
+
+        component.lock()
+
+        assertEquals(1, notSaved.summary.value.count(NotSavedKind.Photo, NotSavedReason.Locked))
+
+        val next = component(openVault())
+        assertEquals(1, next.notSaved.value.count(NotSavedKind.Photo, NotSavedReason.Locked), "the next session sees it")
+        next.dismissNotSaved()
+        assertTrue(notSaved.summary.value.isEmpty(), "and once dismissed it is gone")
     }
 
     private val DefaultUnlockedComponent.active get() = stack.value.active.instance

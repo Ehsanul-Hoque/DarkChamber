@@ -22,6 +22,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -319,10 +320,24 @@ private fun UnlockedContent(component: UnlockedComponent) {
             }
         }
 
-        // Only while the offer stands. No animation and no timer of its own: the component owns how
-        // long the offer lasts, and a notice that faded out on its own schedule would be on screen
-        // when the next press no longer leaves — or gone while it still does.
-        if (offeringToLeave) LeaveNotice(modifier = Modifier.align(Alignment.BottomCenter))
+        // What did not make it into the vault, drawn over the screen like the leave notice and for
+        // the same reason. It is the gate's record, so it is here after the unlock that follows the
+        // lock which caused it.
+        val notSaved by component.notSaved.collectAsState()
+        val notSavedLines = notSavedNoticeLines(
+            cameraInFront = stack.active.instance is UnlockedChild.Camera,
+            summary = notSaved,
+        )
+
+        Column(modifier = Modifier.align(Alignment.BottomCenter)) {
+            if (notSavedLines.isNotEmpty()) {
+                NotSavedNotice(lines = notSavedLines, onDismiss = component::dismissNotSaved)
+            }
+            // Only while the offer stands. No animation and no timer of its own: the component owns
+            // how long the offer lasts, and a notice that faded out on its own schedule would be on
+            // screen when the next press no longer leaves — or gone while it still does.
+            if (offeringToLeave) LeaveNotice()
+        }
     }
 }
 

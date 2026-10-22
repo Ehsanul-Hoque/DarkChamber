@@ -48,6 +48,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlin.coroutines.CoroutineContext
 import kotlin.random.Random
@@ -94,6 +95,15 @@ interface UnlockedComponent : BackHandlerOwner {
      * notice left on screen by a late coroutine cannot let a press out of the app.
      */
     val leaveNotice: Value<Boolean>
+
+    /**
+     * What did not make it into the vault — from this session, or from one a lock ended — kept by the
+     * gate so a lock does not erase the news of what it abandoned. Drawn whenever it is not empty.
+     */
+    val notSaved: StateFlow<NotSavedSummary>
+
+    /** The user has read the not-saved notice; the next unlock will not repeat it. */
+    fun dismissNotSaved()
 
     /** Lock now: tear down and return the gate to locked. */
     fun lock()
@@ -156,6 +166,10 @@ class DefaultUnlockedComponent(
     // the same reason the dispatchers above are — a test that waits out a window on real elapsed
     // time is a test that passes because the machine was slow.
     private val timeSource: TimeSource = TimeSource.Monotonic,
+    // The gate's record of what did not make it into the vault. Passed in, never built here: it has
+    // to outlive this subtree, because the lock that destroys the subtree is the usual reason a photo
+    // was lost.
+    private val notSavedRecord: NotSavedRecord,
     private val onLock: () -> Unit,
     /**
      * Leave the app. Called on the second back press at the vault's own grid.
@@ -313,6 +327,10 @@ class DefaultUnlockedComponent(
 
     override val session: VaultSession get() = vault.session
 
+    override val notSaved: StateFlow<NotSavedSummary> get() = notSavedRecord.summary
+
+    override fun dismissNotSaved() = notSavedRecord.clear()
+
     override fun lock() {
         if (tornDown) return // already locking/locked — signal the gate exactly once
         tearDown()
@@ -456,6 +474,9 @@ class DefaultUnlockedComponent(
                     // child while a photo may still be saving, and that photo was taken on purpose;
                     // only a lock — cancelling [featureWork] — may abandon it.
                     saveScope = CoroutineScope(mainContext + featureWork),
+                    // And what that lock abandons is reported to the gate's record, which the lock
+                    // does not reach, so the next unlock can say so.
+                    notSaved = notSavedRecord,
                     // The app's one sentence for a name that will not open, from the feature that
                     // draws every other damaged name, so the camera never spells it.
                     unreadableNameLabel = AlbumTileName.Unreadable.label(),

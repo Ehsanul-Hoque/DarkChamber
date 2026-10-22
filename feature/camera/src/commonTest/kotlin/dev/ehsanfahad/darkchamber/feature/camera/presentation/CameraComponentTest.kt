@@ -56,6 +56,7 @@ class CameraComponentTest {
             camera = camera,
             destination = destination,
             saveScope = CoroutineScope(dispatcher + sessionJob),
+            notSaved = { _, _, _ -> },
             unreadableNameLabel = "Name can't be read",
             onClose = { closes++ },
             mainContext = dispatcher,

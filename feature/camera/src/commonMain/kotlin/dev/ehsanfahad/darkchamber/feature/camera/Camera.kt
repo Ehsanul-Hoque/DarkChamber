@@ -1,6 +1,7 @@
 package dev.ehsanfahad.darkchamber.feature.camera
 
 import com.arkivanov.decompose.ComponentContext
+import dev.ehsanfahad.darkchamber.core.model.NotSavedReporter
 import dev.ehsanfahad.darkchamber.core.vault.VaultObjects
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraComponent
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraController
@@ -38,6 +39,9 @@ fun cameraComponent(
     // construction parameter, like the gallery's filter — it is the screen's identity.
     destination: CameraDestination,
     saveScope: CoroutineScope,
+    // Where a photo that never reached the vault is reported, to be told after the next unlock. It
+    // must outlive the session — a lock is the usual reason — so the host keeps it above the gate.
+    notSaved: NotSavedReporter,
     // The host's sentence for an album name that will not open. Passed in so the wording keeps one
     // home, in the feature that draws every other damaged name.
     unreadableNameLabel: String,
@@ -54,6 +58,7 @@ fun cameraComponent(
         camera = camera,
         destination = destination,
         saveScope = saveScope,
+        notSaved = notSaved,
         unreadableNameLabel = unreadableNameLabel,
         onClose = onClose,
         mainContext = mainContext,
@@ -68,6 +73,7 @@ internal fun cameraComponent(
     camera: CameraController,
     destination: CameraDestination,
     saveScope: CoroutineScope,
+    notSaved: NotSavedReporter,
     unreadableNameLabel: String,
     onClose: () -> Unit,
     mainContext: CoroutineContext,
@@ -87,6 +93,7 @@ internal fun cameraComponent(
             albumId = (destination as? CameraDestination.Album)?.id,
             scope = saveScope,
             ioContext = ioContext,
+            notSaved = notSaved,
         ),
         unreadableNameLabel = unreadableNameLabel,
         mainContext = mainContext,

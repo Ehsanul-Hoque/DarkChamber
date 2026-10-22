@@ -20,6 +20,21 @@ class NotSavedFormatTest {
         return notSavedLines(record.summary.value)
     }
 
+    /**
+     * Never over the camera: it says its own problems on its own line, and a notice there would sit
+     * on the shutter row. Something lost while a camera is open waits until it closes.
+     */
+    @Test
+    fun the_notice_waits_while_the_camera_is_in_front() {
+        val record = NotSavedRecord().apply { report(NotSavedKind.Video, NotSavedReason.Locked, 1) }
+
+        assertEquals(emptyList(), notSavedNoticeLines(cameraInFront = true, record.summary.value))
+        assertEquals(
+            notSavedLines(record.summary.value),
+            notSavedNoticeLines(cameraInFront = false, record.summary.value),
+        )
+    }
+
     @Test
     fun nothing_to_report_says_nothing() {
         assertEquals(emptyList(), lines())
