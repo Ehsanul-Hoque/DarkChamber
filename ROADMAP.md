@@ -80,7 +80,8 @@ Goal: a walking skeleton with the security core proven before any product UI.
 
 The complete free product. Everything here ships open source and free.
 
-> **Progress (2026-10): Phase 1 is under way — the vault half of it is in place; the camera is next.**
+> **Progress (2026-10): Phase 1 is under way — the vault half of it is in place, and the camera takes
+> photos; its video is next.**
 > What a build can do today, on Android and iOS — the readme describes each of these for a reader
 > rather than a planner:
 >
@@ -103,6 +104,11 @@ The complete free product. Everything here ships open source and free.
 > - **Survive the cloud.** A file that has to be downloaded before it can be encrypted says it is
 >   waiting, and **stopping actually stops** — the provider's transfer carries on, because nothing can
 >   call it off, and whatever it hands over is thrown away unread.
+> - **Take a photo privately.** A camera opened from any listing files each shot where an import from
+>   there would, and its count moves only once the shot is in. The photo goes from the camera into
+>   memory and from memory into the vault's encryption — no file on the way, nothing in the system
+>   photo library, no location requested. Only the app's own copies are cleared afterwards; the
+>   camera framework's buffers are the platform's. Where a region requires a shutter sound, it plays.
 > - **Give nothing to the rest of the phone.** Screenshot and recording blocking plus a blank
 >   app-switcher card on Android, an obscured snapshot on iOS (which offers no way to block a
 >   screenshot at all — the threat model says so and no copy here softens it), and every window kept
@@ -110,16 +116,17 @@ The complete free product. Everything here ships open source and free.
 >   covered by the screenshot flag: a device showed a vault text field travelling it with the flag set.
 >   The cost is stated rather than hidden — a password manager cannot fill the passphrase.
 >
-> Still to come before v1.0: the private camera, the in-app viewers and the seekable reads they need,
+> Still to come before v1.0: the camera's video, the in-app viewers and the seekable reads they need,
 > export with metadata scrubbing, the settings screen and recovery-key entry, and the
 > release-readiness tooling.
 >
 > **Verified on Android hardware; iOS only on the simulator.** The platform-specific paths there —
-> the pickers, the preview encoder — have not been run on a device, which is a pre-release gate rather
-> than something to imply away. What automated tests cannot show at all has its own checklists in
-> [`docs/verification/`](./docs/verification), one per area, with the release-blocking lines marked:
-> that a name never reaches the catalog file or a log line, that a layout holds at a large font scale,
-> and that no window hands its text to another process.
+> the pickers, the preview encoder, the camera — have not been run on a device, which is a
+> pre-release gate rather than something to imply away. What automated tests cannot show at all has
+> its own checklists in [`docs/verification/`](./docs/verification), one per area, with the
+> release-blocking lines marked: that a name never reaches the catalog file or a log line, that a
+> layout holds at a large font scale, that no window hands its text to another process, and that a
+> photo never reaches shared storage or carries a location.
 
 | Feature                                | Notes                                                                                                                                                                                               |
 |----------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
