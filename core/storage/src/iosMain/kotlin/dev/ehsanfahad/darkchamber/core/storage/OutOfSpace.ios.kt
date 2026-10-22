@@ -10,7 +10,7 @@ import platform.posix.strerror
 @OptIn(ExperimentalForeignApi::class)
 private val noSpaceText: String? = strerror(ENOSPC)?.toKString()
 
-internal actual fun isOutOfSpace(failure: Throwable): Boolean {
+actual fun isOutOfSpace(failure: Throwable): Boolean {
     val text = noSpaceText ?: return false
     return failure.causeChain().any { it.message?.contains(text) == true }
 }
