@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
@@ -325,8 +324,10 @@ private fun Explainer(explainer: CameraExplainer, onAllow: () -> Unit, onOpenSet
 }
 
 /**
- * Last-shot tile · shutter · flip, with the flash control above the tile's side. A control the
- * camera does not support is left out, and its place kept, so the shutter never moves.
+ * Last-shot tile at the start edge · shutter in the centre · flash at the end edge, with flip midway
+ * in the gap between shutter and flash. The two halves either side of the shutter share the width
+ * equally, so the shutter stays centred; a control the camera does not support is left out and its
+ * place kept, so nothing else moves either.
  */
 @Composable
 private fun BottomRow(
@@ -338,43 +339,26 @@ private fun BottomRow(
     onCycleFlash: () -> Unit,
 ) {
     val spacing = DarkChamberTheme.spacing
-    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = spacing.spaceMd, vertical = spacing.spaceSm)) {
-        Box(modifier = Modifier.size(spacing.spaceXxl)) {
-            if (state.flashOffered && state.showsViewfinder) {
-                IconButton(onClick = onCycleFlash, modifier = Modifier.size(spacing.spaceXxl)) {
-                    FlashMark(
-                        glyph = flashGlyph(state.flash),
-                        contentDescription = CameraFormat.flashDescription(state.flash),
-                        modifier = Modifier.size(spacing.spaceLg),
-                    )
-                }
-            }
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = spacing.spaceMd, vertical = spacing.spaceSm),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
             LastShotTile(itemId = state.queue.lastSavedId, lastShot = lastShot)
-            Shutter(enabled = state.shutterEnabled, blinks = blinks, onShoot = onShoot)
-            Box(modifier = Modifier.size(TileSize), contentAlignment = Alignment.Center) {
-                if (state.flipOffered && state.showsViewfinder) {
-                    IconButton(onClick = onFlip, modifier = Modifier.size(spacing.spaceXxl)) {
-                        SwitchCameraMark(
-                            contentDescription = CameraFormat.flipDescription(),
-                            modifier = Modifier.size(spacing.spaceLg),
-                        )
-                    }
-                }
-            }
+        }
+        Shutter(enabled = state.shutterEnabled, blinks = blinks, onShoot = onShoot)
+        Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+            Spacer(modifier = Modifier.weight(1f))
+            FlipControl(state = state, onFlip = onFlip)
+            Spacer(modifier = Modifier.weight(1f))
+            FlashControl(state = state, onCycleFlash = onCycleFlash)
         }
     }
 }
 
 /**
- * The bottom row turned on its side, for a wide screen: flash at the top, then flip · shutter ·
- * last-shot tile down the middle. As below, a control the camera does not support is left out and
- * its place kept, and the space above and below is shared equally, so the shutter stays centred.
+ * The bottom row turned on its side, for a wide screen: flash at the top edge, shutter in the
+ * centre, last-shot tile at the bottom edge, and flip midway in the gap between flash and shutter.
  */
 @Composable
 private fun SideColumn(
@@ -390,32 +374,49 @@ private fun SideColumn(
         modifier = Modifier.fillMaxHeight().padding(horizontal = spacing.spaceSm, vertical = spacing.spaceMd),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.TopCenter) {
-            if (state.flashOffered && state.showsViewfinder) {
-                IconButton(onClick = onCycleFlash, modifier = Modifier.size(spacing.spaceXxl)) {
-                    FlashMark(
-                        glyph = flashGlyph(state.flash),
-                        contentDescription = CameraFormat.flashDescription(state.flash),
-                        modifier = Modifier.size(spacing.spaceLg),
-                    )
-                }
-            }
+        Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+            FlashControl(state = state, onCycleFlash = onCycleFlash)
+            Spacer(modifier = Modifier.weight(1f))
+            FlipControl(state = state, onFlip = onFlip)
+            Spacer(modifier = Modifier.weight(1f))
         }
-        Box(modifier = Modifier.size(TileSize), contentAlignment = Alignment.Center) {
-            if (state.flipOffered && state.showsViewfinder) {
-                IconButton(onClick = onFlip, modifier = Modifier.size(spacing.spaceXxl)) {
-                    SwitchCameraMark(
-                        contentDescription = CameraFormat.flipDescription(),
-                        modifier = Modifier.size(spacing.spaceLg),
-                    )
-                }
-            }
-        }
-        Spacer(modifier = Modifier.height(spacing.spaceMd))
         Shutter(enabled = state.shutterEnabled, blinks = blinks, onShoot = onShoot)
-        Spacer(modifier = Modifier.height(spacing.spaceMd))
-        LastShotTile(itemId = state.queue.lastSavedId, lastShot = lastShot)
-        Spacer(modifier = Modifier.weight(1f))
+        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.BottomCenter) {
+            LastShotTile(itemId = state.queue.lastSavedId, lastShot = lastShot)
+        }
+    }
+}
+
+/** The flash control, or its empty place where the lens has no flash or nothing is showing. */
+@Composable
+private fun FlashControl(state: CameraState, onCycleFlash: () -> Unit) {
+    val spacing = DarkChamberTheme.spacing
+    Box(modifier = Modifier.size(spacing.spaceXxl)) {
+        if (state.flashOffered && state.showsViewfinder) {
+            IconButton(onClick = onCycleFlash, modifier = Modifier.size(spacing.spaceXxl)) {
+                FlashMark(
+                    glyph = flashGlyph(state.flash),
+                    contentDescription = CameraFormat.flashDescription(state.flash),
+                    modifier = Modifier.size(spacing.spaceLg),
+                )
+            }
+        }
+    }
+}
+
+/** The flip control, or its empty place where there is one lens or nothing is showing. */
+@Composable
+private fun FlipControl(state: CameraState, onFlip: () -> Unit) {
+    val spacing = DarkChamberTheme.spacing
+    Box(modifier = Modifier.size(spacing.spaceXxl)) {
+        if (state.flipOffered && state.showsViewfinder) {
+            IconButton(onClick = onFlip, modifier = Modifier.size(spacing.spaceXxl)) {
+                SwitchCameraMark(
+                    contentDescription = CameraFormat.flipDescription(),
+                    modifier = Modifier.size(spacing.spaceLg),
+                )
+            }
+        }
     }
 }
 
