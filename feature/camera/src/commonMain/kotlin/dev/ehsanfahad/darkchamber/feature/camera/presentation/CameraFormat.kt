@@ -187,6 +187,12 @@ internal object CameraFormat {
     /** The no-sound mark is a drawing; this is what it says. */
     fun noSoundDescription(): String = "Recording without sound"
 
+    /**
+     * The microphone toggle, as the flash: the state, which a tap changes. It says what the next
+     * recording will get, so a refused microphone reads "off" whatever the toggle was set to.
+     */
+    fun soundDescription(toggle: MicrophoneToggle): String = if (toggle.soundOn) "Sound: on" else "Sound: off"
+
     fun flipDescription(): String = "Switch camera"
 
     /** Names the state, not the action: the control cycles, and what is spoken is what will happen. */

@@ -66,12 +66,16 @@ internal enum class MicrophoneHint {
 internal data class RecordingSound(val withAudio: Boolean, val hint: MicrophoneHint)
 
 /**
- * Sound only with the microphone granted. A refusal never blocks recording; it records silence, and
- * the hint says how to change that — a re-ask while the system still asks, Settings once it will not.
+ * Sound only when it is wanted and the microphone is granted. A refusal never blocks recording; it
+ * records silence, and the hint says how to change that — a re-ask while the system still asks,
+ * Settings once it will not. Sound turned off ([soundWanted] false) is a choice: no audio, and no hint
+ * about getting back what was just turned off.
  */
-internal fun recordingSound(permission: MicrophonePermission): RecordingSound =
-    when (permission) {
+internal fun recordingSound(permission: MicrophonePermission, soundWanted: Boolean): RecordingSound {
+    if (!soundWanted) return RecordingSound(withAudio = false, hint = MicrophoneHint.None)
+    return when (permission) {
         MicrophonePermission.Granted -> RecordingSound(withAudio = true, hint = MicrophoneHint.None)
         MicrophonePermission.NotAsked, MicrophonePermission.Denied -> RecordingSound(withAudio = false, hint = MicrophoneHint.Ask)
         MicrophonePermission.PermanentlyDenied -> RecordingSound(withAudio = false, hint = MicrophoneHint.Settings)
     }
+}

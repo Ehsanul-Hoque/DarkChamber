@@ -218,6 +218,8 @@ class CameraFormatTest {
         assertEquals("4K", CameraFormat.qualityLabel(VideoQuality.UHD))
         assertEquals("Video quality: 4K", CameraFormat.qualityDescription(VideoQuality.UHD))
         assertEquals("Recording without sound", CameraFormat.noSoundDescription())
+        assertEquals("Sound: on", CameraFormat.soundDescription(MicrophoneToggle(soundOn = true)))
+        assertEquals("Sound: off", CameraFormat.soundDescription(MicrophoneToggle(soundOn = false)))
         assertEquals("Photo", CameraFormat.modeLabel(CaptureMode.Photo))
         assertEquals("Video", CameraFormat.modeLabel(CaptureMode.Video))
     }
@@ -287,6 +289,7 @@ class CameraFormatTest {
         VideoQuality.entries.forEach { add(CameraFormat.qualityLabel(it)); add(CameraFormat.qualityDescription(it)) }
         CaptureMode.entries.forEach { add(CameraFormat.modeLabel(it)) }
         add(CameraFormat.noSoundDescription())
+        listOf(true, false).forEach { add(CameraFormat.soundDescription(MicrophoneToggle(it))) }
         add(CameraFormat.flipDescription())
         add(CameraFormat.closeDescription())
         add(CameraFormat.lastShotDescription(hasShot = true))

@@ -48,6 +48,8 @@ internal class CameraState(
     val microphone: MicrophonePermission = MicrophonePermission.Granted,
     /** Whether this screen has started a recording yet — the microphone hint is said before the first. */
     val hasRecorded: Boolean = false,
+    /** Whether the person wants sound — the session's microphone toggle. */
+    val soundWanted: Boolean = true,
 ) {
     private val albumGone: Boolean get() = destination?.title == DestinationTitle.AlbumGone
 
@@ -119,12 +121,24 @@ internal class CameraState(
 
     /**
      * How to turn sound on, said in video before this screen's first recording; after that the
-     * no-sound mark says it. `null` when the microphone is already allowed.
+     * no-sound mark says it. `null` when the microphone is already allowed, and when sound was turned
+     * off on purpose.
      */
     val microphoneHint: MicrophoneHint?
         get() {
             if (mode != CaptureMode.Video || recording || hasRecorded) return null
-            return recordingSound(microphone).hint.takeIf { it != MicrophoneHint.None }
+            return recordingSound(microphone, soundWanted).hint.takeIf { it != MicrophoneHint.None }
+        }
+
+    /**
+     * The microphone toggle, in video and only before a recording starts — sound is chosen once, at
+     * the start. It shows what the next recording will get: crossed out while the microphone is
+     * refused, whatever it was set to, so it never offers sound that cannot be recorded.
+     */
+    val microphoneToggle: MicrophoneToggle?
+        get() {
+            if (mode != CaptureMode.Video || recording) return null
+            return MicrophoneToggle(soundOn = recordingSound(microphone, soundWanted).withAudio)
         }
 
     /**
@@ -178,7 +192,7 @@ internal class CameraState(
     override fun toString(): String =
         "CameraState(destination=$destination, permission=$permission, availability=$availability, " +
             "queue=$queue, lens=$lens, flash=$flash, zoom=$zoom, mode=$mode, quality=$quality, " +
-            "torch=$torch, recorder=$recorder, lane=$lane, microphone=$microphone)"
+            "torch=$torch, recorder=$recorder, lane=$lane, microphone=$microphone, soundWanted=$soundWanted)"
 }
 
 /** What sits under the viewfinder. */
@@ -205,6 +219,9 @@ internal sealed interface LightControl {
 
     data class Torch(val on: Boolean) : LightControl
 }
+
+/** The microphone toggle: whether the next recording will have sound. */
+internal data class MicrophoneToggle(val soundOn: Boolean)
 
 /** The quality chip: what is set, and what a tap switches to. */
 internal data class QualityChip(val current: VideoQuality, val next: VideoQuality)

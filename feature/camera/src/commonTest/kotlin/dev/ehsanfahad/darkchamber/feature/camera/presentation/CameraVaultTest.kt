@@ -274,6 +274,7 @@ class CameraVaultTest {
             albumId = null,
             scope = scope,
             notSaved = notSaved,
+            soundWanted = { true },
         )
     }
 

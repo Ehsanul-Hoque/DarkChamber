@@ -65,12 +65,27 @@ class RecordingBudgetTest {
 
     @Test
     fun sound_is_on_only_with_the_microphone_granted_and_the_hint_follows_what_would_help() {
-        assertEquals(RecordingSound(withAudio = true, hint = MicrophoneHint.None), recordingSound(MicrophonePermission.Granted))
-        assertEquals(RecordingSound(withAudio = false, hint = MicrophoneHint.Ask), recordingSound(MicrophonePermission.NotAsked))
-        assertEquals(RecordingSound(withAudio = false, hint = MicrophoneHint.Ask), recordingSound(MicrophonePermission.Denied))
+        assertEquals(RecordingSound(withAudio = true, hint = MicrophoneHint.None), recordingSound(MicrophonePermission.Granted, soundWanted = true))
+        assertEquals(RecordingSound(withAudio = false, hint = MicrophoneHint.Ask), recordingSound(MicrophonePermission.NotAsked, soundWanted = true))
+        assertEquals(RecordingSound(withAudio = false, hint = MicrophoneHint.Ask), recordingSound(MicrophonePermission.Denied, soundWanted = true))
         assertEquals(
             RecordingSound(withAudio = false, hint = MicrophoneHint.Settings),
-            recordingSound(MicrophonePermission.PermanentlyDenied),
+            recordingSound(MicrophonePermission.PermanentlyDenied, soundWanted = true),
         )
+    }
+
+    /**
+     * Sound turned off is a choice, not a problem: no audio whatever the permission, and no hint
+     * telling the person how to get back what they just turned off.
+     */
+    @Test
+    fun sound_turned_off_records_without_it_whatever_the_permission_and_gives_no_hint() {
+        for (permission in MicrophonePermission.entries) {
+            assertEquals(
+                RecordingSound(withAudio = false, hint = MicrophoneHint.None),
+                recordingSound(permission, soundWanted = false),
+                "with $permission",
+            )
+        }
     }
 }

@@ -95,6 +95,7 @@ fun cameraComponent(
             albumId = albumId,
             scope = session.saveScope,
             notSaved = session.notSaved,
+            soundWanted = { session.soundWanted.value },
         ),
         unreadableNameLabel = unreadableNameLabel,
         mainContext = mainContext,

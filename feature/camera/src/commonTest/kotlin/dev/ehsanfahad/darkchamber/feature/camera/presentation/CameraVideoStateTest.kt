@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -42,6 +43,7 @@ class CameraVideoStateTest {
         flash: FlashMode = FlashMode.Auto,
         microphone: MicrophonePermission = MicrophonePermission.Granted,
         hasRecorded: Boolean = false,
+        soundWanted: Boolean = true,
         permission: CameraPermission = CameraPermission.Granted,
         availability: CameraAvailability = CameraAvailability.Available,
         destination: DestinationInfo? = DestinationInfo(DestinationTitle.AllItems, 3L),
@@ -62,6 +64,7 @@ class CameraVideoStateTest {
         lane = VideoLaneState(busy = laneBusy),
         microphone = microphone,
         hasRecorded = hasRecorded,
+        soundWanted = soundWanted,
     )
 
     // --- The row under the viewfinder ---
@@ -163,6 +166,35 @@ class CameraVideoStateTest {
         assertNull(state(microphone = MicrophonePermission.Denied, hasRecorded = true).microphoneHint, "said once, before the first")
         assertNull(state(microphone = MicrophonePermission.Denied, recording = true).microphoneHint, "the mark says it while recording")
         assertNull(state(mode = CaptureMode.Photo, microphone = MicrophonePermission.Denied).microphoneHint)
+    }
+
+    /** Turned off on purpose, sound is a choice the screen respects: no hint nagging to turn it back on. */
+    @Test
+    fun the_microphone_hint_stays_quiet_when_sound_was_turned_off() {
+        assertNull(state(microphone = MicrophonePermission.Denied, soundWanted = false).microphoneHint)
+        assertNull(state(microphone = MicrophonePermission.PermanentlyDenied, soundWanted = false).microphoneHint)
+    }
+
+    // --- The microphone toggle ---
+
+    @Test
+    fun the_microphone_toggle_shows_in_video_and_not_while_recording() {
+        assertNotNull(state().microphoneToggle)
+        assertNull(state(recording = true).microphoneToggle, "sound is chosen before a recording starts")
+        assertNull(state(mode = CaptureMode.Photo).microphoneToggle, "photos have no sound")
+    }
+
+    /**
+     * The toggle draws what a recording would get, not merely what was asked: crossed out while the
+     * microphone is refused, whatever the toggle was set to, so it never offers sound it cannot record.
+     */
+    @Test
+    fun the_microphone_toggle_shows_whether_the_next_recording_will_have_sound() {
+        assertEquals(MicrophoneToggle(soundOn = true), state(soundWanted = true).microphoneToggle)
+        assertEquals(MicrophoneToggle(soundOn = false), state(soundWanted = false).microphoneToggle)
+        for (refused in MicrophonePermission.entries - MicrophonePermission.Granted) {
+            assertEquals(MicrophoneToggle(soundOn = false), state(microphone = refused, soundWanted = true).microphoneToggle, "$refused")
+        }
     }
 
     // --- Icons that turn ---

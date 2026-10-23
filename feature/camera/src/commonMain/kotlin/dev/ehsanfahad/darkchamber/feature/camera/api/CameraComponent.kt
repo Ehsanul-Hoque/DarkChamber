@@ -56,6 +56,13 @@ abstract class CameraComponent internal constructor() {
     /** The microphone hint's action: ask again, or open Settings once the system will not ask. */
     abstract fun requestMicrophone()
 
+    /**
+     * The microphone toggle: sound on or off for the next recordings, remembered for the session.
+     * While the microphone is refused a tap asks for it instead — re-ask, or Settings — since flipping
+     * the toggle could not give sound. Ignored where the toggle is not shown, including while recording.
+     */
+    abstract fun toggleSound()
+
     /** Zoom to [ratio], kept within the range the camera reports. */
     abstract fun zoomTo(ratio: Float)
 

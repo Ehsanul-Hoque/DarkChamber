@@ -239,6 +239,95 @@ class CameraComponentVideoTest {
         settings.s.sessionJob.cancel()
     }
 
+    // --- The microphone toggle ---
+
+    @Test
+    fun turning_sound_off_records_without_it_and_the_session_remembers_until_the_lock() = runTest {
+        val s = Session(this)
+        val first = videoScreen(s)
+
+        first.component.toggleSound()
+        assertEquals(MicrophoneToggle(soundOn = false), first.state.microphoneToggle)
+        first.component.shoot()
+        assertFalse(first.camera.recordRequests.single().withAudio, "the microphone is allowed, but sound was turned off")
+        assertTrue(first.state.showsNoSoundMark)
+        first.component.shoot()
+        first.lifecycle.destroy()
+
+        val second = videoScreen(s)
+        assertEquals(MicrophoneToggle(soundOn = false), second.state.microphoneToggle, "the next screen of the session keeps it")
+        s.sessionJob.cancel()
+
+        val afterLock = videoScreen(Session(this))
+        assertEquals(MicrophoneToggle(soundOn = true), afterLock.state.microphoneToggle, "a lock forgets it")
+        afterLock.s.sessionJob.cancel()
+    }
+
+    @Test
+    fun turning_sound_back_on_records_with_it() = runTest {
+        val screen = videoScreen()
+        screen.component.toggleSound()
+        screen.component.toggleSound()
+
+        screen.component.shoot()
+
+        assertTrue(screen.camera.recordRequests.single().withAudio)
+        screen.s.sessionJob.cancel()
+    }
+
+    /**
+     * While the microphone is refused the toggle cannot give sound, so a tap does what would: ask
+     * again while the system still asks, Settings once it will not. It never just flips a switch that
+     * changes nothing.
+     */
+    @Test
+    fun a_tap_while_the_microphone_is_refused_asks_or_opens_settings_instead_of_flipping() = runTest {
+        val denied = FakeCameraController(microphonePermission = MicrophonePermission.Denied).apply {
+            microphoneAnswer = MicrophonePermission.Granted
+        }
+        val asking = videoScreen(camera = denied)
+        val before = denied.microphoneRequests
+
+        asking.component.toggleSound()
+
+        assertEquals(before + 1, denied.microphoneRequests, "asked again")
+        assertEquals(MicrophoneToggle(soundOn = true), asking.state.microphoneToggle, "and the grant gives sound")
+        asking.s.sessionJob.cancel()
+
+        val off = FakeCameraController(microphonePermission = MicrophonePermission.PermanentlyDenied)
+        val settings = videoScreen(camera = off)
+        settings.component.toggleSound()
+        assertEquals(1, off.settingsOpened)
+        assertTrue(settings.s.session.soundWanted.value, "still wanting sound, for when it is allowed")
+        settings.s.sessionJob.cancel()
+    }
+
+    /** Turned off, then the microphone refused: a tap means "I want sound", so it asks for it. */
+    @Test
+    fun a_tap_on_a_toggle_turned_off_while_refused_wants_sound_and_asks_for_it() = runTest {
+        val camera = FakeCameraController(microphonePermission = MicrophonePermission.Denied)
+        val screen = videoScreen(camera = camera)
+        screen.s.session.soundWanted.value = false
+        val before = camera.microphoneRequests
+
+        screen.component.toggleSound()
+
+        assertTrue(screen.s.session.soundWanted.value)
+        assertEquals(before + 1, camera.microphoneRequests)
+        screen.s.sessionJob.cancel()
+    }
+
+    @Test
+    fun the_toggle_does_nothing_while_recording() = runTest {
+        val screen = videoScreen()
+        screen.component.shoot()
+
+        screen.component.toggleSound()
+
+        assertTrue(screen.s.session.soundWanted.value, "sound is chosen before a recording starts")
+        screen.s.sessionJob.cancel()
+    }
+
     // --- Recording ---
 
     @Test

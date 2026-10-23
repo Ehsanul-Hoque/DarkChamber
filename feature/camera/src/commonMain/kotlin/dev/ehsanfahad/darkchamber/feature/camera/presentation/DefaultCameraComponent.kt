@@ -16,12 +16,16 @@ import dev.ehsanfahad.darkchamber.feature.camera.api.CaptureMode
 import dev.ehsanfahad.darkchamber.feature.camera.api.FlashMode
 import dev.ehsanfahad.darkchamber.feature.camera.api.Lens
 import dev.ehsanfahad.darkchamber.feature.camera.api.MicrophonePermission
+import dev.ehsanfahad.darkchamber.feature.camera.api.VideoQuality
 import dev.ehsanfahad.darkchamber.feature.camera.domain.CaptureQueue
 import dev.ehsanfahad.darkchamber.feature.camera.domain.DestinationInfo
 import dev.ehsanfahad.darkchamber.feature.camera.domain.DestinationTitle
 import dev.ehsanfahad.darkchamber.feature.camera.domain.MicrophoneHint
 import dev.ehsanfahad.darkchamber.feature.camera.domain.ObserveDestination
+import dev.ehsanfahad.darkchamber.feature.camera.domain.RecorderState
+import dev.ehsanfahad.darkchamber.feature.camera.domain.VideoLaneState
 import dev.ehsanfahad.darkchamber.feature.camera.domain.VideoRecorder
+import dev.ehsanfahad.darkchamber.feature.camera.domain.recordingSound
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -110,14 +114,14 @@ internal class DefaultCameraComponent(
         }
 
         val camera = combine(camera.permission, camera.availability, camera.capabilities, camera.microphonePermission, ::CameraReading)
-        val video = combine(recorder.state, session.lane.state, session.quality, ::Triple)
+        val video = combine(recorder.state, session.lane.state, session.quality, session.soundWanted, ::VideoReading)
         combine(
             observeDestination(destination).onStart<DestinationInfo?> { emit(null) },
             camera,
             queue.state,
             controls,
             video,
-        ) { place, reading, queued, controls, (recording, lane, quality) ->
+        ) { place, reading, queued, controls, video ->
             CameraState(
                 destination = place,
                 permission = reading.permission,
@@ -128,12 +132,13 @@ internal class DefaultCameraComponent(
                 flash = controls.flash,
                 zoom = controls.zoom,
                 mode = controls.mode,
-                quality = quality,
+                quality = video.quality,
                 torch = controls.torch,
-                recorder = recording,
-                lane = lane,
+                recorder = video.recorder,
+                lane = video.lane,
                 microphone = reading.microphone,
                 hasRecorded = controls.hasRecorded,
+                soundWanted = video.soundWanted,
             )
         }
             .onEach { state ->
@@ -256,6 +261,23 @@ internal class DefaultCameraComponent(
         }
     }
 
+    override fun toggleSound() {
+        if (_state.value.microphoneToggle == null) return
+        val permission = camera.microphonePermission.value
+        if (permission == MicrophonePermission.Granted) {
+            session.soundWanted.update { !it }
+            return
+        }
+        // Refused: flipping the toggle could not give sound, so a tap is taken as wanting it and does
+        // what would — the same action as the hint's.
+        session.soundWanted.value = true
+        when (recordingSound(permission, soundWanted = true).hint) {
+            MicrophoneHint.Ask -> scope.launch { camera.requestMicrophonePermission() }
+            MicrophoneHint.Settings -> camera.openSettings()
+            MicrophoneHint.None -> Unit
+        }
+    }
+
     override fun zoomTo(ratio: Float) {
         val capabilities = _state.value.capabilities
         val zoom = ratio.coerceIn(capabilities.minZoom, capabilities.maxZoom)
@@ -299,6 +321,14 @@ internal class DefaultCameraComponent(
         val mode: CaptureMode = CaptureMode.Photo,
         val torch: Boolean = false,
         val hasRecorded: Boolean = false,
+    )
+
+    /** This screen's recording and the session's video share, read together. */
+    private class VideoReading(
+        val recorder: RecorderState,
+        val lane: VideoLaneState,
+        val quality: VideoQuality,
+        val soundWanted: Boolean,
     )
 
     /** What the platform reports, read together. */

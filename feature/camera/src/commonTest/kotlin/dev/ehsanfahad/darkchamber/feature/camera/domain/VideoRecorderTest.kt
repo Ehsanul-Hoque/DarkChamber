@@ -58,6 +58,7 @@ class VideoRecorderTest {
         val notSaved = { kind: NotSavedKind, reason: NotSavedReason, count: Int -> reports += Triple(kind, reason, count) }
         val lane = VideoLane(vault, clock = { 0L }, scope = scope, ioContext = laneIo ?: dispatcher, notSaved = notSaved)
             .apply { screenOpen = true }
+        var soundWanted = true
         val recorder = VideoRecorder(
             camera = camera,
             lane = lane,
@@ -66,6 +67,7 @@ class VideoRecorderTest {
             albumId = byteArrayOf(4),
             scope = scope,
             notSaved = notSaved,
+            soundWanted = { soundWanted },
         )
 
         val clip get() = clips.made.single()
@@ -99,6 +101,18 @@ class VideoRecorderTest {
 
         assertFalse(h.camera.recordRequests.single().withAudio)
         assertFalse(h.recorder.state.value.active!!.withAudio)
+        h.sessionJob.cancel()
+    }
+
+    @Test
+    fun with_sound_turned_off_it_records_without_sound_though_the_microphone_is_allowed() = runTest {
+        val h = Harness(this)
+        h.soundWanted = false
+
+        h.recorder.start()
+
+        assertFalse(h.camera.recordRequests.single().withAudio)
+        assertFalse(h.recorder.state.value.active!!.withAudio, "so the no-sound mark shows")
         h.sessionJob.cancel()
     }
 

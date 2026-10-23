@@ -14,7 +14,8 @@ import kotlin.coroutines.CoroutineContext
  *
  * - **The video lane** is here rather than in a screen, so that a camera reopened while a clip is
  *   still encrypting finds the lane busy — one plaintext file at a time across the whole session.
- * - **The quality** is remembered for the session, not across a lock (a lock forgets everything).
+ * - **The quality and the microphone toggle** are remembered for the session, not across a lock (a
+ *   lock forgets everything).
  *
  * Opaque to the host: everything it holds is `internal`, built through `cameraSession`.
  */
@@ -31,6 +32,9 @@ class CameraSession internal constructor(
     internal val lane = VideoLane(vault, clock, saveScope, ioContext, notSaved)
 
     internal val quality = MutableStateFlow(VideoQuality.HD)
+
+    /** Whether recordings should have sound — the microphone toggle. On until turned off, until the lock. */
+    internal val soundWanted = MutableStateFlow(true)
 
     override fun toString(): String = "CameraSession"
 }

@@ -35,7 +35,7 @@ internal val FINALIZE_TIMEOUT: Duration = 3.seconds
  * - **Start** checks the room first ([recordingRoom]) and refuses with a notice below the floor or
  *   when free space is unknown, and while the lane still holds a clip — one plaintext file at a time.
  *   Otherwise it reserves a fresh clip file and records into it with the size limit and, only when
- *   the microphone is granted, sound.
+ *   sound is wanted and the microphone is granted, sound.
  * - **Stop** finalizes. A clip that finalized — normally, at the size limit, or with the disk full,
  *   which earns its one encrypt attempt — goes to the [lane]. Anything else is deleted at once: a clip
  *   with no frames is too short to keep, and a file the platform reports broken is not trusted.
@@ -58,6 +58,8 @@ internal class VideoRecorder(
     private val albumId: ByteArray?,
     private val scope: CoroutineScope,
     private val notSaved: NotSavedReporter,
+    // Whether the person wants sound — the microphone toggle — read at each start.
+    private val soundWanted: () -> Boolean,
 ) {
     private val _state = MutableStateFlow(RecorderState())
     val state: StateFlow<RecorderState> = _state.asStateFlow()
@@ -73,7 +75,7 @@ internal class VideoRecorder(
             RecordingRoom.NotEnough -> return refuse(RecorderNotice.NotEnoughSpace)
             RecordingRoom.Unknown -> return refuse(RecorderNotice.SpaceUnknown)
         }
-        val sound = recordingSound(camera.microphonePermission.value)
+        val sound = recordingSound(camera.microphonePermission.value, soundWanted())
         val clip = clips.newClip()
         val recording = camera.record(clip.path, limit, sound.withAudio)
         val started = Take(clip, recording)
