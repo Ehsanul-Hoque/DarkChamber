@@ -11,6 +11,7 @@ import dev.ehsanfahad.darkchamber.core.crypto.VaultSession
 import dev.ehsanfahad.darkchamber.core.db.CatalogStore
 import dev.ehsanfahad.darkchamber.core.model.ItemFilter
 import dev.ehsanfahad.darkchamber.core.model.NotSavedReason
+import dev.ehsanfahad.darkchamber.core.model.NotSavedReporter
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.storage.ScratchFile
 import dev.ehsanfahad.darkchamber.core.storage.VaultStorage
@@ -19,10 +20,13 @@ import dev.ehsanfahad.darkchamber.feature.camera.FakeCameraController
 import dev.ehsanfahad.darkchamber.feature.camera.GateDispatcher
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraComponent
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraDestination
+import dev.ehsanfahad.darkchamber.feature.camera.api.CaptureMode
 import dev.ehsanfahad.darkchamber.feature.camera.api.ClipFile
+import dev.ehsanfahad.darkchamber.feature.camera.api.ClipFiles
 import dev.ehsanfahad.darkchamber.feature.camera.cameraComponent
 import dev.ehsanfahad.darkchamber.feature.camera.data.VaultObjectsCaptures
 import dev.ehsanfahad.darkchamber.feature.camera.domain.VideoLane
+import dev.ehsanfahad.darkchamber.feature.camera.domain.VideoRecorder
 import dev.ehsanfahad.darkchamber.feature.camera.testSqlDriver
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -244,6 +248,85 @@ class CameraVaultTest {
         assertEquals(0L, objects.observeItemCount(ItemFilter.All).first(), "no item")
         assertTrue(filesUnder(root).isEmpty(), "no object and no plaintext clip: ${filesUnder(root)}")
         assertEquals(listOf(NotSavedReason.Locked), reports)
+    }
+
+    private fun TestScope.recorder(objects: VaultObjects, sessionJob: Job, camera: FakeCameraController, reports: MutableList<NotSavedReason>): VideoRecorder {
+        val storage = VaultStorage(root)
+        val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler) + sessionJob)
+        val notSaved = NotSavedReporter { _, reason, _ -> reports += reason }
+        val lane = VideoLane(VaultObjectsCaptures(objects), clock = { 3_000L }, scope = scope, ioContext = UnconfinedTestDispatcher(testScheduler), notSaved = notSaved)
+        return VideoRecorder(
+            camera = camera,
+            lane = lane,
+            // The platform writes the file as it records; this one is written the moment it is named.
+            clips = ClipFiles {
+                val scratch = storage.newScratchFile(suffix = ".mp4")
+                SystemFileSystem.sink(scratch.path).buffered().use { it.write(Random.nextBytes(20_000)) }
+                ScratchClip(scratch)
+            },
+            freeSpace = { 64_000_000_000L },
+            albumId = null,
+            scope = scope,
+            notSaved = notSaved,
+        )
+    }
+
+    private fun videoCamera() = FakeCameraController().apply {
+        start()
+        setMode(CaptureMode.Video)
+    }
+
+    /** A lock mid-recording: no item, no object, no thumbnail and no plaintext clip under the root. */
+    @Test
+    fun a_lock_while_recording_leaves_nothing_in_the_vault() = runTest {
+        val objects = vault()
+        val sessionJob = Job()
+        val camera = videoCamera()
+        val reports = mutableListOf<NotSavedReason>()
+        val recorder = recorder(objects, sessionJob, camera, reports)
+        assertTrue(recorder.start())
+        assertTrue(filesUnder(Path(root, "tmp")).isNotEmpty(), "the clip is being written")
+
+        sessionJob.cancel()
+        camera.stop()
+        session.close()
+
+        assertEquals(0L, objects.observeItemCount(ItemFilter.All).first(), "no item")
+        assertTrue(filesUnder(root).isEmpty(), "nothing at all under the root: ${filesUnder(root)}")
+        assertEquals(listOf(NotSavedReason.Locked), reports)
+    }
+
+    /** A clip stopped normally, through the real vault: one item saved, and tmp/ empty after. */
+    @Test
+    fun a_stopped_recording_is_saved_and_leaves_tmp_empty() = runTest {
+        val objects = vault()
+        val sessionJob = Job()
+        val recorder = recorder(objects, sessionJob, videoCamera(), mutableListOf())
+
+        recorder.start()
+        recorder.stop()
+
+        assertEquals(1L, objects.observeItemCount(ItemFilter.All).first())
+        assertTrue(filesUnder(Path(root, "tmp")).isEmpty(), "tmp/ is empty: ${filesUnder(Path(root, "tmp"))}")
+        sessionJob.cancel()
+    }
+
+    /**
+     * The crash cell: the process dies mid-recording, so no cleanup of ours runs. The next launch's
+     * purge of `tmp/` removes the plaintext clip, and no object or row was ever written.
+     */
+    @Test
+    fun a_clip_left_by_a_crash_is_removed_by_the_next_launches_purge() = runTest {
+        val objects = vault()
+        val recorder = recorder(objects, Job(), videoCamera(), mutableListOf())
+        recorder.start()
+        assertTrue(filesUnder(Path(root, "tmp")).isNotEmpty(), "the clip is on disk when the process dies")
+
+        // Next launch: the bootstrap's purge, and nothing of ours.
+        assertIs<Outcome.Ok<Unit>>(VaultStorage(root).purgeTmp())
+
+        assertEquals(0L, objects.observeItemCount(ItemFilter.All).first(), "no row")
+        assertTrue(filesUnder(root).isEmpty(), "no object and no clip: ${filesUnder(root)}")
     }
 
     private fun filesUnder(path: Path): List<Path> {
