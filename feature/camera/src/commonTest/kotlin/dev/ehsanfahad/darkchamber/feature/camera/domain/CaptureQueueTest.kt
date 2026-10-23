@@ -259,19 +259,27 @@ class CaptureQueueTest {
         assertEquals(emptyList(), h.reports, "the one photo was saved; nothing was lost")
     }
 
-    /** While the camera is open its own screen says a save failed, so nothing is reported for later. */
+    /**
+     * While the camera is open its own screen says a save failed, so nothing is reported for later —
+     * and it names a full disk only when the vault said that is what happened.
+     */
     @Test
     fun a_failed_save_while_the_camera_is_open_is_left_to_its_screen() = runTest {
-        val h = Harness(this)
-        h.vault.nextResult = { Outcome.Err(VaultError.Storage.Full) }
-        h.queue.shoot()
-        testScheduler.advanceUntilIdle()
-        h.camera.release(captured(1))
-        testScheduler.advanceUntilIdle()
+        for ((error, problem) in listOf(
+            VaultError.Storage.Full to CaptureProblem.OutOfSpace,
+            VaultError.Io(IllegalStateException("disk")) to CaptureProblem.SaveFailed,
+        )) {
+            val h = Harness(this)
+            h.vault.nextResult = { Outcome.Err(error) }
+            h.queue.shoot()
+            testScheduler.advanceUntilIdle()
+            h.camera.release(captured(1))
+            testScheduler.advanceUntilIdle()
 
-        assertEquals(CaptureProblem.SaveFailed, h.queue.state.value.problem)
-        assertEquals(emptyList(), h.reports)
-        h.sessionJob.cancel()
+            assertEquals(problem, h.queue.state.value.problem, "for $error")
+            assertEquals(emptyList(), h.reports)
+            h.sessionJob.cancel()
+        }
     }
 
     /**

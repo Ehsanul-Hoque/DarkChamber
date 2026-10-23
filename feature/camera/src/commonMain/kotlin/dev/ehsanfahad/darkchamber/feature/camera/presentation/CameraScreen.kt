@@ -465,7 +465,7 @@ private fun Shutter(enabled: Boolean, blinks: Int, onShoot: () -> Unit) {
     ) {
         Aperture(
             state = if (shut) ApertureState.Closed else ApertureState.Open,
-            contentDescription = CameraFormat.shutterDescription(),
+            contentDescription = CameraFormat.shutterDescription(Shutter(ShutterKind.Photo, enabled)),
         )
     }
 }

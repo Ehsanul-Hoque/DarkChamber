@@ -127,7 +127,10 @@ internal class CaptureQueue(
         _state.update {
             when (saved) {
                 is Outcome.Ok -> it.copy(holding = it.holding - 1, saved = it.saved + 1, lastSavedId = saved.value, problem = null)
-                is Outcome.Err -> it.copy(holding = it.holding - 1, problem = CaptureProblem.SaveFailed)
+                is Outcome.Err -> it.copy(
+                    holding = it.holding - 1,
+                    problem = if (saved.error == VaultError.Storage.Full) CaptureProblem.OutOfSpace else CaptureProblem.SaveFailed,
+                )
             }
         }
         // The screen that would have said so has gone, so it is said after instead.
@@ -154,8 +157,11 @@ internal class CaptureQueue(
     }
 }
 
-/** What went wrong most recently, until a photo is saved again. */
-internal enum class CaptureProblem { CaptureFailed, SaveFailed }
+/**
+ * What went wrong most recently, until a photo is saved again. [OutOfSpace] only when the vault
+ * said the disk was full; every other save failure is [SaveFailed], naming no cause.
+ */
+internal enum class CaptureProblem { CaptureFailed, SaveFailed, OutOfSpace }
 
 /**
  * The queue as the screen sees it: how many photos are held, how many this camera has saved, the

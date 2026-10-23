@@ -160,6 +160,7 @@ internal class CameraState(
     val message: CameraMessage?
         get() = when {
             albumGone -> CameraMessage.AlbumGone
+            queue.problem == CaptureProblem.OutOfSpace -> CameraMessage.OutOfSpace
             queue.problem == CaptureProblem.SaveFailed -> CameraMessage.SaveFailed
             queue.problem == CaptureProblem.CaptureFailed -> CameraMessage.CaptureFailed
             else -> null
@@ -212,4 +213,4 @@ internal data class QualityChip(val current: VideoQuality, val next: VideoQualit
 internal enum class CameraExplainer { None, Denied, PermanentlyDenied, InUse, Unavailable }
 
 /** The one-line message the screen shows, most important first. */
-internal enum class CameraMessage { AlbumGone, SaveFailed, CaptureFailed }
+internal enum class CameraMessage { AlbumGone, OutOfSpace, SaveFailed, CaptureFailed }
