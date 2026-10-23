@@ -7,6 +7,11 @@ import com.arkivanov.essenty.lifecycle.resume
 import com.arkivanov.essenty.lifecycle.stop
 import dev.ehsanfahad.darkchamber.feature.camera.FakeCameraController
 import dev.ehsanfahad.darkchamber.feature.camera.FakeCaptureVault
+import dev.ehsanfahad.darkchamber.feature.camera.FakeClipFiles
+import dev.ehsanfahad.darkchamber.feature.camera.FakeFreeSpace
+import dev.ehsanfahad.darkchamber.feature.camera.api.CameraSession
+import dev.ehsanfahad.darkchamber.feature.camera.api.CaptureMode
+import dev.ehsanfahad.darkchamber.feature.camera.api.VideoQuality
 import dev.ehsanfahad.darkchamber.core.vault.AlbumSummary
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraCapabilities
@@ -50,18 +55,23 @@ class CameraComponentTest {
         val sessionJob = Job()
         var closes = 0
         private val dispatcher = UnconfinedTestDispatcher(test.testScheduler)
-        val component: CameraComponent = cameraComponent(
-            componentContext = DefaultComponentContext(lifecycle),
+        val session = CameraSession(
             vault = vault,
-            camera = camera,
-            destination = destination,
+            clips = FakeClipFiles(),
+            freeSpace = FakeFreeSpace(),
             saveScope = CoroutineScope(dispatcher + sessionJob),
             notSaved = { _, _, _ -> },
+            ioContext = dispatcher,
+            clock = { 0L },
+        )
+        val component: CameraComponent = cameraComponent(
+            componentContext = DefaultComponentContext(lifecycle),
+            session = session,
+            camera = camera,
+            destination = destination,
             unreadableNameLabel = "Name can't be read",
             onClose = { closes++ },
             mainContext = dispatcher,
-            ioContext = dispatcher,
-            clock = { 0L },
         )
         val state: CameraState get() = component.state.value
     }
@@ -231,6 +241,9 @@ class CameraComponentTest {
             setLens(Lens.Front)
             setFlash(FlashMode.On)
             setZoom(4f)
+            setMode(CaptureMode.Video)
+            setQuality(VideoQuality.UHD)
+            setTorch(true)
         }
         val h = Harness(this, camera)
         h.lifecycle.resume()
@@ -238,6 +251,9 @@ class CameraComponentTest {
         assertEquals(Lens.Back to Lens.Back, camera.lens to h.state.lens)
         assertEquals(FlashMode.Off to FlashMode.Off, camera.flash to h.state.flash)
         assertEquals(1f to 1f, camera.zoom to h.state.zoom)
+        assertEquals(CaptureMode.Photo to CaptureMode.Photo, camera.mode to h.state.mode)
+        assertEquals(VideoQuality.HD to VideoQuality.HD, camera.quality to h.state.quality, "the session's quality")
+        assertEquals(false to false, camera.torch to h.state.torch)
         h.sessionJob.cancel()
     }
 

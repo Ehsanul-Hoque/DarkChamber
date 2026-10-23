@@ -15,11 +15,16 @@ import com.arkivanov.essenty.lifecycle.doOnDestroy
 import coil3.ImageLoader
 import coil3.PlatformContext
 import com.arkivanov.essenty.lifecycle.doOnStop
+import dev.ehsanfahad.darkchamber.app.camera.ScratchClips
 import dev.ehsanfahad.darkchamber.app.camera.UnavailableCamera
+import dev.ehsanfahad.darkchamber.app.camera.UnknownFreeSpace
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraComponent
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraController
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraDestination
+import dev.ehsanfahad.darkchamber.feature.camera.api.CameraSession
+import dev.ehsanfahad.darkchamber.feature.camera.api.FreeSpace
 import dev.ehsanfahad.darkchamber.feature.camera.cameraComponent
+import dev.ehsanfahad.darkchamber.feature.camera.cameraSession
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryScope
 import dev.ehsanfahad.darkchamber.feature.vault.api.label
@@ -254,6 +259,27 @@ class DefaultUnlockedComponent(
             ioContext = ioContext,
         ).also { scope.declare(it) }
 
+    /**
+     * The camera's share of this session, built **once**: its video lane holds one clip at a time
+     * across every camera opened in this unlock, so a camera reopened while a clip still encrypts
+     * finds it busy, and its quality is remembered until the lock. Parented to [featureWork] like the
+     * imports, so a lock abandons a clip mid-encrypt before the MK it uses is zeroized; what that
+     * abandons is reported to the gate's record, which the lock does not reach.
+     */
+    private val cameraSession: CameraSession =
+        cameraSession(
+            vaultObjects = scope.get(),
+            clips = ScratchClips(vault.storage),
+            // Optional, for the camera's reason: without a reader, recording refuses and says it
+            // could not check the space, rather than guessing.
+            freeSpace = koin.getOrNull<FreeSpace>() ?: UnknownFreeSpace,
+            saveScope = CoroutineScope(mainContext + featureWork),
+            notSaved = notSavedRecord,
+            // The import's dispatcher: a whole photo or clip goes through AES-GCM.
+            ioContext = ioContext,
+            clock = ::nowEpochMillis,
+        )
+
     private val navigation = StackNavigation<Config>()
 
     override val stack: Value<ChildStack<*, UnlockedChild>> =
@@ -361,7 +387,16 @@ class DefaultUnlockedComponent(
 
     // The one place the stack pops. `pop()` with nothing beneath is a no-op, so leaving the first
     // screen is the host's business rather than something to guard against here.
-    override fun onBack() = navigation.pop()
+    //
+    // Except the camera, which is left through its own close, as ✕ leaves it: a recording in
+    // progress is finalized and handed to the save lane before the camera pops itself. Popping it
+    // here would destroy the screen mid-recording, and a destroyed camera abandons its clip.
+    override fun onBack() {
+        when (val top = stack.value.active.instance) {
+            is UnlockedChild.Camera -> top.component.close()
+            else -> navigation.pop()
+        }
+    }
 
     /**
      * A back press with the grid as the only screen, where there is nothing to pop and the press used
@@ -466,25 +501,18 @@ class DefaultUnlockedComponent(
             is Config.Camera -> UnlockedChild.Camera(
                 cameraComponent(
                     componentContext = context,
-                    vaultObjects = scope.get(),
+                    // **The session's, not the screen's.** Closing the camera destroys this child
+                    // while a photo or a clip may still be saving, and it was taken on purpose; only
+                    // a lock — cancelling [featureWork] — may abandon it.
+                    session = cameraSession,
                     // Optional, for the thumbnail encoder's reason: see [UnavailableCamera].
                     camera = koin.getOrNull<CameraController>() ?: UnavailableCamera,
                     destination = config.filter.toCameraDestination(),
-                    // **The session's scope, not the screen's.** Closing the camera destroys this
-                    // child while a photo may still be saving, and that photo was taken on purpose;
-                    // only a lock — cancelling [featureWork] — may abandon it.
-                    saveScope = CoroutineScope(mainContext + featureWork),
-                    // And what that lock abandons is reported to the gate's record, which the lock
-                    // does not reach, so the next unlock can say so.
-                    notSaved = notSavedRecord,
                     // The app's one sentence for a name that will not open, from the feature that
                     // draws every other damaged name, so the camera never spells it.
                     unreadableNameLabel = AlbumTileName.Unreadable.label(),
                     onClose = { navigation.pop() },
                     mainContext = mainContext + featureWork,
-                    // The import's dispatcher: the whole photo goes through AES-GCM.
-                    ioContext = ioContext,
-                    clock = ::nowEpochMillis,
                 ),
             )
         }

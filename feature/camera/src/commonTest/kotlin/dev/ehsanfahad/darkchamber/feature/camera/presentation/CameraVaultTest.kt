@@ -24,6 +24,7 @@ import dev.ehsanfahad.darkchamber.feature.camera.api.CaptureMode
 import dev.ehsanfahad.darkchamber.feature.camera.api.ClipFile
 import dev.ehsanfahad.darkchamber.feature.camera.api.ClipFiles
 import dev.ehsanfahad.darkchamber.feature.camera.cameraComponent
+import dev.ehsanfahad.darkchamber.feature.camera.cameraSession
 import dev.ehsanfahad.darkchamber.feature.camera.data.VaultObjectsCaptures
 import dev.ehsanfahad.darkchamber.feature.camera.domain.VideoLane
 import dev.ehsanfahad.darkchamber.feature.camera.domain.VideoRecorder
@@ -104,18 +105,23 @@ class CameraVaultTest {
         ioContext: CoroutineContext = UnconfinedTestDispatcher(testScheduler),
     ): CameraComponent {
         val main = UnconfinedTestDispatcher(testScheduler)
-        return cameraComponent(
-            componentContext = DefaultComponentContext(LifecycleRegistry().apply { resume() }),
+        val session = cameraSession(
             vaultObjects = objects,
-            camera = FakeCameraController(),
-            destination = destination,
+            clips = { error("no recording in these tests") },
+            freeSpace = { null },
             saveScope = CoroutineScope(main + sessionJob),
             notSaved = { _, _, _ -> },
+            ioContext = ioContext,
+            clock = { 2_000L },
+        )
+        return cameraComponent(
+            componentContext = DefaultComponentContext(LifecycleRegistry().apply { resume() }),
+            session = session,
+            camera = FakeCameraController(),
+            destination = destination,
             unreadableNameLabel = "Name can't be read",
             onClose = {},
             mainContext = main,
-            ioContext = ioContext,
-            clock = { 2_000L },
         )
     }
 

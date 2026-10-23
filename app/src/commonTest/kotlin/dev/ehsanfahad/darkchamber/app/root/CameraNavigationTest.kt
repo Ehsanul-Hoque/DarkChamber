@@ -27,6 +27,9 @@ import dev.ehsanfahad.darkchamber.core.storage.VaultStorage
 import dev.ehsanfahad.darkchamber.core.vault.VaultObjects
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraController
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraDestination
+import dev.ehsanfahad.darkchamber.feature.camera.api.CaptureMode
+import dev.ehsanfahad.darkchamber.feature.camera.api.FreeSpace
+import dev.ehsanfahad.darkchamber.feature.camera.api.RecordingEnd
 import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryScope
 import dev.ehsanfahad.darkchamber.feature.vault.api.PhotoPicker
@@ -73,6 +76,7 @@ class CameraNavigationTest {
                 single<FilePicker> { FakeFilePicker() }
                 single<PhotoPicker> { FakePhotoPicker() }
                 single<CameraController> { camera }
+                single<FreeSpace> { FreeSpace { 64_000_000_000L } }
             },
         )
     }.koin
@@ -125,6 +129,42 @@ class CameraNavigationTest {
         assertEquals(1, next.notSaved.value.count(NotSavedKind.Photo, NotSavedReason.Locked), "the next session sees it")
         next.dismissNotSaved()
         assertTrue(notSaved.summary.value.isEmpty(), "and once dismissed it is gone")
+    }
+
+    /**
+     * Back while recording keeps the clip (D4): it goes through the camera's close, which finalizes,
+     * hands the clip over and releases the camera before the screen is popped. A plain pop would
+     * destroy the screen mid-recording and lose the clip.
+     */
+    @Test
+    fun back_while_recording_keeps_the_clip_and_pops_only_after_it_is_handed_over() = runTest {
+        val open = openVault()
+        val component = component(open)
+        component.openCameraFromTop()
+        val camera = assertIs<UnlockedChild.Camera>(component.active).component
+        camera.setMode(CaptureMode.Video)
+        this@CameraNavigationTest.camera.endOnStop = null
+        camera.shoot()
+
+        component.onBack()
+        assertIs<UnlockedChild.Camera>(component.active, "still on the camera while the platform finalizes")
+
+        this@CameraNavigationTest.camera.recording!!.finish(RecordingEnd.Finalized)
+        assertIs<UnlockedChild.Gallery>(component.active, "popped once the clip is handed over")
+        assertEquals(1L, vaultObjects(open).observeItemCount(ItemFilter.All).first(), "and the clip is in the vault")
+        component.lock()
+    }
+
+    /** Back with nothing recording still pops at once. */
+    @Test
+    fun back_on_an_idle_camera_pops_at_once() = runTest {
+        val component = component(openVault())
+        component.openCameraFromTop()
+
+        component.onBack()
+
+        assertIs<UnlockedChild.Gallery>(component.active)
+        component.lock()
     }
 
     private val DefaultUnlockedComponent.active get() = stack.value.active.instance
