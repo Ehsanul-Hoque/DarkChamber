@@ -6,18 +6,16 @@ import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
 import dev.ehsanfahad.darkchamber.feature.camera.FakeCameraController
 import dev.ehsanfahad.darkchamber.feature.camera.FakeCaptureVault
+import dev.ehsanfahad.darkchamber.feature.camera.GateDispatcher
 import dev.ehsanfahad.darkchamber.feature.camera.api.CaptureResult
 import dev.ehsanfahad.darkchamber.feature.camera.api.CapturedPhoto
 import dev.ehsanfahad.darkchamber.feature.camera.jpegLike
-import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.Runnable
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
-import kotlin.coroutines.CoroutineContext
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -355,20 +353,4 @@ class CaptureQueueTest {
     private fun captured(seed: Int): CaptureResult = CaptureResult.Captured(CapturedPhoto(jpegLike(seed), 0))
 
     /** Runs what it is handed only when the test says so — the encrypt, held at its doorstep. */
-    private class GateDispatcher : CoroutineDispatcher() {
-        private val tasks = ArrayDeque<Runnable>()
-        val pending: Int get() = tasks.size
-
-        override fun dispatch(context: CoroutineContext, block: Runnable) {
-            tasks.addLast(block)
-        }
-
-        fun runOne() {
-            tasks.removeFirst().run()
-        }
-
-        fun runAll() {
-            while (tasks.isNotEmpty()) runOne()
-        }
-    }
 }

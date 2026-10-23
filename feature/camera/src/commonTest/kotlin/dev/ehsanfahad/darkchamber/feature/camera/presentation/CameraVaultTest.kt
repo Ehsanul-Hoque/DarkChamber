@@ -10,26 +10,34 @@ import dev.ehsanfahad.darkchamber.core.crypto.PassphraseKdfProfile
 import dev.ehsanfahad.darkchamber.core.crypto.VaultSession
 import dev.ehsanfahad.darkchamber.core.db.CatalogStore
 import dev.ehsanfahad.darkchamber.core.model.ItemFilter
+import dev.ehsanfahad.darkchamber.core.model.NotSavedReason
 import dev.ehsanfahad.darkchamber.core.model.Outcome
+import dev.ehsanfahad.darkchamber.core.storage.ScratchFile
 import dev.ehsanfahad.darkchamber.core.storage.VaultStorage
 import dev.ehsanfahad.darkchamber.core.vault.VaultObjects
 import dev.ehsanfahad.darkchamber.feature.camera.FakeCameraController
+import dev.ehsanfahad.darkchamber.feature.camera.GateDispatcher
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraComponent
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraDestination
+import dev.ehsanfahad.darkchamber.feature.camera.api.ClipFile
 import dev.ehsanfahad.darkchamber.feature.camera.cameraComponent
+import dev.ehsanfahad.darkchamber.feature.camera.data.VaultObjectsCaptures
+import dev.ehsanfahad.darkchamber.feature.camera.domain.VideoLane
 import dev.ehsanfahad.darkchamber.feature.camera.testSqlDriver
-import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.Runnable
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
+import kotlinx.io.Buffer
+import kotlinx.io.RawSource
+import kotlinx.io.buffered
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 import kotlinx.io.files.SystemTemporaryDirectory
+import kotlinx.io.readByteArray
 import kotlin.coroutines.CoroutineContext
 import kotlin.random.Random
 import kotlin.random.nextULong
@@ -37,6 +45,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /**
@@ -164,18 +173,77 @@ class CameraVaultTest {
         assertTrue(filesUnder(root).isEmpty(), "no object and no scratch: ${filesUnder(root)}")
     }
 
-    /** Runs what it is handed only when the test says so — the encrypt, held at its doorstep. */
-    private class GateDispatcher : CoroutineDispatcher() {
-        private val tasks = ArrayDeque<Runnable>()
-        val pending: Int get() = tasks.size
+    /** A recorded clip as the app will hand one over: a real scratch file in the vault's `tmp/`. */
+    private class ScratchClip(private val scratch: ScratchFile, val opened: () -> Unit = {}) : ClipFile {
+        override val path: Path get() = scratch.path
 
-        override fun dispatch(context: CoroutineContext, block: Runnable) {
-            tasks.addLast(block)
+        override fun open(): RawSource {
+            opened()
+            return scratch.open()
         }
 
-        fun runAll() {
-            while (tasks.isNotEmpty()) tasks.removeFirst().run()
+        override fun size(): Long? = scratch.size()
+
+        override fun delete() {
+            scratch.delete()
         }
+    }
+
+    private fun TestScope.lane(objects: VaultObjects, sessionJob: Job, ioContext: CoroutineContext, reports: MutableList<NotSavedReason>) =
+        VideoLane(
+            vault = VaultObjectsCaptures(objects),
+            clock = { 3_000L },
+            scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler) + sessionJob),
+            ioContext = ioContext,
+            notSaved = { _, reason, _ -> reports += reason },
+        )
+
+    /**
+     * The clip is encrypted straight from its own file, opened once per pass — never spilled into a
+     * second plaintext copy — and once it is in the vault, `tmp/` is empty.
+     */
+    @Test
+    fun a_clip_is_encrypted_from_its_file_without_a_second_copy_and_the_file_removed() = runTest {
+        val objects = vault()
+        val sessionJob = Job()
+        val tmp = Path(root, "tmp")
+        val bytes = Random.nextBytes(300_000)
+        val scratch = VaultStorage(root).newScratchFile(suffix = ".mp4")
+        SystemFileSystem.sink(scratch.path).buffered().use { it.write(bytes) }
+        val seenInTmp = mutableListOf<List<Path>>()
+        val clip = ScratchClip(scratch, opened = { seenInTmp += filesUnder(tmp) })
+
+        lane(objects, sessionJob, UnconfinedTestDispatcher(testScheduler), mutableListOf()).save(clip, albumId = null)
+
+        assertTrue(seenInTmp.isNotEmpty() && seenInTmp.all { it == listOf(scratch.path) }, "only the clip was ever in tmp/: $seenInTmp")
+        assertTrue(filesUnder(tmp).isEmpty(), "and it is gone once saved")
+        val item = objects.observeItems(ItemFilter.All).first().single()
+        assertEquals("video/mp4", (objects.openMeta(item.id) as Outcome.Ok).value.mime)
+        val decrypted = Buffer()
+        assertIs<Outcome.Ok<Unit>>(objects.openObject(item.id, decrypted))
+        assertContentEquals(bytes, decrypted.readByteArray(), "the vault holds the clip as recorded")
+        sessionJob.cancel()
+    }
+
+    /** A lock with the clip at the encrypt's door: no item, no object, and no plaintext left in tmp/. */
+    @Test
+    fun a_lock_while_a_clip_waits_to_encrypt_leaves_nothing_in_the_vault() = runTest {
+        val objects = vault()
+        val sessionJob = Job()
+        val worker = GateDispatcher()
+        val reports = mutableListOf<NotSavedReason>()
+        val scratch = VaultStorage(root).newScratchFile(suffix = ".mp4")
+        SystemFileSystem.sink(scratch.path).buffered().use { it.write(Random.nextBytes(10_000)) }
+
+        lane(objects, sessionJob, worker, reports).save(ScratchClip(scratch), albumId = null)
+        assertEquals(1, worker.pending, "the clip is waiting on the encrypt")
+        sessionJob.cancel()
+        worker.runAll()
+        session.close()
+
+        assertEquals(0L, objects.observeItemCount(ItemFilter.All).first(), "no item")
+        assertTrue(filesUnder(root).isEmpty(), "no object and no plaintext clip: ${filesUnder(root)}")
+        assertEquals(listOf(NotSavedReason.Locked), reports)
     }
 
     private fun filesUnder(path: Path): List<Path> {

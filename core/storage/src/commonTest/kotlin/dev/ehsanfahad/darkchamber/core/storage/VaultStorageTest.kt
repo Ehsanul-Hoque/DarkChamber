@@ -323,6 +323,40 @@ class VaultStorageTest {
         assertIs<Outcome.Ok<Unit>>(scratch.delete(), "a second delete is not an error")
     }
 
+    /**
+     * The codec reads its payload twice, so a recorded clip is imported straight from its file by
+     * opening it once per pass. Each open must be a fresh reader from the start — two held at once
+     * included — or the second pass would encrypt the clip's tail, or nothing.
+     */
+    @Test
+    fun every_open_of_a_scratch_file_reads_the_whole_file_independently() {
+        val storage = VaultStorage(freshRoot())
+        val scratch = storage.newScratchFile(suffix = ".mp4")
+        val bytes = Random.nextBytes(100_000)
+        SystemFileSystem.sink(scratch.path).buffered().use { it.write(bytes) }
+
+        val first = scratch.open().buffered()
+        val second = scratch.open().buffered()
+        val head = first.readByteArray(10)
+
+        assertContentEquals(bytes, second.readByteArray(), "a second open starts from the beginning")
+        assertContentEquals(bytes.copyOfRange(10, bytes.size), first.readByteArray(), "and leaves the first where it was")
+        first.close()
+        second.close()
+        assertContentEquals(bytes.copyOf(10), head)
+    }
+
+    @Test
+    fun a_scratch_file_reports_its_size_and_none_before_it_is_written() {
+        val storage = VaultStorage(freshRoot())
+        val scratch = storage.newScratchFile(suffix = ".mp4")
+        assertNull(scratch.size(), "nothing written yet")
+
+        SystemFileSystem.sink(scratch.path).buffered().use { it.write(Random.nextBytes(4_321)) }
+
+        assertEquals(4_321L, scratch.size())
+    }
+
     @Test
     fun a_scratch_file_nobody_deleted_is_removed_by_the_purge() {
         val root = freshRoot()

@@ -249,6 +249,21 @@ class ScratchFile internal constructor(
     val path: Path,
     private val fs: FileSystem,
 ) {
+    /**
+     * A fresh reader over the whole file, independent of any other open — what an import needs, since
+     * the codec passes over its payload twice. Throws when the file is missing or unreadable, as a
+     * source factory handed to the import is expected to.
+     */
+    fun open(): RawSource = fs.source(path)
+
+    /** The file's size in bytes, or `null` when it does not exist or cannot be read. */
+    fun size(): Long? =
+        try {
+            fs.metadataOrNull(path)?.size?.takeIf { it >= 0 }
+        } catch (e: Exception) {
+            null
+        }
+
     /** Removes the file; idempotent, and `Ok` when it was never written. */
     fun delete(): Outcome<Unit> =
         try {

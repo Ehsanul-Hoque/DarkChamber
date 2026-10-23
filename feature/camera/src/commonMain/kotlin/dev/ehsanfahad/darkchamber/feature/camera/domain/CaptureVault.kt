@@ -3,6 +3,8 @@ package dev.ehsanfahad.darkchamber.feature.camera.domain
 import dev.ehsanfahad.darkchamber.core.model.ItemFilter
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.vault.AlbumSummary
+import dev.ehsanfahad.darkchamber.core.vault.ImportPhase
+import dev.ehsanfahad.darkchamber.core.vault.WhenAlbumMissing
 import kotlinx.coroutines.flow.Flow
 import kotlinx.io.RawSource
 
@@ -24,6 +26,9 @@ internal interface CaptureVault {
      * source on every call — the import opens it more than once, and a source that cannot be
      * re-opened is spilled to app-private scratch first, which a capture must never need. [isActive]
      * is polled on every read; `false` abandons the import, leaving nothing behind.
+     *
+     * [onProgress] and [whenAlbumMissing] are the import's own, passed through: the bytes read in each
+     * phase, and whether an album deleted mid-import fails it or files the item unfiled instead.
      */
     fun import(
         kind: Int,
@@ -31,6 +36,8 @@ internal interface CaptureVault {
         mime: String,
         albumId: ByteArray?,
         isActive: () -> Boolean,
+        onProgress: (ImportPhase, Long) -> Unit = { _, _ -> },
+        whenAlbumMissing: WhenAlbumMissing = WhenAlbumMissing.Fail,
         openSource: () -> RawSource,
     ): Outcome<ByteArray>
 

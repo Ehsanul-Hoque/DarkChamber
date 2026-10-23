@@ -34,6 +34,12 @@ class PhotoNameTest {
         assertEquals("Photo 2026-10-19 14.30.12.jpg", photoName(1_792_398_612_345L))
     }
 
+    @Test
+    fun a_video_is_named_in_the_same_pattern() {
+        TimeZone.setDefault(TimeZone.getTimeZone("Asia/Dhaka"))
+        assertEquals("Video 2026-10-19 14.30.12.mp4", videoName(1_792_398_612_345L))
+    }
+
     /** A device set to Bangla must not put Bangla digits in a name; the gallery sorts names as text. */
     @Test
     fun the_digits_are_ascii_whatever_the_devices_locale() {
