@@ -138,7 +138,7 @@ class CameraVaultTest {
 
         assertEquals(1L, camera.state.value.count, "the bar counts the photo once its row is in")
         val filed = objects.observeItems(ItemFilter.Album(trip)).first().single()
-        assertContentEquals(filed.id, camera.state.value.queue.lastSavedId, "the tile shows that photo")
+        assertContentEquals(filed.id, camera.state.value.tile.lastShot?.itemId, "the tile shows that photo")
         assertEquals(0L, objects.observeItemCount(ItemFilter.Unfiled).first(), "and nothing landed unfiled")
         sessionJob.cancel()
     }

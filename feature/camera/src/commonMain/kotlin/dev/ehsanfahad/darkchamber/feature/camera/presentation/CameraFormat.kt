@@ -206,8 +206,24 @@ internal object CameraFormat {
     fun closeDescription(): String = "Close camera"
 
     /** The last-shot tile does nothing when touched, so it is described, not labelled as a button. */
-    fun lastShotDescription(hasShot: Boolean): String =
-        if (hasShot) "Last photo saved" else "No photo taken yet"
+    fun lastShotDescription(lastShot: LastShot?): String =
+        when (lastShot?.kind) {
+            null -> "Nothing taken yet"
+            CaptureMode.Photo -> "Last photo saved"
+            CaptureMode.Video -> "Last video saved"
+        }
+
+    /** The tile's ring, spoken: a percentage only when there is a size to measure it against. */
+    fun savingDescription(progress: Float?): String =
+        if (progress == null) "Saving video" else "Saving video, ${(progress * 100).toInt()}%"
+
+    /** The notice line, in each source's own words — one wording per event, wherever it is shown. */
+    fun notice(notice: CameraNotice): String =
+        when (notice) {
+            is CameraNotice.Photo -> message(notice.message)
+            is CameraNotice.Recording -> recorderNotice(notice.notice)
+            is CameraNotice.Saving -> videoNotice(notice.notice)
+        }
 
     // The one line that names a full disk, for photos and video alike — reached only from the
     // vault's own Storage.Full.

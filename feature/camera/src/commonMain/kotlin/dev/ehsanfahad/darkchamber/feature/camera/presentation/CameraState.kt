@@ -13,8 +13,10 @@ import dev.ehsanfahad.darkchamber.feature.camera.domain.CaptureQueueState
 import dev.ehsanfahad.darkchamber.feature.camera.domain.DestinationInfo
 import dev.ehsanfahad.darkchamber.feature.camera.domain.DestinationTitle
 import dev.ehsanfahad.darkchamber.feature.camera.domain.MicrophoneHint
+import dev.ehsanfahad.darkchamber.feature.camera.domain.RecorderNotice
 import dev.ehsanfahad.darkchamber.feature.camera.domain.RecorderState
 import dev.ehsanfahad.darkchamber.feature.camera.domain.VideoLaneState
+import dev.ehsanfahad.darkchamber.feature.camera.domain.VideoNotice
 import dev.ehsanfahad.darkchamber.feature.camera.domain.recordingSound
 
 /**
@@ -50,6 +52,8 @@ internal class CameraState(
     val hasRecorded: Boolean = false,
     /** Whether the person wants sound — the session's microphone toggle. */
     val soundWanted: Boolean = true,
+    /** The newest capture this screen saved, of either kind — the component keeps track of which. */
+    val lastShot: LastShot? = null,
 ) {
     private val albumGone: Boolean get() = destination?.title == DestinationTitle.AlbumGone
 
@@ -181,6 +185,22 @@ internal class CameraState(
         }
 
     /**
+     * The one notice line. An album that is gone explains every capture after it, so it comes
+     * first; then the recording's own news, which ends what the screen was doing; then the clip's
+     * save; then a photo's.
+     */
+    val notice: CameraNotice?
+        get() {
+            message?.takeIf { it == CameraMessage.AlbumGone }?.let { return CameraNotice.Photo(it) }
+            recorder.notice?.let { return CameraNotice.Recording(it) }
+            lane.notice?.let { return CameraNotice.Saving(it) }
+            return message?.let { CameraNotice.Photo(it) }
+        }
+
+    /** The last-shot tile: the newest capture, and a ring while a clip is still being saved. */
+    val tile: TileState get() = TileState(lastShot = lastShot, saving = lane.busy, progress = lane.progress)
+
+    /**
      * A flip control only when there is another lens to flip to — and not while recording, since
      * switching lens would rebind the camera and end the clip.
      */
@@ -219,6 +239,30 @@ internal sealed interface LightControl {
 
     data class Torch(val on: Boolean) : LightControl
 }
+
+/** The notice line's one item, from whichever source [CameraState.notice] chose. */
+internal sealed interface CameraNotice {
+    data class Photo(val message: CameraMessage) : CameraNotice
+
+    data class Recording(val notice: RecorderNotice) : CameraNotice
+
+    data class Saving(val notice: VideoNotice) : CameraNotice
+}
+
+/**
+ * The newest saved capture: its item id, for the host to draw, and whether it is a photo or a clip.
+ * Not a data class: the generated `equals` would compare the id by identity.
+ */
+internal class LastShot(val itemId: ByteArray, val kind: CaptureMode) {
+    override fun equals(other: Any?): Boolean = other is LastShot && itemId.contentEquals(other.itemId) && kind == other.kind
+
+    override fun hashCode(): Int = 31 * itemId.contentHashCode() + kind.hashCode()
+
+    override fun toString(): String = "LastShot($kind)"
+}
+
+/** What the tile draws: the newest capture, and whether a clip is saving and how far (`null` unmeasured). */
+internal data class TileState(val lastShot: LastShot?, val saving: Boolean, val progress: Float?)
 
 /** The microphone toggle: whether the next recording will have sound. */
 internal data class MicrophoneToggle(val soundOn: Boolean)

@@ -10,12 +10,15 @@ import dev.ehsanfahad.darkchamber.feature.camera.api.MicrophonePermission
 import dev.ehsanfahad.darkchamber.feature.camera.api.RecordingProgress
 import dev.ehsanfahad.darkchamber.feature.camera.api.VideoQuality
 import dev.ehsanfahad.darkchamber.feature.camera.domain.ActiveRecording
+import dev.ehsanfahad.darkchamber.feature.camera.domain.CaptureProblem
 import dev.ehsanfahad.darkchamber.feature.camera.domain.CaptureQueueState
 import dev.ehsanfahad.darkchamber.feature.camera.domain.DestinationInfo
 import dev.ehsanfahad.darkchamber.feature.camera.domain.DestinationTitle
 import dev.ehsanfahad.darkchamber.feature.camera.domain.MicrophoneHint
+import dev.ehsanfahad.darkchamber.feature.camera.domain.RecorderNotice
 import dev.ehsanfahad.darkchamber.feature.camera.domain.RecorderState
 import dev.ehsanfahad.darkchamber.feature.camera.domain.VideoLaneState
+import dev.ehsanfahad.darkchamber.feature.camera.domain.VideoNotice
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -195,6 +198,67 @@ class CameraVideoStateTest {
         for (refused in MicrophonePermission.entries - MicrophonePermission.Granted) {
             assertEquals(MicrophoneToggle(soundOn = false), state(microphone = refused, soundWanted = true).microphoneToggle, "$refused")
         }
+    }
+
+    // --- The one notice line ---
+
+    private fun withNotices(
+        destination: DestinationInfo? = DestinationInfo(DestinationTitle.AllItems, 3L),
+        photo: CaptureProblem? = null,
+        recorder: RecorderNotice? = null,
+        lane: VideoNotice? = null,
+    ) = CameraState(
+        destination = destination,
+        permission = CameraPermission.Granted,
+        availability = CameraAvailability.Available,
+        capabilities = CameraCapabilities(setOf(Lens.Back), true, 1f, 8f, bothQualities),
+        queue = CaptureQueueState(holding = 0, bound = 3, problem = photo),
+        mode = CaptureMode.Video,
+        recorder = RecorderState(notice = recorder),
+        lane = VideoLaneState(notice = lane),
+    )
+
+    /**
+     * One line, so one wins. An album that is gone explains every capture after it; the recording's
+     * own news is the freshest, since it ends what the screen was doing; then the clip's save; then a
+     * photo's.
+     */
+    @Test
+    fun the_notice_line_shows_the_most_telling_news_first() {
+        val gone = DestinationInfo(DestinationTitle.AlbumGone, null)
+        assertEquals(
+            CameraNotice.Photo(CameraMessage.AlbumGone),
+            withNotices(destination = gone, recorder = RecorderNotice.TooShort, lane = VideoNotice.SaveFailed).notice,
+        )
+        assertEquals(
+            CameraNotice.Recording(RecorderNotice.TooShort),
+            withNotices(photo = CaptureProblem.SaveFailed, recorder = RecorderNotice.TooShort, lane = VideoNotice.SaveFailed).notice,
+        )
+        assertEquals(
+            CameraNotice.Saving(VideoNotice.SavedUnfiled),
+            withNotices(photo = CaptureProblem.SaveFailed, lane = VideoNotice.SavedUnfiled).notice,
+        )
+        assertEquals(CameraNotice.Photo(CameraMessage.SaveFailed), withNotices(photo = CaptureProblem.SaveFailed).notice)
+        assertNull(withNotices().notice)
+    }
+
+    // --- The tile ---
+
+    @Test
+    fun the_tile_shows_the_newest_capture_and_a_ring_while_a_clip_saves() {
+        val shot = LastShot(byteArrayOf(1), CaptureMode.Video)
+        val saving = CameraState(
+            destination = null,
+            permission = CameraPermission.Granted,
+            availability = CameraAvailability.Available,
+            capabilities = CameraCapabilities.None,
+            queue = CaptureQueueState(holding = 0, bound = 3),
+            lane = VideoLaneState(busy = true, progress = 0.4f),
+            lastShot = shot,
+        )
+
+        assertEquals(TileState(lastShot = shot, saving = true, progress = 0.4f), saving.tile)
+        assertEquals(TileState(lastShot = null, saving = false, progress = null), state().tile)
     }
 
     // --- Icons that turn ---

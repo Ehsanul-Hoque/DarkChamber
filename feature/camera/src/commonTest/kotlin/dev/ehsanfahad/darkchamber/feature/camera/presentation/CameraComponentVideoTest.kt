@@ -446,6 +446,28 @@ class CameraComponentVideoTest {
         s.sessionJob.cancel()
     }
 
+    /** The tile holds whatever was saved last, photo or clip, and says which. */
+    @Test
+    fun the_tile_follows_the_newest_saved_capture_of_either_kind() = runTest {
+        val s = Session(this)
+        var ids = 0
+        s.vault.nextResult = { Outcome.Ok(byteArrayOf((++ids).toByte())) }
+        val screen = Screen(s).apply { lifecycle.resume() }
+
+        screen.component.shoot()
+        assertEquals(LastShot(byteArrayOf(1), CaptureMode.Photo), screen.state.tile.lastShot)
+
+        screen.component.setMode(CaptureMode.Video)
+        screen.component.shoot()
+        screen.component.shoot()
+        assertEquals(LastShot(byteArrayOf(2), CaptureMode.Video), screen.state.tile.lastShot)
+
+        screen.component.setMode(CaptureMode.Photo)
+        screen.component.shoot()
+        assertEquals(LastShot(byteArrayOf(3), CaptureMode.Photo), screen.state.tile.lastShot)
+        s.sessionJob.cancel()
+    }
+
     // --- Leaving ---
 
     /** ✕ while recording keeps the clip: finalize, hand over, then release the camera, then pop. */

@@ -100,6 +100,8 @@ internal class DefaultCameraComponent(
 
     private val controls = MutableStateFlow(Controls())
 
+    private val lastShot = MutableStateFlow<LastShot?>(null)
+
     private var closed = false
 
     init {
@@ -113,15 +115,34 @@ internal class DefaultCameraComponent(
             scope.cancel()
         }
 
+        // The tile holds whichever capture was saved last. Counted from this screen's opening: the
+        // lane is the session's, and a clip an earlier screen saved is not this screen's last shot.
+        var photosSeen = queue.state.value.saved
+        queue.state
+            .onEach { queued ->
+                val id = queued.lastSavedId
+                if (queued.saved > photosSeen && id != null) lastShot.value = LastShot(id, CaptureMode.Photo)
+                photosSeen = queued.saved
+            }
+            .launchIn(scope)
+        var clipsSeen = session.lane.state.value.saved
+        session.lane.state
+            .onEach { lane ->
+                val id = lane.lastSavedId
+                if (lane.saved > clipsSeen && id != null) lastShot.value = LastShot(id, CaptureMode.Video)
+                clipsSeen = lane.saved
+            }
+            .launchIn(scope)
+
         val camera = combine(camera.permission, camera.availability, camera.capabilities, camera.microphonePermission, ::CameraReading)
         val video = combine(recorder.state, session.lane.state, session.quality, session.soundWanted, ::VideoReading)
         combine(
             observeDestination(destination).onStart<DestinationInfo?> { emit(null) },
             camera,
             queue.state,
-            controls,
+            combine(controls, lastShot, ::Pair),
             video,
-        ) { place, reading, queued, controls, video ->
+        ) { place, reading, queued, (controls, shot), video ->
             CameraState(
                 destination = place,
                 permission = reading.permission,
@@ -139,6 +160,7 @@ internal class DefaultCameraComponent(
                 microphone = reading.microphone,
                 hasRecorded = controls.hasRecorded,
                 soundWanted = video.soundWanted,
+                lastShot = shot,
             )
         }
             .onEach { state ->

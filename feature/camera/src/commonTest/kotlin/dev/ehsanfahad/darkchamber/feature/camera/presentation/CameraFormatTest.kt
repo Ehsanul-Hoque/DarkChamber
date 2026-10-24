@@ -258,6 +258,41 @@ class CameraFormatTest {
         }
     }
 
+    private val allNotices: Set<CameraNotice> =
+        CameraMessage.entries.map { CameraNotice.Photo(it) }.toSet() +
+            RecorderNotice.entries.map { CameraNotice.Recording(it) } +
+            VideoNotice.entries.map { CameraNotice.Saving(it) }
+
+    private val spaceNotices: Set<CameraNotice> = setOf(
+        CameraNotice.Photo(CameraMessage.OutOfSpace),
+        CameraNotice.Saving(VideoNotice.OutOfSpace),
+        CameraNotice.Recording(RecorderNotice.NotEnoughSpace),
+        CameraNotice.Recording(RecorderNotice.SpaceUnknown),
+        CameraNotice.Recording(RecorderNotice.StoppedAtLimit),
+    )
+
+    /** The notice line says exactly what each source's own line says — one wording per event. */
+    @Test
+    fun the_notice_line_uses_each_sources_own_words() {
+        for (notice in allNotices) {
+            val expected = when (notice) {
+                is CameraNotice.Photo -> CameraFormat.message(notice.message)
+                is CameraNotice.Recording -> CameraFormat.recorderNotice(notice.notice)
+                is CameraNotice.Saving -> CameraFormat.videoNotice(notice.notice)
+            }
+            assertEquals(expected, CameraFormat.notice(notice))
+        }
+    }
+
+    @Test
+    fun the_tile_says_what_it_holds_and_while_a_clip_saves_how_far() {
+        assertEquals("Last photo saved", CameraFormat.lastShotDescription(LastShot(byteArrayOf(1), CaptureMode.Photo)))
+        assertEquals("Last video saved", CameraFormat.lastShotDescription(LastShot(byteArrayOf(1), CaptureMode.Video)))
+        assertEquals("Nothing taken yet", CameraFormat.lastShotDescription(null))
+        assertEquals("Saving video, 40%", CameraFormat.savingDescription(0.4f))
+        assertEquals("Saving video", CameraFormat.savingDescription(null), "no number that nobody measured")
+    }
+
     // The lines that may name space, each for a cause the code knows.
     private fun spaceLines(): List<String> = listOf(
         CameraFormat.message(CameraMessage.OutOfSpace),
@@ -292,7 +327,9 @@ class CameraFormatTest {
         listOf(true, false).forEach { add(CameraFormat.soundDescription(MicrophoneToggle(it))) }
         add(CameraFormat.flipDescription())
         add(CameraFormat.closeDescription())
-        add(CameraFormat.lastShotDescription(hasShot = true))
-        add(CameraFormat.lastShotDescription(hasShot = false))
+        CaptureMode.entries.forEach { add(CameraFormat.lastShotDescription(LastShot(byteArrayOf(1), it))) }
+        add(CameraFormat.lastShotDescription(null))
+        listOf(null, 0.5f).forEach { add(CameraFormat.savingDescription(it)) }
+        (allNotices - spaceNotices).forEach { add(CameraFormat.notice(it)) }
     }
 }
