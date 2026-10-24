@@ -73,12 +73,14 @@ kotlin {
             // sideways. BitmapFactory ignores it, and the compressed preview carries no EXIF of its
             // own, so unread here means lost for good.
             implementation(libs.androidx.exifinterface)
-            // The camera seam's Android actual. Capture is to memory only: the JPEG plane is copied
-            // into a ByteArray and handed to the vault's encrypting import (hard rule #1).
+            // The camera seam's Android actual. A photo is captured to memory only: the JPEG plane is
+            // copied into a ByteArray and handed to the vault's encrypting import (hard rule #1). A
+            // video records to one app-private tmp/ file that the import reads and then deletes.
             implementation(libs.androidx.camera.core)
             implementation(libs.androidx.camera.camera2)
             implementation(libs.androidx.camera.lifecycle)
             implementation(libs.androidx.camera.view)
+            implementation(libs.androidx.camera.video)
         }
         // iOS platform module builds the native driver + opens the catalog (SqlDriver type).
         listOf("iosArm64Main", "iosSimulatorArm64Main").forEach { name ->

@@ -53,8 +53,9 @@ androidxFragment = "1.9.0"
 essenty = "2.5.0"
 # --- Camera --------------------------------------------------------
 # CameraX, the Android side of :feature:camera's CameraController seam (implemented in :app's
-# androidMain). 1.6.2 is the newest stable line (the 1.7.0 series is still alpha). Apache-2.0. Only
-# in-memory capture is used — never ImageCapture's file saver, which stages through a file.
+# androidMain). 1.6.2 is the newest stable line (the 1.7.0 series is still alpha). Apache-2.0. Photos
+# are captured in memory only — never ImageCapture's file saver, which stages through a file. Video
+# records to one app-private tmp/ file, deleted once it is encrypted (docs/THREAT_MODEL.md).
 androidxCamera = "1.6.2"
 
 [libraries]
@@ -121,11 +122,13 @@ androidx-biometric = { module = "androidx.biometric:biometric", version.ref = "a
 androidx-fragment-ktx = { module = "androidx.fragment:fragment-ktx", version.ref = "androidxFragment" }
 # The camera — Android-only; the iOS side uses AVFoundation directly. core = the use cases
 # (Preview, ImageCapture), camera2 = the implementation behind them, lifecycle = binding to the
-# activity, view = PreviewView for the viewfinder.
+# activity, view = PreviewView for the viewfinder, video = VideoCapture and its Recorder (already on
+# the classpath through camera-view; declared because :app now calls it directly).
 androidx-camera-core = { module = "androidx.camera:camera-core", version.ref = "androidxCamera" }
 androidx-camera-camera2 = { module = "androidx.camera:camera-camera2", version.ref = "androidxCamera" }
 androidx-camera-lifecycle = { module = "androidx.camera:camera-lifecycle", version.ref = "androidxCamera" }
 androidx-camera-view = { module = "androidx.camera:camera-view", version.ref = "androidxCamera" }
+androidx-camera-video = { module = "androidx.camera:camera-video", version.ref = "androidxCamera" }
 # Image loading — encrypted custom Fetcher, memory cache only.
 coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil3" }
 # Media playback — Android decrypting DataSource (chunk range mapping).

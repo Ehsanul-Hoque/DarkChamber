@@ -10,6 +10,11 @@
          carry a position. -->
     <uses-permission android:name="android.permission.CAMERA" />
 
+    <!-- Sound for the camera's videos, asked for when the user switches the camera to video. Optional:
+         refused, a video records without sound and says so. Allowlisted in
+         config/permissions-allowlist.txt. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
     <!-- Any camera, front or back, and not required: a device with no camera still installs and
          the vault works there — the camera screen says it is unavailable. The back camera is named
          as well because the CAMERA permission otherwise *implies* it as required, which filters
@@ -19,6 +24,11 @@
         android:required="false" />
     <uses-feature
         android:name="android.hardware.camera"
+        android:required="false" />
+    <!-- Not required either, for the same reason: RECORD_AUDIO otherwise implies a microphone as
+         required hardware. Without one, videos simply record without sound. -->
+    <uses-feature
+        android:name="android.hardware.microphone"
         android:required="false" />
 
     <!-- Not ours, and removed. CameraX pulls in its video module, which brings media3-common, whose
