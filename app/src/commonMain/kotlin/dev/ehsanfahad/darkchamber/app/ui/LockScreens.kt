@@ -282,11 +282,11 @@ private fun UnlockStep(
 @OptIn(ExperimentalDecomposeApi::class)
 @Composable
 private fun UnlockedContent(component: UnlockedComponent) {
-    // The window insets are applied once, here, for the whole unlocked subtree — the bar and every
-    // feature screen below it. Applying them again inside a screen would inset twice (a gap under
-    // the bar), and leaving them to each screen means the first one that forgets sits under the
-    // system bars.
-    Box(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
+    // The window insets are applied here, by the host, for every screen except the camera — the bar
+    // and the feature screen below it together. Applying them again inside a screen would inset
+    // twice (a gap under the bar), and leaving them to each screen means the first one that forgets
+    // sits under the system bars. The camera is the one exemption ([paddedByHost]).
+    Box(modifier = Modifier.fillMaxSize()) {
         val stack by component.stack.subscribeAsState()
 
         // The offer to leave, which only the vault's own grid ever makes. Drawn over the screen
@@ -314,7 +314,7 @@ private fun UnlockedContent(component: UnlockedComponent) {
             // starts and only when a back gesture's slide has finished — so it changed, or vanished
             // for the camera, at the wrong end of every transition and moved the grid.
             val instance = created.instance
-            Column(modifier = Modifier.fillMaxSize()) {
+            Column(modifier = Modifier.fillMaxSize().then(if (paddedByHost(instance)) Modifier.safeDrawingPadding() else Modifier)) {
                 if (showsUnlockedBar(instance)) ScreenBar(component = component, child = instance)
                 Box(modifier = Modifier.weight(1f)) { UnlockedScreen(component = component, child = instance) }
             }
@@ -329,7 +329,8 @@ private fun UnlockedContent(component: UnlockedComponent) {
             summary = notSaved,
         )
 
-        Column(modifier = Modifier.align(Alignment.BottomCenter)) {
+        // Inset on its own, since it sits over the camera too, which the host does not pad.
+        Column(modifier = Modifier.align(Alignment.BottomCenter).safeDrawingPadding()) {
             if (notSavedLines.isNotEmpty()) {
                 NotSavedNotice(lines = notSavedLines, onDismiss = component::dismissNotSaved)
             }
@@ -382,13 +383,17 @@ private fun UnlockedScreen(component: UnlockedComponent, child: UnlockedChild) {
             }
         // The last-shot tile draws through the same loader, handed in as a slot: the camera never
         // builds a loader of its own, so the lock's cache clear covers it.
-        is UnlockedChild.Camera ->
+        // Held upright for as long as it is composed, so it is released when the screen is popped and
+        // when a lock replaces the subtree.
+        is UnlockedChild.Camera -> {
+            HoldPortrait()
             component.imageLoader?.let { loader ->
                 CameraContent(
                     component = child.component,
                     lastShot = { id, modifier -> VaultThumbnail(id, loader, modifier) },
                 )
             }
+        }
     }
 }
 

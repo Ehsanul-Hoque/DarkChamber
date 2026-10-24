@@ -20,15 +20,20 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -103,6 +108,10 @@ import kotlin.math.roundToInt
  * **Icons turn with the device; text does not.** The screen holds portrait, so the ✕, flip, light,
  * chip, microphone and tile marks are turned to stay upright for whoever holds the phone, and the
  * title, count, mode labels and status stay as drawn.
+ *
+ * **Edge to edge.** The host does not keep this screen clear of the system bars: the black and the
+ * viewfinder run under them, and the bar and the bottom controls place themselves inside the insets,
+ * their fades running on under the bars. The wide fallback is simply inset whole.
  */
 @Composable
 internal fun CameraScreen(
@@ -139,8 +148,7 @@ internal fun CameraScreen(
             .fillMaxSize()
             // Pure black, whatever the theme: a media surface (docs/DESIGN.md §2), and the one place
             // a raw colour is the token.
-            .background(Color.Black)
-            .safeDrawingPadding(),
+            .background(Color.Black),
     ) {
         val layout = cameraLayout(IntSize(constraints.maxWidth, constraints.maxHeight))
         val angle = rememberIconAngle(tilt, layout)
@@ -183,13 +191,17 @@ internal fun CameraScreen(
                         .align(Alignment.TopCenter)
                         .fillMaxWidth()
                         .background(Brush.verticalGradient(listOf(FadeColor, Color.Transparent)))
-                        .onSizeChanged { barHeight = it.height },
+                        // Measured with the status bar's inset in it, so a photo's box starts below
+                        // both.
+                        .onSizeChanged { barHeight = it.height }
+                        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)),
                 )
                 Column(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .background(Brush.verticalGradient(listOf(Color.Transparent, FadeColor))),
+                        .background(Brush.verticalGradient(listOf(Color.Transparent, FadeColor)))
+                        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)),
                 ) {
                     BelowViewfinder(state = state, onSetMode = onSetMode, onRequestMicrophone = onRequestMicrophone)
                     BottomRow(controls)
@@ -197,7 +209,7 @@ internal fun CameraScreen(
             }
             // The wide-window fallback, where the portrait hold was refused: the display turns, so
             // the icons stay upright as drawn and the controls stand beside the viewfinder.
-            CameraLayout.Beside -> Row(modifier = Modifier.fillMaxSize()) {
+            CameraLayout.Beside -> Row(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
                 Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
                     TopBar(
                         state = state,

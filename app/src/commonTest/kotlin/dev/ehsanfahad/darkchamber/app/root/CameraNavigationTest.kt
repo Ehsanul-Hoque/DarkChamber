@@ -12,6 +12,7 @@ import dev.ehsanfahad.darkchamber.app.GateDispatcher
 import dev.ehsanfahad.darkchamber.app.VaultBootstrap
 import dev.ehsanfahad.darkchamber.app.testSqlDriver
 import dev.ehsanfahad.darkchamber.app.ui.crumbFor
+import dev.ehsanfahad.darkchamber.app.ui.paddedByHost
 import dev.ehsanfahad.darkchamber.app.ui.showsUnlockedBar
 import dev.ehsanfahad.darkchamber.core.crypto.CryptoEngine
 import dev.ehsanfahad.darkchamber.core.crypto.CryptographyKotlinEngine
@@ -297,6 +298,24 @@ class CameraNavigationTest {
         component.onBack()
         component.openAlbums()
         assertTrue(showsUnlockedBar(component.active), "the album grid")
+    }
+
+    /**
+     * The camera draws under the system bars — its black and its viewfinder run to the screen's
+     * edges and it places its own chrome inside the insets. Every other screen is kept clear of the
+     * bars by the host.
+     */
+    @Test
+    fun only_the_camera_is_drawn_under_the_system_bars() = runTest {
+        val component = component(openVault())
+        assertTrue(paddedByHost(component.active), "the grid")
+
+        component.openCameraFromTop()
+        assertFalse(paddedByHost(component.active), "the camera")
+
+        component.onBack()
+        component.openAlbums()
+        assertTrue(paddedByHost(component.active), "the album grid")
     }
 
     /**
