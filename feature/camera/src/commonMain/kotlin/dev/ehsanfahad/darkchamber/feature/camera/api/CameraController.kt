@@ -88,7 +88,11 @@ interface CameraController {
     /** Photo or video. Video rebinds the camera for recording; set it before [record]. */
     fun setMode(mode: CaptureMode)
 
-    /** The resolution the next recording uses. Ignored for a quality the open lens does not list. */
+    /**
+     * The resolution recordings use. Kept whatever the open lens lists — including before any lens
+     * has opened — so a lens that cannot record it records the nearest it can, and the next one that
+     * can records it again.
+     */
     fun setQuality(quality: VideoQuality)
 
     /** Turn the light on or off, in video, including mid-recording. Ignored when the lens has none. */

@@ -176,7 +176,7 @@ internal class FakeCameraController(
     }
 
     override fun setQuality(quality: VideoQuality) {
-        if (quality in capabilities.value.videoQualities) this.quality = quality
+        this.quality = quality
     }
 
     override fun setTorch(on: Boolean) {

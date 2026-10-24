@@ -112,7 +112,7 @@ class FakeRecordingTest {
     }
 
     @Test
-    fun quality_and_torch_follow_what_the_open_lens_offers() {
+    fun the_quality_is_kept_whatever_the_lens_and_the_torch_follows_the_light() {
         val camera = FakeCameraController(
             capabilities = CameraCapabilities(setOf(Lens.Front), hasFlash = false, 1f, 1f, setOf(VideoQuality.HD)),
         )
@@ -120,11 +120,10 @@ class FakeRecordingTest {
         camera.setQuality(VideoQuality.UHD)
         camera.setTorch(true)
 
-        assertEquals(VideoQuality.HD, camera.quality, "a quality the lens does not list is ignored")
+        assertEquals(VideoQuality.UHD, camera.quality, "kept for the next lens that can record it")
         assertFalse(camera.torch, "no light, no torch")
 
         camera.capabilities.value = CameraCapabilities(setOf(Lens.Back), true, 1f, 1f, VideoQuality.entries.toSet())
-        camera.setQuality(VideoQuality.UHD)
         camera.setTorch(true)
         assertEquals(VideoQuality.UHD, camera.quality)
         assertTrue(camera.torch)

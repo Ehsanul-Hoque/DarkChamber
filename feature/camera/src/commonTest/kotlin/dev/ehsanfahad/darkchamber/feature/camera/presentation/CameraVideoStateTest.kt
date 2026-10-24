@@ -105,6 +105,12 @@ class CameraVideoStateTest {
         assertEquals(QualityChip(current = VideoQuality.HD, next = VideoQuality.UHD), state().qualityChip)
         assertEquals(QualityChip(current = VideoQuality.UHD, next = VideoQuality.HD), state(quality = VideoQuality.UHD).qualityChip)
         assertNull(state(qualities = setOf(VideoQuality.HD)).qualityChip, "a lens with only HD")
+        // 4K chosen on the back lens, then flipped to a front lens that records only HD: the chip
+        // would read "4K" over a recording made in HD.
+        assertNull(
+            state(quality = VideoQuality.UHD, qualities = setOf(VideoQuality.HD)).qualityChip,
+            "the choice the lens cannot record is not named",
+        )
         assertNull(state(recording = true).qualityChip, "hidden while recording")
         assertNull(state(mode = CaptureMode.Photo).qualityChip, "video only")
     }

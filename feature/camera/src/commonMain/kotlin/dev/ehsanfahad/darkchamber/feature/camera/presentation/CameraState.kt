@@ -111,11 +111,16 @@ internal class CameraState(
 
     /**
      * The quality chip, in video only and never while recording. Hidden, not disabled, on a lens
-     * that offers one quality: a chip with nothing to switch to is a control that does nothing.
+     * that offers one quality: a chip with nothing to switch to is a control that does nothing. Also
+     * hidden on a lens that cannot record the quality chosen, which stays the session's choice for
+     * the next lens that can.
      */
     val qualityChip: QualityChip?
         get() {
             if (mode != CaptureMode.Video || recording) return null
+            // A choice this lens cannot record is not named: the recording falls back to what the
+            // lens can do, and a chip reading 4K over an HD clip would be a small lie.
+            if (quality !in capabilities.videoQualities) return null
             val next = capabilities.videoQualities.firstOrNull { it != quality } ?: return null
             return QualityChip(current = quality, next = next)
         }
