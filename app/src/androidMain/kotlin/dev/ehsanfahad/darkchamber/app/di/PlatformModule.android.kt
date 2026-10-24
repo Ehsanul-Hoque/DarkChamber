@@ -7,7 +7,9 @@ import dev.ehsanfahad.darkchamber.app.auth.ActivityHolder
 import dev.ehsanfahad.darkchamber.app.auth.AndroidBiometricAuthenticator
 import dev.ehsanfahad.darkchamber.app.auth.DefaultActivityHolder
 import dev.ehsanfahad.darkchamber.app.camera.AndroidCameraController
+import dev.ehsanfahad.darkchamber.app.camera.AndroidFreeSpace
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraController
+import dev.ehsanfahad.darkchamber.feature.camera.api.FreeSpace
 import dev.ehsanfahad.darkchamber.app.picker.AndroidFilePicker
 import dev.ehsanfahad.darkchamber.app.picker.AndroidPhotoPicker
 import dev.ehsanfahad.darkchamber.app.system.AndroidSecretClipboard
@@ -46,6 +48,8 @@ actual fun platformModule(): Module = module {
     // The camera feature's seam. The application context for CameraX itself; the current activity
     // only for what needs one — the permission prompt, its rationale flag, and the settings page.
     single<CameraController> { AndroidCameraController(androidContext(), { get<ActivityHolder>().activity }) }
+    // What a recording is sized from, read on the vault's own volume.
+    single<FreeSpace> { AndroidFreeSpace(androidContext()) }
 
     // ---------------------------------------------------------------------------------------------
     // No `PlatformContext` binding here, deliberately — this note stands in for the line that used
