@@ -101,6 +101,23 @@ class SeekingReaderTest {
         assertEquals(null, read(5000, 10), "past the end")
     }
 
+    /**
+     * A reader that must say how long the file is first — iOS's resource loader asks before it
+     * reads anything — learns it by reading through once, and keeps the end it read: a video's
+     * index at the end is then already in memory.
+     */
+    @Test
+    fun the_length_is_read_once_and_the_end_is_kept() {
+        assertEquals(1000L, reader.length())
+        assertEquals(1000L, reader.bytesRead)
+        assertEquals(1000L, reader.length(), "asked again, it is known")
+        assertEquals(1000L, reader.bytesRead, "and not read again")
+
+        assertContentEquals(file.copyOfRange(750, 800), read(750, 50), "the last three blocks")
+        assertEquals(1000L, reader.bytesRead, "came from memory")
+        assertEquals(1, opens)
+    }
+
     @Test
     fun close_closes_the_open_stream() {
         read(0, 10)

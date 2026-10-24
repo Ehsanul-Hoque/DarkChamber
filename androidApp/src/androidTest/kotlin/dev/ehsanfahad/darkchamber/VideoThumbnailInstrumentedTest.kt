@@ -27,6 +27,7 @@ import org.koin.dsl.koinApplication
  * - `colour.mp4`: 320×240, black for its first half second and red after, keyframes every half
  *   second, its index (`moov`) at the end as a phone's recorder writes it;
  * - `colour-faststart.mp4`: the same with the index at the start;
+ * - `sparse-keys.mp4`: the same picture with key frames only at 0 s (black) and 2.4 s (red);
  * - `rotated.mp4`: 320×240, red left half and blue right, tagged to be shown turned 90° clockwise;
  * - `short.mp4`: 0.3 s of green; `audio-only.mp4`: no video track.
  *
@@ -78,6 +79,15 @@ class VideoThumbnailInstrumentedTest {
         val frame = previewOf("colour.mp4")
         assertEquals(320 to 240, frame.width to frame.height)
         assertColour("red", frame.at(160, 120))
+    }
+
+    /**
+     * The first key frame *after* a second, not the nearest one: here the nearest is the black
+     * opening frame and the next is a second and a half later, red.
+     */
+    @Test
+    fun the_frame_is_the_key_frame_after_a_second_not_the_nearest() {
+        assertColour("red", previewOf("sparse-keys.mp4").at(160, 120))
     }
 
     @Test

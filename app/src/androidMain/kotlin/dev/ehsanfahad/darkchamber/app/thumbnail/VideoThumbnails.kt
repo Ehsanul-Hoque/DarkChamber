@@ -7,15 +7,6 @@ import android.os.Build
 import kotlinx.io.RawSource
 
 /**
- * When the preview frame is taken: a second in, past the black a camera's first frames often are,
- * or the first frame of a clip no longer than that — and of one whose length the file does not say.
- */
-internal fun previewFrameTimeUs(durationMs: Long?): Long =
-    if (durationMs != null && durationMs > PREVIEW_FRAME_MS) PREVIEW_FRAME_MS * 1_000 else 0
-
-private const val PREVIEW_FRAME_MS = 1_000L
-
-/**
  * One frame of a video, at most [maxEdgePx] on its longest edge, or `null` — no video track, a codec
  * the platform cannot decode, or any failure on the way.
  *

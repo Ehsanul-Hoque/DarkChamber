@@ -28,11 +28,9 @@ internal class SeekingReader(
     private var source: Source? = null
     private var position = 0L
 
-    // By block index, the one used longest ago first.
-    private val blocks = object : LinkedHashMap<Long, ByteArray>(maxBlocks + 1, 1f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Long, ByteArray>): Boolean =
-            (size > maxBlocks).also { if (it) eldest.value.fill(0) }
-    }
+    // By block index, the one used longest ago first: a hit is moved to the end ([used]), and a block
+    // added past the cap drops the first.
+    private val blocks = LinkedHashMap<Long, ByteArray>()
 
     /** Every byte pulled from the source so far, skipped bytes included. */
     var bytesRead: Long = 0
@@ -45,13 +43,34 @@ internal class SeekingReader(
     fun readAt(at: Long, into: ByteArray, offset: Int, size: Int): Int {
         if (size == 0) return 0
         val index = at / blockSize
-        val block = blocks[index] ?: load(index) ?: return -1
+        val block = used(index) ?: load(index) ?: return -1
         val from = (at - index * blockSize).toInt()
         if (from >= block.size) return -1
         val n = minOf(size, block.size - from)
         block.copyInto(into, offset, from, from + n)
         return n
     }
+
+    /**
+     * The file's length, found by reading through it once — the source says nothing about its size.
+     * The blocks read last are kept as it goes, so a video's index at the end of the file is in
+     * memory afterwards and the read that follows does not have to come back for it.
+     */
+    fun length(): Long {
+        knownLength?.let { return it }
+        var total = 0L
+        var index = 0L
+        while (true) {
+            val block = used(index) ?: load(index) ?: break
+            total = index * blockSize + block.size
+            if (block.size < blockSize) break
+            index++
+        }
+        knownLength = total
+        return total
+    }
+
+    private var knownLength: Long? = null
 
     override fun close() {
         source?.close()
@@ -75,7 +94,18 @@ internal class SeekingReader(
         if (got == 0) return null
         val kept = if (got == blockSize) block else block.copyOf(got).also { block.fill(0) }
         blocks[index] = kept
+        if (blocks.size > maxBlocks) {
+            val eldest = blocks.keys.first()
+            blocks.remove(eldest)?.fill(0)
+        }
         return kept
+    }
+
+    // A kept block, moved to the most recently used end.
+    private fun used(index: Long): ByteArray? {
+        val block = blocks.remove(index) ?: return null
+        blocks[index] = block
+        return block
     }
 
     // The stream at [at], re-opened when [at] is behind it; null when [at] is past the end.

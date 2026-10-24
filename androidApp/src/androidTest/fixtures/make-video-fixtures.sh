@@ -14,6 +14,10 @@ ffmpeg "${Q[@]}" -f lavfi -i "color=c=red:s=320x240:r=30:d=3" -vf "$BLACK_THEN_R
 # The same with moov at the start.
 ffmpeg "${Q[@]}" -f lavfi -i "color=c=red:s=320x240:r=30:d=3" -vf "$BLACK_THEN_RED" \
   -c:v libx264 -g 15 -keyint_min 15 -sc_threshold 0 -movflags +faststart "$A/colour-faststart.mp4"
+# The same picture with key frames only at 0 s (black) and 2.4 s (red): the key frame *after* a
+# second is red, the *nearest* to it is the black one, so the two choices give different previews.
+ffmpeg "${Q[@]}" -f lavfi -i "color=c=red:s=320x240:r=30:d=3" -vf "$BLACK_THEN_RED" \
+  -c:v libx264 -g 72 -keyint_min 72 -sc_threshold 0 -bf 0 "$A/sparse-keys.mp4"
 # 320x240, red left half, blue right half, tagged to be shown turned 90 degrees clockwise.
 ffmpeg "${Q[@]}" -f lavfi -i "color=c=red:s=160x240:r=30:d=2" -f lavfi -i "color=c=blue:s=160x240:r=30:d=2" \
   -filter_complex "[0][1]hstack,format=yuv420p" -c:v libx264 -g 15 "$A/rotated-plain.mp4"

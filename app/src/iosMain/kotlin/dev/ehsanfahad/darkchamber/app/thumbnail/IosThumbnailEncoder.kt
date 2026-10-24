@@ -1,9 +1,12 @@
 package dev.ehsanfahad.darkchamber.app.thumbnail
 
+import cnames.structs.__CFData
+import cnames.structs.__CFDictionary
 import dev.ehsanfahad.darkchamber.core.vault.ThumbnailEncoder
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
+import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.usePinned
 import kotlinx.io.RawSource
 import kotlinx.io.buffered
@@ -52,6 +55,9 @@ import platform.posix.memcpy
  * full-size renderer honours that flag. The stored original keeps its EXIF untouched (nothing is
  * stripped on import) — this rotates the *preview* so the tile matches what the viewer will show.
  *
+ * A video is handled apart: one frame about a second in, from `AVAssetImageGenerator` reading the
+ * stream through a resource loader ([videoFrame]), compressed like a photo's preview.
+ *
  * ### The memory it does use
  *
  * The encoded file is read into memory whole, because `CGImageSourceCreateWithData` wants the bytes
@@ -64,6 +70,7 @@ import platform.posix.memcpy
 internal class IosThumbnailEncoder : ThumbnailEncoder {
     @OptIn(ExperimentalForeignApi::class)
     override fun encode(mime: String, maxEdgePx: Int, openSource: () -> RawSource): ByteArray? {
+        if (mime.startsWith(VIDEO_MIME_PREFIX, ignoreCase = true)) return encodeVideo(mime, maxEdgePx, openSource)
         if (!mime.startsWith(IMAGE_MIME_PREFIX, ignoreCase = true)) return null
 
         val bytes = openSource().buffered().use { it.readByteArray() }
@@ -72,7 +79,7 @@ internal class IosThumbnailEncoder : ThumbnailEncoder {
         // CFBridgingRetain hands the NSData to CoreFoundation; the matching release is below. An
         // image source over it must be released too — neither is ARC-managed from Kotlin.
         val data = CFBridgingRetain(bytes.toNSData())
-        val source = CGImageSourceCreateWithData(data as platform.CoreFoundation.CFDataRef, null)
+        val source = CGImageSourceCreateWithData(data?.reinterpret<__CFData>(), null)
         if (source == null) {
             CFBridgingRelease(data)
             return null // ImageIO would not open it: not the image the MIME claimed
@@ -96,6 +103,17 @@ internal class IosThumbnailEncoder : ThumbnailEncoder {
         }
     }
 
+    /** A frame about a second in ([videoFrame]), encoded like a photo's preview. */
+    @OptIn(ExperimentalForeignApi::class)
+    private fun encodeVideo(mime: String, maxEdgePx: Int, openSource: () -> RawSource): ByteArray? {
+        val frame = videoFrame(mime, maxEdgePx, openSource) ?: return null
+        return try {
+            frame.encodeToBytes()
+        } finally {
+            CGImageRelease(frame)
+        }
+    }
+
     @OptIn(ExperimentalForeignApi::class)
     private fun thumbnailOptions(maxPixelSize: Int): CFDictionaryRef? =
         CFBridgingRetain(
@@ -109,7 +127,7 @@ internal class IosThumbnailEncoder : ThumbnailEncoder {
                 kCGImageSourceThumbnailMaxPixelSize.toKey() to maxPixelSize,
                 kCGImageSourceCreateThumbnailWithTransform.toKey() to true,
             ),
-        ) as CFDictionaryRef?
+        )?.reinterpret<__CFDictionary>()
 
     /**
      * PNG when the image carries transparency, JPEG otherwise — the same rule as Android, for the
@@ -140,6 +158,7 @@ internal class IosThumbnailEncoder : ThumbnailEncoder {
 
     private companion object {
         const val IMAGE_MIME_PREFIX = "image/"
+        const val VIDEO_MIME_PREFIX = "video/"
 
         // Matches the Android encoder's 82, so the two platforms produce comparable tiles.
         const val JPEG_QUALITY = 0.82
