@@ -24,7 +24,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** The camera screen's video decisions (D7, D8, D12), each a function of state. */
+/** The camera screen's video decisions, each a function of state. */
 class CameraVideoStateTest {
 
     private val bothQualities = setOf(VideoQuality.HD, VideoQuality.UHD)

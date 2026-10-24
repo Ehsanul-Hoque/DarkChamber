@@ -19,7 +19,7 @@ class IosCameraMappingTest {
 
     /**
      * iOS asks once. A refusal — and a restriction, which the user cannot lift from the prompt
-     * either — is final until Settings, so neither is "denied, ask again" (spec D8).
+     * either — is final until Settings, so neither is "denied, ask again".
      */
     @Test
     fun the_permission_follows_the_authorization_status() {

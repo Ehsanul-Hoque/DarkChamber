@@ -36,7 +36,7 @@ class CameraMappingTest {
         )
     }
 
-    /** "In use by another app" only when the platform says exactly that (spec D8). */
+    /** "In use by another app" only when the platform says exactly that. */
     @Test
     fun only_camera_in_use_is_reported_as_in_use() {
         assertEquals(CameraAvailability.Available, availabilityFor(error = null))

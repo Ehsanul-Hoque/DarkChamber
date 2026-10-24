@@ -33,7 +33,7 @@ import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
- * One recording's life, from start to the lane or the bin, on every way out (D4): stop, close, the
+ * One recording's life, from start to the lane or the bin, on every way out: stop, close, the
  * size limit, no frames, a full disk, a platform failure and a lock — while recording, while the
  * platform finalizes, and once the lane holds the clip.
  *

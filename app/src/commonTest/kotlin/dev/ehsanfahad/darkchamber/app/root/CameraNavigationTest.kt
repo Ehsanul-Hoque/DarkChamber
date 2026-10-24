@@ -135,7 +135,7 @@ class CameraNavigationTest {
     }
 
     /**
-     * Back while recording keeps the clip (D4): it goes through the camera's close, which finalizes,
+     * Back while recording keeps the clip: it goes through the camera's close, which finalizes,
      * hands the clip over and releases the camera before the screen is popped. A plain pop would
      * destroy the screen mid-recording and lose the clip.
      */
@@ -158,7 +158,7 @@ class CameraNavigationTest {
         component.lock()
     }
 
-    // --- A lock and what it takes (D4, D9) ---
+    // --- A lock and what it takes ---
 
     /**
      * A lock mid-recording: the clip is lost to the lock and **told after the next unlock**, its
