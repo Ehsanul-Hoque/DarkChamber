@@ -14,7 +14,6 @@ import dev.ehsanfahad.darkchamber.feature.camera.api.MicrophonePermission
 import dev.ehsanfahad.darkchamber.feature.camera.api.RecordingEnd
 import dev.ehsanfahad.darkchamber.feature.camera.api.RecordingFailure
 import dev.ehsanfahad.darkchamber.feature.camera.api.RecordingProgress
-import dev.ehsanfahad.darkchamber.feature.camera.api.VideoQuality
 import java.nio.ByteBuffer
 import kotlin.time.Duration.Companion.nanoseconds
 
@@ -73,16 +72,6 @@ internal fun recordingEndFor(error: Int): RecordingEnd =
 /** CameraX's running count, in the seam's terms. */
 internal fun recordingProgressFor(bytesRecorded: Long, recordedDurationNanos: Long): RecordingProgress =
     RecordingProgress(bytesRecorded, recordedDurationNanos.nanoseconds)
-
-/**
- * The qualities a lens is offered at, from whether CameraX says it records 1080p ([fullHd], offered
- * as HD) and 2160p ([ultraHd], offered as UHD). Anything else it lists is not offered.
- */
-internal fun videoQualitiesFor(fullHd: Boolean, ultraHd: Boolean): Set<VideoQuality> =
-    buildSet {
-        if (fullHd) add(VideoQuality.HD)
-        if (ultraHd) add(VideoQuality.UHD)
-    }
 
 /**
  * The seam's tilt — how far the phone is turned clockwise from upright — from the rotation a capture

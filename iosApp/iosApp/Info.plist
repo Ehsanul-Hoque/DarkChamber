@@ -5,6 +5,8 @@
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>DarkChamber uses the camera to take photos that are encrypted straight into your vault.</string>
+	<string>DarkChamber uses the camera to take photos and videos that are encrypted into your vault.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>DarkChamber uses the microphone to record sound with your videos.</string>
 </dict>
 </plist>

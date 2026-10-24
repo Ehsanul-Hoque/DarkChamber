@@ -14,6 +14,8 @@ import dev.ehsanfahad.darkchamber.feature.camera.api.FlashMode
 import dev.ehsanfahad.darkchamber.feature.camera.api.Lens
 import dev.ehsanfahad.darkchamber.feature.camera.api.MicrophonePermission
 import dev.ehsanfahad.darkchamber.feature.camera.api.Recording
+import dev.ehsanfahad.darkchamber.feature.camera.api.RecordingEnd
+import dev.ehsanfahad.darkchamber.feature.camera.api.RecordingProgress
 import dev.ehsanfahad.darkchamber.feature.camera.api.ReportedRecording
 import dev.ehsanfahad.darkchamber.feature.camera.api.VideoQuality
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -33,11 +35,14 @@ import platform.AVFoundation.AVCaptureDevicePositionFront
 import platform.AVFoundation.AVCaptureDeviceRotationCoordinator
 import platform.AVFoundation.AVCaptureDeviceTypeBuiltInWideAngleCamera
 import platform.AVFoundation.AVCaptureExposureModeAutoExpose
+import platform.AVFoundation.AVCaptureFileOutput
+import platform.AVFoundation.AVCaptureFileOutputRecordingDelegateProtocol
 import platform.AVFoundation.AVCaptureFlashMode
 import platform.AVFoundation.AVCaptureFlashModeAuto
 import platform.AVFoundation.AVCaptureFlashModeOff
 import platform.AVFoundation.AVCaptureFlashModeOn
 import platform.AVFoundation.AVCaptureFocusModeAutoFocus
+import platform.AVFoundation.AVCaptureMovieFileOutput
 import platform.AVFoundation.AVCaptureOutput
 import platform.AVFoundation.AVCapturePhoto
 import platform.AVFoundation.AVCapturePhotoCaptureDelegateProtocol
@@ -46,11 +51,18 @@ import platform.AVFoundation.AVCapturePhotoSettings
 import platform.AVFoundation.AVCaptureSession
 import platform.AVFoundation.AVCaptureSessionInterruptionEndedNotification
 import platform.AVFoundation.AVCaptureSessionInterruptionReasonKey
+import platform.AVFoundation.AVCaptureSessionPreset1920x1080
+import platform.AVFoundation.AVCaptureSessionPreset3840x2160
+import platform.AVFoundation.AVCaptureSessionPresetHigh
 import platform.AVFoundation.AVCaptureSessionPresetPhoto
 import platform.AVFoundation.AVCaptureSessionRuntimeErrorNotification
 import platform.AVFoundation.AVCaptureSessionWasInterruptedNotification
+import platform.AVFoundation.AVCaptureTorchModeOff
+import platform.AVFoundation.AVCaptureTorchModeOn
 import platform.AVFoundation.AVCaptureVideoPreviewLayer
-import platform.AVFoundation.AVLayerVideoGravityResizeAspectFill
+import platform.AVFoundation.AVErrorRecordingSuccessfullyFinishedKey
+import platform.AVFoundation.AVLayerVideoGravityResizeAspect
+import platform.AVFoundation.AVMediaTypeAudio
 import platform.AVFoundation.AVMediaTypeVideo
 import platform.AVFoundation.authorizationStatusForMediaType
 import platform.AVFoundation.defaultDeviceWithDeviceType
@@ -60,20 +72,25 @@ import platform.AVFoundation.fileDataRepresentation
 import platform.AVFoundation.focusMode
 import platform.AVFoundation.focusPointOfInterest
 import platform.AVFoundation.hasFlash
+import platform.AVFoundation.hasTorch
 import platform.AVFoundation.isExposurePointOfInterestSupported
 import platform.AVFoundation.isFocusPointOfInterestSupported
+import platform.AVFoundation.isTorchModeSupported
 import platform.AVFoundation.maxAvailableVideoZoomFactor
 import platform.AVFoundation.minAvailableVideoZoomFactor
 import platform.AVFoundation.position
 import platform.AVFoundation.requestAccessForMediaType
+import platform.AVFoundation.setTorchMode
 import platform.AVFoundation.videoZoomFactor
 import platform.CoreGraphics.CGPointMake
 import platform.CoreGraphics.CGRectMake
+import platform.CoreMedia.CMTimeGetSeconds
 import platform.Foundation.NSError
 import platform.Foundation.NSNotification
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSNumber
 import platform.Foundation.NSOperationQueue
+import platform.Foundation.NSTimer
 import platform.Foundation.NSURL
 import platform.QuartzCore.CATransaction
 import platform.UIKit.UIApplication
@@ -86,21 +103,35 @@ import platform.darwin.dispatch_get_main_queue
 import platform.darwin.dispatch_queue_create
 import platform.posix.memcpy
 import kotlin.coroutines.resume
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * AVFoundation as the [CameraController] seam.
  *
- * **A capture never touches a file.** The photo comes back from `AVCapturePhotoOutput` as an
+ * **A photo never touches a file.** The photo comes back from `AVCapturePhotoOutput` as an
  * `AVCapturePhoto` and `fileDataRepresentation()` — the encoded JPEG, in memory — is copied into a
  * `ByteArray`; no file URL is ever involved (hard rule #1). No location is attached: the settings
  * carry no metadata of ours, and the app holds no location permission.
  *
- * **Orientation travels in the photo's own EXIF**, set from the system's rotation coordinator at the
- * moment of capture, so no rotation is reported to the save path and the orientation patch leaves
- * the bytes as they are.
+ * **A video goes only to the file it is handed.** `AVCaptureMovieFileOutput` records to the caller's
+ * scratch URL in the vault's `tmp/`, stopping itself at the caller's size limit
+ * (`maxRecordedFileSize`). It was chosen over `AVAssetWriter` because it writes the file, finalizes
+ * it and reports how it ended by itself; a writer would be hand-fed every sample buffer, a far larger
+ * surface to get right without a device to try it on. Sound is recorded only when the caller asks
+ * for it **and** the microphone is granted: the audio input is attached whenever the microphone is
+ * allowed, and its connection is switched off for a recording without sound.
+ *
+ * **One mode at a time.** Photo attaches the photo output at the photo preset (4:3); video attaches
+ * the movie output at the 1080p or 2160p preset (16:9). The preview letterboxes (`resizeAspect`), so
+ * it shows the frame that is saved.
+ *
+ * **Orientation travels in the file**, set from the system's rotation coordinator at the moment of
+ * capture — in a photo's EXIF, in a clip's track transform — so no rotation is reported to the save
+ * path. The same coordinator's reading is the tilt the screen turns its icons by.
  *
  * Main-thread confined like the seam, except `startRunning` / `stopRunning`, which block and run on
- * a serial queue of their own as Apple asks.
+ * a serial queue of their own as Apple asks. Every delegate hands its answer to the main queue.
  *
  * **Unverified on a device** — there is no iPhone for this cycle. The simulator has no camera, so
  * there this reports unavailable and nothing below the device lookup runs.
@@ -117,29 +148,40 @@ class IosCameraController : CameraController {
     private val _capabilities = MutableStateFlow(CameraCapabilities.None)
     override val capabilities: StateFlow<CameraCapabilities> = _capabilities.asStateFlow()
 
-    // Video is not wired to AVFoundation yet: no microphone is asked for, the tilt is not reported,
-    // and [record] refuses — so a recording that cannot happen says so rather than pretending.
-    override val microphonePermission: StateFlow<MicrophonePermission> = MutableStateFlow(MicrophonePermission.NotAsked)
-    override val deviceRotation: StateFlow<Int> = MutableStateFlow(0)
+    private val _microphonePermission = MutableStateFlow(currentMicrophonePermission())
+    override val microphonePermission: StateFlow<MicrophonePermission> = _microphonePermission.asStateFlow()
+
+    private val _deviceRotation = MutableStateFlow(0)
+    override val deviceRotation: StateFlow<Int> = _deviceRotation.asStateFlow()
 
     private val sessionQueue = dispatch_queue_create("dev.ehsanfahad.darkchamber.camera", null)
     private val session = AVCaptureSession()
     private val photoOutput = AVCapturePhotoOutput()
+    private val movieOutput = AVCaptureMovieFileOutput()
     private val previewLayer = AVCaptureVideoPreviewLayer(session = session).apply {
-        videoGravity = AVLayerVideoGravityResizeAspectFill
+        videoGravity = AVLayerVideoGravityResizeAspect
     }
 
     private var input: AVCaptureDeviceInput? = null
+    private var audioInput: AVCaptureDeviceInput? = null
     private var rotation: AVCaptureDeviceRotationCoordinator? = null
     private var lens = Lens.Back
     private var flash = FlashMode.Off
+    private var mode = CaptureMode.Photo
+    private var quality = VideoQuality.HD
+    private var torch = false
     private var started = false
     private var configured = false
     private var observers: List<NSObjectProtocol> = emptyList()
 
-    // The weak-delegate hazard the pickers met first: the photo output does not retain its delegate,
-    // and a collected one means the capture never answers.
+    // While the camera is open: the tilt, and the running recording's size and length.
+    private var ticker: NSTimer? = null
+
+    // The weak-delegate hazard the pickers met first: neither output retains its delegate, and a
+    // collected one means the capture or the recording never answers.
     private val captures = mutableSetOf<PhotoDelegate>()
+    private val recordings = mutableSetOf<MovieDelegate>()
+    private var active: ReportedRecording? = null
 
     override suspend fun requestPermission() {
         suspendCancellableCoroutine { continuation ->
@@ -150,7 +192,16 @@ class IosCameraController : CameraController {
         _permission.value = currentPermission()
     }
 
-    override suspend fun requestMicrophonePermission() = Unit
+    override suspend fun requestMicrophonePermission() {
+        suspendCancellableCoroutine { continuation ->
+            AVCaptureDevice.requestAccessForMediaType(AVMediaTypeAudio) { _ ->
+                // The answer arrives on a queue of the system's; the state is main-confined.
+                dispatch_async(dispatch_get_main_queue()) { if (continuation.isActive) continuation.resume(Unit) }
+            }
+        }
+        _microphonePermission.value = currentMicrophonePermission()
+        if (configured && mode == CaptureMode.Video) reconfigure { attachAudio() }
+    }
 
     override fun openSettings() {
         val url = NSURL.URLWithString(UIApplicationOpenSettingsURLString) ?: return
@@ -159,38 +210,88 @@ class IosCameraController : CameraController {
 
     override fun start() {
         _permission.value = currentPermission()
+        _microphonePermission.value = currentMicrophonePermission()
         if (started || _permission.value != CameraPermission.Granted) return
         started = true
-        if (!configured) configure()
+        if (!configured) configure() else if (mode == CaptureMode.Video) reconfigure { attachAudio() }
         if (input == null) return
         observe()
+        ticker = NSTimer.scheduledTimerWithTimeInterval(TICK_SECONDS, repeats = true) { _ -> tick() }
         dispatch_async(sessionQueue) { session.startRunning() }
+        applyTorch()
     }
 
     override fun stop() {
         if (!started) return
         started = false
+        ticker?.invalidate()
+        ticker = null
+        // Abandoned before the session stops, so that end is the one that stands: the movie output
+        // still finishes the file as the session goes, which a lock must not read as a save.
+        active?.let { recording ->
+            active = null
+            recording.finish(RecordingEnd.Abandoned)
+            if (movieOutput.recording) movieOutput.stopRecording()
+        }
         observers.forEach { NSNotificationCenter.defaultCenter.removeObserver(it) }
         observers = emptyList()
         dispatch_async(sessionQueue) { session.stopRunning() }
     }
 
-    override fun setMode(mode: CaptureMode) = Unit
+    override fun setMode(mode: CaptureMode) {
+        if (mode == this.mode || active != null) return
+        this.mode = mode
+        if (configured) reconfigure { applyOutputs() }
+        applyTorch()
+    }
 
-    override fun setQuality(quality: VideoQuality) = Unit
+    override fun setQuality(quality: VideoQuality) {
+        if (quality == this.quality || active != null) return
+        this.quality = quality
+        if (configured && mode == CaptureMode.Video) reconfigure { applyPreset() }
+    }
 
-    override fun setTorch(on: Boolean) = Unit
+    override fun setTorch(on: Boolean) {
+        torch = on
+        applyTorch()
+    }
 
-    override fun record(file: Path, sizeLimitBytes: Long, withAudio: Boolean): Recording = ReportedRecording.refused()
+    override fun record(file: Path, sizeLimitBytes: Long, withAudio: Boolean): Recording {
+        if (!started || input == null || mode != CaptureMode.Video || active != null || movieOutput.recording) {
+            return ReportedRecording.refused()
+        }
+        movieOutput.maxRecordedFileSize = sizeLimitBytes
+        movieOutput.connectionWithMediaType(AVMediaTypeAudio)?.enabled =
+            withAudio && _microphonePermission.value == MicrophonePermission.Granted
+        rotation?.videoRotationAngleForHorizonLevelCapture?.let { angle ->
+            movieOutput.connectionWithMediaType(AVMediaTypeVideo)?.let { connection ->
+                if (connection.isVideoRotationAngleSupported(angle)) connection.videoRotationAngle = angle
+            }
+        }
+
+        val reported = ReportedRecording(onStop = { if (movieOutput.recording) movieOutput.stopRecording() })
+        lateinit var delegate: MovieDelegate
+        delegate = MovieDelegate { errorCode, finishedSuccessfully ->
+            recordings.remove(delegate)
+            if (active === reported) active = null
+            reported.finish(recordingEndFor(errorCode, finishedSuccessfully))
+        }
+        recordings += delegate
+        active = reported
+        movieOutput.startRecordingToOutputFileURL(NSURL.fileURLWithPath(file.toString()), recordingDelegate = delegate)
+        return reported
+    }
 
     override fun setLens(lens: Lens) {
-        if (lens == this.lens || lens !in _capabilities.value.lenses) return
+        if (lens == this.lens || lens !in _capabilities.value.lenses || active != null) return
         this.lens = lens
-        session.beginConfiguration()
-        input?.let(session::removeInput)
-        input = null
-        attach(lens)
-        session.commitConfiguration()
+        reconfigure {
+            input?.let(session::removeInput)
+            input = null
+            attach(lens)
+            applyPreset()
+        }
+        applyTorch()
     }
 
     override fun setFlash(mode: FlashMode) {
@@ -222,7 +323,7 @@ class IosCameraController : CameraController {
     }
 
     override suspend fun capture(): CaptureResult {
-        if (input == null || !started) return CaptureResult.Failed
+        if (input == null || !started || mode != CaptureMode.Photo) return CaptureResult.Failed
         val settings = AVCapturePhotoSettings.photoSettings()
         val wanted = flash.toAv()
         if (photoOutput.supportedFlashModes.any { (it as? NSNumber)?.longValue == wanted }) settings.flashMode = wanted
@@ -260,16 +361,74 @@ class IosCameraController : CameraController {
     private fun currentPermission(): CameraPermission =
         permissionFor(AVCaptureDevice.authorizationStatusForMediaType(AVMediaTypeVideo))
 
+    private fun currentMicrophonePermission(): MicrophonePermission =
+        microphonePermissionFor(AVCaptureDevice.authorizationStatusForMediaType(AVMediaTypeAudio))
+
     private fun configure() {
         configured = true
+        reconfigure {
+            attach(lens)
+            applyOutputs()
+        }
+    }
+
+    private inline fun reconfigure(change: () -> Unit) {
         session.beginConfiguration()
-        session.sessionPreset = AVCaptureSessionPresetPhoto
-        if (session.canAddOutput(photoOutput)) session.addOutput(photoOutput)
-        attach(lens)
+        change()
         session.commitConfiguration()
     }
 
-    // Inside a begin/commit pair. Falls back to whichever lens exists; none at all is unavailable.
+    // Inside a configuration. The mode's output in and the other out, then the mode's preset.
+    private fun applyOutputs() {
+        when (mode) {
+            CaptureMode.Photo -> {
+                removeOutput(movieOutput)
+                detachAudio()
+                if (session.canAddOutput(photoOutput)) session.addOutput(photoOutput)
+            }
+            CaptureMode.Video -> {
+                removeOutput(photoOutput)
+                if (session.canAddOutput(movieOutput)) session.addOutput(movieOutput)
+                attachAudio()
+            }
+        }
+        applyPreset()
+    }
+
+    // Inside a configuration. Video falls back from the chosen quality to the nearest the lens can
+    // record, keeping the choice for a lens that can.
+    private fun applyPreset() {
+        val candidates = when (mode) {
+            CaptureMode.Photo -> listOf(AVCaptureSessionPresetPhoto)
+            CaptureMode.Video -> when (quality) {
+                VideoQuality.UHD -> listOf(AVCaptureSessionPreset3840x2160, AVCaptureSessionPreset1920x1080, AVCaptureSessionPresetHigh)
+                VideoQuality.HD -> listOf(AVCaptureSessionPreset1920x1080, AVCaptureSessionPresetHigh)
+            }
+        }
+        candidates.firstOrNull { session.canSetSessionPreset(it) }?.let { session.sessionPreset = it }
+    }
+
+    private fun removeOutput(output: AVCaptureOutput) {
+        if (session.outputs.contains(output)) session.removeOutput(output)
+    }
+
+    // Inside a configuration. Only while the microphone is allowed; the recording decides per clip
+    // whether its sound is kept.
+    private fun attachAudio() {
+        if (audioInput != null || _microphonePermission.value != MicrophonePermission.Granted) return
+        val device = AVCaptureDevice.defaultDeviceWithMediaType(AVMediaTypeAudio) ?: return
+        val added = AVCaptureDeviceInput.deviceInputWithDevice(device, error = null)
+            ?.takeIf { session.canAddInput(it) }
+            ?.also { session.addInput(it) }
+        audioInput = added
+    }
+
+    private fun detachAudio() {
+        audioInput?.let(session::removeInput)
+        audioInput = null
+    }
+
+    // Inside a configuration. Falls back to whichever lens exists; none at all is unavailable.
     private fun attach(wanted: Lens) {
         val lenses = buildSet {
             if (device(Lens.Back) != null) add(Lens.Back)
@@ -294,8 +453,33 @@ class IosCameraController : CameraController {
             hasFlash = device.hasFlash,
             minZoom = device.minAvailableVideoZoomFactor.toFloat(),
             maxZoom = device.maxAvailableVideoZoomFactor.toFloat(),
+            videoQualities = videoQualitiesFor(
+                fullHd = device.supportsAVCaptureSessionPreset(AVCaptureSessionPreset1920x1080),
+                ultraHd = device.supportsAVCaptureSessionPreset(AVCaptureSessionPreset3840x2160),
+            ),
         )
         _availability.value = CameraAvailability.Available
+    }
+
+    // On only in video and only where there is a light; anything else turns it off.
+    private fun applyTorch() {
+        val device = input?.device ?: return
+        if (!device.hasTorch()) return
+        val wanted = if (torch && mode == CaptureMode.Video) AVCaptureTorchModeOn else AVCaptureTorchModeOff
+        if (!device.isTorchModeSupported(wanted) || !device.lockForConfiguration(null)) return
+        device.setTorchMode(wanted)
+        device.unlockForConfiguration()
+    }
+
+    private fun tick() {
+        rotation?.videoRotationAngleForHorizonLevelCapture?.let { _deviceRotation.value = tiltForCaptureAngle(it) }
+        active?.report(RecordingProgress(movieOutput.recordedFileSize, recordedDuration()))
+    }
+
+    // Zero, not an error, while the output has no length to give yet.
+    private fun recordedDuration(): Duration {
+        val seconds = CMTimeGetSeconds(movieOutput.recordedDuration)
+        return if (seconds.isFinite() && seconds > 0) seconds.seconds else Duration.ZERO
     }
 
     private fun device(lens: Lens): AVCaptureDevice? =
@@ -328,6 +512,12 @@ class IosCameraController : CameraController {
             FlashMode.Auto -> AVCaptureFlashModeAuto
             FlashMode.On -> AVCaptureFlashModeOn
         }
+
+    private companion object {
+        // Four readings a second: fast enough that the icons follow a turn, and the status line
+        // moves smoothly enough for a timer that shows whole seconds.
+        const val TICK_SECONDS = 0.25
+    }
 }
 
 /** Hands one capture's encoded bytes back, copied out of the system's buffer — or `null`. */
@@ -346,6 +536,27 @@ private class PhotoDelegate(private val done: (ByteArray?) -> Unit) : NSObject()
             ByteArray(length).also { copy -> copy.usePinned { memcpy(it.addressOf(0), data.bytes, data.length) } }
         }
         dispatch_async(dispatch_get_main_queue()) { done(bytes) }
+    }
+}
+
+/**
+ * Hands one recording's finish back: the error code (`null` for none) and whether AVFoundation says
+ * the file still holds a finished clip. Never the URL or the error's message, which name the path.
+ * Handed to the main queue, like the photo's.
+ */
+private class MovieDelegate(
+    private val done: (errorCode: Long?, finishedSuccessfully: Boolean?) -> Unit,
+) : NSObject(), AVCaptureFileOutputRecordingDelegateProtocol {
+    @ObjCSignatureOverride
+    override fun captureOutput(
+        output: AVCaptureFileOutput,
+        didFinishRecordingToOutputFileAtURL: NSURL,
+        fromConnections: List<*>,
+        error: NSError?,
+    ) {
+        val code = error?.code
+        val finished = (error?.userInfo?.get(AVErrorRecordingSuccessfullyFinishedKey) as? NSNumber)?.boolValue
+        dispatch_async(dispatch_get_main_queue()) { done(code, finished) }
     }
 }
 
