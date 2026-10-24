@@ -51,11 +51,13 @@ interface ThumbnailEncoder {
      * caller must contain that too, and treat it the same way. A thumbnail is a cache; losing one
      * must never cost the user their file.
      *
-     * [mime] is a parameter **now** so that video and PDF thumbnails can be added implementation-side
-     * later without reshaping this interface or its call site. Today only image MIMEs produce bytes;
-     * every other type returns `null` and the tile keeps its type badge. The cheaper signature —
-     * bytes in, bytes out — is precisely the one that would have to be broken to add a kind that
-     * needs to know what it is looking at before it starts reading.
+     * [mime] is a parameter so that kinds beyond images can be added implementation-side without
+     * reshaping this interface or its call site — as video was: a frame grabber that wants random
+     * access reads through re-opens of [openSource], which costs at most about one extra read of the
+     * file. Images produce bytes, and videos where the platform's encoder grabs frames; every other
+     * type returns `null` and the tile keeps its type badge. The cheaper signature — bytes in, bytes
+     * out — is precisely the one that would have to be broken to add a kind that needs to know what it
+     * is looking at before it starts reading.
      */
     fun encode(mime: String, maxEdgePx: Int, openSource: () -> RawSource): ByteArray?
 }

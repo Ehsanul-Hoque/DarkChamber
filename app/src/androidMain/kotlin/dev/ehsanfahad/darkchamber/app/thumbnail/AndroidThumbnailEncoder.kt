@@ -28,13 +28,17 @@ import java.io.ByteArrayOutputStream
  *
  * ### Why it can decline
  *
+ * A video is handled apart: one frame about a second in, from the platform's frame grabber
+ * ([videoFrame]), compressed like a photo's preview.
+ *
  * Returning `null` is an ordinary outcome, not an error (see [ThumbnailEncoder]). This encoder
- * declines a MIME that is not an image, a file whose bytes are not the image its MIME claims, and
- * anything the platform decoder refuses — `BitmapFactory` reports that by returning `null` rather
- * than throwing, so the absence of an exception proves nothing here.
+ * declines a MIME that is neither an image nor a video, a file whose bytes are not what its MIME
+ * claims, and anything the platform decoder refuses — `BitmapFactory` reports that by returning
+ * `null` rather than throwing, so the absence of an exception proves nothing here.
  */
 internal class AndroidThumbnailEncoder : ThumbnailEncoder {
     override fun encode(mime: String, maxEdgePx: Int, openSource: () -> RawSource): ByteArray? {
+        if (mime.startsWith(VIDEO_MIME_PREFIX, ignoreCase = true)) return encodeVideo(maxEdgePx, openSource)
         if (!mime.startsWith(IMAGE_MIME_PREFIX, ignoreCase = true)) return null
 
         val transform = readTransform(mime, openSource)
@@ -69,6 +73,16 @@ internal class AndroidThumbnailEncoder : ThumbnailEncoder {
             if (upright !== scaled && upright !== decoded) upright.recycle()
             if (scaled !== decoded) scaled.recycle()
             decoded.recycle()
+        }
+    }
+
+    /** A frame about a second in ([videoFrame]), encoded like a photo's preview. */
+    private fun encodeVideo(maxEdgePx: Int, openSource: () -> RawSource): ByteArray? {
+        val frame = videoFrame(maxEdgePx, openSource) ?: return null
+        return try {
+            frame.compressToBytes()
+        } finally {
+            frame.recycle()
         }
     }
 
@@ -140,6 +154,7 @@ internal class AndroidThumbnailEncoder : ThumbnailEncoder {
 
     private companion object {
         const val IMAGE_MIME_PREFIX = "image/"
+        const val VIDEO_MIME_PREFIX = "video/"
 
         /** What an image with no orientation tag needs doing to it: nothing. */
         val UPRIGHT = ThumbnailTransform(degrees = 0, mirrored = false)

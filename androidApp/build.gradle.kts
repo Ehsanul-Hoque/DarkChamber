@@ -56,6 +56,9 @@ dependencies {
     // Instrumented cold-open smoke: boots the real Koin graph on a
     // device/emulator. Runnable locally (./gradlew :androidApp:connectedFossDebugAndroidTest);
     // NOT wired into pr.yml yet (the quality/instrumented job is still deferred).
+    // The thumbnail encoder's seam, so the video frame tests can name the type the platform module
+    // binds; the encoder itself stays internal to :app.
+    androidTestImplementation(project(":core:vault"))
     androidTestImplementation(libs.androidx.testExt.junit)
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.junit)
