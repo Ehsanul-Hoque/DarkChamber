@@ -8,6 +8,7 @@ import com.arkivanov.essenty.lifecycle.resume
 import dev.ehsanfahad.darkchamber.app.FakeCameraController
 import dev.ehsanfahad.darkchamber.app.FakeFilePicker
 import dev.ehsanfahad.darkchamber.app.FakePhotoPicker
+import dev.ehsanfahad.darkchamber.app.GateDispatcher
 import dev.ehsanfahad.darkchamber.app.VaultBootstrap
 import dev.ehsanfahad.darkchamber.app.testSqlDriver
 import dev.ehsanfahad.darkchamber.app.ui.crumbFor
@@ -45,6 +46,7 @@ import kotlinx.io.files.SystemTemporaryDirectory
 import org.koin.core.Koin
 import org.koin.dsl.koinApplication
 import org.koin.dsl.module
+import kotlin.coroutines.CoroutineContext
 import kotlin.random.Random
 import kotlin.random.nextULong
 import kotlin.test.AfterTest
@@ -93,6 +95,7 @@ class CameraNavigationTest {
     private fun TestScope.component(
         open: VaultBootstrap.OpenVault,
         graph: Koin = koin,
+        ioContext: CoroutineContext? = null,
     ): DefaultUnlockedComponent {
         val dispatcher = UnconfinedTestDispatcher(testScheduler)
         return DefaultUnlockedComponent(
@@ -100,7 +103,7 @@ class CameraNavigationTest {
             vault = open,
             koin = graph,
             mainContext = dispatcher,
-            ioContext = dispatcher,
+            ioContext = ioContext ?: dispatcher,
             mapContext = dispatcher,
             notSavedRecord = notSaved,
             onLock = { locks++ },
@@ -154,6 +157,83 @@ class CameraNavigationTest {
         assertEquals(1L, vaultObjects(open).observeItemCount(ItemFilter.All).first(), "and the clip is in the vault")
         component.lock()
     }
+
+    // --- A lock and what it takes (D4, D9) ---
+
+    /**
+     * A lock mid-recording: the clip is lost to the lock and **told after the next unlock**, its
+     * plaintext file is gone, and the lock did not wait for anything — it returned, gated, with the
+     * subtree torn down.
+     */
+    @Test
+    fun a_lock_while_recording_records_a_video_lost_to_it_and_leaves_no_clip() = runTest {
+        val component = component(openVault())
+        component.openCameraFromTop()
+        val camera = assertIs<UnlockedChild.Camera>(component.active).component
+        camera.setMode(CaptureMode.Video)
+        camera.shoot()
+        assertTrue(scratchFiles().isNotEmpty(), "the clip is being written")
+
+        component.lock()
+
+        assertEquals(1, locks, "the lock went through at once")
+        assertEquals(1, notSaved.summary.value.count(NotSavedKind.Video, NotSavedReason.Locked))
+        assertTrue(scratchFiles().isEmpty(), "no plaintext clip left: ${scratchFiles()}")
+    }
+
+    /**
+     * A lock while the lane encrypts a clip. The encrypt is held on its own thread when the lock
+     * lands, and the lock **does not wait for it**: it returns with the encrypt still pending. When
+     * the encrypt runs it meets a closed session and stops; nothing is saved, the clip is recorded
+     * as lost to the lock, and no plaintext is left.
+     */
+    @Test
+    fun a_lock_while_a_clip_encrypts_never_waits_and_records_the_clip_lost_to_it() = runTest {
+        val encrypt = GateDispatcher()
+        val open = openVault()
+        val component = component(open, ioContext = encrypt)
+        component.openCameraFromTop()
+        val camera = assertIs<UnlockedChild.Camera>(component.active).component
+        camera.setMode(CaptureMode.Video)
+        camera.shoot()
+        camera.shoot()
+        assertEquals(1, encrypt.pending, "the clip is waiting on the encrypt")
+
+        component.lock()
+        assertEquals(1, locks, "the lock returned with the encrypt still pending")
+        assertEquals(1, encrypt.pending)
+
+        encrypt.runAll()
+
+        assertEquals(1, notSaved.summary.value.count(NotSavedKind.Video, NotSavedReason.Locked))
+        assertTrue(scratchFiles().isEmpty(), "no plaintext clip left: ${scratchFiles()}")
+    }
+
+    /** Held photos and a recording, lost to one lock: both counts, each under its own kind. */
+    @Test
+    fun a_lock_with_held_photos_and_a_recording_records_both() = runTest {
+        val component = component(openVault())
+        component.openCameraFromTop()
+        val camera = assertIs<UnlockedChild.Camera>(component.active).component
+        this@CameraNavigationTest.camera.holdCaptures()
+        camera.shoot()
+        camera.shoot()
+        camera.setMode(CaptureMode.Video)
+        camera.shoot()
+
+        component.lock()
+
+        val summary = notSaved.summary.value
+        assertEquals(2, summary.count(NotSavedKind.Photo, NotSavedReason.Locked))
+        assertEquals(1, summary.count(NotSavedKind.Video, NotSavedReason.Locked))
+    }
+
+    // Every file directly inside a vault's tmp/ under this test's directory.
+    private fun scratchFiles(): List<Path> =
+        SystemFileSystem.list(testDir).flatMap { vault ->
+            val tmp = Path(vault, "tmp")
+            if (SystemFileSystem.exists(tmp)) SystemFileSystem.list(tmp) else emptyList()
+        }
 
     /** Back with nothing recording still pops at once. */
     @Test
