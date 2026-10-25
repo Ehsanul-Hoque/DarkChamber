@@ -262,7 +262,8 @@ Watch the scratch directory throughout: `adb shell run-as <applicationId> ls -l 
 - [ ] Stop immediately after starting: either a short clip is kept with its preview, or "Too short to
       save" shows and the scratch directory is empty — never a broken item.
 - [ ] Lock mid-recording with photos also still saving, then unlock: one notice names how many photos
-      and videos were not saved because the vault locked, shown once.
+      and videos were not saved because the vault locked. Lock and unlock again without dismissing
+      it: it is still there, with the same counts. Dismiss it: it does not come back.
 - [ ] Close the camera while a long clip is saving, then delete the album it was going to from the
       gallery: the clip lands in Unfiled, and a line says so.
 - [ ] Record three 4K clips of three to five minutes each on the back lens, and one HD clip: all record,

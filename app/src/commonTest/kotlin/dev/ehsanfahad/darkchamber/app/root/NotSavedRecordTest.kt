@@ -43,7 +43,10 @@ class NotSavedRecordTest {
         assertTrue(record.summary.value.isEmpty())
     }
 
-    /** Shown once: once the user has seen it, the next unlock says nothing about it again. */
+    /**
+     * Kept until dismissed, so a loss the user has not acknowledged is still there after another
+     * lock; once dismissed, the next unlock says nothing about it again.
+     */
     @Test
     fun clearing_empties_it_and_later_reports_start_from_zero() {
         val record = NotSavedRecord()
