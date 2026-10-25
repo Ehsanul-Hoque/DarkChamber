@@ -130,7 +130,18 @@ private class ReaderLoader(
         return true
     }
 
+    // Runs on a dispatch queue, where an exception would end the process instead of reaching the
+    // import's catch around the encoder. A read that fails — a lock stopping the vault's source, the
+    // file gone — fails the request, and the asset then has no frame to give.
     private fun serve(request: AVAssetResourceLoadingRequest) {
+        try {
+            answer(request)
+        } catch (_: Exception) {
+            request.finishLoadingWithError(null)
+        }
+    }
+
+    private fun answer(request: AVAssetResourceLoadingRequest) {
         if (closed) {
             request.finishLoadingWithError(null)
             return

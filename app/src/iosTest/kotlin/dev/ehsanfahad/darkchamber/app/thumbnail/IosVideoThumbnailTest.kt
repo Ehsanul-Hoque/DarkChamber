@@ -5,6 +5,8 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
 import kotlinx.io.Buffer
+import kotlinx.io.IOException
+import kotlinx.io.RawSource
 import platform.CoreGraphics.CGBitmapContextCreate
 import platform.CoreGraphics.CGColorSpaceCreateDeviceRGB
 import platform.CoreGraphics.CGColorSpaceRelease
@@ -92,11 +94,39 @@ class IosVideoThumbnailTest {
         assertNull(preview("not a video".encodeToByteArray()))
     }
 
+    /**
+     * A source that stops mid-read — a lock closing the session under an import's preview, or the
+     * file going — gives no preview. The reads run on the resource loader's queue, where an exception
+     * would end the process rather than reach the import's own catch.
+     */
+    @Test
+    fun a_source_that_fails_mid_read_has_no_preview() {
+        val clip = VideoFixtures.colour
+        val failing = encoder.encode("video/mp4", 512) { FailingAfter(clip, failAt = clip.size / 2) }
+        assertNull(failing)
+        assertNull(encoder.encode("video/mp4", 512) { throw IOException("gone") })
+    }
+
     /** The MIME is what routes the bytes; an image type is not read as a video. */
     @Test
     fun only_a_video_type_reaches_the_frame_grabber() {
         assertNull(preview(VideoFixtures.colour, mime = "image/jpeg"))
         assertNotNull(preview(VideoFixtures.colour, mime = "VIDEO/MP4"))
+    }
+
+    // The clip's bytes up to [failAt], then the failure a stopped vault read throws.
+    private class FailingAfter(private val bytes: ByteArray, private val failAt: Int) : RawSource {
+        private var at = 0
+
+        override fun readAtMostTo(sink: Buffer, byteCount: Long): Long {
+            if (at >= failAt) throw IOException("stopped")
+            val n = minOf(byteCount, (failAt - at).toLong()).toInt()
+            sink.write(bytes, at, at + n)
+            at += n
+            return n.toLong()
+        }
+
+        override fun close() = Unit
     }
 
     private fun CGImageRef.size(): Pair<Int, Int> = CGImageGetWidth(this).toInt() to CGImageGetHeight(this).toInt()
