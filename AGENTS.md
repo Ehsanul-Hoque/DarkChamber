@@ -8,7 +8,7 @@ Package root: `dev.ehsanfahad.darkchamber`.
 
 > **Current state.** Phase 0 is **complete** — the encrypted-vault core is built — and **Phase 1 is
 > in progress**: the vault feature module ships the gallery and import, and the camera module takes
-> photos. The module graph is wired by the `:build-logic` convention plugins (`darkchamber.kmp.library`,
+> photos and records video. The module graph is wired by the `:build-logic` convention plugins (`darkchamber.kmp.library`,
 > `darkchamber.android.application`, `darkchamber.kmp.compose`, `darkchamber.kmp.feature`), versions
 > pinned in `gradle/libs.versions.toml`. What exists:
 >
@@ -34,7 +34,8 @@ Package root: `dev.ehsanfahad.darkchamber`.
 > - **`:core:logging`** — Kermit + the `VaultError` redaction boundary (hard rule #4).
 > - **`:app`** — the composition root: the Koin graph, the platform seams (`VaultRootResolver`, the
 >   catalog driver, `SecureKeyStore`, the pickers, and the camera — CameraX / AVFoundation capturing
->   into memory, never to a file), `VaultBootstrap`'s fail-closed cold-open, the Decompose
+>   photos into memory and video into one `tmp/` scratch file it is handed, plus free space and the
+>   video preview frames), `VaultBootstrap`'s fail-closed cold-open, the Decompose
 >   `Locked | Unlocked` session gate (Unlocked constructed with a live session), cryptographic per-use
 >   biometric unlock (passphrase fallback + forced-passphrase on re-enrollment), the create/recovery/
 >   unlock Compose UI, and the lock lifecycle (teardown on Lock **and** on background). Hosted by an
@@ -59,18 +60,22 @@ Package root: `dev.ehsanfahad.darkchamber`.
 >   for a screen outside the feature; everything else is `internal`. Reaches the vault through
 >   `core:vault` only, and navigates only through callbacks the host supplies (opening the camera is
 >   one).
-> - **`:feature:camera`** — the private camera, photos: the `CameraController` seam the app
+> - **`:feature:camera`** — the private camera, photos and video: the `CameraController` seam the app
 >   implements, a camera opened on the listing it came from (filing where an import from there would,
->   counting that listing live), and a save path from memory straight into `importObject` — the JPEG's
+>   counting that listing live). **Photos** go from memory straight into `importObject` — the JPEG's
 >   orientation written in memory, no file and no `tmp/` stage, this code's own arrays zeroed on every
->   path, at most three photos held. Its save queue runs in the **session's** scope, so closing the
->   camera lets a taken photo finish and only a lock abandons one. Does not depend on `:feature:vault`;
->   the last-shot tile is the host's `VaultThumbnail` slot. See `docs/ARCHITECTURE.md` §6.
+>   path, at most three held. **Video** is the one disclosed exception: one plaintext scratch file in
+>   `tmp/`, size-limited from free space, encrypted by a one-clip-at-a-time lane and deleted on every
+>   way out, with what a lock took reported on the next unlocked screen. Both save paths run in the
+>   **session's** scope, so closing the camera lets a capture finish and only a lock abandons one.
+>   The screen holds portrait, turns its icons and letterboxes the viewfinder at the capture's shape.
+>   Does not depend on `:feature:vault`; the last-shot tile is the host's `VaultThumbnail` slot. See
+>   `docs/ARCHITECTURE.md` §6.
 > - **`:konsist`** — the architecture + **security-invariant** rules, running in CI on every PR.
 >
 > Still a stub (marker + smoke test): `:core:testing`. **In progress: Phase 1** — albums and browsing
-> are in and merged (browse refinement landed 2026-10-17), and the camera takes photos; next are its
-> video, the seek primitive and the in-app viewers (deferred from Phase 0). **Planned, not yet wired:** ktlint/detekt/Kover, Lefthook and
+> are in and merged (browse refinement landed 2026-10-17), and the camera takes photos and records
+> video; next are the seek primitive and the in-app viewers (deferred from Phase 0). **Planned, not yet wired:** ktlint/detekt/Kover, Lefthook and
 > `migrationTest` — verify a Gradle task exists before assuming it runs. CI:
 > `pr.yml` is enabled (build + commit-message check + a gated macOS job that runs the **iOS unit
 > tests** and compiles the device architecture); its `quality` job stays

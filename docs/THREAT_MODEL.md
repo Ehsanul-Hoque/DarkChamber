@@ -14,7 +14,7 @@
 
 1. **Other apps or cloud backup services reading vault files.** Vault content lives in app-private storage and never enters shared MediaStore, so scanners (including Google Photos backup) never see it. Content is additionally encrypted at rest.
 2. **A device thief or snooping person who does not know the PIN/passphrase.** Master-key material is wrapped by hardware-backed keys (Android Keystore/StrongBox, iOS Secure Enclave) gated on biometric/PIN, with rate-limited unlock attempts. Key material is unrecoverable without successful authentication.
-3. **Casual and forensic inspection of a locked or powered-off device.** Only ciphertext exists on disk: file contents, filenames, metadata, and thumbnails are all encrypted. A full filesystem image without the user's PIN or recovery key yields no plaintext.
+3. **Casual and forensic inspection of a locked or powered-off device.** Only ciphertext exists on disk: file contents, filenames, metadata, and thumbnails are all encrypted. A full filesystem image without the user's PIN or recovery key yields no plaintext. **One exception:** a camera video interrupted by a crash or a forced stop, while it was being recorded or encrypted, leaves its plaintext scratch file in app-private storage until the app is next launched (see the invariants below).
 4. **Root-level extraction of stored data.** Even with root access to the app's private directory, an attacker obtains ciphertext plus a wrapped master key. Hardware-bound wraps cannot be exported from the secure element; the password wrap requires brute-forcing the passphrase through Argon2id (memory-hard, deliberately slow).
 5. **Cloud provider inspection (Phase 3 backup).** Providers store ciphertext with encrypted names and metadata; the backup design is zero-knowledge and we operate no servers.
 6. **Shoulder-surfing and incidental leaks.** Screenshot blocking (`FLAG_SECURE`) on Android, app-switcher snapshot obscuring on both platforms, optional tap-to-reveal for sensitive lists.
@@ -50,6 +50,13 @@
 - **A camera photo never touches a file.** It is captured into memory and handed straight to the
   encrypting import; neither platform's save-to-file capture is used, and the import does not stage it
   in `tmp/`. Nothing about a shot reaches shared storage or the system photo library.
+- **A camera video passes through one plaintext file in app-private `tmp/`** while it is recorded
+  and encrypted — the one place this app's own capture writes plaintext to disk. The file has a
+  random name, there is never more than one, and it is deleted after the encrypt, on every failure,
+  on lock, and on the next launch after a crash. Deleted flash blocks may outlive the delete
+  (wear-levelling), as for the shredder: the file's contents can survive on the storage chip after it
+  is gone from the file system, out of reach of any app but not of forensic recovery from the chip.
+  Nothing about a clip reaches shared storage or the system photo library.
 - No plaintext thumbnails outside the encrypted thumbnail store. A preview is generated in memory,
   sealed under its own key and written only there; no image cache on disk, at any layer, ever holds
   what it decrypted.

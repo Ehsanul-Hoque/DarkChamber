@@ -1,12 +1,13 @@
-# Manual verification — the private camera (photos)
+# Manual verification — the private camera (photos and video)
 
-> Scope: the in-app camera — opening it from a listing, taking photos, where they land and what the
-> bar counts, the permission and availability states, and what happens when the camera is closed,
-> the app is backgrounded or the vault locks with photos still on their way. Verifies the properties
-> that only a real camera, a real photo library and a real screen can show: that **a shot never
-> reaches shared storage**, that it carries **no location**, that it is **upright**, and that the
+> Scope: the in-app camera — opening it from a listing, taking photos and recording videos, where
+> they land and what the bar counts, the permission and availability states, and what happens when
+> the camera is closed, the app is backgrounded or the vault locks with captures still on their way.
+> Verifies the properties that only a real camera, a real photo library and a real screen can show:
+> that **a capture never reaches shared storage**, that **a video's one scratch file is gone however
+> the recording ends**, that a capture carries **no location**, that it is **upright**, and that the
 > camera is **released** whenever the screen is not in front. Run at release, and whenever the
-> capture path, the save queue, the platform camera code or the manifest changes.
+> capture path, the save queue, the video lane, the platform camera code or the manifest changes.
 
 ## What must be true
 
@@ -36,11 +37,37 @@ releasable.
    the vault locks are abandoned: after unlocking there is no partial item, no orphan object and nothing
    in scratch. Closing the camera is **not** a lock — a photo taken just before closing is saved.
 9. **The screen claims nothing it cannot keep.** No copy says the camera is silent (some regions force
-   a shutter sound on iOS), that photos never leave the vault (they will be exportable), or that a
+   a shutter sound on iOS), that photos never leave the vault (they will be exportable), that a
    shot's memory is wiped (only the app's own copies are cleared; the platform's buffers are not the
-   app's to clear).
-10. **The app still installs and works on a device with no camera.** The camera hardware is declared
-    not required; there, the camera screen says the camera is not available.
+   app's to clear), or that a video is never stored unencrypted or never touches storage (it passes
+   through one scratch file).
+10. **The app still installs and works on a device with no camera or no microphone.** Both are
+    declared not required; without a camera the camera screen says it is not available, and without
+    a microphone videos record without sound.
+11. **A video's plaintext lives in one app-private scratch file, and only for as long as it must.**
+    While a clip is recorded and encrypted there is exactly one file in the vault's scratch directory
+    and none anywhere another app can read. It is gone once the clip is saved, fails, is too short, or
+    is abandoned by a lock; after a crash or a forced stop it is gone at the next launch. No video
+    reaches the system's media store or photo library.
+12. **A recording is never lost without a word, and never kept broken.** A clip that is kept is whole
+    and plays; one that is not is reported — on the camera screen while it is open, otherwise on the
+    next unlocked screen — with the reason the app actually knows.
+13. **Closing the camera finishes the recording.** Back or ✕ while recording keeps the clip whole, and
+    the camera is released only after that.
+14. **Space is checked before it runs out.** Too little free space refuses to start and says so;
+    a recording that reaches its limit stops by itself, is kept, and says why it stopped. Saving a
+    clip stopped at the limit fits, unless something else fills the phone meanwhile — and then the
+    clip is reported as not saved for lack of space, never left behind in scratch.
+15. **Sound only when allowed.** With the microphone refused, or sound turned off before recording, a
+    clip has no audio track, and the screen shows that it is recording without sound.
+16. **The viewfinder shows exactly the frame that is saved**, at the capture's own shape — 4:3 for a
+    photo, 16:9 for a video — with nothing cropped. The screen stays upright while the phone turns,
+    its icons turn with the phone, and every capture is stored the way the scene was held.
+17. **The camera draws edge to edge without hiding anything.** Only the black and the viewfinder sit
+    under the system bars; no control does, with gesture navigation or with buttons.
+18. **A video's preview is upright, and costs no file.** A recorded clip and an imported one both get
+    a frame from about a second in, the right way up, and making it writes nothing outside the
+    scratch directory.
 
 ## What is already automated (run these first)
 
@@ -65,6 +92,23 @@ Everything except the device checks below is proven by fast tests:
   camera; closing with a save in flight lets it finish; the platform rules (permission state,
   availability, rotation, flash, the JPEG copy) and that each platform module binds a real camera.
 - **`./gradlew :konsist:test`** — the security invariants.
+- **Video, `:feature:camera`** (same tasks as above) — the recording handle's one-end rule; the size
+  limit and floor from free space, and refusal when it is unknown; the lane's one clip at a time, its
+  file deleted on every exit including a lock mid-encrypt, a disk filled mid-save, an album deleted
+  mid-save (saved unfiled) and a crash followed by the launch purge, against a real vault; the
+  recorder's close waiting for the finish and abandoning on timeout; every recording state's screen
+  decision and words.
+- **Video, `:app`** (same tasks) — a lock while recording, mid-encrypt, and with photos held, through
+  the real teardown, reaching the not-saved notice with the right counts; the platform rules (how each
+  recorder's end becomes the app's, the microphone permission, the tilt, the qualities per lens, the
+  capture shape per mode); the preview reader's random reads over a stream and which frame is taken.
+  The iOS frame grabber runs over real clips on the simulator.
+- **Video previews on an Android device** — `VideoThumbnailInstrumentedTest` over clips made by
+  ffmpeg. Install the app and its test APK with `adb install -r`, then run **only that class**:
+  `adb shell am instrument -w -e class dev.ehsanfahad.darkchamber.VideoThumbnailInstrumentedTest
+  dev.ehsanfahad.darkchamber.test/androidx.test.runner.AndroidJUnitRunner`. Never the Gradle
+  `connected…AndroidTest` task on a phone holding a vault you care about: it uninstalls the app, and
+  the vault with it.
 
 What remains below needs a device: a real camera, a real photo library, real orientation sensors and a
 real screen.
@@ -86,7 +130,7 @@ leave the previous screen's dump in place.
 
 ## Checklist
 
-Tick each line. A failure in A, B, E or F is release-blocking.
+Tick each line. A failure in A, B, E, F, I or J is release-blocking.
 
 ### A. Nothing reaches shared storage (property 1) — Android
 
@@ -187,10 +231,89 @@ carries — never the bytes, never a name. Remove it afterwards and reinstall th
 - [ ] Where a camera-less device or emulator is available, the app installs, the vault works, and the
       camera screen says the camera isn't available right now.
 
-### I. iOS — needs a device
+### I. A video's scratch file (properties 11 and 1) — Android
+
+Watch the scratch directory throughout: `adb shell run-as <applicationId> ls -l files/vault/tmp`.
+
+- [ ] While recording, exactly one file is there, readable by the app alone; within moments of the
+      clip being saved it is gone.
+- [ ] Lock mid-recording (home, or the power button): the file is gone. Record again, stop, and lock
+      while the clip is still saving: the file is gone, and after unlocking the clip is not in the
+      vault and nothing half-written is.
+- [ ] Kill the app mid-recording (`adb shell am kill <applicationId>` after pressing home, or
+      `am force-stop`): the file is still there until the next launch, and gone once the app has
+      started again — with no partial item in the vault.
+- [ ] Before and after the whole session, count the system's videos
+      (`adb shell content query --uri content://media/external/video/media --projection _id | wc -l`)
+      and list `DCIM`: unchanged.
+- [ ] Nothing about a recording appears in the system log: no path, no file name
+      (`adb logcat -d | grep -i -e vault/tmp -e scratch` prints nothing from the app).
+
+### J. How a recording ends (properties 12 and 13) — Android
+
+- [ ] Stop a recording: the clip is in the listing, the count rose by one, the tile reads "Last video
+      saved", and the clip has its preview.
+- [ ] Press back, and separately ✕, while recording: the clip is kept whole, and the camera indicator
+      goes off only after it is (`adb shell dumpsys media.camera`). Back within a fraction of a
+      second of starting, too.
+- [ ] Stop immediately after starting: either a short clip is kept with its preview, or "Too short to
+      save" shows and the scratch directory is empty — never a broken item.
+- [ ] Lock mid-recording with photos also still saving, then unlock: one notice names how many photos
+      and videos were not saved because the vault locked, shown once.
+- [ ] Close the camera while a long clip is saving, then delete the album it was going to from the
+      gallery: the clip lands in Unfiled, and a line says so.
+- [ ] Record three 4K clips of three to five minutes each on the back lens, and one HD clip: all record,
+      save and land, with no crash and no "not responding". Record the bytes per minute, the time to
+      encrypt a gigabyte and the app's peak memory during the encrypt.
+
+### K. Space (property 14) — Android
+
+Fill the phone with a throwaway file to change the free space, and remove it afterwards.
+
+- [ ] With just above the floor free, starting a recording is refused: "Not enough space to record."
+- [ ] With room for about a minute of HD: the recording stops by itself, the clip is kept, the screen
+      says "Recording stopped — not enough space for a longer clip.", and the space-left figure
+      reaches zero as it stops.
+- [ ] Record the measured reserve and floor this device needs, against the values the app starts
+      with.
+
+### L. Sound (property 15) — Android
+
+- [ ] On first switching to video, the system asks for the microphone, and the vault does not lock.
+- [ ] Refused: the screen says videos record without sound and offers **Allow**; a clip made now has
+      no audio track, and the status line marks it as recording without sound.
+- [ ] Turned off with the sound toggle while allowed: the same — no audio track, marked.
+- [ ] Granted later in Settings: the next opening of the camera records with sound.
+- [ ] Where no shutter sound is required, starting and stopping make no sound of the app's own; where
+      one is required, the system's record sounds play.
+
+### M. Shape, rotation and edge to edge (properties 16 and 17) — Android
+
+- [ ] Photo mode: the viewfinder is 4:3; video mode: 16:9 (measure the preview's bounds in a view
+      dump). Point at a marked scene and compare its edges in the viewfinder with the saved preview:
+      nothing was cropped.
+- [ ] Turn the phone through all four ways, on both lenses, in photo and video: the screen does not
+      rotate, the icons do, and each capture's preview is upright in the gallery.
+- [ ] Open the camera with the phone already sideways: it shows upright at once, without the vault
+      locking. Leave it: the rest of the app rotates freely again.
+- [ ] In split screen, or on a large screen where the portrait hold is refused, the controls stand
+      beside the viewfinder and nothing overlaps.
+- [ ] With gesture navigation **and** with three-button navigation: no control sits under the status
+      bar or the navigation bar; only the black and the viewfinder run under them.
+- [ ] At font scale 1.5 the recording status line and the quality control still fit in portrait.
+
+### N. Video previews (property 18) — Android
+
+- [ ] A recorded clip and a large imported video both get an upright preview. Record how much time
+      the preview adds to the large import.
+- [ ] Afterwards, nothing new exists in the app's private storage outside the vault's own stores and
+      scratch, and nothing in the app's external directories.
+
+### O. iOS — needs a device
 
 None of these can be checked on the simulator, which has no camera. Until a device run has happened,
-treat them as **unverified**.
+treat them as **unverified**. Properties 11 to 18 apply to iOS too; check them as in sections I to
+N, with Xcode's device file browser in place of `run-as`.
 
 - [ ] Property 1: no new item in Photos after a single shot and a burst.
 - [ ] Property 2 and 3: no GPS in a stored shot, and the orientation the system wrote at capture is
@@ -202,10 +325,15 @@ treat them as **unverified**.
 - [ ] A shutter sound plays where the region requires one; no copy calls the camera silent.
 - [ ] Flash, focus, zoom and flip behave as in section C; the preview resizes cleanly on rotation.
 - [ ] Another app using the camera is reported as in use; other interruptions only as not available.
+- [ ] A call or another app interrupting a recording ends it as kept or as reported failed — never a
+      screen waiting for ever.
+- [ ] The microphone alert does not lock the vault, and the system's own record sounds are what play.
+- [ ] The front lens offers the qualities it really records, and its clips are upright.
 
 ## Sign-off
 
 Record device models and OS versions, the date, the app version (`:androidApp:printVersion`), which
 orientation case the Android device landed in, the JPEG size at the default resolution on each lens,
-and the app's memory during a burst. Any failure in A, B, E or F is release-blocking; the rest are
-correctness or UX bugs to fix before release.
+the app's memory during a burst, the qualities each lens offered, the 4K bitrate and encrypt time from
+J, and the reserve and floor from K. Any failure in A, B, E, F, I or J is release-blocking; the rest
+are correctness or UX bugs to fix before release.

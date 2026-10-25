@@ -120,7 +120,7 @@ The full circle is *reserved* for the aperture family (§7) — its rarity is wh
 One motif, three appearances, nowhere else:
 
 1. **Lock state indicator** — an iris that is *open* when the vault is unlocked and *closes* on lock. It doubles as the honest status light: open iris = session live.
-2. **Shutter button** — the camera's capture control: `radiusFull`, 72 dp, `accent` ring on `surface`; press = brief iris blink.
+2. **Shutter button** — the camera's capture control: `radiusFull`, 72 dp, `accent` ring on `surface`; press = brief iris blink. In video it carries its state inside the ring, in `accent`: a filled dot when ready to record, a small square with softened corners while recording — the stop — and the ring then breathes slowly (full to three quarters over 1.6 s) so a recording in progress reads at a glance. Reduced motion keeps the ring still. No red: amber is already the colour of exposure, and a recording is one. A record held back by a clip still saving is drawn disabled and says why to a screen reader.
 3. **Unlock progress** — while keys unwrap, the iris opens from closed; on failure it stays shut and shakes 2 px.
 
 The app icon is the closed iris on chamber black — the seal itself.
