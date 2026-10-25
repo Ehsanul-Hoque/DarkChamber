@@ -1,6 +1,7 @@
 package dev.ehsanfahad.darkchamber.feature.camera
 
 import dev.ehsanfahad.darkchamber.feature.camera.api.ClipFile
+import dev.ehsanfahad.darkchamber.feature.camera.api.VideoContainer
 import kotlinx.io.Buffer
 import kotlinx.io.RawSource
 import kotlinx.io.files.Path
@@ -9,6 +10,7 @@ import kotlinx.io.files.Path
 internal class FakeClipFile(
     private val bytes: ByteArray = ByteArray(1_000) { it.toByte() },
     override val path: Path = Path("tmp/scratch-fake.mp4"),
+    override val container: VideoContainer = VideoContainer.Mp4,
 ) : ClipFile {
     var opens = 0
         private set

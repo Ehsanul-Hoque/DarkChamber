@@ -11,6 +11,7 @@ import dev.ehsanfahad.darkchamber.feature.camera.FakeCaptureVault
 import dev.ehsanfahad.darkchamber.feature.camera.FakeClipFile
 import dev.ehsanfahad.darkchamber.feature.camera.GateDispatcher
 import dev.ehsanfahad.darkchamber.feature.camera.api.ClipFile
+import dev.ehsanfahad.darkchamber.feature.camera.api.VideoContainer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -48,8 +49,25 @@ class VideoLaneTest {
             scope = scope,
             ioContext = ioContext ?: dispatcher,
             notSaved = { kind, reason, count -> reports += Triple(kind, reason, count) },
-            nameFor = { "Video at $it" },
+            nameFor = { at, container -> "Video at $at.${container.extension}" },
         ).apply { screenOpen = true }
+    }
+
+    /**
+     * A clip is filed as the format its platform wrote: iOS's movie output writes QuickTime, and a
+     * viewer or an export trusts the MIME and the name.
+     */
+    @Test
+    fun a_clip_is_filed_as_the_format_its_platform_wrote() = runTest {
+        val h = Harness(this)
+        h.vault.nextResult = { Outcome.Ok(byteArrayOf(1)) }
+        h.lane.save(FakeClipFile(container = VideoContainer.QuickTime), albumId = null)
+        testScheduler.advanceUntilIdle()
+
+        val imported = h.vault.imported.single()
+        assertEquals("video/quicktime", imported.mime)
+        assertEquals("Video at 42.mov", imported.name)
+        h.sessionJob.cancel()
     }
 
     @Test
@@ -65,7 +83,7 @@ class VideoLaneTest {
         val imported = h.vault.imported.single()
         assertEquals(VaultItemKind.FILE.code, imported.kind)
         assertEquals("video/mp4", imported.mime)
-        assertEquals("Video at 42", imported.name, "named from the injected clock")
+        assertEquals("Video at 42.mp4", imported.name, "named from the injected clock")
         assertContentEquals(byteArrayOf(9), imported.albumId)
         assertContentEquals(bytes, imported.bytes)
         assertTrue(imported.fileUnfiledIfMissing, "a clip is never lost to its album going")

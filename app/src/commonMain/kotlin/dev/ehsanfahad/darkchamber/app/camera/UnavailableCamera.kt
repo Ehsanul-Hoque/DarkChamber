@@ -13,6 +13,7 @@ import dev.ehsanfahad.darkchamber.feature.camera.api.Lens
 import dev.ehsanfahad.darkchamber.feature.camera.api.MicrophonePermission
 import dev.ehsanfahad.darkchamber.feature.camera.api.Recording
 import dev.ehsanfahad.darkchamber.feature.camera.api.ReportedRecording
+import dev.ehsanfahad.darkchamber.feature.camera.api.VideoContainer
 import dev.ehsanfahad.darkchamber.feature.camera.api.VideoQuality
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -36,6 +37,7 @@ internal object UnavailableCamera : CameraController {
 
     // Granted for the same reason as the camera's: no prompt for a microphone nothing will record with.
     override val microphonePermission: StateFlow<MicrophonePermission> = MutableStateFlow(MicrophonePermission.Granted)
+    override val videoContainer: VideoContainer = VideoContainer.Mp4
     override val deviceRotation: StateFlow<Int> = MutableStateFlow(0)
 
     override suspend fun requestPermission() = Unit

@@ -178,7 +178,7 @@ An album is a **label on an item, not a container that owns it**. `items.album_i
 
 ## 6. Private camera
 
-Pipeline: sensor → JPEG or MP4 → the vault's encrypting import → `objects/….dchm`. **A photo never touches a file; a video passes through one plaintext file in app-private `tmp/` while it is recorded and encrypted**, then is deleted (`THREAT_MODEL.md`).
+Pipeline: sensor → JPEG, or a clip (MP4 on Android, a QuickTime movie on iOS) → the vault's encrypting import → `objects/….dchm`. **A photo never touches a file; a video passes through one plaintext file in app-private `tmp/` while it is recorded and encrypted**, then is deleted (`THREAT_MODEL.md`).
 
 - **Android (CameraX):** photos via `ImageCapture`'s in-memory callback; video via `VideoCapture` and its `Recorder`, writing to the scratch file it is handed.
 - **iOS (AVFoundation):** photos via `AVCapturePhotoOutput`'s in-memory data; video via `AVCaptureMovieFileOutput`, writing to the scratch file it is handed.
@@ -211,6 +211,7 @@ Pipeline: sensor → JPEG or MP4 → the vault's encrypting import → `objects/
 - **Video previews** are one frame about a second in — the first key frame at or after it, or the first frame of a shorter clip — upright as the clip is shown. The platform's frame grabber wants random access and the import hands over a stream, so it reads through a reader that skips forward, re-opens to go back and keeps the last few megabytes it read: a clip whose index is at the end of the file, as phones write it, costs about one extra read of the file. Nothing is written for it. Android uses `MediaMetadataRetriever` over a `MediaDataSource`; iOS uses `AVAssetImageGenerator` over a resource loader. Imported videos get previews the same way.
 - **The screen holds portrait and turns its icons**, so the viewfinder and the controls never jump while a shot is framed; captures are tagged from the phone's tilt. It draws edge to edge, its controls inside the system insets, and its viewfinder is **letterboxed at the capture's own shape** — 4:3 for a photo, 16:9 for a video — so it shows exactly the frame that is saved and nothing is cropped. Where the platform refuses the portrait hold (large screens, split screen), a side-by-side layout is used instead.
 - **CameraX's own logging is set to errors only**, because at debug level its recorder writes the output path to the log. Record-start and record-stop sounds play only where the region requires a shutter sound; iOS plays its own where it must.
+- **A clip is filed as the format its platform wrote:** `video/mp4` and `.mp4` from CameraX, `video/quicktime` and `.mov` from iOS's movie file output, which writes only QuickTime. The controller says which, and the scratch name, the MIME and the item's name follow it.
 - **iOS video is unverified on a device.** It is compiled and unit-tested on the simulator, which has no camera; its frame grabber is tested there over real clips.
 
 ## 7. Viewers (per-type presenters over one blob store)

@@ -57,6 +57,7 @@ import dev.ehsanfahad.darkchamber.feature.camera.api.MicrophonePermission
 import dev.ehsanfahad.darkchamber.feature.camera.api.Recording
 import dev.ehsanfahad.darkchamber.feature.camera.api.RecordingEnd
 import dev.ehsanfahad.darkchamber.feature.camera.api.ReportedRecording
+import dev.ehsanfahad.darkchamber.feature.camera.api.VideoContainer
 import dev.ehsanfahad.darkchamber.feature.camera.api.VideoQuality
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -116,6 +117,9 @@ class AndroidCameraController(
 
     private val _microphonePermission = MutableStateFlow(MicrophonePermission.NotAsked)
     override val microphonePermission: StateFlow<MicrophonePermission> = _microphonePermission.asStateFlow()
+
+    // CameraX's Recorder muxes MP4.
+    override val videoContainer: VideoContainer = VideoContainer.Mp4
 
     private val _deviceRotation = MutableStateFlow(0)
     override val deviceRotation: StateFlow<Int> = _deviceRotation.asStateFlow()

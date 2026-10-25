@@ -5,5 +5,6 @@ package dev.ehsanfahad.darkchamber.feature.camera.api
  * recording, nothing created until the recorder writes. The app implements it over `core:storage`.
  */
 fun interface ClipFiles {
-    fun newClip(): ClipFile
+    /** A clip for a recorder that writes [container], whose name carries its extension. */
+    fun newClip(container: VideoContainer): ClipFile
 }

@@ -9,6 +9,7 @@ import dev.ehsanfahad.darkchamber.core.model.VaultItemKind
 import dev.ehsanfahad.darkchamber.core.vault.ImportPhase
 import dev.ehsanfahad.darkchamber.core.vault.WhenAlbumMissing
 import dev.ehsanfahad.darkchamber.feature.camera.api.ClipFile
+import dev.ehsanfahad.darkchamber.feature.camera.api.VideoContainer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -51,7 +52,7 @@ internal class VideoLane(
     private val scope: CoroutineScope,
     private val ioContext: CoroutineContext,
     private val notSaved: NotSavedReporter,
-    private val nameFor: (epochMillis: Long) -> String = ::videoName,
+    private val nameFor: (epochMillis: Long, container: VideoContainer) -> String = ::videoName,
 ) {
     private val _state = MutableStateFlow(VideoLaneState())
     val state: StateFlow<VideoLaneState> = _state.asStateFlow()
@@ -75,7 +76,7 @@ internal class VideoLane(
         if (_state.value.busy) return false
         _state.update { it.copy(busy = true, progress = null) }
         val size = clip.size()
-        val name = nameFor(clock())
+        val name = nameFor(clock(), clip.container)
         val destination = albumId?.copyOf()
         // Written on the encrypt's thread, read once the job is complete.
         val result = Result()
@@ -87,7 +88,7 @@ internal class VideoLane(
                 result.outcome = vault.import(
                     kind = VaultItemKind.FILE.code,
                     name = name,
-                    mime = VIDEO_MIME,
+                    mime = clip.container.mime,
                     albumId = destination,
                     isActive = { scope.isActive },
                     onProgress = { phase, bytes -> if (phase == ImportPhase.ENCRYPTING) report(bytes, size) },
@@ -145,10 +146,6 @@ internal class VideoLane(
         @Volatile var outcome: Outcome<ByteArray>? = null
 
         @Volatile var filedUnfiled: Boolean = false
-    }
-
-    private companion object {
-        const val VIDEO_MIME = "video/mp4"
     }
 }
 

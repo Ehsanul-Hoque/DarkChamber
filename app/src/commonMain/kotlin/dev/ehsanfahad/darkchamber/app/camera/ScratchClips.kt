@@ -5,6 +5,7 @@ import dev.ehsanfahad.darkchamber.core.storage.VaultStorage
 import dev.ehsanfahad.darkchamber.feature.camera.api.ClipFile
 import dev.ehsanfahad.darkchamber.feature.camera.api.ClipFiles
 import dev.ehsanfahad.darkchamber.feature.camera.api.FreeSpace
+import dev.ehsanfahad.darkchamber.feature.camera.api.VideoContainer
 import kotlinx.io.RawSource
 import kotlinx.io.files.Path
 
@@ -14,11 +15,12 @@ import kotlinx.io.files.Path
  * launch's purge of `tmp/` covers it unchanged.
  */
 internal class ScratchClips(private val storage: VaultStorage) : ClipFiles {
-    override fun newClip(): ClipFile = ScratchClip(storage.newScratchFile(suffix = ".mp4"))
+    override fun newClip(container: VideoContainer): ClipFile =
+        ScratchClip(storage.newScratchFile(suffix = ".${container.extension}"), container)
 }
 
 /** A [ScratchFile] in the camera's terms. Its path is never logged (hard rule #4). */
-internal class ScratchClip(private val scratch: ScratchFile) : ClipFile {
+internal class ScratchClip(private val scratch: ScratchFile, override val container: VideoContainer) : ClipFile {
     override val path: Path get() = scratch.path
 
     override fun open(): RawSource = scratch.open()

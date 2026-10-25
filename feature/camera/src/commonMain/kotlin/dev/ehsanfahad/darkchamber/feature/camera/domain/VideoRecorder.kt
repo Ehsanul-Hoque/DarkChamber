@@ -76,7 +76,7 @@ internal class VideoRecorder(
             RecordingRoom.Unknown -> return refuse(RecorderNotice.SpaceUnknown)
         }
         val sound = recordingSound(camera.microphonePermission.value, soundWanted())
-        val clip = clips.newClip()
+        val clip = clips.newClip(camera.videoContainer)
         val recording = camera.record(clip.path, limit, sound.withAudio)
         val started = Take(clip, recording)
         take = started

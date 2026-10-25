@@ -15,6 +15,9 @@ interface ClipFile {
     /** Where the recorder writes. Nothing exists there until it does. */
     val path: Path
 
+    /** The format the recorder writes there, which the saved item's MIME and name follow. */
+    val container: VideoContainer
+
     /** A fresh reader over the whole file, independent of any other; throws if it cannot be read. */
     fun open(): RawSource
 

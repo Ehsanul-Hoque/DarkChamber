@@ -17,6 +17,7 @@ import dev.ehsanfahad.darkchamber.feature.camera.api.Recording
 import dev.ehsanfahad.darkchamber.feature.camera.api.RecordingEnd
 import dev.ehsanfahad.darkchamber.feature.camera.api.RecordingProgress
 import dev.ehsanfahad.darkchamber.feature.camera.api.ReportedRecording
+import dev.ehsanfahad.darkchamber.feature.camera.api.VideoContainer
 import dev.ehsanfahad.darkchamber.feature.camera.api.VideoQuality
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.ObjCSignatureOverride
@@ -152,6 +153,9 @@ class IosCameraController : CameraController {
 
     private val _microphonePermission = MutableStateFlow(currentMicrophonePermission())
     override val microphonePermission: StateFlow<MicrophonePermission> = _microphonePermission.asStateFlow()
+
+    // On iOS the movie file output records only to a QuickTime movie file; it has no MP4 option.
+    override val videoContainer: VideoContainer = VideoContainer.QuickTime
 
     private val _deviceRotation = MutableStateFlow(0)
     override val deviceRotation: StateFlow<Int> = _deviceRotation.asStateFlow()

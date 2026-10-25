@@ -14,6 +14,7 @@ import dev.ehsanfahad.darkchamber.feature.camera.api.MicrophonePermission
 import dev.ehsanfahad.darkchamber.feature.camera.api.RecordingEnd
 import dev.ehsanfahad.darkchamber.feature.camera.api.RecordingFailure
 import dev.ehsanfahad.darkchamber.feature.camera.api.RecordingProgress
+import dev.ehsanfahad.darkchamber.feature.camera.api.VideoContainer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -89,6 +90,18 @@ class VideoRecorderTest {
         val active = assertNotNull(h.recorder.state.value.active)
         assertEquals(2_000_000_000L, active.limitBytes, "the status line counts down from this")
         assertTrue(active.withAudio)
+        h.sessionJob.cancel()
+    }
+
+    /** The clip's file, and so its MIME and name, take the format the platform's recorder writes. */
+    @Test
+    fun the_clip_is_reserved_in_the_format_the_camera_records() = runTest {
+        val h = Harness(this)
+        h.camera.videoContainer = VideoContainer.QuickTime
+
+        h.recorder.start()
+
+        assertEquals(VideoContainer.QuickTime, h.clip.container)
         h.sessionJob.cancel()
     }
 

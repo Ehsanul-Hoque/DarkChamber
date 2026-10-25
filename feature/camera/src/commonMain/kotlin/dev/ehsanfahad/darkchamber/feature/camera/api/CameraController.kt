@@ -44,6 +44,9 @@ interface CameraController {
     /** Whether a recording may have sound. Re-read from the platform on every [start]. */
     val microphonePermission: StateFlow<MicrophonePermission>
 
+    /** The format [record] writes, fixed by the platform's recorder. */
+    val videoContainer: VideoContainer
+
     /**
      * How far the device is turned from upright portrait: 0, 90, 180 or 270 degrees clockwise. The
      * same reading that tags each capture, so an icon turned by it agrees with the saved picture.

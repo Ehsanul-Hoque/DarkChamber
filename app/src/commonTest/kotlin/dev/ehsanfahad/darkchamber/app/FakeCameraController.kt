@@ -15,6 +15,7 @@ import dev.ehsanfahad.darkchamber.feature.camera.api.MicrophonePermission
 import dev.ehsanfahad.darkchamber.feature.camera.api.Recording
 import dev.ehsanfahad.darkchamber.feature.camera.api.RecordingEnd
 import dev.ehsanfahad.darkchamber.feature.camera.api.ReportedRecording
+import dev.ehsanfahad.darkchamber.feature.camera.api.VideoContainer
 import dev.ehsanfahad.darkchamber.feature.camera.api.VideoQuality
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -62,6 +63,7 @@ class FakeCameraController : CameraController {
     }
 
     override val microphonePermission = MutableStateFlow(MicrophonePermission.Granted)
+    override val videoContainer = VideoContainer.Mp4
     override val deviceRotation = MutableStateFlow(0)
 
     override suspend fun requestPermission() = Unit

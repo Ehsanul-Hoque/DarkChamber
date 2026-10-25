@@ -23,6 +23,7 @@ import dev.ehsanfahad.darkchamber.feature.camera.api.CameraDestination
 import dev.ehsanfahad.darkchamber.feature.camera.api.CaptureMode
 import dev.ehsanfahad.darkchamber.feature.camera.api.ClipFile
 import dev.ehsanfahad.darkchamber.feature.camera.api.ClipFiles
+import dev.ehsanfahad.darkchamber.feature.camera.api.VideoContainer
 import dev.ehsanfahad.darkchamber.feature.camera.cameraComponent
 import dev.ehsanfahad.darkchamber.feature.camera.cameraSession
 import dev.ehsanfahad.darkchamber.feature.camera.data.VaultObjectsCaptures
@@ -187,6 +188,8 @@ class CameraVaultTest {
     private class ScratchClip(private val scratch: ScratchFile, val opened: () -> Unit = {}) : ClipFile {
         override val path: Path get() = scratch.path
 
+        override val container: VideoContainer = VideoContainer.Mp4
+
         override fun open(): RawSource {
             opened()
             return scratch.open()
@@ -265,7 +268,7 @@ class CameraVaultTest {
             camera = camera,
             lane = lane,
             // The platform writes the file as it records; this one is written the moment it is named.
-            clips = ClipFiles {
+            clips = ClipFiles { _ ->
                 val scratch = storage.newScratchFile(suffix = ".mp4")
                 SystemFileSystem.sink(scratch.path).buffered().use { it.write(Random.nextBytes(20_000)) }
                 ScratchClip(scratch)
