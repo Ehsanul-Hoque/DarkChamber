@@ -40,6 +40,7 @@ internal class BlobStore(
             target = pathFor(fileId)
             tmp = Path(target.parent!!, "${target.name}.tmp")
             fs.createDirectories(target.parent!!)
+            if (fs.metadataOrNull(target.parent!!)?.isDirectory != true) createMissingDirectory(target.parent!!)
         } catch (e: Exception) {
             return Outcome.Err(writeFailure(e))
         }

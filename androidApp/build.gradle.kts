@@ -59,6 +59,8 @@ dependencies {
     // The thumbnail encoder's seam, so the video frame tests can name the type the platform module
     // binds; the encoder itself stays internal to :app.
     androidTestImplementation(project(":core:vault"))
+    // The storage layer's write path, checked where the JVM's mkdirs() can really fail.
+    androidTestImplementation(project(":core:storage"))
     androidTestImplementation(libs.androidx.testExt.junit)
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.junit)
