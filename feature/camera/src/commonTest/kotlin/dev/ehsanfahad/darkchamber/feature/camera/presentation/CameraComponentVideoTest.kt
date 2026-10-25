@@ -32,8 +32,10 @@ import dev.ehsanfahad.darkchamber.feature.camera.domain.VideoNotice
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.coroutines.CoroutineContext
 import kotlin.test.Test
@@ -505,6 +507,45 @@ class CameraComponentVideoTest {
         screen.camera.lastRecording!!.finish(RecordingEnd.Finalized)
 
         assertEquals(listOf(Triple(NotSavedKind.Video, NotSavedReason.OutOfSpace, 1)), s.reports)
+        s.sessionJob.cancel()
+    }
+
+    /**
+     * A close that lands before the screen's state has caught up with the start — back pressed the
+     * moment record was — still keeps the clip. The screen's state reaches it a dispatch later; the
+     * recorder knows at once.
+     */
+    @Test
+    fun a_close_right_after_record_keeps_the_clip() = runTest {
+        val s = Session(this)
+        val main = StandardTestDispatcher(testScheduler)
+        val camera = FakeCameraController().apply { endOnStop = null }
+        val lifecycle = LifecycleRegistry()
+        var closes = 0
+        val component = cameraComponent(
+            componentContext = DefaultComponentContext(lifecycle),
+            session = s.session,
+            camera = camera,
+            destination = CameraDestination.AllItems,
+            unreadableNameLabel = "Name can't be read",
+            onClose = { closes++ },
+            mainContext = main,
+        )
+        lifecycle.resume()
+        component.setMode(CaptureMode.Video)
+        runCurrent()
+
+        component.shoot()
+        assertEquals(1, camera.recordRequests.size, "recording")
+        component.close()
+
+        assertEquals(1, camera.recordingStops, "asked to finalize")
+        assertEquals(0, closes, "the screen waits for the finalize")
+        camera.lastRecording!!.finish(RecordingEnd.Finalized)
+        runCurrent()
+        assertEquals(1, closes)
+        assertEquals(listOf("video/mp4"), s.vault.imported.map { it.mime })
+        assertTrue(s.reports.isEmpty(), "nothing reported lost")
         s.sessionJob.cancel()
     }
 

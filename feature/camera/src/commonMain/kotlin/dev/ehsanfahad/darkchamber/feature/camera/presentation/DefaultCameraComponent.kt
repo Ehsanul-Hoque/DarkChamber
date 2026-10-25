@@ -323,7 +323,9 @@ internal class DefaultCameraComponent(
         // From here nothing on this screen will be read: a clip that fails after this point goes to
         // the not-saved record, which the next screen shows.
         session.lane.screenOpen = false
-        if (!_state.value.recording) {
+        // The recorder's own state, not the screen's: that reaches a start a dispatch later, and a
+        // close landing in between would pop the camera and abandon the clip it just started.
+        if (recorder.state.value.active == null) {
             onClose()
             return
         }
