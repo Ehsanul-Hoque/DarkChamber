@@ -213,16 +213,19 @@ class CameraNavigationTest {
     /** Held photos and a recording, lost to one lock: both counts, each under its own kind. */
     @Test
     fun a_lock_with_held_photos_and_a_recording_records_both() = runTest {
-        val component = component(openVault())
+        // Photos taken and still saving: a switch to video waits only for photos in the platform's
+        // hands, so a recording can start behind saves that have not finished.
+        val encrypt = GateDispatcher()
+        val component = component(openVault(), ioContext = encrypt)
         component.openCameraFromTop()
         val camera = assertIs<UnlockedChild.Camera>(component.active).component
-        this@CameraNavigationTest.camera.holdCaptures()
         camera.shoot()
         camera.shoot()
         camera.setMode(CaptureMode.Video)
         camera.shoot()
 
         component.lock()
+        encrypt.runAll()
 
         val summary = notSaved.summary.value
         assertEquals(2, summary.count(NotSavedKind.Photo, NotSavedReason.Locked))

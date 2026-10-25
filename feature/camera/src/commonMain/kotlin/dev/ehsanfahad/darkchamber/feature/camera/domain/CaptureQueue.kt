@@ -87,9 +87,11 @@ internal class CaptureQueue(
     /** Take one photo. Returns `false`, doing nothing, when [bound] photos are already held. */
     fun shoot(): Boolean {
         if (finishing || !scope.isActive || !_state.value.shutterEnabled) return false
-        _state.update { it.copy(holding = it.holding + 1) }
+        _state.update { it.copy(holding = it.holding + 1, capturing = it.capturing + 1) }
         scope.launch {
-            when (val result = camera.capture()) {
+            val result = camera.capture()
+            _state.update { it.copy(capturing = it.capturing - 1) }
+            when (result) {
                 // A refused send means the queue closed under a lock while this photo was arriving.
                 // Not reachable today — this coroutine runs in the same scope, and a cancelled
                 // coroutine never resumes from the capture with a value — so no test can reach it;
@@ -176,6 +178,8 @@ internal class CaptureQueueState(
     val saved: Int = 0,
     val lastSavedId: ByteArray? = null,
     val problem: CaptureProblem? = null,
+    /** Of [holding], the presses still in the platform's hands, which a rebind of the camera would fail. */
+    val capturing: Int = 0,
 ) {
     val shutterEnabled: Boolean get() = holding < bound
 
@@ -184,9 +188,10 @@ internal class CaptureQueueState(
         saved: Int = this.saved,
         lastSavedId: ByteArray? = this.lastSavedId,
         problem: CaptureProblem? = this.problem,
-    ): CaptureQueueState = CaptureQueueState(holding, bound, saved, lastSavedId, problem)
+        capturing: Int = this.capturing,
+    ): CaptureQueueState = CaptureQueueState(holding, bound, saved, lastSavedId, problem, capturing)
 
     override fun toString(): String =
-        "CaptureQueueState(holding=$holding/$bound, saved=$saved, " +
+        "CaptureQueueState(holding=$holding/$bound, capturing=$capturing, saved=$saved, " +
             "last=${if (lastSavedId == null) "none" else "present"}, problem=$problem)"
 }

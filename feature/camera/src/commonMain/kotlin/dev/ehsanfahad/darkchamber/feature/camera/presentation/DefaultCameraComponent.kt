@@ -33,6 +33,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
@@ -233,6 +234,38 @@ internal class DefaultCameraComponent(
     }
 
     override fun setMode(mode: CaptureMode) {
+        if (closed || _state.value.recording) return
+        if (queue.state.value.capturing > 0) {
+            pendingMode = mode
+            afterCaptures()
+            return
+        }
+        applyMode(mode)
+    }
+
+    // Switching mode and flipping the lens rebind the camera, which fails a photo still in the
+    // platform's hands. Asked for meanwhile, they wait for every such photo to land — the latest mode
+    // asked for, and a flip only if an odd number were — and the screen shows the old ones until then.
+    private var pendingMode: CaptureMode? = null
+    private var pendingFlip = false
+    private var waitingForCaptures: Job? = null
+
+    private fun afterCaptures() {
+        if (waitingForCaptures?.isActive == true) return
+        waitingForCaptures = scope.launch {
+            queue.state.first { it.capturing == 0 }
+            pendingMode?.let {
+                pendingMode = null
+                applyMode(it)
+            }
+            if (pendingFlip) {
+                pendingFlip = false
+                applyFlip()
+            }
+        }
+    }
+
+    private fun applyMode(mode: CaptureMode) {
         if (closed || _state.value.recording || controls.value.mode == mode) return
         // The torch belongs to video: leaving it lit behind a photo viewfinder would be a light on
         // that no control on screen shows.
@@ -252,6 +285,16 @@ internal class DefaultCameraComponent(
     }
 
     override fun flipLens() {
+        if (!_state.value.flipOffered) return
+        if (queue.state.value.capturing > 0) {
+            pendingFlip = !pendingFlip
+            afterCaptures()
+            return
+        }
+        applyFlip()
+    }
+
+    private fun applyFlip() {
         if (!_state.value.flipOffered) return
         val lens = if (controls.value.lens == Lens.Back) Lens.Front else Lens.Back
         controls.update { it.copy(lens = lens) }
