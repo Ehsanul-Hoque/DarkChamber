@@ -14,9 +14,12 @@ sealed interface WhenAlbumMissing {
 
     /**
      * The item is kept and filed unfiled instead, with no second encrypt, and [onFiledUnfiled] is
-     * called once before the import returns so the caller can say where it went. For a caller whose
-     * payload is expensive and cannot be had again — a recording, minutes of someone's time — where
-     * losing it would be worse than filing it somewhere it was not aimed.
+     * called at most once before the import returns so the caller can say where it went. It can be
+     * called before the encrypt starts, and the import can still fail after it, so it means "filed
+     * unfiled" only alongside an `Ok` result.
+     *
+     * For a caller whose payload is expensive and cannot be had again — a recording, minutes of
+     * someone's time — where losing it would be worse than filing it somewhere it was not aimed.
      */
     class FileUnfiled(val onFiledUnfiled: () -> Unit) : WhenAlbumMissing
 }

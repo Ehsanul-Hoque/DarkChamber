@@ -180,6 +180,30 @@ class VideoLaneTest {
     }
 
     /**
+     * The import says "filed unfiled" as soon as it finds the album gone, which can be before the
+     * encrypt. A save that then fails is a failure, never news of where the clip went.
+     */
+    @Test
+    fun a_clip_whose_album_went_and_whose_save_then_failed_is_reported_as_the_failure() = runTest {
+        val open = Harness(this)
+        open.vault.albumGoesMissing = true
+        open.vault.nextResult = { Outcome.Err(VaultError.Storage.Full) }
+        open.lane.save(FakeClipFile(), albumId = byteArrayOf(9))
+        testScheduler.advanceUntilIdle()
+        assertEquals(VideoNotice.OutOfSpace, open.lane.state.value.notice)
+        open.sessionJob.cancel()
+
+        val closed = Harness(this)
+        closed.lane.screenOpen = false
+        closed.vault.albumGoesMissing = true
+        closed.vault.nextResult = { Outcome.Err(VaultError.Storage.Full) }
+        closed.lane.save(FakeClipFile(), albumId = byteArrayOf(9))
+        testScheduler.advanceUntilIdle()
+        assertEquals(listOf(Triple(NotSavedKind.Video, NotSavedReason.OutOfSpace, 1)), closed.reports)
+        closed.sessionJob.cancel()
+    }
+
+    /**
      * One clip at a time: a second plaintext file would break the size limit's arithmetic, which
      * assumes no other encrypt is pending. A refused clip stays its caller's to delete.
      */
