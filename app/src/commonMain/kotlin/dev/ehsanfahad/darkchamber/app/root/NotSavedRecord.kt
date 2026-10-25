@@ -29,8 +29,6 @@ class NotSavedRecord : NotSavedReporter {
     fun clear() {
         _summary.value = NotSavedSummary.Empty
     }
-
-    fun report(kind: NotSavedKind, reason: NotSavedReason) = report(kind, reason, count = 1)
 }
 
 /** An immutable snapshot of the record: a count per kind and reason. */

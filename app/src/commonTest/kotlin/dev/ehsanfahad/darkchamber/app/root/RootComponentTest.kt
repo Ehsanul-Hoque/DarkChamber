@@ -211,7 +211,7 @@ class RootComponentTest {
     fun what_was_not_saved_survives_the_lock_that_caused_it() {
         val root = root()
         lockedOnUnlocked!!(openVault())
-        root.notSaved.report(NotSavedKind.Video, NotSavedReason.Locked)
+        root.notSaved.report(NotSavedKind.Video, NotSavedReason.Locked, count = 1)
 
         root.lockIfUnlocked()
         assertIs<RootChild.Locked>(root.child.value)

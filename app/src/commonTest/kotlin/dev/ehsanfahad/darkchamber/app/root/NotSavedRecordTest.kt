@@ -22,9 +22,9 @@ class NotSavedRecordTest {
         val record = NotSavedRecord()
 
         record.report(NotSavedKind.Photo, NotSavedReason.Locked, count = 2)
-        record.report(NotSavedKind.Photo, NotSavedReason.Locked)
-        record.report(NotSavedKind.Video, NotSavedReason.Locked)
-        record.report(NotSavedKind.Video, NotSavedReason.OutOfSpace)
+        record.report(NotSavedKind.Photo, NotSavedReason.Locked, count = 1)
+        record.report(NotSavedKind.Video, NotSavedReason.Locked, count = 1)
+        record.report(NotSavedKind.Video, NotSavedReason.OutOfSpace, count = 1)
 
         val summary = record.summary.value
         assertEquals(3, summary.count(NotSavedKind.Photo, NotSavedReason.Locked))
@@ -47,12 +47,12 @@ class NotSavedRecordTest {
     @Test
     fun clearing_empties_it_and_later_reports_start_from_zero() {
         val record = NotSavedRecord()
-        record.report(NotSavedKind.Video, NotSavedReason.Locked)
+        record.report(NotSavedKind.Video, NotSavedReason.Locked, count = 1)
 
         record.clear()
         assertTrue(record.summary.value.isEmpty())
 
-        record.report(NotSavedKind.Video, NotSavedReason.Locked)
+        record.report(NotSavedKind.Video, NotSavedReason.Locked, count = 1)
         assertEquals(1, record.summary.value.count(NotSavedKind.Video, NotSavedReason.Locked))
     }
 }
