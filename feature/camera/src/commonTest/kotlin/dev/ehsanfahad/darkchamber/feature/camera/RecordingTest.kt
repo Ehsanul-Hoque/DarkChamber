@@ -29,6 +29,32 @@ class RecordingTest {
         assertEquals(RecordingEnd.Abandoned, recording.awaitEnd())
     }
 
+    /**
+     * Both platforms create the file lazily, so it can appear after a lock deleted it. An abandoned
+     * recording's file is deleted again once the platform has let go of it. A recording the platform
+     * ended itself keeps its file, which is the lane's to encrypt.
+     */
+    @Test
+    fun the_platform_letting_go_of_an_abandoned_recording_discards_its_file() = runTest {
+        var discards = 0
+        val abandoned = ReportedRecording(onStop = {})
+        abandoned.finish(RecordingEnd.Abandoned)
+
+        assertFalse(abandoned.finishFromPlatform(RecordingEnd.Finalized) { discards++ })
+        assertEquals(1, discards)
+        assertEquals(RecordingEnd.Abandoned, abandoned.awaitEnd())
+
+        val kept = ReportedRecording(onStop = {})
+        assertTrue(kept.finishFromPlatform(RecordingEnd.Finalized) { discards++ })
+        assertEquals(1, discards, "a clip the platform ended is the lane's")
+        assertEquals(RecordingEnd.Finalized, kept.awaitEnd())
+
+        val refused = ReportedRecording(onStop = {})
+        refused.finish(RecordingEnd.Failed(RecordingFailure.Other))
+        refused.finishFromPlatform(RecordingEnd.Finalized) { discards++ }
+        assertEquals(1, discards, "only an abandon hands the file back")
+    }
+
     @Test
     fun awaiting_the_end_suspends_until_the_platform_reports_one() = runTest {
         val recording = ReportedRecording(onStop = {})

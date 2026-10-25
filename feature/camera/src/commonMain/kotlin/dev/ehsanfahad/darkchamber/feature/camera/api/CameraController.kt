@@ -125,7 +125,10 @@ interface CameraController {
      * and its end through the handle. A recording that cannot start — no camera open, not in video
      * mode, one already running — comes back already ended as [RecordingFailure.Other].
      *
-     * The file is the caller's: an implementation writes there and nowhere else, and never deletes it.
+     * The file is the caller's: an implementation writes there and nowhere else, and deletes it only
+     * for an [RecordingEnd.Abandoned] recording, once the platform has let go of it, through
+     * [ReportedRecording.finishFromPlatform]. The platform may create the file after the caller's own
+     * delete at a lock.
      */
     fun record(file: Path, sizeLimitBytes: Long, withAudio: Boolean): Recording
 

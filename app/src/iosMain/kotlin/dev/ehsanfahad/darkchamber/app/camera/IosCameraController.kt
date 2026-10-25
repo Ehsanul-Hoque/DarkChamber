@@ -86,6 +86,7 @@ import platform.CoreGraphics.CGPointMake
 import platform.CoreGraphics.CGRectMake
 import platform.CoreMedia.CMTimeGetSeconds
 import platform.Foundation.NSError
+import platform.Foundation.NSFileManager
 import platform.Foundation.NSNotification
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSNumber
@@ -270,15 +271,20 @@ class IosCameraController : CameraController {
         }
 
         val reported = ReportedRecording(onStop = { if (movieOutput.recording) movieOutput.stopRecording() })
+        val url = NSURL.fileURLWithPath(file.toString())
         lateinit var delegate: MovieDelegate
         delegate = MovieDelegate { errorCode, finishedSuccessfully ->
             recordings.remove(delegate)
             if (active === reported) active = null
-            reported.finish(recordingEndFor(errorCode, finishedSuccessfully))
+            // The movie output starts asynchronously and finishes the file as the session stops, both
+            // possibly after the lock deleted it, so an abandoned recording's file goes again here.
+            reported.finishFromPlatform(recordingEndFor(errorCode, finishedSuccessfully)) {
+                NSFileManager.defaultManager.removeItemAtURL(url, error = null)
+            }
         }
         recordings += delegate
         active = reported
-        movieOutput.startRecordingToOutputFileURL(NSURL.fileURLWithPath(file.toString()), recordingDelegate = delegate)
+        movieOutput.startRecordingToOutputFileURL(url, recordingDelegate = delegate)
         return reported
     }
 

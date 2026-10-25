@@ -38,6 +38,7 @@ class ReportedRecording(private val onStop: () -> Unit) : Recording {
 
     private val end = CompletableDeferred<RecordingEnd>()
     private var stopAsked = false
+    private var first: RecordingEnd? = null
 
     /** Whether an end has been reported. */
     val isEnded: Boolean get() = end.isCompleted
@@ -56,7 +57,22 @@ class ReportedRecording(private val onStop: () -> Unit) : Recording {
     }
 
     /** Report the end. Returns false, and changes nothing, when an end was already reported. */
-    fun finish(end: RecordingEnd): Boolean = this.end.complete(end)
+    fun finish(end: RecordingEnd): Boolean {
+        if (!this.end.complete(end)) return false
+        first = end
+        return true
+    }
+
+    /**
+     * Report the platform's own last event, after which it no longer touches the file. When the
+     * recording was already abandoned, [discard] deletes the file: both platforms create it lazily,
+     * so it can appear after the caller's delete at the lock. Returns what [finish] returns.
+     */
+    fun finishFromPlatform(end: RecordingEnd, discard: () -> Unit): Boolean {
+        if (finish(end)) return true
+        if (first == RecordingEnd.Abandoned) discard()
+        return false
+    }
 
     companion object {
         /** A recording that could not start: already ended, as [RecordingFailure.Other]. */

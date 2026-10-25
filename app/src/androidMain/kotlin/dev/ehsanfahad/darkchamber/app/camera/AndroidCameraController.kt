@@ -300,7 +300,7 @@ class AndroidCameraController(
         } catch (e: IllegalStateException) {
             return ReportedRecording.refused()
         }
-        recording = ActiveRecording(reported, platform)
+        recording = ActiveRecording(reported, platform, File(file.toString()))
         active = recording
         return reported
     }
@@ -404,8 +404,11 @@ class AndroidCameraController(
             is VideoRecordEvent.Finalize -> {
                 if (active === recording) active = null
                 // Only for a recording that ended on its own or was stopped to be kept: an abandoned
-                // one has already reported, and its end is not what CameraX says now.
-                if (recording.reported.finish(recordingEndFor(event.error)) && recording.sounded) {
+                // one has already reported, and its end is not what CameraX says now. CameraX opens
+                // the file on the first encoded data, which can be after the lock deleted it, so an
+                // abandoned one's file goes again here.
+                val first = recording.reported.finishFromPlatform(recordingEndFor(event.error)) { recording.file.delete() }
+                if (first && recording.sounded) {
                     sounds?.play(MediaActionSound.STOP_VIDEO_RECORDING)
                 }
             }
@@ -574,7 +577,7 @@ class AndroidCameraController(
             .build()
 
     /** One recording: the caller's handle, CameraX's, and whether its start sound has played. */
-    private class ActiveRecording(val reported: ReportedRecording, val platform: PlatformRecording) {
+    private class ActiveRecording(val reported: ReportedRecording, val platform: PlatformRecording, val file: File) {
         var sounded = false
     }
 

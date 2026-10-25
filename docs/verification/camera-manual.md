@@ -240,6 +240,9 @@ Watch the scratch directory throughout: `adb shell run-as <applicationId> ls -l 
 - [ ] Lock mid-recording (home, or the power button): the file is gone. Record again, stop, and lock
       while the clip is still saving: the file is gone, and after unlocking the clip is not in the
       vault and nothing half-written is.
+- [ ] Lock within the first second of a recording, five times: each time the file is gone a few
+      seconds later. The platform creates the file only once it has data, which can be after the
+      lock's own delete; the camera deletes it again when the platform lets go of it.
 - [ ] Kill the app mid-recording (`adb shell am kill <applicationId>` after pressing home, or
       `am force-stop`): the file is still there until the next launch, and gone once the app has
       started again — with no partial item in the vault.
