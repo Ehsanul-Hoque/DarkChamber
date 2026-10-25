@@ -16,7 +16,8 @@ import kotlinx.io.buffered
  *
  * A skip still reads every byte it passes, so [bytesRead] counts them; it is what a preview costs.
  * The kept blocks are plaintext in memory only — nothing is written anywhere — and are zeroed when
- * dropped and on [close].
+ * dropped and on [close], as is the buffer skipped bytes pass through and a block a failed read left
+ * part-filled.
  *
  * Not thread-safe; a frame grabber reads from one thread.
  */
@@ -77,6 +78,8 @@ internal class SeekingReader(
         source = null
         blocks.values.forEach { it.fill(0) }
         blocks.clear()
+        discard?.fill(0)
+        discard = null
     }
 
     // The block at [index] read from the source and kept, or null when it starts past the end.
@@ -84,10 +87,16 @@ internal class SeekingReader(
         val stream = positionedAt(index * blockSize) ?: return null
         val block = ByteArray(blockSize)
         var got = 0
-        while (got < blockSize) {
-            val n = stream.readAtMostTo(block, got, blockSize)
-            if (n < 0) break
-            got += n
+        try {
+            while (got < blockSize) {
+                val n = stream.readAtMostTo(block, got, blockSize)
+                if (n < 0) break
+                got += n
+            }
+        } catch (e: Throwable) {
+            // A read that stops part-way leaves what it got in a block nobody will keep.
+            block.fill(0)
+            throw e
         }
         position += got
         bytesRead += got
@@ -118,8 +127,9 @@ internal class SeekingReader(
         val stream = source ?: return null
         // In bounded steps: a jump to a video's index can be the length of the video.
         while (position < at) {
-            val step = minOf(at - position, discard.size.toLong()).toInt()
-            val n = stream.readAtMostTo(discard, 0, step)
+            val skip = discard ?: ByteArray(SKIP_STEP_BYTES).also { discard = it }
+            val step = minOf(at - position, skip.size.toLong()).toInt()
+            val n = stream.readAtMostTo(skip, 0, step)
             if (n < 0) return null
             position += n
             bytesRead += n
@@ -127,8 +137,8 @@ internal class SeekingReader(
         return stream
     }
 
-    // Where skipped bytes are read to and dropped. Allocated once, on the first skip.
-    private val discard by lazy { ByteArray(SKIP_STEP_BYTES) }
+    // Where skipped bytes are read to and dropped: allocated on the first skip, zeroed on [close].
+    private var discard: ByteArray? = null
 
     private companion object {
         const val SKIP_STEP_BYTES = 64 * 1024
