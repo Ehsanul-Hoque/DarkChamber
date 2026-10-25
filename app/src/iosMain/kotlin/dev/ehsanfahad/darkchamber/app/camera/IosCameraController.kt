@@ -120,8 +120,9 @@ import kotlin.time.Duration.Companion.seconds
  * (`maxRecordedFileSize`). It was chosen over `AVAssetWriter` because it writes the file, finalizes
  * it and reports how it ended by itself; a writer would be hand-fed every sample buffer, a far larger
  * surface to get right without a device to try it on. Sound is recorded only when the caller asks
- * for it **and** the microphone is granted: the audio input is attached whenever the microphone is
- * allowed, and its connection is switched off for a recording without sound.
+ * for it **and** the microphone is granted. The microphone joins the session only for a recording
+ * with sound and leaves when it ends, so the system's microphone indicator is lit only while sound
+ * is being recorded, as on Android.
  *
  * **One mode at a time.** Photo attaches the photo output at the photo preset (4:3); video attaches
  * the movie output at the 1080p or 2160p preset (16:9). The preview letterboxes (`resizeAspect`), so
@@ -201,7 +202,6 @@ class IosCameraController : CameraController {
             }
         }
         _microphonePermission.value = currentMicrophonePermission()
-        if (configured && mode == CaptureMode.Video) reconfigure { attachAudio() }
     }
 
     override fun openSettings() {
@@ -214,7 +214,7 @@ class IosCameraController : CameraController {
         _microphonePermission.value = currentMicrophonePermission()
         if (started || _permission.value != CameraPermission.Granted) return
         started = true
-        if (!configured) configure() else if (mode == CaptureMode.Video) reconfigure { attachAudio() }
+        if (!configured) configure()
         if (input == null) return
         observe()
         ticker = NSTimer.scheduledTimerWithTimeInterval(TICK_SECONDS, repeats = true) { _ -> tick() }
@@ -262,8 +262,11 @@ class IosCameraController : CameraController {
             return ReportedRecording.refused()
         }
         movieOutput.maxRecordedFileSize = sizeLimitBytes
-        movieOutput.connectionWithMediaType(AVMediaTypeAudio)?.enabled =
-            withAudio && _microphonePermission.value == MicrophonePermission.Granted
+        if (withAudio && _microphonePermission.value == MicrophonePermission.Granted) {
+            reconfigure { attachAudio() }
+        } else if (audioInput != null) {
+            reconfigure { detachAudio() }
+        }
         rotation?.videoRotationAngleForHorizonLevelCapture?.let { angle ->
             movieOutput.connectionWithMediaType(AVMediaTypeVideo)?.let { connection ->
                 if (connection.isVideoRotationAngleSupported(angle)) connection.videoRotationAngle = angle
@@ -276,6 +279,7 @@ class IosCameraController : CameraController {
         delegate = MovieDelegate { errorCode, finishedSuccessfully ->
             recordings.remove(delegate)
             if (active === reported) active = null
+            if (active == null && audioInput != null) reconfigure { detachAudio() }
             // The movie output starts asynchronously and finishes the file as the session stops, both
             // possibly after the lock deleted it, so an abandoned recording's file goes again here.
             reported.finishFromPlatform(recordingEndFor(errorCode, finishedSuccessfully)) {
@@ -395,7 +399,6 @@ class IosCameraController : CameraController {
             CaptureMode.Video -> {
                 removeOutput(photoOutput)
                 if (session.canAddOutput(movieOutput)) session.addOutput(movieOutput)
-                attachAudio()
             }
         }
         applyPreset()
@@ -418,8 +421,8 @@ class IosCameraController : CameraController {
         if (session.outputs.contains(output)) session.removeOutput(output)
     }
 
-    // Inside a configuration. Only while the microphone is allowed; the recording decides per clip
-    // whether its sound is kept.
+    // Inside a configuration. Only for a recording with sound, and only while the microphone is
+    // allowed; the recording's end takes it out again.
     private fun attachAudio() {
         if (audioInput != null || _microphonePermission.value != MicrophonePermission.Granted) return
         val device = AVCaptureDevice.defaultDeviceWithMediaType(AVMediaTypeAudio) ?: return

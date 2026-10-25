@@ -331,6 +331,9 @@ N, with Xcode's device file browser in place of `run-as`.
 - [ ] A call or another app interrupting a recording ends it as kept or as reported failed — never a
       screen waiting for ever.
 - [ ] The microphone alert does not lock the vault, and the system's own record sounds are what play.
+- [ ] The microphone indicator is lit only while a clip with sound records: never in photo mode,
+      never with **Sound: off**, and off again once the clip ends. Starting a clip with sound joins the
+      microphone to the session; note any hitch in the preview or missing sound at the clip's start.
 - [ ] The front lens offers the qualities it really records, and its clips are upright.
 
 ## Sign-off
