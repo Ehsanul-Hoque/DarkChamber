@@ -1,5 +1,10 @@
 package dev.ehsanfahad.darkchamber.feature.camera.presentation
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -8,6 +13,13 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -57,7 +69,6 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.RoundRect
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathMeasure
@@ -176,7 +187,7 @@ internal fun CameraScreen(
                     onAllow = onAllow,
                     onOpenSettings = onOpenSettings,
                     // A photo's 4:3 box sits under the bar; a clip's 16:9 box is centred, under the
-                    // chrome's fades.
+                    // chrome's bands.
                     topInset = if (state.mode == CaptureMode.Photo) barDp else 0.dp,
                     modifier = Modifier.fillMaxSize(),
                 )
@@ -190,7 +201,7 @@ internal fun CameraScreen(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .fillMaxWidth()
-                        .background(Brush.verticalGradient(listOf(FadeColor, Color.Transparent)))
+                        .background(BandColor)
                         // Measured with the status bar's inset in it, so a photo's box starts below
                         // both.
                         .onSizeChanged { barHeight = it.height }
@@ -200,7 +211,7 @@ internal fun CameraScreen(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .background(Brush.verticalGradient(listOf(Color.Transparent, FadeColor)))
+                        .background(BandColor)
                         .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)),
                 ) {
                     BelowViewfinder(state = state, onSetMode = onSetMode, onRequestMicrophone = onRequestMicrophone)
@@ -270,6 +281,43 @@ private fun rememberIconAngle(tilt: Int, layout: CameraLayout): Float {
 
 private fun Modifier.turned(angle: Float): Modifier = graphicsLayer { rotationZ = angle }
 
+/** Which way a control that comes and goes pushes its neighbours: along a row, down a column, or not at all. */
+private enum class Opening { Row, Column, InPlace }
+
+// What an appearing control last showed, so it can still draw it while it fades out.
+private class Held<T : Any>(var value: T? = null)
+
+/**
+ * [value]'s content while it is non-null, faded in and out at `motionFast` — and opened along the
+ * row or column too, so what it pushes aside moves rather than jumps. It keeps drawing the last value
+ * while it leaves. Instant under reduced motion, like the icons' turn.
+ */
+@Composable
+private fun <T : Any> Appearing(value: T?, opening: Opening, content: @Composable (T) -> Unit) {
+    val reduced = prefersReducedMotion()
+    val spec = tween<Float>(durationMillis = DarkChamberTheme.motion.motionFast)
+    val sizeSpec = tween<IntSize>(durationMillis = DarkChamberTheme.motion.motionFast)
+    val held = remember { Held<T>() }
+    if (value != null) held.value = value
+    AnimatedVisibility(
+        visible = value != null,
+        enter = when {
+            reduced -> EnterTransition.None
+            opening == Opening.Row -> fadeIn(spec) + expandHorizontally(sizeSpec)
+            opening == Opening.Column -> fadeIn(spec) + expandVertically(sizeSpec)
+            else -> fadeIn(spec)
+        },
+        exit = when {
+            reduced -> ExitTransition.None
+            opening == Opening.Row -> fadeOut(spec) + shrinkHorizontally(sizeSpec)
+            opening == Opening.Column -> fadeOut(spec) + shrinkVertically(sizeSpec)
+            else -> fadeOut(spec)
+        },
+    ) {
+        held.value?.let { content(it) }
+    }
+}
+
 @Composable
 private fun TopBar(
     state: CameraState,
@@ -317,7 +365,7 @@ private fun TopBar(
                     .padding(horizontal = spacing.spaceXs, vertical = spacing.spaceXxs),
             )
         }
-        state.microphoneToggle?.let { toggle ->
+        Appearing(state.microphoneToggle, Opening.Row) { toggle ->
             IconButton(onClick = onToggleSound, modifier = Modifier.size(spacing.spaceXxl)) {
                 MicrophoneMark(
                     on = toggle.soundOn,
@@ -326,7 +374,7 @@ private fun TopBar(
                 )
             }
         }
-        state.qualityChip?.let { chip ->
+        Appearing(state.qualityChip, Opening.Row) { chip ->
             // A 48 dp target around a small label: the chip is a control, and a thumb is not a
             // label-sized thing.
             Box(
@@ -412,7 +460,7 @@ private fun BelowViewfinder(state: CameraState, onSetMode: (CaptureMode) -> Unit
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(spacing.spaceXxs),
     ) {
-        state.notice?.let { notice ->
+        Appearing(state.notice, Opening.Column) { notice ->
             Text(
                 text = CameraFormat.notice(notice),
                 style = DarkChamberTheme.typography.body,
@@ -421,8 +469,13 @@ private fun BelowViewfinder(state: CameraState, onSetMode: (CaptureMode) -> Unit
                 modifier = Modifier.fillMaxWidth().padding(vertical = spacing.spaceXxs),
             )
         }
-        state.microphoneHint?.let { hint ->
-            CameraFormat.microphoneHint(hint)?.let { copy ->
+        Appearing(state.microphoneHint?.let(CameraFormat::microphoneHint), Opening.Column) { copy ->
+            // Room above it: it is the first line in the band, whose top edge it would otherwise touch.
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(spacing.spaceXxs),
+                modifier = Modifier.padding(top = spacing.spaceSm),
+            ) {
                 Text(
                     text = copy.text,
                     style = DarkChamberTheme.typography.caption,
@@ -436,10 +489,41 @@ private fun BelowViewfinder(state: CameraState, onSetMode: (CaptureMode) -> Unit
                 }
             }
         }
-        when (state.row) {
-            CameraRow.ModeLabels -> if (state.showsViewfinder) ModeLabels(selected = state.mode, onSetMode = onSetMode)
-            CameraRow.Status -> state.recorder.active?.let { RecordingStatus(it, noSound = state.showsNoSoundMark) }
+        // The mode labels and, while recording, the status in their place: one fades into the other.
+        // The recording is held so its status can still be drawn while it fades out after the stop.
+        val recording = remember { Held<ActiveRecording>() }
+        state.recorder.active?.let { recording.value = it }
+        val row = when (state.row) {
+            CameraRow.ModeLabels -> if (state.showsViewfinder) CameraRow.ModeLabels else null
+            CameraRow.Status -> if (state.recorder.active != null) CameraRow.Status else null
         }
+        Swapping(row) { shown ->
+            when (shown) {
+                CameraRow.ModeLabels -> ModeLabels(selected = state.mode, onSetMode = onSetMode)
+                CameraRow.Status -> recording.value?.let { RecordingStatus(it, noSound = state.showsNoSoundMark) }
+                null -> Unit
+            }
+        }
+    }
+}
+
+/** [content] for [target], cross-faded at `motionFast` when it changes and resized smoothly; a cut under reduced motion. */
+@Composable
+private fun <T> Swapping(target: T, content: @Composable (T) -> Unit) {
+    if (prefersReducedMotion()) {
+        content(target)
+        return
+    }
+    val duration = DarkChamberTheme.motion.motionFast
+    AnimatedContent(
+        targetState = target,
+        transitionSpec = {
+            (fadeIn(tween(duration)) togetherWith fadeOut(tween(duration)))
+                .using(SizeTransform(clip = false) { _, _ -> tween(duration) })
+        },
+        contentAlignment = Alignment.Center,
+    ) { shown ->
+        content(shown)
     }
 }
 
@@ -674,10 +758,11 @@ private fun SideColumn(controls: Controls) {
 private fun LightControl(controls: Controls) {
     val spacing = DarkChamberTheme.spacing
     val state = controls.state
+    // Flash and torch cross-fade as the mode changes, in a place that keeps its size.
     Box(modifier = Modifier.size(spacing.spaceXxl)) {
-        val light = state.light
-        if (light != null && state.showsViewfinder) {
+        Swapping(state.light?.takeIf { state.showsViewfinder }) { light ->
             when (light) {
+                null -> Unit
                 is LightControl.Flash -> IconButton(onClick = controls.onCycleFlash, modifier = Modifier.size(spacing.spaceXxl)) {
                     FlashMark(
                         glyph = flashGlyph(light.mode),
@@ -702,7 +787,7 @@ private fun LightControl(controls: Controls) {
 private fun FlipControl(controls: Controls) {
     val spacing = DarkChamberTheme.spacing
     Box(modifier = Modifier.size(spacing.spaceXxl)) {
-        if (controls.state.flipOffered && controls.state.showsViewfinder) {
+        Appearing(Unit.takeIf { controls.state.flipOffered && controls.state.showsViewfinder }, Opening.InPlace) {
             IconButton(onClick = controls.onFlip, modifier = Modifier.size(spacing.spaceXxl)) {
                 SwitchCameraMark(
                     contentDescription = CameraFormat.flipDescription(),
@@ -843,6 +928,7 @@ private const val DisabledAlpha = 0.38f
 private const val PulseLow = 0.75f
 private const val PulseMillis = 1_600
 
-// The chrome's fades over a video's edges: dark enough that white text and marks keep their
-// contrast over any picture, fading out so the frame is not boxed in.
-private val FadeColor = Color.Black.copy(alpha = 0.6f)
+// The chrome's bands over a video's edges: one even shade across each bar, so no text or mark ever
+// sits on a clear stretch of a bright picture — which a fade to transparent left at its inner edge —
+// while the picture still shows through.
+private val BandColor = Color.Black.copy(alpha = 0.5f)
