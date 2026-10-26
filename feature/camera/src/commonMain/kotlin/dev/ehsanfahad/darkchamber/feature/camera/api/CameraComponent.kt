@@ -2,6 +2,7 @@ package dev.ehsanfahad.darkchamber.feature.camera.api
 
 import com.arkivanov.decompose.value.Value
 import dev.ehsanfahad.darkchamber.feature.camera.presentation.CameraState
+import kotlinx.coroutines.flow.StateFlow
 
 /**
  * The camera screen's component: it opens the camera while the screen is started, turns shutter
@@ -28,14 +29,39 @@ abstract class CameraComponent internal constructor() {
     /** The host's sentence for a name that will not open; the camera never spells it itself. */
     internal abstract val unreadableNameLabel: String
 
-    /** Take one photo. Ignored whenever the shutter is shown disabled. */
+    /** The device's tilt, for the icons that turn with it. */
+    internal abstract val tilt: StateFlow<Int>
+
+    /**
+     * Press the shutter: take a photo, start recording, or stop — whatever the shutter shows. Ignored
+     * whenever it is shown disabled.
+     */
     abstract fun shoot()
 
-    /** Switch to the other lens. Ignored on a camera with only one. */
+    /** Photo or video. Ignored while recording; the first switch to video asks for the microphone. */
+    abstract fun setMode(mode: CaptureMode)
+
+    /** Switch to the quality the chip offers. Ignored when the chip is not shown. */
+    abstract fun switchQuality()
+
+    /** Switch to the other lens. Ignored on a camera with only one, and while recording. */
     abstract fun flipLens()
 
-    /** Step the flash off → auto → on → off. Ignored when the lens in use has no flash. */
+    /** Step the flash off → auto → on → off. Ignored when the lens in use has no flash, and in video. */
     abstract fun cycleFlash()
+
+    /** Turn the torch on or off, in video. Ignored when the lens in use has no light. */
+    abstract fun toggleTorch()
+
+    /** The microphone hint's action: ask again, or open Settings once the system will not ask. */
+    abstract fun requestMicrophone()
+
+    /**
+     * The microphone toggle: sound on or off for the next recordings, remembered for the session.
+     * While the microphone is refused a tap asks for it instead — re-ask, or Settings — since flipping
+     * the toggle could not give sound. Ignored where the toggle is not shown, including while recording.
+     */
+    abstract fun toggleSound()
 
     /** Zoom to [ratio], kept within the range the camera reports. */
     abstract fun zoomTo(ratio: Float)
@@ -50,8 +76,10 @@ abstract class CameraComponent internal constructor() {
     abstract fun openSettings()
 
     /**
-     * Leave the camera. Photos already taken keep saving; the host pops the screen. A second call
-     * does nothing, so a double tap cannot pop the screen underneath too.
+     * Leave the camera. Photos and clips already taken keep saving; the host pops the screen. A
+     * recording in progress is kept: it is finalized and handed to the save lane first, and only then
+     * is the camera released and the screen popped. A second call does nothing, so a double tap
+     * cannot pop the screen underneath too.
      */
     abstract fun close()
 }

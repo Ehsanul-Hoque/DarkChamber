@@ -14,7 +14,8 @@ import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.unit.dp
 
 /*
- * The camera's marks: the lens that opens it, and its close, flash and lens-switch controls.
+ * The camera's marks: the lens that opens it, its close, flash, torch and lens-switch controls, and
+ * the microphone.
  *
  * Material Symbols exports, **path data copied in exactly as supplied** — pruning or "tidying" a
  * command would change the drawing in a way no test that only renders it would notice, which is why
@@ -294,6 +295,195 @@ internal val switchCameraVector: ImageVector by lazy {
     }
 }
 
+/** Material Symbols "flashlight_on": the torch, lit. */
+internal val torchOnVector: ImageVector by lazy {
+    markVector("TorchOn") {
+        moveTo(8f, 22f)
+        verticalLineTo(11f)
+        lineTo(6f, 8f)
+        verticalLineTo(2f)
+        horizontalLineTo(18f)
+        verticalLineTo(8f)
+        lineToRelative(-2f, 3f)
+        verticalLineTo(22f)
+        horizontalLineTo(8f)
+        close()
+        moveToRelative(2.94f, -6.94f)
+        quadTo(10.5f, 14.63f, 10.5f, 14f)
+        reflectiveQuadToRelative(0.44f, -1.06f)
+        reflectiveQuadTo(12f, 12.5f)
+        reflectiveQuadToRelative(1.06f, 0.44f)
+        reflectiveQuadTo(13.5f, 14f)
+        reflectiveQuadToRelative(-0.44f, 1.06f)
+        reflectiveQuadTo(12f, 15.5f)
+        reflectiveQuadTo(10.94f, 15.06f)
+        close()
+        moveTo(8f, 5f)
+        horizontalLineToRelative(8f)
+        verticalLineTo(4f)
+        horizontalLineTo(8f)
+        verticalLineTo(5f)
+        close()
+        moveToRelative(8f, 2f)
+        horizontalLineTo(8f)
+        verticalLineTo(7.4f)
+        lineToRelative(2f, 3f)
+        verticalLineTo(20f)
+        horizontalLineToRelative(4f)
+        verticalLineTo(10.4f)
+        lineToRelative(2f, -3f)
+        verticalLineTo(7f)
+        close()
+        moveToRelative(-4f, 5f)
+        close()
+    }
+}
+
+/** Material Symbols "flashlight_off": the torch, out. */
+internal val torchOffVector: ImageVector by lazy {
+    markVector("TorchOff") {
+        moveTo(19.8f, 22.6f)
+        lineTo(16f, 18.8f)
+        verticalLineTo(22f)
+        horizontalLineTo(8f)
+        verticalLineTo(10.8f)
+        lineTo(1.4f, 4.2f)
+        lineTo(2.8f, 2.8f)
+        lineTo(21.2f, 21.2f)
+        lineToRelative(-1.4f, 1.4f)
+        close()
+        moveTo(10f, 20f)
+        horizontalLineToRelative(4f)
+        verticalLineTo(16.8f)
+        lineToRelative(-4f, -4f)
+        verticalLineTo(20f)
+        close()
+        moveToRelative(6f, -6.85f)
+        lineToRelative(-2f, -2f)
+        verticalLineTo(10.4f)
+        lineToRelative(2f, -3f)
+        verticalLineTo(7f)
+        horizontalLineTo(9.85f)
+        lineToRelative(-2f, -2f)
+        horizontalLineTo(16f)
+        verticalLineTo(4f)
+        horizontalLineTo(6.85f)
+        lineTo(6f, 3.15f)
+        verticalLineTo(2f)
+        horizontalLineTo(18f)
+        verticalLineTo(8f)
+        lineToRelative(-2f, 3f)
+        verticalLineToRelative(2.15f)
+        close()
+        moveTo(12f, 14.8f)
+        close()
+        moveTo(12.43f, 9.57f)
+        close()
+    }
+}
+
+/** Material Symbols "mic": sound on. */
+internal val microphoneOnVector: ImageVector by lazy {
+    markVector("MicrophoneOn") {
+        moveTo(9.88f, 13.13f)
+        quadTo(9f, 12.25f, 9f, 11f)
+        verticalLineTo(5f)
+        quadTo(9f, 3.75f, 9.88f, 2.88f)
+        reflectiveQuadTo(12f, 2f)
+        reflectiveQuadToRelative(2.13f, 0.88f)
+        reflectiveQuadTo(15f, 5f)
+        verticalLineToRelative(6f)
+        quadToRelative(0f, 1.25f, -0.88f, 2.13f)
+        reflectiveQuadTo(12f, 14f)
+        reflectiveQuadTo(9.88f, 13.13f)
+        close()
+        moveTo(12f, 8f)
+        close()
+        moveTo(11f, 21f)
+        verticalLineTo(17.93f)
+        quadTo(8.4f, 17.58f, 6.7f, 15.6f)
+        reflectiveQuadTo(5f, 11f)
+        horizontalLineTo(7f)
+        quadToRelative(0f, 2.07f, 1.46f, 3.54f)
+        reflectiveQuadTo(12f, 16f)
+        reflectiveQuadToRelative(3.54f, -1.46f)
+        reflectiveQuadTo(17f, 11f)
+        horizontalLineToRelative(2f)
+        quadToRelative(0f, 2.63f, -1.7f, 4.6f)
+        reflectiveQuadTo(13f, 17.93f)
+        verticalLineTo(21f)
+        horizontalLineTo(11f)
+        close()
+        moveToRelative(1.71f, -9.29f)
+        quadTo(13f, 11.43f, 13f, 11f)
+        verticalLineTo(5f)
+        quadTo(13f, 4.57f, 12.71f, 4.29f)
+        reflectiveQuadTo(12f, 4f)
+        reflectiveQuadTo(11.29f, 4.29f)
+        reflectiveQuadTo(11f, 5f)
+        verticalLineToRelative(6f)
+        quadToRelative(0f, 0.42f, 0.29f, 0.71f)
+        reflectiveQuadTo(12f, 12f)
+        reflectiveQuadToRelative(0.71f, -0.29f)
+        close()
+    }
+}
+
+/** Material Symbols "mic_off": the no-sound mark. */
+internal val microphoneOffVector: ImageVector by lazy {
+    markVector("MicrophoneOff") {
+        moveTo(17.75f, 14.95f)
+        lineTo(16.3f, 13.5f)
+        quadToRelative(0.35f, -0.58f, 0.52f, -1.2f)
+        reflectiveQuadTo(17f, 11f)
+        horizontalLineToRelative(2f)
+        quadToRelative(0f, 1.1f, -0.32f, 2.09f)
+        quadToRelative(-0.32f, 0.99f, -0.93f, 1.86f)
+        close()
+        moveTo(12f, 9.15f)
+        close()
+        moveToRelative(2.8f, 2.8f)
+        lineTo(13f, 10.15f)
+        verticalLineTo(5f)
+        quadTo(13f, 4.57f, 12.71f, 4.29f)
+        reflectiveQuadTo(12f, 4f)
+        reflectiveQuadTo(11.29f, 4.29f)
+        reflectiveQuadTo(11f, 5f)
+        verticalLineTo(8.15f)
+        lineToRelative(-2f, -2f)
+        verticalLineTo(5f)
+        quadTo(9f, 3.75f, 9.88f, 2.88f)
+        reflectiveQuadTo(12f, 2f)
+        reflectiveQuadToRelative(2.13f, 0.88f)
+        reflectiveQuadTo(15f, 5f)
+        verticalLineToRelative(6f)
+        quadToRelative(0f, 0.27f, -0.06f, 0.5f)
+        reflectiveQuadTo(14.8f, 11.95f)
+        close()
+        moveTo(11f, 21f)
+        verticalLineTo(17.93f)
+        quadTo(8.4f, 17.58f, 6.7f, 15.6f)
+        reflectiveQuadTo(5f, 11f)
+        horizontalLineTo(7f)
+        quadToRelative(0f, 2.07f, 1.44f, 3.54f)
+        reflectiveQuadTo(12f, 16f)
+        quadToRelative(0.85f, 0f, 1.61f, -0.26f)
+        quadTo(14.38f, 15.48f, 15f, 15f)
+        lineToRelative(1.43f, 1.43f)
+        quadTo(15.7f, 17f, 14.84f, 17.4f)
+        reflectiveQuadTo(13f, 17.93f)
+        verticalLineTo(21f)
+        horizontalLineTo(11f)
+        close()
+        moveToRelative(8.8f, 1.6f)
+        lineTo(1.4f, 4.2f)
+        lineTo(2.8f, 2.8f)
+        lineTo(21.2f, 21.2f)
+        lineToRelative(-1.4f, 1.4f)
+        close()
+    }
+}
+
 /** Which flash setting a [FlashMark] shows. Its own type, so this module needs nothing from a feature. */
 enum class FlashGlyph { Off, Auto, On }
 
@@ -353,3 +543,31 @@ fun SwitchCameraMark(
 ) {
     Icon(imageVector = switchCameraVector, contentDescription = contentDescription, tint = tint, modifier = modifier)
 }
+
+/** The torch, lit or out — the light control in video. */
+@Composable
+fun TorchMark(
+    on: Boolean,
+    contentDescription: String?,
+    modifier: Modifier = Modifier,
+    tint: Color = DarkChamberTheme.colors.textPrimary,
+) {
+    Icon(imageVector = torchVector(on), contentDescription = contentDescription, tint = tint, modifier = modifier)
+}
+
+/** Which drawing a torch state uses — outside the composable, so a mix-up is a failing test. */
+internal fun torchVector(on: Boolean): ImageVector = if (on) torchOnVector else torchOffVector
+
+/** The microphone, on or crossed out; crossed out, it is the no-sound mark beside a recording. */
+@Composable
+fun MicrophoneMark(
+    on: Boolean,
+    contentDescription: String?,
+    modifier: Modifier = Modifier,
+    tint: Color = DarkChamberTheme.colors.textPrimary,
+) {
+    Icon(imageVector = microphoneVector(on), contentDescription = contentDescription, tint = tint, modifier = modifier)
+}
+
+/** Which drawing a microphone state uses — outside the composable, so a mix-up is a failing test. */
+internal fun microphoneVector(on: Boolean): ImageVector = if (on) microphoneOnVector else microphoneOffVector

@@ -3,12 +3,21 @@ package dev.ehsanfahad.darkchamber.feature.camera.presentation
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraAvailability
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraCapabilities
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraPermission
+import dev.ehsanfahad.darkchamber.feature.camera.api.CaptureMode
 import dev.ehsanfahad.darkchamber.feature.camera.api.FlashMode
 import dev.ehsanfahad.darkchamber.feature.camera.api.Lens
+import dev.ehsanfahad.darkchamber.feature.camera.api.MicrophonePermission
+import dev.ehsanfahad.darkchamber.feature.camera.api.VideoQuality
 import dev.ehsanfahad.darkchamber.feature.camera.domain.CaptureProblem
 import dev.ehsanfahad.darkchamber.feature.camera.domain.CaptureQueueState
 import dev.ehsanfahad.darkchamber.feature.camera.domain.DestinationInfo
 import dev.ehsanfahad.darkchamber.feature.camera.domain.DestinationTitle
+import dev.ehsanfahad.darkchamber.feature.camera.domain.MicrophoneHint
+import dev.ehsanfahad.darkchamber.feature.camera.domain.RecorderNotice
+import dev.ehsanfahad.darkchamber.feature.camera.domain.RecorderState
+import dev.ehsanfahad.darkchamber.feature.camera.domain.VideoLaneState
+import dev.ehsanfahad.darkchamber.feature.camera.domain.VideoNotice
+import dev.ehsanfahad.darkchamber.feature.camera.domain.recordingSound
 
 /**
  * Everything the camera screen draws from, and every decision about it.
@@ -31,8 +40,25 @@ internal class CameraState(
     val lens: Lens = Lens.Back,
     val flash: FlashMode = FlashMode.Off,
     val zoom: Float = 1f,
+    /** What the shutter takes, and the video settings last asked of the camera. */
+    val mode: CaptureMode = CaptureMode.Photo,
+    val quality: VideoQuality = VideoQuality.HD,
+    val torch: Boolean = false,
+    /** This screen's recording, if any, and the session's video lane. */
+    val recorder: RecorderState = RecorderState(),
+    val lane: VideoLaneState = VideoLaneState(),
+    val microphone: MicrophonePermission = MicrophonePermission.Granted,
+    /** Whether this screen has started a recording yet — the microphone hint is said before the first. */
+    val hasRecorded: Boolean = false,
+    /** Whether the person wants sound — the session's microphone toggle. */
+    val soundWanted: Boolean = true,
+    /** The newest capture this screen saved, of either kind — the component keeps track of which. */
+    val lastShot: LastShot? = null,
 ) {
     private val albumGone: Boolean get() = destination?.title == DestinationTitle.AlbumGone
+
+    private val cameraUsable: Boolean
+        get() = permission == CameraPermission.Granted && availability == CameraAvailability.Available && !albumGone
 
     /**
      * Whether a press would take a photo. A destination still loading does not block it — the
@@ -40,10 +66,89 @@ internal class CameraState(
      * An album known to be gone does: every photo would fail.
      */
     val shutterEnabled: Boolean
-        get() = permission == CameraPermission.Granted &&
-            availability == CameraAvailability.Available &&
-            queue.shutterEnabled &&
-            !albumGone
+        get() = cameraUsable && queue.shutterEnabled
+
+    /** A recording is running — from start until its end has been handled. */
+    val recording: Boolean get() = recorder.active != null
+
+    /** The row under the viewfinder: the mode labels, or while recording the status in their place. */
+    val row: CameraRow get() = if (recording) CameraRow.Status else CameraRow.ModeLabels
+
+    /**
+     * The shutter. In video it records, and while recording it stops — once: a second press while
+     * the platform finalizes would do nothing. Record is out of reach while the last clip is still
+     * saving, since the lane holds one at a time, and says so ([Shutter.waitingOnSave]); and on a lens
+     * that records no video.
+     */
+    val shutter: Shutter
+        get() = when {
+            mode == CaptureMode.Photo -> Shutter(ShutterKind.Photo, enabled = shutterEnabled)
+            recording -> Shutter(ShutterKind.Stop, enabled = !recorder.stopping)
+            else -> Shutter(
+                ShutterKind.Record,
+                enabled = cameraUsable && capabilities.videoQualities.isNotEmpty() && !lane.busy,
+                waitingOnSave = lane.busy,
+            )
+        }
+
+    /** The viewfinder's shape is the capture's, so it shows exactly what is saved. */
+    val captureRatio: CaptureRatio
+        get() = when (mode) {
+            CaptureMode.Photo -> CaptureRatio.FourByThree
+            CaptureMode.Video -> CaptureRatio.SixteenByNine
+        }
+
+    /**
+     * The light control: the flash in photo, the torch in video — which stays while recording, when
+     * light is most often wanted. None on a lens without a light.
+     */
+    val light: LightControl?
+        get() = when {
+            !capabilities.hasFlash -> null
+            mode == CaptureMode.Photo -> LightControl.Flash(flash)
+            else -> LightControl.Torch(torch)
+        }
+
+    /**
+     * The quality chip, in video only and never while recording. Hidden, not disabled, on a lens
+     * that offers one quality: a chip with nothing to switch to is a control that does nothing. Also
+     * hidden on a lens that cannot record the quality chosen, which stays the session's choice for
+     * the next lens that can.
+     */
+    val qualityChip: QualityChip?
+        get() {
+            if (mode != CaptureMode.Video || recording) return null
+            // A choice this lens cannot record is not named: the recording falls back to what the
+            // lens can do, and a chip reading 4K over an HD clip would be a small lie.
+            if (quality !in capabilities.videoQualities) return null
+            val next = capabilities.videoQualities.firstOrNull { it != quality } ?: return null
+            return QualityChip(current = quality, next = next)
+        }
+
+    /** The no-sound mark, beside a recording that has no sound. */
+    val showsNoSoundMark: Boolean get() = recorder.active?.withAudio == false
+
+    /**
+     * How to turn sound on, said in video before this screen's first recording; after that the
+     * no-sound mark says it. `null` when the microphone is already allowed, and when sound was turned
+     * off on purpose.
+     */
+    val microphoneHint: MicrophoneHint?
+        get() {
+            if (mode != CaptureMode.Video || recording || hasRecorded) return null
+            return recordingSound(microphone, soundWanted).hint.takeIf { it != MicrophoneHint.None }
+        }
+
+    /**
+     * The microphone toggle, in video and only before a recording starts — sound is chosen once, at
+     * the start. It shows what the next recording will get: crossed out while the microphone is
+     * refused, whatever it was set to, so it never offers sound that cannot be recorded.
+     */
+    val microphoneToggle: MicrophoneToggle?
+        get() {
+            if (mode != CaptureMode.Video || recording) return null
+            return MicrophoneToggle(soundOn = recordingSound(microphone, soundWanted).withAudio)
+        }
 
     /**
      * What stands in place of the viewfinder, if anything. Permission speaks first: whether a
@@ -78,24 +183,100 @@ internal class CameraState(
     val message: CameraMessage?
         get() = when {
             albumGone -> CameraMessage.AlbumGone
+            queue.problem == CaptureProblem.OutOfSpace -> CameraMessage.OutOfSpace
             queue.problem == CaptureProblem.SaveFailed -> CameraMessage.SaveFailed
             queue.problem == CaptureProblem.CaptureFailed -> CameraMessage.CaptureFailed
             else -> null
         }
 
-    /** A flip control only when there is another lens to flip to. */
-    val flipOffered: Boolean get() = capabilities.lenses.size > 1
+    /**
+     * The one notice line. An album that is gone explains every capture after it, so it comes
+     * first; then the recording's own news, which ends what the screen was doing; then the clip's
+     * save; then a photo's.
+     */
+    val notice: CameraNotice?
+        get() {
+            message?.takeIf { it == CameraMessage.AlbumGone }?.let { return CameraNotice.Photo(it) }
+            recorder.notice?.let { return CameraNotice.Recording(it) }
+            lane.notice?.let { return CameraNotice.Saving(it) }
+            return message?.let { CameraNotice.Photo(it) }
+        }
 
-    /** A flash control only when the lens in use has a flash. */
-    val flashOffered: Boolean get() = capabilities.hasFlash
+    /** The last-shot tile: the newest capture, and a ring while a clip is still being saved. */
+    val tile: TileState get() = TileState(lastShot = lastShot, saving = lane.busy, progress = lane.progress)
+
+    /**
+     * A flip control only when there is another lens to flip to — and not while recording, since
+     * switching lens would rebind the camera and end the clip.
+     */
+    val flipOffered: Boolean get() = capabilities.lenses.size > 1 && !recording
+
+    /** A light control only when the lens in use has a light. */
+    val flashOffered: Boolean get() = light != null
 
     override fun toString(): String =
         "CameraState(destination=$destination, permission=$permission, availability=$availability, " +
-            "queue=$queue, lens=$lens, flash=$flash, zoom=$zoom)"
+            "queue=$queue, lens=$lens, flash=$flash, zoom=$zoom, mode=$mode, quality=$quality, " +
+            "torch=$torch, recorder=$recorder, lane=$lane, microphone=$microphone, soundWanted=$soundWanted)"
 }
+
+/** What sits under the viewfinder. */
+internal enum class CameraRow { ModeLabels, Status }
+
+/** What the shutter does now. */
+internal enum class ShutterKind { Photo, Record, Stop }
+
+/**
+ * The shutter as drawn: what it does, whether it can, and — when it cannot record — whether that is
+ * because the last clip is still saving, so its description can say why.
+ */
+internal data class Shutter(val kind: ShutterKind, val enabled: Boolean, val waitingOnSave: Boolean = false)
+
+/** The capture's shape, which the viewfinder takes. */
+internal enum class CaptureRatio(val longOverShort: Float) {
+    FourByThree(4f / 3f),
+    SixteenByNine(16f / 9f),
+}
+
+/** The one light control, in whichever form the mode gives it. */
+internal sealed interface LightControl {
+    data class Flash(val mode: FlashMode) : LightControl
+
+    data class Torch(val on: Boolean) : LightControl
+}
+
+/** The notice line's one item, from whichever source [CameraState.notice] chose. */
+internal sealed interface CameraNotice {
+    data class Photo(val message: CameraMessage) : CameraNotice
+
+    data class Recording(val notice: RecorderNotice) : CameraNotice
+
+    data class Saving(val notice: VideoNotice) : CameraNotice
+}
+
+/**
+ * The newest saved capture: its item id, for the host to draw, and whether it is a photo or a clip.
+ * Not a data class: the generated `equals` would compare the id by identity.
+ */
+internal class LastShot(val itemId: ByteArray, val kind: CaptureMode) {
+    override fun equals(other: Any?): Boolean = other is LastShot && itemId.contentEquals(other.itemId) && kind == other.kind
+
+    override fun hashCode(): Int = 31 * itemId.contentHashCode() + kind.hashCode()
+
+    override fun toString(): String = "LastShot($kind)"
+}
+
+/** What the tile draws: the newest capture, and whether a clip is saving and how far (`null` unmeasured). */
+internal data class TileState(val lastShot: LastShot?, val saving: Boolean, val progress: Float?)
+
+/** The microphone toggle: whether the next recording will have sound. */
+internal data class MicrophoneToggle(val soundOn: Boolean)
+
+/** The quality chip: what is set, and what a tap switches to. */
+internal data class QualityChip(val current: VideoQuality, val next: VideoQuality)
 
 /** What replaces the viewfinder when the camera cannot be shown. */
 internal enum class CameraExplainer { None, Denied, PermanentlyDenied, InUse, Unavailable }
 
 /** The one-line message the screen shows, most important first. */
-internal enum class CameraMessage { AlbumGone, SaveFailed, CaptureFailed }
+internal enum class CameraMessage { AlbumGone, OutOfSpace, SaveFailed, CaptureFailed }

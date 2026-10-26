@@ -14,6 +14,7 @@ import dev.ehsanfahad.darkchamber.core.model.VaultItemKind
 import dev.ehsanfahad.darkchamber.core.model.flatMap
 import dev.ehsanfahad.darkchamber.core.model.map
 import dev.ehsanfahad.darkchamber.core.storage.VaultStorage
+import dev.ehsanfahad.darkchamber.core.storage.isOutOfSpace
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOn
@@ -78,7 +79,16 @@ class VaultObjects(
      * declares no foreign key, so the row would be accepted and the item would land where no album
      * view can reach it and the unfiled listing will not show it either. Checked twice on purpose —
      * once before any bytes move, so a bad destination does not cost a full encrypt, and once against
-     * the finished row, because a long import can outlive the album it was aimed at.
+     * the finished row, because a long import can outlive the album it was aimed at. It fails as
+     * `VaultError.Storage.DestinationMissing`, distinct from an object that is missing.
+     *
+     * [whenAlbumMissing] lets a caller opt out of that failure: with
+     * [WhenAlbumMissing.FileUnfiled] the item is kept and written unfiled — at either check, with no
+     * second encrypt — and the caller is told once. Only a missing album triggers it; a catalog that
+     * cannot be read still fails the import.
+     *
+     * A write that ran out of space fails as `VaultError.Storage.Full`, recovered from the codec's
+     * generic `Io` by the platform's own report; every other write failure stays `Io`.
      *
      * [first] is an **already-open** source over the same payload, which stands in for the first
      * open this function would otherwise perform. It exists because a provider may block for minutes
@@ -111,14 +121,25 @@ class VaultObjects(
         onProgress: (ImportPhase, Long) -> Unit = { _, _ -> },
         isActive: () -> Boolean = { true },
         first: RawSource? = null,
+        whenAlbumMissing: WhenAlbumMissing = WhenAlbumMissing.Fail,
         openSource: () -> RawSource,
     ): Outcome<ByteArray> {
         // Fail before any bytes move if the destination is not there. The check that *matters* is
         // the one taken against the finished row (see storeGuarded), because an album can be deleted
         // mid-import; this one exists so a mistyped destination does not cost a full encrypt of a
         // video first. `first` belongs to the vault by contract, so this path closes it.
-        when (val destination = albumExists(albumId)) {
-            is Outcome.Err -> {
+        //
+        // A caller that opted in to unfiled gets that from the start instead, and is told once; the
+        // second check then has nothing to find.
+        val destinationAlbum: ByteArray? = when (val destination = albumExists(albumId)) {
+            is Outcome.Ok -> albumId
+            is Outcome.Err -> if (
+                whenAlbumMissing is WhenAlbumMissing.FileUnfiled &&
+                destination.error == VaultError.Storage.DestinationMissing
+            ) {
+                whenAlbumMissing.onFiledUnfiled()
+                null
+            } else {
                 if (first != null) {
                     try {
                         first.close()
@@ -128,7 +149,6 @@ class VaultObjects(
                 }
                 return destination
             }
-            is Outcome.Ok -> Unit
         }
 
         // Probe re-openability BEFORE reading anything. The check cannot be done after a failure:
@@ -161,7 +181,7 @@ class VaultObjects(
             // Wrapped for the same reason as the spill path below: a lock can zeroize the session
             // mid-import, and a throw must not escape a function that promises an Outcome.
             return try {
-                storeObject(kind, name, mime, albumId, chunkSize, onProgress, isActive, openSource)
+                storeObject(kind, name, mime, destinationAlbum, whenAlbumMissing, chunkSize, onProgress, isActive, openSource)
             } catch (e: Exception) {
                 Outcome.Err(VaultError.Unexpected(e))
             }
@@ -198,7 +218,7 @@ class VaultObjects(
                         },
                     ) { session.isOpen && isActive() },
                 ) { spilled ->
-                    storeObject(kind, name, mime, albumId, chunkSize, onProgress, isActive, spilled)
+                    storeObject(kind, name, mime, destinationAlbum, whenAlbumMissing, chunkSize, onProgress, isActive, spilled)
                 }
                 .flatMap { it }
         } catch (e: Exception) {
@@ -221,6 +241,7 @@ class VaultObjects(
         name: String,
         mime: String,
         albumId: ByteArray?,
+        whenAlbumMissing: WhenAlbumMissing,
         chunkSize: Int,
         onProgress: (ImportPhase, Long) -> Unit,
         isActive: () -> Boolean,
@@ -238,6 +259,7 @@ class VaultObjects(
             name,
             mime,
             albumId,
+            whenAlbumMissing,
             chunkSize,
             openSource = {
                 SessionGuardedSource(
@@ -265,6 +287,7 @@ class VaultObjects(
         name: String,
         mime: String,
         albumId: ByteArray?,
+        whenAlbumMissing: WhenAlbumMissing,
         chunkSize: Int,
         openSource: () -> RawSource,
         openForThumbnail: () -> RawSource,
@@ -314,19 +337,26 @@ class VaultObjects(
         //    would accept the stale id happily, since the schema declares no foreign key, and the
         //    item would land where no album view can reach it and the unfiled listing will not show
         //    it either. Cleaned up the same way a failed row write is: object bytes with no row are
-        //    unrecoverable garbage.
-        when (val destination = albumExists(albumId)) {
-            is Outcome.Err -> {
+        //    unrecoverable garbage — unless the caller opted in to unfiled, in which case the row is
+        //    written with no album and the encrypt already paid for is kept.
+        val rowAlbum: ByteArray? = when (val destination = albumExists(albumId)) {
+            is Outcome.Ok -> albumId
+            is Outcome.Err -> if (
+                whenAlbumMissing is WhenAlbumMissing.FileUnfiled &&
+                destination.error == VaultError.Storage.DestinationMissing
+            ) {
+                whenAlbumMissing.onFiledUnfiled()
+                null
+            } else {
                 storage.deleteObject(fileId)
                 storage.deleteThumbnail(fileId)
                 return destination
             }
-            is Outcome.Ok -> Unit
         }
 
         val row = Items(
             id = fileId,
-            album_id = albumId,
+            album_id = rowAlbum,
             kind = kind,
             size = size,
             created_at = createdAt,
@@ -767,13 +797,21 @@ class VaultObjects(
                     is Outcome.Err -> write
                     is Outcome.Ok -> Outcome.Err(VaultError.Unexpected(IllegalStateException("encrypt did not complete")))
                 }
-                is Outcome.Err -> e // precise codec error (temp already cleaned up)
+                is Outcome.Err -> e.namingAFullDisk() // precise codec error (temp already cleaned up)
                 is Outcome.Ok -> when (write) {
                     is Outcome.Ok -> e // stored; the measured size
                     is Outcome.Err -> write // disk failure after codec Ok
                 }
             }
         }.flatMap { it } // collapse useDek's wrapper; the inner Outcome<Long> carries the result
+
+    // The codec reports every failure in its read/write loop as a plain Io, including a sink the
+    // platform said ran out of space. Recover that one cause — from the platform's own report in the
+    // throwable, never a guess — so the caller can name it.
+    private fun Outcome.Err.namingAFullDisk(): Outcome.Err {
+        val io = error as? VaultError.Io ?: return this
+        return if (isOutOfSpace(io.cause)) Outcome.Err(VaultError.Storage.Full) else this
+    }
 
     private fun absent(id: ByteArray): Outcome.Err =
         Outcome.Err(VaultError.Io(NoSuchElementException("no vault object for id (${id.size} bytes)")))
@@ -788,7 +826,9 @@ class VaultObjects(
         if (albumId == null) return Outcome.Ok(Unit)
         return when (val got = catalog.getAlbum(albumId)) {
             is Outcome.Err -> got
-            is Outcome.Ok -> if (got.value == null) absentAlbum(albumId) else Outcome.Ok(Unit)
+            // Typed rather than an Io: a caller can tell a destination that went away from an object
+            // that did, without reading a message.
+            is Outcome.Ok -> if (got.value == null) Outcome.Err(VaultError.Storage.DestinationMissing) else Outcome.Ok(Unit)
         }
     }
 

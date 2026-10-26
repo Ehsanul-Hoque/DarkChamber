@@ -22,6 +22,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -281,11 +282,11 @@ private fun UnlockStep(
 @OptIn(ExperimentalDecomposeApi::class)
 @Composable
 private fun UnlockedContent(component: UnlockedComponent) {
-    // The window insets are applied once, here, for the whole unlocked subtree — the bar and every
-    // feature screen below it. Applying them again inside a screen would inset twice (a gap under
-    // the bar), and leaving them to each screen means the first one that forgets sits under the
-    // system bars.
-    Box(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
+    // The window insets are applied here, by the host, for every screen except the camera — the bar
+    // and the feature screen below it together. Applying them again inside a screen would inset
+    // twice (a gap under the bar), and leaving them to each screen means the first one that forgets
+    // sits under the system bars. The camera is the one exemption ([paddedByHost]).
+    Box(modifier = Modifier.fillMaxSize()) {
         val stack by component.stack.subscribeAsState()
 
         // The offer to leave, which only the vault's own grid ever makes. Drawn over the screen
@@ -313,16 +314,31 @@ private fun UnlockedContent(component: UnlockedComponent) {
             // starts and only when a back gesture's slide has finished — so it changed, or vanished
             // for the camera, at the wrong end of every transition and moved the grid.
             val instance = created.instance
-            Column(modifier = Modifier.fillMaxSize()) {
+            Column(modifier = Modifier.fillMaxSize().then(if (paddedByHost(instance)) Modifier.safeDrawingPadding() else Modifier)) {
                 if (showsUnlockedBar(instance)) ScreenBar(component = component, child = instance)
                 Box(modifier = Modifier.weight(1f)) { UnlockedScreen(component = component, child = instance) }
             }
         }
 
-        // Only while the offer stands. No animation and no timer of its own: the component owns how
-        // long the offer lasts, and a notice that faded out on its own schedule would be on screen
-        // when the next press no longer leaves — or gone while it still does.
-        if (offeringToLeave) LeaveNotice(modifier = Modifier.align(Alignment.BottomCenter))
+        // What did not make it into the vault, drawn over the screen like the leave notice and for
+        // the same reason. It is the gate's record, so it is here after the unlock that follows the
+        // lock which caused it.
+        val notSaved by component.notSaved.collectAsState()
+        val notSavedLines = notSavedNoticeLines(
+            cameraInFront = stack.active.instance is UnlockedChild.Camera,
+            summary = notSaved,
+        )
+
+        // Inset on its own, since it sits over the camera too, which the host does not pad.
+        Column(modifier = Modifier.align(Alignment.BottomCenter).safeDrawingPadding()) {
+            if (notSavedLines.isNotEmpty()) {
+                NotSavedNotice(lines = notSavedLines, onDismiss = component::dismissNotSaved)
+            }
+            // Only while the offer stands. No animation and no timer of its own: the component owns
+            // how long the offer lasts, and a notice that faded out on its own schedule would be on
+            // screen when the next press no longer leaves — or gone while it still does.
+            if (offeringToLeave) LeaveNotice()
+        }
     }
 }
 
@@ -367,13 +383,17 @@ private fun UnlockedScreen(component: UnlockedComponent, child: UnlockedChild) {
             }
         // The last-shot tile draws through the same loader, handed in as a slot: the camera never
         // builds a loader of its own, so the lock's cache clear covers it.
-        is UnlockedChild.Camera ->
+        // Held upright for as long as it is composed, so it is released when the screen is popped and
+        // when a lock replaces the subtree.
+        is UnlockedChild.Camera -> {
+            HoldPortrait()
             component.imageLoader?.let { loader ->
                 CameraContent(
                     component = child.component,
                     lastShot = { id, modifier -> VaultThumbnail(id, loader, modifier) },
                 )
             }
+        }
     }
 }
 

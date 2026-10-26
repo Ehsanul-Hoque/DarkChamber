@@ -57,6 +57,14 @@ internal fun crumbFor(child: UnlockedChild, gallery: GalleryState?): String? =
  */
 internal fun showsUnlockedBar(child: UnlockedChild): Boolean = child !is UnlockedChild.Camera
 
+/**
+ * Whether the host keeps [child] clear of the system bars. Not the camera: its black and its
+ * viewfinder run under the bars, and it places its own top bar and shutter row inside the insets —
+ * padded from outside, the viewfinder would stop short of the edges with a strip of nothing above
+ * and below it.
+ */
+internal fun paddedByHost(child: UnlockedChild): Boolean = child !is UnlockedChild.Camera
+
 /** The same word the entry point that leads here uses, and the one the feature's own copy uses. */
 private const val ALBUMS = "Albums"
 

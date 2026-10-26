@@ -18,6 +18,18 @@ enum class FlashMode { Off, Auto, On }
 enum class CameraPermission { NotAsked, Granted, Denied, PermanentlyDenied }
 
 /**
+ * Whether the app may record sound, with the same four answers as [CameraPermission] and for the
+ * same reasons. Its own type so that one permission can never be passed where the other is meant.
+ */
+enum class MicrophonePermission { NotAsked, Granted, Denied, PermanentlyDenied }
+
+/** What the shutter takes. Also chooses the capture's shape: 4:3 for a photo, 16:9 for a video. */
+enum class CaptureMode { Photo, Video }
+
+/** A video's resolution: [HD] is 1080p, [UHD] is 2160p. */
+enum class VideoQuality { HD, UHD }
+
+/**
  * Whether a camera can be opened right now, separately from whether we are allowed to.
  *
  * [InUseByAnotherApp] is reported **only** when the platform says exactly that. Every other reason —
@@ -31,30 +43,37 @@ enum class CameraAvailability { Available, InUseByAnotherApp, Unavailable }
  *
  * A front lens commonly has no flash, and some devices have only one lens; a control that is drawn
  * but does nothing is a small lie about the device.
+ *
+ * Everything but [lenses] describes the lens that is open now, and changes when it does. [hasFlash]
+ * covers the torch as well, since both are the same light. [videoQualities] is empty where the lens
+ * records no video, and a lens that cannot do 4K lists only [VideoQuality.HD].
  */
 class CameraCapabilities(
     val lenses: Set<Lens>,
     val hasFlash: Boolean,
     val minZoom: Float,
     val maxZoom: Float,
+    val videoQualities: Set<VideoQuality> = emptySet(),
 ) {
     override fun equals(other: Any?): Boolean =
         other is CameraCapabilities &&
             lenses == other.lenses &&
             hasFlash == other.hasFlash &&
             minZoom == other.minZoom &&
-            maxZoom == other.maxZoom
+            maxZoom == other.maxZoom &&
+            videoQualities == other.videoQualities
 
     override fun hashCode(): Int {
         var result = lenses.hashCode()
         result = 31 * result + hasFlash.hashCode()
         result = 31 * result + minZoom.hashCode()
         result = 31 * result + maxZoom.hashCode()
+        result = 31 * result + videoQualities.hashCode()
         return result
     }
 
     override fun toString(): String =
-        "CameraCapabilities(lenses=$lenses, hasFlash=$hasFlash, zoom=$minZoom..$maxZoom)"
+        "CameraCapabilities(lenses=$lenses, hasFlash=$hasFlash, zoom=$minZoom..$maxZoom, video=$videoQualities)"
 
     companion object {
         /** What is known before a camera has opened: nothing beyond a fixed 1× view. */

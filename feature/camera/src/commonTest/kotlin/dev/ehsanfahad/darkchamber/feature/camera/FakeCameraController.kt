@@ -6,12 +6,20 @@ import dev.ehsanfahad.darkchamber.feature.camera.api.CameraAvailability
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraCapabilities
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraController
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraPermission
+import dev.ehsanfahad.darkchamber.feature.camera.api.CaptureMode
 import dev.ehsanfahad.darkchamber.feature.camera.api.CaptureResult
 import dev.ehsanfahad.darkchamber.feature.camera.api.CapturedPhoto
 import dev.ehsanfahad.darkchamber.feature.camera.api.FlashMode
 import dev.ehsanfahad.darkchamber.feature.camera.api.Lens
+import dev.ehsanfahad.darkchamber.feature.camera.api.MicrophonePermission
+import dev.ehsanfahad.darkchamber.feature.camera.api.Recording
+import dev.ehsanfahad.darkchamber.feature.camera.api.RecordingEnd
+import dev.ehsanfahad.darkchamber.feature.camera.api.ReportedRecording
+import dev.ehsanfahad.darkchamber.feature.camera.api.VideoContainer
+import dev.ehsanfahad.darkchamber.feature.camera.api.VideoQuality
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.io.files.Path
 
 /**
  * A scripted camera for host and simulator tests.
@@ -28,11 +36,28 @@ internal class FakeCameraController(
         hasFlash = true,
         minZoom = 1f,
         maxZoom = 8f,
+        videoQualities = setOf(VideoQuality.HD, VideoQuality.UHD),
     ),
+    microphonePermission: MicrophonePermission = MicrophonePermission.Granted,
 ) : CameraController {
     override val permission = MutableStateFlow(permission)
     override val availability = MutableStateFlow(availability)
     override val capabilities = MutableStateFlow(capabilities)
+    override val microphonePermission = MutableStateFlow(microphonePermission)
+
+    override var videoContainer: VideoContainer = VideoContainer.Mp4
+
+    /** Set by the test as the device's tilt would be. */
+    override val deviceRotation = MutableStateFlow(0)
+
+    /** What the next [requestMicrophonePermission] resolves to. */
+    var microphoneAnswer: MicrophonePermission = MicrophonePermission.Granted
+
+    /** As [platformPermission], for the microphone. */
+    var platformMicrophonePermission: MicrophonePermission? = null
+
+    var microphoneRequests = 0
+        private set
 
     /** What the next [requestPermission] resolves to. */
     var permissionAnswer: CameraPermission = CameraPermission.Granted
@@ -55,6 +80,33 @@ internal class FakeCameraController(
     var zoom: Float = 1f
         private set
     val focusPoints = mutableListOf<Pair<Float, Float>>()
+    var mode: CaptureMode = CaptureMode.Photo
+        private set
+    var quality: VideoQuality = VideoQuality.HD
+        private set
+    var torch: Boolean = false
+        private set
+
+    /** What one [record] call asked for. */
+    data class RecordRequest(val file: Path, val sizeLimitBytes: Long, val withAudio: Boolean)
+
+    val recordRequests = mutableListOf<RecordRequest>()
+
+    /**
+     * How a recording ends when it is stopped. `null` makes the platform never answer, so the test
+     * ends it through [lastRecording] — the way a finalize that is slow, or never comes, is driven.
+     */
+    var endOnStop: RecordingEnd? = RecordingEnd.Finalized
+
+    /** How many recordings were asked to stop. */
+    var recordingStops = 0
+        private set
+
+    /** The latest recording that started, for the test to report progress into and end. */
+    var lastRecording: ReportedRecording? = null
+        private set
+
+    private val recording: ReportedRecording? get() = lastRecording?.takeUnless { it.isEnded }
 
     /** True between [start] and [stop] — what the platform's in-use indicator would show. */
     val isOpen: Boolean get() = starts > stops
@@ -91,6 +143,11 @@ internal class FakeCameraController(
         permission.value = permissionAnswer
     }
 
+    override suspend fun requestMicrophonePermission() {
+        microphoneRequests++
+        microphonePermission.value = microphoneAnswer
+    }
+
     override fun openSettings() {
         settingsOpened++
     }
@@ -105,13 +162,40 @@ internal class FakeCameraController(
     /** As the seam promises: a no-op without permission, which it reads afresh first. */
     override fun start() {
         platformPermission?.let { permission.value = it }
+        platformMicrophonePermission?.let { microphonePermission.value = it }
         if (isOpen || permission.value != CameraPermission.Granted) return
         starts++
     }
 
+    /** As the seam promises: a running recording is abandoned, not finalized. */
     override fun stop() {
         if (!isOpen) return
+        recording?.finish(RecordingEnd.Abandoned)
         stops++
+    }
+
+    override fun setMode(mode: CaptureMode) {
+        this.mode = mode
+    }
+
+    override fun setQuality(quality: VideoQuality) {
+        this.quality = quality
+    }
+
+    override fun setTorch(on: Boolean) {
+        if (capabilities.value.hasFlash) torch = on
+    }
+
+    override fun record(file: Path, sizeLimitBytes: Long, withAudio: Boolean): Recording {
+        recordRequests += RecordRequest(file, sizeLimitBytes, withAudio)
+        if (!isOpen || mode != CaptureMode.Video || recording != null) return ReportedRecording.refused()
+        lateinit var started: ReportedRecording
+        started = ReportedRecording(onStop = {
+            recordingStops++
+            endOnStop?.let { started.finish(it) }
+        })
+        lastRecording = started
+        return started
     }
 
     override fun setLens(lens: Lens) {

@@ -40,6 +40,26 @@ sealed interface VaultError {
         data object Failed : Auth
     }
 
+    /**
+     * Failures whose cause is known well enough to be named to the user. Distinct from [Io],
+     * which says only that a read or write went wrong: copy may name a cause **only** from one of
+     * these, never from an [Io] whose throwable happens to suggest it.
+     */
+    sealed interface Storage : VaultError {
+        /**
+         * The device ran out of space during a write. Produced only where the write itself
+         * reported it (`ENOSPC` on Android, `NSFileWriteOutOfSpaceError` on iOS), never inferred
+         * from a free-space reading taken beforehand.
+         */
+        data object Full : Storage
+
+        /**
+         * The album an item was being filed into no longer exists. A missing album, not a
+         * missing object: the item's own bytes were never the problem.
+         */
+        data object DestinationMissing : Storage
+    }
+
     /** Underlying I/O failure while reading or writing a container. */
     data class Io(val cause: Throwable) : VaultError
 

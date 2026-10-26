@@ -27,6 +27,14 @@ class AndroidBiometricAuthenticator(
     private val activityProvider: () -> FragmentActivity?,
 ) : BiometricAuthenticator {
 
+    // The same class the prompt asks for: a face unlock some makers run outside the framework, or
+    // a weak one, cannot authorise a CryptoObject and so reads as unavailable here.
+    override fun canAuthenticate(): Boolean {
+        val context = activityProvider() ?: return false
+        return BiometricManager.from(context).canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) ==
+            BiometricManager.BIOMETRIC_SUCCESS
+    }
+
     override suspend fun authenticate(request: BiometricRequest): Outcome<BiometricAuth> {
         val activity = activityProvider()
             ?: return Outcome.Err(VaultError.Auth.Unavailable) // no foreground Activity to host the prompt

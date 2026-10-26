@@ -3,6 +3,8 @@ package dev.ehsanfahad.darkchamber.feature.camera
 import dev.ehsanfahad.darkchamber.core.model.ItemFilter
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.vault.AlbumSummary
+import dev.ehsanfahad.darkchamber.core.vault.ImportPhase
+import dev.ehsanfahad.darkchamber.core.vault.WhenAlbumMissing
 import dev.ehsanfahad.darkchamber.feature.camera.domain.CaptureVault
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,7 +29,21 @@ internal class FakeCaptureVault : CaptureVault {
         val mime: String,
         val albumId: ByteArray?,
         val bytes: ByteArray,
+        /** Whether the caller asked for an album deleted mid-import to file the item unfiled. */
+        val fileUnfiledIfMissing: Boolean,
     )
+
+    /** Progress the next imports report, in order, as the real import's reads would. */
+    var progressReports: List<Pair<ImportPhase, Long>> = emptyList()
+
+    /** Runs after each of [progressReports], so a test can read what the caller made of it. */
+    var afterEachProgress: () -> Unit = {}
+
+    /**
+     * When true, an import that was offered the unfiled fallback takes it — the album went while it
+     * ran — and says so through the caller's callback before it returns.
+     */
+    var albumGoesMissing = false
 
     val imported = mutableListOf<Imported>()
 
@@ -86,6 +102,8 @@ internal class FakeCaptureVault : CaptureVault {
         mime: String,
         albumId: ByteArray?,
         isActive: () -> Boolean,
+        onProgress: (ImportPhase, Long) -> Unit,
+        whenAlbumMissing: WhenAlbumMissing,
         openSource: () -> RawSource,
     ): Outcome<ByteArray> {
         val counted = { opens++; openSource() }
@@ -98,7 +116,13 @@ internal class FakeCaptureVault : CaptureVault {
                 val read = source.readAtMostTo(bytes, 8192)
             } while (read >= 0)
         }
-        imported += Imported(kind, name, mime, albumId?.copyOf(), bytes.readByteArray())
+        progressReports.forEach { (phase, n) ->
+            onProgress(phase, n)
+            afterEachProgress()
+        }
+        val unfiled = whenAlbumMissing is WhenAlbumMissing.FileUnfiled
+        if (albumGoesMissing && whenAlbumMissing is WhenAlbumMissing.FileUnfiled) whenAlbumMissing.onFiledUnfiled()
+        imported += Imported(kind, name, mime, albumId?.copyOf(), bytes.readByteArray(), unfiled)
         return nextResult()
     }
 }

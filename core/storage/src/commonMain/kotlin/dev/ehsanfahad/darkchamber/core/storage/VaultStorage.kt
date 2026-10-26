@@ -37,10 +37,15 @@ import kotlin.random.nextULong
  * @param fs the filesystem to operate on; defaults to [SystemFileSystem] (a param only so a
  *   test can substitute a fake — the real system filesystem on a temp root is the default path).
  */
-class VaultStorage(
+class VaultStorage internal constructor(
     private val root: Path,
-    private val fs: FileSystem = SystemFileSystem,
+    private val fs: FileSystem,
+    // Where scratch names come from — a parameter only so a test can force a collision.
+    private val nextTempToken: () -> String,
 ) {
+    constructor(root: Path, fs: FileSystem = SystemFileSystem) :
+        this(root, fs, { Random.nextULong().toString() })
+
     init {
         // Ensure the four layout dirs exist (idempotent — mustCreate = false).
         fs.createDirectories(Path(root, "objects"))
@@ -127,7 +132,7 @@ class VaultStorage(
             } catch (_: Exception) {
                 // best-effort cleanup — report the original failure
             }
-            Outcome.Err(VaultError.Io(e))
+            Outcome.Err(writeFailure(e))
         }
     }
 
@@ -139,11 +144,7 @@ class VaultStorage(
      * exception) propagates unchanged.
      */
     fun <R> useTempFile(block: (Path) -> R): R {
-        val tmpDir = Path(root, "tmp")
-        var candidate = Path(tmpDir, "scratch-${nextTempToken()}")
-        while (fs.exists(candidate)) {
-            candidate = Path(tmpDir, "scratch-${nextTempToken()}")
-        }
+        val candidate = freeScratchPath(suffix = "")
         try {
             return block(candidate)
         } finally {
@@ -153,6 +154,25 @@ class VaultStorage(
                 // best-effort — the scratch file is inside the wiped-on-lock tmp/ regardless
             }
         }
+    }
+
+    /**
+     * Reserves a fresh name under `tmp/` for a file whose lifetime the caller owns — a recording,
+     * which outlives any one call and so cannot use [useTempFile]'s scope. Nothing is created: some
+     * recorders refuse to write over an existing file, so the platform creates it.
+     *
+     * The caller deletes it with [ScratchFile.delete] on every way out. What a caller cannot reach
+     * — a crash, a kill — is covered because the file sits directly in `tmp/`, which [purgeTmp]
+     * empties on lock and on launch.
+     *
+     * The name is random and carries nothing about what it holds (no destination, no time).
+     *
+     * @param suffix an extension a recorder needs, e.g. `.mp4`; letters and digits after one dot,
+     *   or empty. Anything that could name another directory is refused.
+     */
+    fun newScratchFile(suffix: String): ScratchFile {
+        require(SCRATCH_SUFFIX.matches(suffix)) { "unsupported scratch suffix" }
+        return ScratchFile(freeScratchPath(suffix), fs)
     }
 
     /**
@@ -166,7 +186,8 @@ class VaultStorage(
      * disk. The copy is app-private and inside `tmp/`, which is purged on lock, on launch, and after
      * each viewer session, so this stays within hard rule #1 rather than around it.
      *
-     * A failure while **copying** maps to `Err(Io)`. [block]'s own exception propagates unchanged,
+     * A failure while **copying** maps to `Err(Io)`, or `Err(Storage.Full)` when the platform says
+     * the copy ran out of space. [block]'s own exception propagates unchanged,
      * like [useTempFile] — reporting it as an `Io` would blame the spill for a caller's failure —
      * and the scratch file is deleted either way.
      */
@@ -175,7 +196,8 @@ class VaultStorage(
             try {
                 source.use { src -> fs.sink(path).buffered().use { it.transferFrom(src) } }
             } catch (e: Exception) {
-                return@useTempFile Outcome.Err(VaultError.Io(e))
+                // The copy writes into tmp/, so a full disk can stop it as surely as a failed read.
+                return@useTempFile Outcome.Err(writeFailure(e))
             }
             Outcome.Ok(block { fs.source(path).buffered() })
         }
@@ -202,6 +224,52 @@ class VaultStorage(
         fs.delete(path, mustExist = false)
     }
 
-    // Unique-enough scratch token; collision-checked against the dir before use.
-    private fun nextTempToken(): String = Random.nextULong().toString()
+    // A name under tmp/ that nothing holds yet; the token is collision-checked against the dir.
+    private fun freeScratchPath(suffix: String): Path {
+        val tmpDir = Path(root, "tmp")
+        var candidate = Path(tmpDir, "scratch-${nextTempToken()}$suffix")
+        while (fs.exists(candidate)) {
+            candidate = Path(tmpDir, "scratch-${nextTempToken()}$suffix")
+        }
+        return candidate
+    }
+
+    private companion object {
+        val SCRATCH_SUFFIX = Regex("""(\.[a-z0-9]+)?""")
+    }
+}
+
+/**
+ * A file in `tmp/` that outlives one call, handed out by [VaultStorage.newScratchFile]. It holds
+ * plaintext the moment a recorder writes to it, so its owner deletes it on every way out; the
+ * lock and launch purge of `tmp/` is the backstop, not the plan.
+ */
+class ScratchFile internal constructor(
+    /** Where the platform writes. Never logged (hard rule #4). */
+    val path: Path,
+    private val fs: FileSystem,
+) {
+    /**
+     * A fresh reader over the whole file, independent of any other open — what an import needs, since
+     * the codec passes over its payload twice. Throws when the file is missing or unreadable, as a
+     * source factory handed to the import is expected to.
+     */
+    fun open(): RawSource = fs.source(path)
+
+    /** The file's size in bytes, or `null` when it does not exist or cannot be read. */
+    fun size(): Long? =
+        try {
+            fs.metadataOrNull(path)?.size?.takeIf { it >= 0 }
+        } catch (e: Exception) {
+            null
+        }
+
+    /** Removes the file; idempotent, and `Ok` when it was never written. */
+    fun delete(): Outcome<Unit> =
+        try {
+            fs.delete(path, mustExist = false)
+            Outcome.Ok(Unit)
+        } catch (e: Exception) {
+            Outcome.Err(VaultError.Io(e))
+        }
 }

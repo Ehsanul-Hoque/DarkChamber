@@ -76,6 +76,7 @@ class UnlockedComponentTest {
             vault = vault.open,
             koin = koin,
             mainContext = UnconfinedTestDispatcher(),
+            notSavedRecord = NotSavedRecord(),
             onLock = { locked = true },
             onLeave = {},
         )
@@ -101,6 +102,7 @@ class UnlockedComponentTest {
             vault = vault.open,
             koin = koin,
             mainContext = UnconfinedTestDispatcher(),
+            notSavedRecord = NotSavedRecord(),
             onLock = { locked = true },
             onLeave = {},
         )
@@ -123,6 +125,7 @@ class UnlockedComponentTest {
             vault = vault.open,
             koin = koin,
             mainContext = UnconfinedTestDispatcher(),
+            notSavedRecord = NotSavedRecord(),
             onLock = {},
             onLeave = {},
         )
@@ -146,6 +149,7 @@ class UnlockedComponentTest {
             vault = vault.open,
             koin = koin,
             mainContext = UnconfinedTestDispatcher(),
+            notSavedRecord = NotSavedRecord(),
             onLock = {},
             onLeave = {},
         )
@@ -229,6 +233,7 @@ class UnlockedComponentTest {
             vault = vault.open,
             koin = koin,
             mainContext = UnconfinedTestDispatcher(),
+            notSavedRecord = NotSavedRecord(),
             onLock = { lockCount++ },
             onLeave = {},
         )
@@ -314,6 +319,7 @@ class UnlockedComponentTest {
             mainContext = dispatcher,
             // Inline, so a batch driven from a test runs to completion before the assertions.
             ioContext = dispatcher,
+            notSavedRecord = NotSavedRecord(),
             onLock = onLock,
             onLeave = {},
         )

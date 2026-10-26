@@ -26,6 +26,10 @@ class CameraIconsTest {
         "flash_auto" to Expected(flashAutoVector, commands = 38, subpaths = 5),
         "flash_on" to Expected(flashOnVector, commands = 22, subpaths = 3),
         "flip_camera_android" to Expected(switchCameraVector, commands = 44, subpaths = 3),
+        "flashlight_on" to Expected(torchOnVector, commands = 38, subpaths = 5),
+        "flashlight_off" to Expected(torchOffVector, commands = 37, subpaths = 5),
+        "mic_on" to Expected(microphoneOnVector, commands = 41, subpaths = 4),
+        "mic_off" to Expected(microphoneOffVector, commands = 49, subpaths = 5),
     )
 
     @Test
@@ -59,5 +63,19 @@ class CameraIconsTest {
         assertSame(flashOffVector, flashVector(FlashGlyph.Off))
         assertSame(flashAutoVector, flashVector(FlashGlyph.Auto))
         assertSame(flashOnVector, flashVector(FlashGlyph.On))
+    }
+
+    /** As the flash: a torch drawn as off while it is lit is a mark that says the opposite of the truth. */
+    @Test
+    fun each_torch_state_draws_its_own_mark() {
+        assertSame(torchOnVector, torchVector(on = true))
+        assertSame(torchOffVector, torchVector(on = false))
+    }
+
+    /** The no-sound mark is the crossed-out microphone; sound on is the plain one. */
+    @Test
+    fun each_microphone_state_draws_its_own_mark() {
+        assertSame(microphoneOnVector, microphoneVector(on = true))
+        assertSame(microphoneOffVector, microphoneVector(on = false))
     }
 }

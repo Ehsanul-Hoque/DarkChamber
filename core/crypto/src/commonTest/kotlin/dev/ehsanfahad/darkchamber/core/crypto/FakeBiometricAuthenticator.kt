@@ -28,6 +28,8 @@ class FakeBiometricAuthenticator(
         Invalidated,
     }
 
+    override fun canAuthenticate(): Boolean = true
+
     /** How many times [authenticate] was called (for asserting a prompt was shown exactly once). */
     var authenticateCount: Int = 0
         private set

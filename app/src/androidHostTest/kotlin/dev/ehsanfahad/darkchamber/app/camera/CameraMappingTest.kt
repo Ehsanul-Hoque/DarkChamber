@@ -1,15 +1,23 @@
 package dev.ehsanfahad.darkchamber.app.camera
 
 import android.view.Surface
+import androidx.camera.core.AspectRatio
 import androidx.camera.core.CameraState
 import androidx.camera.core.ImageCapture
+import androidx.camera.video.VideoRecordEvent
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraAvailability
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraPermission
+import dev.ehsanfahad.darkchamber.feature.camera.api.CaptureMode
 import dev.ehsanfahad.darkchamber.feature.camera.api.FlashMode
+import dev.ehsanfahad.darkchamber.feature.camera.api.MicrophonePermission
+import dev.ehsanfahad.darkchamber.feature.camera.api.RecordingEnd
+import dev.ehsanfahad.darkchamber.feature.camera.api.RecordingFailure
+import dev.ehsanfahad.darkchamber.feature.camera.api.RecordingProgress
 import java.nio.ByteBuffer
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * The rules inside the CameraX seam, taken out of the framework calls because a host test cannot
@@ -36,7 +44,7 @@ class CameraMappingTest {
         )
     }
 
-    /** "In use by another app" only when the platform says exactly that (spec D8). */
+    /** "In use by another app" only when the platform says exactly that. */
     @Test
     fun only_camera_in_use_is_reported_as_in_use() {
         assertEquals(CameraAvailability.Available, availabilityFor(error = null))
@@ -75,6 +83,81 @@ class CameraMappingTest {
             listOf(ImageCapture.FLASH_MODE_OFF, ImageCapture.FLASH_MODE_AUTO, ImageCapture.FLASH_MODE_ON),
             listOf(FlashMode.Off, FlashMode.Auto, FlashMode.On).map(::flashModeFor),
         )
+    }
+
+    /**
+     * The microphone's answer comes from the same three facts as the camera's, and into its own type
+     * so the two cannot be crossed.
+     */
+    @Test
+    fun the_microphone_state_comes_from_grant_asked_and_rationale() {
+        assertEquals(MicrophonePermission.Granted, microphonePermissionState(granted = true, asked = true, showRationale = false))
+        assertEquals(MicrophonePermission.NotAsked, microphonePermissionState(granted = false, asked = false, showRationale = false))
+        assertEquals(MicrophonePermission.Denied, microphonePermissionState(granted = false, asked = true, showRationale = true))
+        assertEquals(
+            MicrophonePermission.PermanentlyDenied,
+            microphonePermissionState(granted = false, asked = true, showRationale = false),
+        )
+    }
+
+    /**
+     * How CameraX's finalize error becomes the seam's end. A clip CameraX says it wrote whole is
+     * kept — including one cut short because the camera closed under it, which CameraX finalizes
+     * with what it had. Full storage is named, because the file may still be worth one save. No data
+     * means no clip. Every error after which CameraX says the file is not to be trusted, and any
+     * code it adds later, is a plain failure.
+     */
+    @Test
+    fun each_finalize_error_becomes_its_end() {
+        assertEquals(RecordingEnd.Finalized, recordingEndFor(VideoRecordEvent.Finalize.ERROR_NONE))
+        assertEquals(RecordingEnd.Finalized, recordingEndFor(VideoRecordEvent.Finalize.ERROR_SOURCE_INACTIVE))
+        assertEquals(RecordingEnd.Finalized, recordingEndFor(VideoRecordEvent.Finalize.ERROR_DURATION_LIMIT_REACHED))
+        assertEquals(
+            RecordingEnd.FinalizedAtSizeLimit,
+            recordingEndFor(VideoRecordEvent.Finalize.ERROR_FILE_SIZE_LIMIT_REACHED),
+        )
+        assertEquals(
+            RecordingEnd.Failed(RecordingFailure.StorageFull),
+            recordingEndFor(VideoRecordEvent.Finalize.ERROR_INSUFFICIENT_STORAGE),
+        )
+        assertEquals(RecordingEnd.NoFrames, recordingEndFor(VideoRecordEvent.Finalize.ERROR_NO_VALID_DATA))
+        for (other in listOf(
+            VideoRecordEvent.Finalize.ERROR_UNKNOWN,
+            VideoRecordEvent.Finalize.ERROR_INVALID_OUTPUT_OPTIONS,
+            VideoRecordEvent.Finalize.ERROR_ENCODING_FAILED,
+            VideoRecordEvent.Finalize.ERROR_RECORDER_ERROR,
+            VideoRecordEvent.Finalize.ERROR_RECORDING_GARBAGE_COLLECTED,
+            12345,
+        )) {
+            assertEquals(RecordingEnd.Failed(RecordingFailure.Other), recordingEndFor(other), "error $other")
+        }
+    }
+
+    @Test
+    fun the_platform_count_becomes_progress() {
+        assertEquals(
+            RecordingProgress(bytesRecorded = 2_500_000, duration = 1_500.milliseconds),
+            recordingProgressFor(bytesRecorded = 2_500_000, recordedDurationNanos = 1_500_000_000),
+        )
+    }
+
+    /**
+     * The capture rotation as the seam's tilt: how far the phone is turned clockwise from upright.
+     * The display's rotation runs the other way, so ROTATION_270 is a phone turned 90° clockwise.
+     */
+    @Test
+    fun the_capture_rotation_becomes_the_tilt() {
+        assertEquals(0, tiltDegrees(Surface.ROTATION_0))
+        assertEquals(90, tiltDegrees(Surface.ROTATION_270))
+        assertEquals(180, tiltDegrees(Surface.ROTATION_180))
+        assertEquals(270, tiltDegrees(Surface.ROTATION_90))
+    }
+
+    /** Each mode's shape, so the preview shows the frame the capture saves. */
+    @Test
+    fun each_mode_has_its_own_aspect_ratio() {
+        assertEquals(AspectRatio.RATIO_4_3, aspectRatioFor(CaptureMode.Photo))
+        assertEquals(AspectRatio.RATIO_16_9, aspectRatioFor(CaptureMode.Video))
     }
 
     /** The whole JPEG, wherever the buffer's read position was left. */

@@ -32,6 +32,8 @@ import dev.ehsanfahad.darkchamber.core.crypto.DefaultKeyDerivation
 import dev.ehsanfahad.darkchamber.core.crypto.PassphraseKdfProfile
 import dev.ehsanfahad.darkchamber.core.crypto.VaultSession
 import dev.ehsanfahad.darkchamber.core.db.CatalogStore
+import dev.ehsanfahad.darkchamber.core.model.NotSavedKind
+import dev.ehsanfahad.darkchamber.core.model.NotSavedReason
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.storage.VaultStorage
 import kotlinx.io.files.Path
@@ -106,7 +108,7 @@ class RootComponentTest {
                 backHandler = backDispatcher,
             ),
             lockedFactory = { _, onUnlocked -> lockedOnUnlocked = onUnlocked; FakeLockedComponent() },
-            unlockedFactory = { ctx, vault, onLock ->
+            unlockedFactory = { ctx, vault, notSaved, onLock ->
                 DefaultUnlockedComponent(
                     ctx,
                     vault,
@@ -114,6 +116,7 @@ class RootComponentTest {
                     mainContext = unlockedContext,
                     leaveWindow = WINDOW,
                     timeSource = timeSource,
+                    notSavedRecord = notSaved,
                     onLock = onLock,
                     onLeave = { leaves++ },
                 )
@@ -197,6 +200,26 @@ class RootComponentTest {
 
         val relocked = assertIs<RootChild.Locked>(root.child.value)
         assertTrue(relocked.component !== unlocked.component, "lock must build a fresh locked subtree")
+    }
+
+    /**
+     * The news of a loss outlives the lock that caused it: the record belongs to the gate, so
+     * replacing the unlocked subtree — which is what a lock is — leaves it standing, and the next
+     * unlocked subtree finds it.
+     */
+    @Test
+    fun what_was_not_saved_survives_the_lock_that_caused_it() {
+        val root = root()
+        lockedOnUnlocked!!(openVault())
+        root.notSaved.report(NotSavedKind.Video, NotSavedReason.Locked, count = 1)
+
+        root.lockIfUnlocked()
+        assertIs<RootChild.Locked>(root.child.value)
+        lockedOnUnlocked!!(openVault())
+
+        // Read through the *new* subtree: the gate must hand its own record on, not a fresh one.
+        val next = assertIs<RootChild.Unlocked>(root.child.value).component
+        assertEquals(1, next.notSaved.value.count(NotSavedKind.Video, NotSavedReason.Locked))
     }
 
     @Test

@@ -19,6 +19,9 @@ import app.cash.sqldelight.db.SqlPreparedStatement
 internal class FailingSqlDriver(
     private val delegate: SqlDriver,
     private val failOn: (String) -> Boolean,
+    // Reads too, for a check that must tell "the catalog said no such row" from "the catalog
+    // could not be read". Off by default, so every existing use refuses writes only.
+    private val failQueryOn: (String) -> Boolean = { false },
 ) : SqlDriver {
 
     var refusals = 0
@@ -43,7 +46,13 @@ internal class FailingSqlDriver(
         mapper: (SqlCursor) -> QueryResult<R>,
         parameters: Int,
         binders: (SqlPreparedStatement.() -> Unit)?,
-    ): QueryResult<R> = delegate.executeQuery(identifier, sql, mapper, parameters, binders)
+    ): QueryResult<R> {
+        if (failQueryOn(sql)) {
+            refusals++
+            throw IllegalStateException("driver refused this read")
+        }
+        return delegate.executeQuery(identifier, sql, mapper, parameters, binders)
+    }
 
     override fun newTransaction(): QueryResult<Transacter.Transaction> = delegate.newTransaction()
 

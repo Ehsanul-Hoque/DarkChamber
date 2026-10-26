@@ -13,9 +13,12 @@ import dev.ehsanfahad.darkchamber.core.model.VaultError
  */
 class FakeBiometricAuthenticator(
     private val mode: Mode = Mode.Approve,
+    private val usable: Boolean = true,
 ) : BiometricAuthenticator {
     /** [NotUsable]: the platform key could not be used this time, with nothing saying it is gone. */
     enum class Mode { Approve, Deny, Invalidated, NotUsable }
+
+    override fun canAuthenticate(): Boolean = usable
 
     override suspend fun authenticate(request: BiometricRequest): Outcome<BiometricAuth> =
         when (mode) {

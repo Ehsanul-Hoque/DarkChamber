@@ -146,6 +146,24 @@ class LockedComponentTest {
         unlocked.session.close()
     }
 
+    /**
+     * A device whose biometrics the app cannot use — none, none enrolled, or only a kind that cannot
+     * unlock a key — is not offered biometric unlock: a "Yes" there could only fail. Saving the
+     * recovery key goes straight into the vault.
+     */
+    @Test
+    fun create_flow_skips_the_biometric_offer_where_the_device_cannot_use_it() = runTest {
+        var unlocked: VaultBootstrap.OpenVault? = null
+        val c = component(authenticator = FakeBiometricAuthenticator(usable = false), onUnlocked = { unlocked = it })
+
+        c.submitCreate(pw())
+        c.confirmRecoverySaved()
+
+        assertTrue(unlocked != null, "into the vault without the offer")
+        assertTrue(c.state.value.step !is LockStep.EnableBiometric)
+        unlocked.session.close()
+    }
+
     // Argon2id at the production cost is ~1 s of CPU on a fast device. Run on the main context it
     // freezes the UI — including the progress indicator that is meant to be reporting it — and
     // risks an ANR on a slow one. These two pin the handoff by giving the work context a scheduler

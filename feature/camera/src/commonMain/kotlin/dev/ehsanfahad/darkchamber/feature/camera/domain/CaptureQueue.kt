@@ -1,6 +1,10 @@
 package dev.ehsanfahad.darkchamber.feature.camera.domain
 
+import dev.ehsanfahad.darkchamber.core.model.NotSavedKind
+import dev.ehsanfahad.darkchamber.core.model.NotSavedReason
+import dev.ehsanfahad.darkchamber.core.model.NotSavedReporter
 import dev.ehsanfahad.darkchamber.core.model.Outcome
+import dev.ehsanfahad.darkchamber.core.model.VaultError
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraController
 import dev.ehsanfahad.darkchamber.feature.camera.api.CaptureResult
 import dev.ehsanfahad.darkchamber.feature.camera.api.CapturedPhoto
@@ -33,6 +37,11 @@ import kotlin.coroutines.CoroutineContext
  *
  * Main-thread confined like the screen that drives it: [scope] runs on the main dispatcher, and only
  * the encrypt moves to [ioContext].
+ *
+ * **What did not make it is reported to [notSaved]**, which outlives the session, so it can be told
+ * once the vault is unlocked again: every photo a lock abandoned, and — once the camera has closed and
+ * no screen is left to say so — a photo whose save failed. While the camera is open a failure is its
+ * screen's to show, through [CaptureQueueState.problem].
  */
 internal class CaptureQueue(
     private val camera: CameraController,
@@ -40,6 +49,7 @@ internal class CaptureQueue(
     private val albumId: ByteArray?,
     private val scope: CoroutineScope,
     private val ioContext: CoroutineContext,
+    private val notSaved: NotSavedReporter,
     private val bound: Int = DEFAULT_BOUND,
 ) {
     private val _state = MutableStateFlow(CaptureQueueState(holding = 0, bound = bound))
@@ -61,6 +71,13 @@ internal class CaptureQueue(
                     val left = waiting.tryReceive().getOrNull() ?: break
                     left.jpeg.fill(0)
                 }
+                // Only a lock ends this loop with the scope cancelled; a finished camera ends it with
+                // nothing held. Every photo still counted — waiting, mid-encrypt, or in the
+                // platform's hands — was a press that never reached the vault.
+                val abandoned = _state.value.holding
+                if (!scope.isActive && abandoned > 0) {
+                    notSaved.report(NotSavedKind.Photo, NotSavedReason.Locked, abandoned)
+                }
             }
         }
     }
@@ -70,9 +87,11 @@ internal class CaptureQueue(
     /** Take one photo. Returns `false`, doing nothing, when [bound] photos are already held. */
     fun shoot(): Boolean {
         if (finishing || !scope.isActive || !_state.value.shutterEnabled) return false
-        _state.update { it.copy(holding = it.holding + 1) }
+        _state.update { it.copy(holding = it.holding + 1, capturing = it.capturing + 1) }
         scope.launch {
-            when (val result = camera.capture()) {
+            val result = camera.capture()
+            _state.update { it.copy(capturing = it.capturing - 1) }
+            when (result) {
                 // A refused send means the queue closed under a lock while this photo was arriving.
                 // Not reachable today — this coroutine runs in the same scope, and a cancelled
                 // coroutine never resumes from the capture with a value — so no test can reach it;
@@ -110,8 +129,16 @@ internal class CaptureQueue(
         _state.update {
             when (saved) {
                 is Outcome.Ok -> it.copy(holding = it.holding - 1, saved = it.saved + 1, lastSavedId = saved.value, problem = null)
-                is Outcome.Err -> it.copy(holding = it.holding - 1, problem = CaptureProblem.SaveFailed)
+                is Outcome.Err -> it.copy(
+                    holding = it.holding - 1,
+                    problem = if (saved.error == VaultError.Storage.Full) CaptureProblem.OutOfSpace else CaptureProblem.SaveFailed,
+                )
             }
+        }
+        // The screen that would have said so has gone, so it is said after instead.
+        if (saved is Outcome.Err && finishing) {
+            val reason = if (saved.error == VaultError.Storage.Full) NotSavedReason.OutOfSpace else NotSavedReason.CouldNotSave
+            notSaved.report(NotSavedKind.Photo, reason, 1)
         }
         stopIfFinished()
     }
@@ -132,8 +159,11 @@ internal class CaptureQueue(
     }
 }
 
-/** What went wrong most recently, until a photo is saved again. */
-internal enum class CaptureProblem { CaptureFailed, SaveFailed }
+/**
+ * What went wrong most recently, until a photo is saved again. [OutOfSpace] only when the vault
+ * said the disk was full; every other save failure is [SaveFailed], naming no cause.
+ */
+internal enum class CaptureProblem { CaptureFailed, SaveFailed, OutOfSpace }
 
 /**
  * The queue as the screen sees it: how many photos are held, how many this camera has saved, the
@@ -148,6 +178,8 @@ internal class CaptureQueueState(
     val saved: Int = 0,
     val lastSavedId: ByteArray? = null,
     val problem: CaptureProblem? = null,
+    /** Of [holding], the presses still in the platform's hands, which a rebind of the camera would fail. */
+    val capturing: Int = 0,
 ) {
     val shutterEnabled: Boolean get() = holding < bound
 
@@ -156,9 +188,10 @@ internal class CaptureQueueState(
         saved: Int = this.saved,
         lastSavedId: ByteArray? = this.lastSavedId,
         problem: CaptureProblem? = this.problem,
-    ): CaptureQueueState = CaptureQueueState(holding, bound, saved, lastSavedId, problem)
+        capturing: Int = this.capturing,
+    ): CaptureQueueState = CaptureQueueState(holding, bound, saved, lastSavedId, problem, capturing)
 
     override fun toString(): String =
-        "CaptureQueueState(holding=$holding/$bound, saved=$saved, " +
+        "CaptureQueueState(holding=$holding/$bound, capturing=$capturing, saved=$saved, " +
             "last=${if (lastSavedId == null) "none" else "present"}, problem=$problem)"
 }

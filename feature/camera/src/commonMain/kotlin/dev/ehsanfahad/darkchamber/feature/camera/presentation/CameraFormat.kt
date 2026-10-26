@@ -1,7 +1,15 @@
 package dev.ehsanfahad.darkchamber.feature.camera.presentation
 
+import dev.ehsanfahad.darkchamber.feature.camera.api.CaptureMode
 import dev.ehsanfahad.darkchamber.feature.camera.api.FlashMode
+import dev.ehsanfahad.darkchamber.feature.camera.api.RecordingProgress
+import dev.ehsanfahad.darkchamber.feature.camera.api.VideoQuality
 import dev.ehsanfahad.darkchamber.feature.camera.domain.DestinationTitle
+import dev.ehsanfahad.darkchamber.feature.camera.domain.MicrophoneHint
+import dev.ehsanfahad.darkchamber.feature.camera.domain.RecorderNotice
+import dev.ehsanfahad.darkchamber.feature.camera.domain.VideoNotice
+import dev.ehsanfahad.darkchamber.feature.camera.domain.roomLeft
+import kotlin.time.Duration
 
 /**
  * The camera's words, in one place a test can read. Each line is written from the failure path —
@@ -9,9 +17,12 @@ import dev.ehsanfahad.darkchamber.feature.camera.domain.DestinationTitle
  * state rather than choosing one inside a layout.
  *
  * Claims this screen never makes, and the test asserts absent: that capture is silent (iOS forces a
- * shutter sound in some regions), that photos never leave the vault (they will be exportable), that
- * memory is wiped (only this code's own arrays are zeroed), that the disk is full (no error says so),
- * or that a damaged name was tampered with (a failed tag is all that is known).
+ * shutter sound in some regions), that photos or videos never leave the vault (they will be
+ * exportable), that a video is never stored unencrypted (it passes through one plaintext file in
+ * app-private storage), that memory is wiped (only this code's own arrays are zeroed), or that a
+ * damaged name was tampered with (a failed tag is all that is known). Space is named only where the
+ * code knows it is the cause: the vault reported the disk full, the room check refused, or the
+ * platform stopped at our limit.
  */
 internal object CameraFormat {
 
@@ -50,6 +61,7 @@ internal object CameraFormat {
         when (message) {
             CameraMessage.AlbumGone ->
                 "This album isn't in your vault any more. Photos already saved are still there, under Unfiled."
+            CameraMessage.OutOfSpace -> OUT_OF_SPACE
             CameraMessage.SaveFailed -> "Couldn't save that photo."
             CameraMessage.CaptureFailed -> "Couldn't take that photo."
         }
@@ -74,8 +86,112 @@ internal object CameraFormat {
             CameraExplainer.Unavailable -> ExplainerCopy("Camera isn't available right now.", action = null)
         }
 
-    /** The shutter is a drawing — the aperture — so it needs words to be spoken. */
-    fun shutterDescription(): String = "Take photo"
+    /**
+     * The shutter is a drawing — the aperture — so it needs words to be spoken. They say what a press
+     * does; the platform adds "disabled" itself. Only a record held back by a clip still saving says
+     * why, because only then is the reason something the person would otherwise wait on blind.
+     */
+    fun shutterDescription(shutter: Shutter): String =
+        when (shutter.kind) {
+            ShutterKind.Photo -> "Take photo"
+            ShutterKind.Stop -> "Stop recording"
+            ShutterKind.Record ->
+                if (!shutter.enabled && shutter.waitingOnSave) "Start recording — unavailable until the last video has saved"
+                else "Start recording"
+        }
+
+    /** A clock: `mm:ss`, and `h:mm:ss` once a clip passes an hour. Whole seconds, counted up. */
+    fun timer(elapsed: Duration): String {
+        val total = elapsed.inWholeSeconds.coerceAtLeast(0)
+        val hours = total / 3600
+        val minutes = (total % 3600) / 60
+        val seconds = total % 60
+        return if (hours > 0) "$hours:${two(minutes)}:${two(seconds)}" else "${two(minutes)}:${two(seconds)}"
+    }
+
+    /**
+     * A byte count in decimal units, as the phone's own storage screens use: whole megabytes below a
+     * gigabyte, tenths of a gigabyte above. Rounded **down**, so "left" never claims room that is not
+     * there and reads zero at the auto-stop.
+     */
+    fun size(bytes: Long): String {
+        val b = bytes.coerceAtLeast(0)
+        if (b < GB) return "${b / MB} MB"
+        val tenths = b / (GB / 10)
+        return "${tenths / 10}.${tenths % 10} GB"
+    }
+
+    /**
+     * The status line while recording: how long, how much is recorded, and how much is left **of this
+     * clip** — measured against the limit fixed at start, not the disk's free space, so it reaches
+     * zero exactly when the recording stops itself. Bytes are labelled as recorded, never as the
+     * vault's size or the disk's use.
+     */
+    fun recordingStatus(progress: RecordingProgress, limitBytes: Long): String =
+        "${timer(progress.duration)} · ${size(progress.bytesRecorded)} recorded · " +
+            "${size(roomLeft(limitBytes, progress.bytesRecorded))} left"
+
+    /**
+     * How to record with sound, said in video before the first recording. Settings, once the system
+     * will not ask again, with the same warning as the camera's: going there locks the vault.
+     */
+    fun microphoneHint(hint: MicrophoneHint): ExplainerCopy? =
+        when (hint) {
+            MicrophoneHint.None -> null
+            MicrophoneHint.Ask -> ExplainerCopy("Videos record without sound until you allow the microphone.", action = "Allow")
+            MicrophoneHint.Settings -> ExplainerCopy(
+                "Microphone access is turned off, so videos record without sound. You can turn it on in Settings — the vault locks while you're there.",
+                action = "Open settings",
+            )
+        }
+
+    /**
+     * What happened to the last recording. Space is named only where the code knows it: the room
+     * check refused, or the platform stopped at our limit. Unknown free space is not called too
+     * little — nobody measured it.
+     */
+    fun recorderNotice(notice: RecorderNotice): String =
+        when (notice) {
+            RecorderNotice.NotEnoughSpace -> "Not enough space to record."
+            RecorderNotice.SpaceUnknown -> "Couldn't check the space available, so recording didn't start."
+            RecorderNotice.TooShort -> "Too short to save."
+            RecorderNotice.StoppedAtLimit -> "Recording stopped — not enough space for a longer clip."
+            RecorderNotice.RecordingFailed -> "Couldn't record that video."
+        }
+
+    /** What happened to the last clip's save. A full disk is named only when the vault reported one. */
+    fun videoNotice(notice: VideoNotice): String =
+        when (notice) {
+            VideoNotice.OutOfSpace -> OUT_OF_SPACE
+            VideoNotice.SaveFailed -> "Couldn't save that video."
+            VideoNotice.SavedUnfiled -> "Saved to Unfiled — its album was deleted."
+        }
+
+    fun modeLabel(mode: CaptureMode): String =
+        when (mode) {
+            CaptureMode.Photo -> "Photo"
+            CaptureMode.Video -> "Video"
+        }
+
+    /** As the flash: the state, which a tap changes. */
+    fun torchDescription(on: Boolean): String = if (on) "Torch: on" else "Torch: off"
+
+    fun qualityLabel(quality: VideoQuality): String =
+        when (quality) {
+            VideoQuality.HD -> "HD"
+            VideoQuality.UHD -> "4K"
+        }
+
+    fun qualityDescription(quality: VideoQuality): String = "Video quality: ${qualityLabel(quality)}"
+
+    /** The no-sound mark is a drawing; this is what it says. */
+    fun noSoundDescription(): String = "Recording without sound"
+
+    /**
+     * The microphone toggle, as the flash: the state, which a tap changes. It says what the next
+     * recording will get, so a refused microphone reads "off" whatever the toggle was set to.
+     */
+    fun soundDescription(toggle: MicrophoneToggle): String = if (toggle.soundOn) "Sound: on" else "Sound: off"
 
     fun flipDescription(): String = "Switch camera"
 
@@ -90,8 +206,32 @@ internal object CameraFormat {
     fun closeDescription(): String = "Close camera"
 
     /** The last-shot tile does nothing when touched, so it is described, not labelled as a button. */
-    fun lastShotDescription(hasShot: Boolean): String =
-        if (hasShot) "Last photo saved" else "No photo taken yet"
+    fun lastShotDescription(lastShot: LastShot?): String =
+        when (lastShot?.kind) {
+            null -> "Nothing taken yet"
+            CaptureMode.Photo -> "Last photo saved"
+            CaptureMode.Video -> "Last video saved"
+        }
+
+    /** The tile's ring, spoken: a percentage only when there is a size to measure it against. */
+    fun savingDescription(progress: Float?): String =
+        if (progress == null) "Saving video" else "Saving video, ${(progress * 100).toInt()}%"
+
+    /** The notice line, in each source's own words — one wording per event, wherever it is shown. */
+    fun notice(notice: CameraNotice): String =
+        when (notice) {
+            is CameraNotice.Photo -> message(notice.message)
+            is CameraNotice.Recording -> recorderNotice(notice.notice)
+            is CameraNotice.Saving -> videoNotice(notice.notice)
+        }
+
+    // The one line that names a full disk, for photos and video alike — reached only from the
+    // vault's own Storage.Full.
+    private const val OUT_OF_SPACE = "Couldn't save — your phone is out of space."
+    private const val MB = 1_000_000L
+    private const val GB = 1_000_000_000L
+
+    private fun two(n: Long): String = n.toString().padStart(2, '0')
 }
 
 /** An explainer's sentence, and its one action if there is one that would help. */

@@ -133,11 +133,12 @@ class MainActivity : FragmentActivity() {
                     onUnlocked = onUnlocked,
                 )
             },
-            unlockedFactory = { ctx, vault, onLock ->
+            unlockedFactory = { ctx, vault, notSaved, onLock ->
                 DefaultUnlockedComponent(
                     ctx,
                     vault,
                     koin,
+                    notSavedRecord = notSaved,
                     onLock = onLock,
                     // Leaving on the second back press at the vault's grid. `finish()` rather than
                     // re-dispatching the press, which is not possible — a press a callback answered

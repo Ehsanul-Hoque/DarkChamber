@@ -7,6 +7,11 @@ import com.arkivanov.essenty.lifecycle.resume
 import com.arkivanov.essenty.lifecycle.stop
 import dev.ehsanfahad.darkchamber.feature.camera.FakeCameraController
 import dev.ehsanfahad.darkchamber.feature.camera.FakeCaptureVault
+import dev.ehsanfahad.darkchamber.feature.camera.FakeClipFiles
+import dev.ehsanfahad.darkchamber.feature.camera.FakeFreeSpace
+import dev.ehsanfahad.darkchamber.feature.camera.api.CameraSession
+import dev.ehsanfahad.darkchamber.feature.camera.api.CaptureMode
+import dev.ehsanfahad.darkchamber.feature.camera.api.VideoQuality
 import dev.ehsanfahad.darkchamber.core.vault.AlbumSummary
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraCapabilities
@@ -50,17 +55,23 @@ class CameraComponentTest {
         val sessionJob = Job()
         var closes = 0
         private val dispatcher = UnconfinedTestDispatcher(test.testScheduler)
+        val session = CameraSession(
+            vault = vault,
+            clips = FakeClipFiles(),
+            freeSpace = FakeFreeSpace(),
+            saveScope = CoroutineScope(dispatcher + sessionJob),
+            notSaved = { _, _, _ -> },
+            ioContext = dispatcher,
+            clock = { 0L },
+        )
         val component: CameraComponent = cameraComponent(
             componentContext = DefaultComponentContext(lifecycle),
-            vault = vault,
+            session = session,
             camera = camera,
             destination = destination,
-            saveScope = CoroutineScope(dispatcher + sessionJob),
             unreadableNameLabel = "Name can't be read",
             onClose = { closes++ },
             mainContext = dispatcher,
-            ioContext = dispatcher,
-            clock = { 0L },
         )
         val state: CameraState get() = component.state.value
     }
@@ -230,6 +241,9 @@ class CameraComponentTest {
             setLens(Lens.Front)
             setFlash(FlashMode.On)
             setZoom(4f)
+            setMode(CaptureMode.Video)
+            setQuality(VideoQuality.UHD)
+            setTorch(true)
         }
         val h = Harness(this, camera)
         h.lifecycle.resume()
@@ -237,6 +251,9 @@ class CameraComponentTest {
         assertEquals(Lens.Back to Lens.Back, camera.lens to h.state.lens)
         assertEquals(FlashMode.Off to FlashMode.Off, camera.flash to h.state.flash)
         assertEquals(1f to 1f, camera.zoom to h.state.zoom)
+        assertEquals(CaptureMode.Photo to CaptureMode.Photo, camera.mode to h.state.mode)
+        assertEquals(VideoQuality.HD to VideoQuality.HD, camera.quality to h.state.quality, "the session's quality")
+        assertEquals(false to false, camera.torch to h.state.torch)
         h.sessionJob.cancel()
     }
 
@@ -266,6 +283,56 @@ class CameraComponentTest {
         h.component.close()
 
         assertEquals(1, h.closes)
+        h.sessionJob.cancel()
+    }
+
+    /**
+     * Switching to video, or flipping the lens, rebinds the camera, and a rebind under a photo still
+     * in the platform's hands fails it. So the switch waits for the photos already pressed, then
+     * happens: a quick thumb never loses a shot to the control beside the shutter.
+     */
+    @Test
+    fun a_mode_switch_or_flip_waits_for_the_photos_in_flight() = runTest {
+        val h = Harness(this)
+        h.camera.holdCaptures()
+        h.lifecycle.resume()
+        h.component.shoot()
+        h.component.shoot()
+
+        h.component.setMode(CaptureMode.Video)
+        h.component.flipLens()
+        assertEquals(CaptureMode.Photo, h.camera.mode, "not while a photo is being taken")
+        assertEquals(Lens.Back, h.camera.lens)
+        assertEquals(CaptureMode.Photo, h.state.mode, "and the screen still shows where the photo is coming from")
+
+        h.camera.release()
+        assertEquals(CaptureMode.Photo, h.camera.mode, "one photo is still on its way")
+        h.camera.release()
+
+        assertEquals(2, h.vault.imported.size, "both photos are kept")
+        assertEquals(CaptureMode.Video, h.camera.mode)
+        assertEquals(Lens.Front, h.camera.lens)
+        assertEquals(CaptureMode.Video, h.state.mode)
+        h.sessionJob.cancel()
+    }
+
+    /** What happens once the photos land is what was asked for last: the latest mode, and a flip only if one is still wanted. */
+    @Test
+    fun the_last_switch_asked_for_while_waiting_is_the_one_made() = runTest {
+        val h = Harness(this)
+        h.camera.holdCaptures()
+        h.lifecycle.resume()
+        h.component.shoot()
+
+        h.component.setMode(CaptureMode.Video)
+        h.component.setMode(CaptureMode.Photo)
+        h.component.flipLens()
+        h.component.flipLens()
+        h.camera.release()
+
+        assertEquals(CaptureMode.Photo, h.camera.mode, "switched back before the photo landed")
+        assertEquals(Lens.Back, h.camera.lens, "flipped and flipped back")
+        assertEquals(1, h.vault.imported.size)
         h.sessionJob.cancel()
     }
 

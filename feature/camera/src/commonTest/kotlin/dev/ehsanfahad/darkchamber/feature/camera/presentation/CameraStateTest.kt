@@ -94,6 +94,7 @@ class CameraStateTest {
     fun the_message_line_says_the_album_is_gone_before_any_single_failure() {
         assertNull(state().message)
         assertEquals(CameraMessage.SaveFailed, state(problem = CaptureProblem.SaveFailed).message)
+        assertEquals(CameraMessage.OutOfSpace, state(problem = CaptureProblem.OutOfSpace).message)
         assertEquals(CameraMessage.CaptureFailed, state(problem = CaptureProblem.CaptureFailed).message)
         assertEquals(
             CameraMessage.AlbumGone,

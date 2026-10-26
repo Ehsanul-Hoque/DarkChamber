@@ -57,11 +57,12 @@ fun MainViewController(): UIViewController {
                 onUnlocked = onUnlocked,
             )
         },
-        unlockedFactory = { ctx, vault, onLock ->
+        unlockedFactory = { ctx, vault, notSaved, onLock ->
             DefaultUnlockedComponent(
                 ctx,
                 vault,
                 koin,
+                notSavedRecord = notSaved,
                 onLock = onLock,
                 // Nothing, because iOS has neither half of what this is for: no system back reaches
                 // the gate (the context above is built without a back handler, so the callback that

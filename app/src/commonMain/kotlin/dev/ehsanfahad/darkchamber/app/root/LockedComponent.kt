@@ -144,8 +144,15 @@ class DefaultLockedComponent(
     }
 
     override fun confirmRecoverySaved() {
+        if (_state.value.step !is LockStep.Recovery) return
+        // Offered only where a prompt could succeed: on a device without a usable biometric, a "Yes"
+        // could only fail, so the vault opens straight away.
+        if (!authenticator.canAuthenticate()) {
+            pendingVault?.let { finishUnlock(it) }
+            return
+        }
         // A fresh LockState, so `recoveryKeyCopied` does not follow the key off the screen.
-        if (_state.value.step is LockStep.Recovery) _state.value = LockState(LockStep.EnableBiometric)
+        _state.value = LockState(LockStep.EnableBiometric)
     }
 
     override fun enableBiometric() {

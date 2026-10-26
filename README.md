@@ -53,7 +53,7 @@ A Kotlin Multiplatform app for **Android** and **iOS** that encrypts, stores, an
 
 ## ✨ What it does (v1)
 
-- **Private camera** — photos & video captured straight into encrypted, app-private storage. Plaintext never touches disk outside the sandbox; Google Photos has nothing to back up.
+- **Private camera** — photos & video captured into encrypted, app-private storage. A photo goes from memory straight into the vault; a video passes through one app-private scratch file while it is recorded and encrypted, then is deleted. Nothing reaches shared storage, so Google Photos has nothing to back up.
 - **Encrypted vault** — import any file (images, videos, audio, PDFs, documents); everything is encrypted with AES-256-GCM under hardware-backed keys (Android Keystore/StrongBox, iOS Keychain).
 - **View without exposing** — in-app viewers decrypt to memory: images, streaming video/audio with seeking, PDFs. Anything else opens via an explicit, warned "decrypt & open in…" flow.
 - **Encrypted notes** — Markdown notes stored as first-class vault items.

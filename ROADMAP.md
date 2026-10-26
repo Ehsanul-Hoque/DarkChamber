@@ -125,13 +125,14 @@ The complete free product. Everything here ships open source and free.
 > pre-release gate rather than something to imply away. What automated tests cannot show at all has
 > its own checklists in [`docs/verification/`](./docs/verification), one per area, with the
 > release-blocking lines marked: that a name never reaches the catalog file or a log line, that a
-> layout holds at a large font scale, that no window hands its text to another process, and that a
-> photo never reaches shared storage or carries a location.
+> layout holds at a large font scale, that no window hands its text to another process, that a
+> photo never reaches shared storage or carries a location, and that a video's scratch file is gone
+> however a recording ends — after a crash, at the next launch.
 
 | Feature                                | Notes                                                                                                                                                                                               |
 |----------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Encrypted vault with albums             | Import from gallery & file picker; batch import; albums as labels (one per item, deleting an album keeps its files); sort/search on encrypted metadata                                               |
-| **Private camera** (photo + video)     | CameraX / AVFoundation → encrypting sink → app-private storage. Plaintext never persisted                                                                                                           |
+| **Private camera** (photo + video)     | CameraX / AVFoundation → encrypting import → app-private storage. A photo never touches a file; a video passes through one app-private scratch file while it is recorded and encrypted, then is deleted |
 | In-app viewers                         | Images (in-memory decode), video & audio (streaming decrypt via ExoPlayer custom DataSource / AVAssetResourceLoaderDelegate), PDF (PDFKit in-memory on iOS; private-cache temp or memfd on Android) |
 | "Decrypt & open in…" fallback          | Share-sheet export for docx/zip/other, with explicit "file is leaving the vault" warning + cleanup action                                                                                           |
 | Unlock: PIN + biometrics               | Hardware-backed; rate-limited PIN attempts                                                                                                                                                          |

@@ -1,5 +1,6 @@
 package dev.ehsanfahad.darkchamber.feature.camera.domain
 
+import dev.ehsanfahad.darkchamber.feature.camera.api.VideoContainer
 import java.util.Locale
 import java.util.TimeZone
 import kotlin.test.AfterTest
@@ -32,6 +33,13 @@ class PhotoNameTest {
         TimeZone.setDefault(TimeZone.getTimeZone("Asia/Dhaka")) // UTC+6, no daylight saving
         // 2026-10-19T08:30:12.345Z
         assertEquals("Photo 2026-10-19 14.30.12.jpg", photoName(1_792_398_612_345L))
+    }
+
+    @Test
+    fun a_video_is_named_in_the_same_pattern() {
+        TimeZone.setDefault(TimeZone.getTimeZone("Asia/Dhaka"))
+        assertEquals("Video 2026-10-19 14.30.12.mp4", videoName(1_792_398_612_345L, VideoContainer.Mp4))
+        assertEquals("Video 2026-10-19 14.30.12.mov", videoName(1_792_398_612_345L, VideoContainer.QuickTime))
     }
 
     /** A device set to Bangla must not put Bangla digits in a name; the gallery sorts names as text. */

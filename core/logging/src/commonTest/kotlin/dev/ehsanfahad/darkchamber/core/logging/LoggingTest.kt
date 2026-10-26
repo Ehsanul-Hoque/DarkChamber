@@ -19,6 +19,16 @@ class LoggingTest {
         assertEquals("Crypto.MalformedContainer", redactCause(VaultError.Crypto.MalformedContainer))
     }
 
+    /**
+     * Distinct codes, and not `Io`: a log that read `Io` for a full disk would hide exactly the
+     * cause the error exists to name.
+     */
+    @Test
+    fun storage_cases_redact_to_their_own_stable_code() {
+        assertEquals("Storage.Full", redactCause(VaultError.Storage.Full))
+        assertEquals("Storage.DestinationMissing", redactCause(VaultError.Storage.DestinationMissing))
+    }
+
     @Test
     fun io_redacts_to_a_content_free_code_never_the_cause_message() {
         val secretPath = "/vault/secret.jpg"

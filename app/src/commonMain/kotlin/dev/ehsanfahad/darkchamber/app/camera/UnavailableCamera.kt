@@ -6,11 +6,18 @@ import dev.ehsanfahad.darkchamber.feature.camera.api.CameraAvailability
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraCapabilities
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraController
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraPermission
+import dev.ehsanfahad.darkchamber.feature.camera.api.CaptureMode
 import dev.ehsanfahad.darkchamber.feature.camera.api.CaptureResult
 import dev.ehsanfahad.darkchamber.feature.camera.api.FlashMode
 import dev.ehsanfahad.darkchamber.feature.camera.api.Lens
+import dev.ehsanfahad.darkchamber.feature.camera.api.MicrophonePermission
+import dev.ehsanfahad.darkchamber.feature.camera.api.Recording
+import dev.ehsanfahad.darkchamber.feature.camera.api.ReportedRecording
+import dev.ehsanfahad.darkchamber.feature.camera.api.VideoContainer
+import dev.ehsanfahad.darkchamber.feature.camera.api.VideoQuality
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.io.files.Path
 
 /**
  * The camera when the platform module binds none: a camera that is not available, saying so.
@@ -28,13 +35,26 @@ internal object UnavailableCamera : CameraController {
     override val availability: StateFlow<CameraAvailability> = MutableStateFlow(CameraAvailability.Unavailable)
     override val capabilities: StateFlow<CameraCapabilities> = MutableStateFlow(CameraCapabilities.None)
 
+    // Granted for the same reason as the camera's: no prompt for a microphone nothing will record with.
+    override val microphonePermission: StateFlow<MicrophonePermission> = MutableStateFlow(MicrophonePermission.Granted)
+    override val videoContainer: VideoContainer = VideoContainer.Mp4
+    override val deviceRotation: StateFlow<Int> = MutableStateFlow(0)
+
     override suspend fun requestPermission() = Unit
+
+    override suspend fun requestMicrophonePermission() = Unit
 
     override fun openSettings() = Unit
 
     override fun start() = Unit
 
     override fun stop() = Unit
+
+    override fun setMode(mode: CaptureMode) = Unit
+
+    override fun setQuality(quality: VideoQuality) = Unit
+
+    override fun setTorch(on: Boolean) = Unit
 
     override fun setLens(lens: Lens) = Unit
 
@@ -45,6 +65,8 @@ internal object UnavailableCamera : CameraController {
     override fun focusAt(x: Float, y: Float) = Unit
 
     override suspend fun capture(): CaptureResult = CaptureResult.Failed
+
+    override fun record(file: Path, sizeLimitBytes: Long, withAudio: Boolean): Recording = ReportedRecording.refused()
 
     @Composable
     override fun Preview(modifier: Modifier) = Unit
