@@ -20,6 +20,14 @@ import dev.ehsanfahad.darkchamber.core.model.Outcome
  */
 interface BiometricAuthenticator {
     /**
+     * Whether a prompt could succeed on this device right now: a biometric strong enough to unlock
+     * a key, enrolled. False with no sensor, with none enrolled, or with only a kind the platform
+     * will not bind to a key (a camera-only face unlock, say). Asked before offering biometric
+     * unlock, so the offer never appears where accepting it could only fail.
+     */
+    fun canAuthenticate(): Boolean
+
+    /**
      * Prompt for biometric auth. On success returns a [BiometricAuth] carrying the authenticated
      * handle; on user-cancel / no-enrollment returns [Outcome.Err] of
      * [dev.ehsanfahad.darkchamber.core.model.VaultError.Auth]; on a permanently invalidated key

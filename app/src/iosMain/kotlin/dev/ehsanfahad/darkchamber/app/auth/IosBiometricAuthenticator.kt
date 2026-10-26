@@ -5,6 +5,7 @@ import dev.ehsanfahad.darkchamber.core.crypto.BiometricAuthenticator
 import dev.ehsanfahad.darkchamber.core.crypto.BiometricRequest
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
+import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.suspendCancellableCoroutine
 import platform.Foundation.NSError
 import platform.LocalAuthentication.LAContext
@@ -26,6 +27,11 @@ import kotlin.coroutines.resume
  * not a cipher primitive (hard rule #2).
  */
 class IosBiometricAuthenticator : BiometricAuthenticator {
+
+    // The policy the prompt evaluates: false with no Face/Touch ID, none enrolled, or locked out.
+    @OptIn(ExperimentalForeignApi::class)
+    override fun canAuthenticate(): Boolean =
+        LAContext().canEvaluatePolicy(LAPolicyDeviceOwnerAuthenticationWithBiometrics, error = null)
 
     override suspend fun authenticate(request: BiometricRequest): Outcome<BiometricAuth> =
         suspendCancellableCoroutine { cont ->
