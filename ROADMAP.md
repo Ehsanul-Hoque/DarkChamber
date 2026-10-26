@@ -81,7 +81,7 @@ Goal: a walking skeleton with the security core proven before any product UI.
 The complete free product. Everything here ships open source and free.
 
 > **Progress (2026-10): Phase 1 is under way — the vault half of it is in place, and the camera takes
-> photos; its video is next.**
+> photos and records video; the viewers are next.**
 > What a build can do today, on Android and iOS — the readme describes each of these for a reader
 > rather than a planner:
 >
@@ -109,6 +109,13 @@ The complete free product. Everything here ships open source and free.
 >   memory and from memory into the vault's encryption — no file on the way, nothing in the system
 >   photo library, no location requested. Only the app's own copies are cleared afterwards; the
 >   camera framework's buffers are the platform's. Where a region requires a shutter sound, it plays.
+> - **Record video privately**, in HD or 4K where the lens can, with sound optional. A clip is too
+>   large to hold in memory, so it passes through **one plaintext file in the app's private storage**
+>   while it is recorded and encrypted, and that file is deleted on every way out — saved, failed, too
+>   short, or abandoned by a lock; a crash leaves it until the app next starts. Deleted is not wiped:
+>   flash storage can keep the old blocks, as the threat model says of the shredder. Recording is limited
+>   to what the phone has room to encrypt, and a full disk is named only when the phone reports one.
+>   Anything a lock or a failure discarded is counted, never described, on the next unlocked screen.
 > - **Give nothing to the rest of the phone.** Screenshot and recording blocking plus a blank
 >   app-switcher card on Android, an obscured snapshot on iOS (which offers no way to block a
 >   screenshot at all — the threat model says so and no copy here softens it), and every window kept
@@ -116,7 +123,7 @@ The complete free product. Everything here ships open source and free.
 >   covered by the screenshot flag: a device showed a vault text field travelling it with the flag set.
 >   The cost is stated rather than hidden — a password manager cannot fill the passphrase.
 >
-> Still to come before v1.0: the camera's video, the in-app viewers and the seekable reads they need,
+> Still to come before v1.0: the in-app viewers and the seekable reads they need,
 > export with metadata scrubbing, the settings screen and recovery-key entry, and the
 > release-readiness tooling.
 >
