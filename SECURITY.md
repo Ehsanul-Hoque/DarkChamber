@@ -16,14 +16,9 @@ Only the **latest released version** on Google Play, the App Store, F-Droid, and
 
 **Please do NOT open a public GitHub issue for security vulnerabilities.**
 
-Preferred channel, in order:
+Report it through **GitHub private vulnerability reporting**: use the ["Report a vulnerability"](../../security/advisories/new) button on this repository (Security tab → Advisories). This keeps the report private, threads discussion, and lets us publish a coordinated advisory with credit to you.
 
-1. **GitHub private vulnerability reporting:** use the ["Report a vulnerability"](../../security/advisories/new) button on this repository (Security tab → Advisories). This keeps the report private, threads discussion, and lets us publish a coordinated advisory with credit to you.
-2. **Email:** `security@darkchamber.app` <!-- TODO: create this mailbox before launch -->
-   Encrypt sensitive reports with our PGP key: <!-- TODO: generate, publish key + fingerprint here and on the website -->
-   ```
-   Fingerprint: XXXX XXXX XXXX XXXX XXXX  XXXX XXXX XXXX XXXX XXXX
-   ```
+<!-- TODO: add a security email address and a PGP key fingerprint here once the project has its own domain -->
 
 Please include, where possible:
 
@@ -76,4 +71,4 @@ DarkChamber is an independent open-source project and does not currently run a p
 
 ## Verifying official builds
 
-Reproducible builds are a project goal (see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §14). Once shipped, release signatures and instructions for verifying that store binaries match this source tree will be published here and on the website. Report any mismatch immediately via the channels above — a binary/source mismatch is treated as a critical incident.
+Reproducible builds are a project goal (see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §14). Once shipped, release signatures and instructions for verifying that store binaries match this source tree will be published here and on the website. Report any mismatch immediately via the channel above — a binary/source mismatch is treated as a critical incident.
