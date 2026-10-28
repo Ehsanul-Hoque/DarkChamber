@@ -142,7 +142,7 @@ Essentials — the [Engineering Guide](./docs/engineering/README.md) has the det
 
 ## ⚖️ License & trademark
 
-Code is licensed under **[GPLv3](./LICENSE)**. The **DarkChamber name and logo are not part of the code license** — forks are welcome and must choose their own name. See `TRADEMARK.md`.
+Code is licensed under **[GPLv3](./LICENSE)**. The **DarkChamber name and logo are not part of the code license** — forks are welcome and must choose their own name. See [TRADEMARK.md](./TRADEMARK.md).
 
 ## 🕯️ A note of intention
 
