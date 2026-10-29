@@ -6,7 +6,8 @@ import kotlinx.cinterop.ObjCSignatureOverride
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.readValue
 import kotlinx.cinterop.usePinned
-import kotlinx.io.RawSource
+import dev.ehsanfahad.darkchamber.core.model.Outcome
+import dev.ehsanfahad.darkchamber.core.vault.RangeReader
 import platform.AVFoundation.AVAssetImageGenerator
 import platform.AVFoundation.AVAssetResourceLoader
 import platform.AVFoundation.AVAssetResourceLoaderDelegateProtocol
@@ -39,25 +40,27 @@ import platform.darwin.dispatch_time
  * `null` — no video track, a format AVFoundation cannot read, or any failure on the way. The caller
  * releases the image.
  *
- * `AVAssetImageGenerator` reads an asset by URL and the vault hands over a stream, so the asset's URL
- * is one of a scheme nothing else answers, and a resource-loader delegate serves its byte ranges
- * from a [SeekingReader]. AVFoundation asks for the length before anything else, which the reader
- * learns by reading through once, keeping the end as it goes — so a clip whose index is at the end,
- * as every phone writes it, costs about one read of the file in all. Nothing is written anywhere:
- * the bytes go from the reader's memory to AVFoundation's.
+ * `AVAssetImageGenerator` reads an asset by URL, so the asset's URL is one of a scheme nothing else
+ * answers, and a resource-loader delegate serves its byte ranges from [reader], which decrypts only
+ * the chunks each range touches. AVFoundation asks for the length before anything else; the reader
+ * knows it from the moment it opened, so a clip whose index is at the end, as every phone writes it,
+ * costs a read at the end rather than a read through the file. Nothing is written anywhere: the bytes
+ * go from the reader's memory to AVFoundation's.
  *
  * The frame is the first key frame at or after [PREVIEW_FRAME_US], as on Android; a clip with no
  * frame that late gives its first. Waited on with a timeout, so a reader AVFoundation never finishes
  * with cannot hang an import.
  *
+ * [reader] belongs to the caller, which closes it after this returns.
+ *
  * **Unverified on a device**; exercised on the simulator, whose AVFoundation reads files the same way.
  */
 @OptIn(ExperimentalForeignApi::class)
-internal fun videoFrame(mime: String, maxEdgePx: Int, openSource: () -> RawSource): CGImageRef? {
+internal fun videoFrame(mime: String, maxEdgePx: Int, reader: RangeReader): CGImageRef? {
     val queue = dispatch_queue_create("dev.ehsanfahad.darkchamber.preview", null)
     val quickTime = mime.equals(QUICKTIME_MIME, ignoreCase = true)
     val loader = ReaderLoader(
-        reader = SeekingReader(openSource = openSource),
+        reader = reader,
         contentType = if (quickTime) QUICKTIME_TYPE else MPEG4_TYPE,
         queue = queue,
     )
@@ -104,7 +107,7 @@ private fun AVAssetImageGenerator.frameAt(atUs: Long): CGImageRef? {
 }
 
 /**
- * AVFoundation's requests for the asset's bytes, answered from a [SeekingReader] on the loader's
+ * AVFoundation's requests for the asset's bytes, answered from a [RangeReader] on the loader's
  * serial queue — the one AVFoundation calls this delegate on, so the reader is only ever touched
  * there. Never a URL or a path of the file; the scheme exists only for this.
  *
@@ -113,7 +116,7 @@ private fun AVAssetImageGenerator.frameAt(atUs: Long): CGImageRef? {
  */
 @OptIn(ExperimentalForeignApi::class)
 private class ReaderLoader(
-    private val reader: SeekingReader,
+    private val reader: RangeReader,
     private val contentType: String,
     private val queue: dispatch_queue_t,
 ) : NSObject(), AVAssetResourceLoaderDelegateProtocol {
@@ -131,8 +134,8 @@ private class ReaderLoader(
     }
 
     // Runs on a dispatch queue, where an exception would end the process instead of reaching the
-    // import's catch around the encoder. A read that fails — a lock stopping the vault's source, the
-    // file gone — fails the request, and the asset then has no frame to give.
+    // import's catch around the encoder — so nothing is let out of here. A read that fails fails the
+    // request (see [answer]), and the asset then has no frame to give.
     private fun serve(request: AVAssetResourceLoadingRequest) {
         try {
             answer(request)
@@ -146,7 +149,7 @@ private class ReaderLoader(
             request.finishLoadingWithError(null)
             return
         }
-        val length = reader.length()
+        val length = reader.length
         request.contentInformationRequest?.let { info ->
             info.contentType = contentType
             info.contentLength = length
@@ -158,7 +161,14 @@ private class ReaderLoader(
             var at = data.requestedOffset
             val end = if (data.requestsAllDataToEndOfResource) length else minOf(length, at + data.requestedLength)
             while (at < end && !request.cancelled) {
-                val n = reader.readAt(at, chunk, 0, minOf(CHUNK_BYTES.toLong(), end - at).toInt())
+                val n = when (val read = reader.readAt(at, chunk, 0, minOf(CHUNK_BYTES.toLong(), end - at).toInt())) {
+                    // A chunk that fails its tag, a lock: the request fails, never answered short.
+                    is Outcome.Err -> {
+                        request.finishLoadingWithError(null)
+                        return
+                    }
+                    is Outcome.Ok -> read.value
+                }
                 if (n <= 0) break
                 data.respondWithData(chunk.toNSData(n))
                 at += n
@@ -167,9 +177,9 @@ private class ReaderLoader(
         request.finishLoading()
     }
 
+    // The reader is the caller's to close; this only stops serving and clears its own buffer.
     fun close() {
         closed = true
-        reader.close()
         chunk.fill(0)
     }
 }

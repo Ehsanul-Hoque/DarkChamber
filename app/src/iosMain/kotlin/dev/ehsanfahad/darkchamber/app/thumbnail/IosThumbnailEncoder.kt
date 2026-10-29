@@ -2,6 +2,7 @@ package dev.ehsanfahad.darkchamber.app.thumbnail
 
 import cnames.structs.__CFData
 import cnames.structs.__CFDictionary
+import dev.ehsanfahad.darkchamber.core.vault.RangeReader
 import dev.ehsanfahad.darkchamber.core.vault.ThumbnailEncoder
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -55,8 +56,9 @@ import platform.posix.memcpy
  * full-size renderer honours that flag. The stored original keeps its EXIF untouched (nothing is
  * stripped on import) — this rotates the *preview* so the tile matches what the viewer will show.
  *
- * A video is handled apart: one frame about a second in, from `AVAssetImageGenerator` reading the
- * stream through a resource loader ([videoFrame]), compressed like a photo's preview.
+ * A video is handled apart, through the overload that takes a [RangeReader] over the stored object:
+ * one frame about a second in, from `AVAssetImageGenerator` reading through a resource loader
+ * ([videoFrame]), compressed like a photo's preview. A video handed over as a stream is declined.
  *
  * ### The memory it does use
  *
@@ -70,7 +72,6 @@ import platform.posix.memcpy
 internal class IosThumbnailEncoder : ThumbnailEncoder {
     @OptIn(ExperimentalForeignApi::class)
     override fun encode(mime: String, maxEdgePx: Int, openSource: () -> RawSource): ByteArray? {
-        if (mime.startsWith(VIDEO_MIME_PREFIX, ignoreCase = true)) return encodeVideo(mime, maxEdgePx, openSource)
         if (!mime.startsWith(IMAGE_MIME_PREFIX, ignoreCase = true)) return null
 
         val bytes = openSource().buffered().use { it.readByteArray() }
@@ -105,8 +106,9 @@ internal class IosThumbnailEncoder : ThumbnailEncoder {
 
     /** A frame about a second in ([videoFrame]), encoded like a photo's preview. */
     @OptIn(ExperimentalForeignApi::class)
-    private fun encodeVideo(mime: String, maxEdgePx: Int, openSource: () -> RawSource): ByteArray? {
-        val frame = videoFrame(mime, maxEdgePx, openSource) ?: return null
+    override fun encode(mime: String, maxEdgePx: Int, reader: RangeReader): ByteArray? {
+        if (!mime.startsWith(VIDEO_MIME_PREFIX, ignoreCase = true)) return null
+        val frame = videoFrame(mime, maxEdgePx, reader) ?: return null
         return try {
             frame.encodeToBytes()
         } finally {
