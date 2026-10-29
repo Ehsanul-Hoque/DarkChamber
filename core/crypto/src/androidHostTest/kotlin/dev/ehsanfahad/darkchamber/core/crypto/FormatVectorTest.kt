@@ -107,6 +107,25 @@ class FormatVectorTest {
     }
 
     @Test
+    fun positive_vectors_open_by_position_to_their_layout_and_last_chunk() {
+        val all = cipherDirs().flatMap { positives(it) }
+        for (v in all) {
+            val container = v.container.hexToByteArray()
+            val plaintext = v.plaintext.hexToByteArray()
+            val result = codec.openLayout(v.dek.hexToByteArray(), v.file_id.hexToByteArray(), container.size.toLong()) { at, n ->
+                container.copyOfRange(at.toInt(), at.toInt() + n)
+            }
+            val opened = (result as? Outcome.Ok)?.value ?: fail("${v.name}: $result")
+            val lastStart = ((opened.layout.chunkCount - 1) * v.chunk_size).toInt()
+
+            assertTrue(opened.noncePrefix.contentEquals(v.nonce_prefix.hexToByteArray()), v.name)
+            assertEquals(plaintext.size.toLong(), opened.layout.plaintextSize, v.name)
+            assertEquals(v.chunk_size, opened.layout.chunkSize, v.name)
+            assertTrue(opened.lastChunk.contentEquals(plaintext.copyOfRange(lastStart, plaintext.size)), v.name)
+        }
+    }
+
+    @Test
     fun every_supported_version_and_cipher_has_a_vector_set() {
         val covered = cipherDirs().flatMap { positives(it) }.map { it.version to it.cipher_id }.toSet()
         for (pair in DchmFormat.SUPPORTED) {
