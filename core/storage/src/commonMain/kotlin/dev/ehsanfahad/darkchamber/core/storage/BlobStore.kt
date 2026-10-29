@@ -68,6 +68,16 @@ internal class BlobStore(
         }
     }
 
+    /** Opens the blob for positioned reads; the caller closes the reader. Missing file → `Err(Io)`. */
+    fun openReader(fileId: ByteArray): Outcome<ObjectReader> {
+        if (fileId.isEmpty()) return emptyIdErr()
+        return try {
+            Outcome.Ok(ObjectReader(openPlatformFile(pathFor(fileId))))
+        } catch (e: Exception) {
+            Outcome.Err(VaultError.Io(e))
+        }
+    }
+
     /** Removes the blob; idempotent (an absent id → `Ok`). */
     fun delete(fileId: ByteArray): Outcome<Unit> {
         if (fileId.isEmpty()) return emptyIdErr()
