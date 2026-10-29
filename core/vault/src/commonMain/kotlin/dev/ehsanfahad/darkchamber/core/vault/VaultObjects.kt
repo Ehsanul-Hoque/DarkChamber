@@ -275,6 +275,7 @@ class VaultObjects(
             // business, so there is no denominator these bytes could be drawn against, and counting
             // them would push the encrypt phase past `2 × size`.
             openForThumbnail = { SessionGuardedSource(openSource(), stillWanted) },
+            previewWanted = stillWanted,
             // What is reported instead is that the attempt is happening, once, with no bytes. It
             // replaces the bar sitting full while the encoder works — the reported total is reached
             // when the payload is sealed, and everything after it used to be silent.
@@ -291,6 +292,9 @@ class VaultObjects(
         chunkSize: Int,
         openSource: () -> RawSource,
         openForThumbnail: () -> RawSource,
+        // Polled before every read a video preview makes of the stored object: a lock or a cancel
+        // stops it, as the same predicate stops the encrypt.
+        previewWanted: () -> Boolean,
         // Called once, immediately before the encoder is asked. A lambda rather than a phase value
         // so this function keeps knowing nothing about progress vocabulary: it says *when*, and the
         // caller decides what that is worth reporting.
@@ -311,13 +315,27 @@ class VaultObjects(
             is Outcome.Ok -> streamed.value
         }
 
-        // 2. Generate the preview from the plaintext, before the row is written, so the row is
-        //    written **once** with its final metadata. Reading it back from the stored object
-        //    instead would mean decrypting the whole file: the random-access seek primitive does
-        //    not exist yet. Returns null — and leaves nothing behind — for everything that is not
-        //    an image the platform decoder accepts, which is the ordinary case for most of a vault.
+        // 2. Generate the preview before the row is written, so the row is written **once** with its
+        //    final metadata. A video's comes from the object just written, read by position: a frame
+        //    grabber jumps around the file, and the source can only be read forwards — re-reading it
+        //    for that would mean another pass over the user's file, or a cloud provider's. Everything
+        //    else is decoded front to back from the source. Null — and nothing left behind — for
+        //    everything the platform cannot preview, the ordinary case for most of a vault.
         onPreviewAttempt()
-        val thumbnailKey = makeThumbnail(fileId, mime, createdAt, chunkSize, openForThumbnail)
+        val thumbnailKey = if (mime.startsWith(VIDEO_MIME_PREFIX)) {
+            when (val preview = makeVideoThumbnail(fileId, dekWrapped, mime, createdAt, chunkSize, previewWanted)) {
+                is Outcome.Ok -> preview.value
+                is Outcome.Err -> {
+                    // What was just written does not read back: never keep an item the vault already
+                    // knows is damaged. Same cleanup as a failed row write.
+                    storage.deleteObject(fileId)
+                    storage.deleteThumbnail(fileId)
+                    return preview
+                }
+            }
+        } else {
+            makeThumbnail(fileId, mime, createdAt, chunkSize, openForThumbnail)
+        }
 
         // 3. Seal the metadata and persist the row. Fail-closed: a row failure removes the object.
         //    Sealing can also *throw* rather than return — a lock zeroizing the MK between the write
@@ -382,7 +400,8 @@ class VaultObjects(
      * file, a decoder that throws, a disk error writing the blob — every one of them leaves the item
      * imported and simply without a preview. That is why this returns a nullable rather than an
      * `Outcome`: there is no failure for a caller to act on, and an error surfaced here would
-     * eventually be rendered as though the user's file were damaged.
+     * eventually be rendered as though the user's file were damaged. The one exception belongs to a
+     * video's preview, which reads the stored object back: see [makeVideoThumbnail].
      *
      * The DEK is **wrapped**, not raw, even though `enc_meta` is itself sealed under MK. The listing
      * decodes `enc_meta` for every row it shows, so a raw key would put one plaintext DEK per item
@@ -415,6 +434,41 @@ class VaultObjects(
             storage.deleteThumbnail(fileId) // best-effort; never leave a blob no row points at
             null
         }
+
+    /**
+     * [makeThumbnail] for a video, through a [RangeReader] over the object just written: `Ok` with the
+     * preview's wrapped key, or `Ok(null)` for no preview, on every path [makeThumbnail] covers.
+     *
+     * **With one exception, which fails the import:** reading the object back fails its own
+     * authentication (`IntegrityFailure`) or is not a container at all (`MalformedContainer`). Those
+     * bytes were written moments ago under a key nobody else has, so either the disk returned other
+     * bytes than it was given or the write itself went wrong — the vault would be keeping an item it
+     * already knows it cannot open. The encoder never has to report it: the reader it is handed is
+     * watched, so a failure it swallowed is still seen here.
+     */
+    private fun makeVideoThumbnail(
+        fileId: ByteArray,
+        dekWrapped: ByteArray,
+        mime: String,
+        createdAt: Long,
+        chunkSize: Int,
+        previewWanted: () -> Boolean,
+    ): Outcome<ByteArray?> {
+        val reader = when (val opened = openRangeOver(fileId, dekWrapped, previewWanted)) {
+            is Outcome.Err -> return if (opened.error.isDamage()) opened else Outcome.Ok(null)
+            is Outcome.Ok -> DamageWatchingReader(opened.value)
+        }
+        val key = try {
+            val preview = thumbnails.encode(mime, THUMBNAIL_MAX_EDGE_PX, reader)
+            if (preview == null || preview.isEmpty()) null else sealThumbnail(fileId, createdAt, chunkSize, preview)
+        } catch (_: Exception) {
+            storage.deleteThumbnail(fileId)
+            null
+        } finally {
+            reader.close()
+        }
+        return reader.damage?.let { Outcome.Err(it) } ?: Outcome.Ok(key)
+    }
 
     // Writes the preview as its own .dchm container — a fresh DEK and a fresh nonce_prefix, because
     // FORMAT.md §2 makes a per-object DEK mandatory and this is a second object in every sense the
@@ -874,6 +928,9 @@ class VaultObjects(
         // The album's name is sealed under MK, with no per-album key. Named rather than a bare 0 so
         // the day a second variant exists, the existing rows say which one they are.
         const val KEK_VARIANT_MASTER_KEY = 0
+
+        // Which imports take their preview from the stored object, read by position.
+        const val VIDEO_MIME_PREFIX = "video/"
     }
 }
 

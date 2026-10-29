@@ -151,6 +151,24 @@ internal class ChunkRangeReader private constructor(
     }
 }
 
+/** Whether [this] says the object's bytes are not what was written, as opposed to a read that did not happen. */
+internal fun VaultError.isDamage(): Boolean =
+    this == VaultError.Crypto.IntegrityFailure || this == VaultError.Crypto.MalformedContainer
+
+/**
+ * A [RangeReader] that remembers the first damage error any read returned, so the caller learns of it
+ * even when whoever was reading — a platform frame grabber — swallowed it.
+ */
+internal class DamageWatchingReader(private val delegate: RangeReader) : RangeReader by delegate {
+    var damage: VaultError? = null
+        private set
+
+    override fun readAt(position: Long, into: ByteArray, offset: Int, size: Int): Outcome<Int> =
+        delegate.readAt(position, into, offset, size).also { read ->
+            if (read is Outcome.Err && damage == null && read.error.isDamage()) damage = read.error
+        }
+}
+
 // Carries a storage read's own error out through the codec's read callback, which can only throw.
 private class ReadFailed(val error: VaultError) : Exception()
 
