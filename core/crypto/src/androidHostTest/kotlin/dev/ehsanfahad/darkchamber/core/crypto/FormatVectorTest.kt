@@ -91,6 +91,22 @@ class FormatVectorTest {
     }
 
     @Test
+    fun the_chunk_layout_accounts_for_every_byte_of_each_committed_container() {
+        // Ties the layout arithmetic to bytes the reference codec wrote, for every vector set: the
+        // last chunk ends exactly where the container does.
+        val all = cipherDirs().flatMap { positives(it) }
+        for (v in all) {
+            val container = v.container.hexToByteArray()
+            val headerLen = (Prelude.read(container) as Outcome.Ok).value.headerLen
+            val layout = ChunkLayout(headerLen, v.chunk_size, v.plaintext.hexToByteArray().size.toLong())
+            val last = layout.chunkCount - 1
+
+            assertEquals(container.size.toLong(), layout.containerLength, v.name)
+            assertEquals(container.size.toLong(), layout.chunkOffset(last) + layout.storedChunkLength(last), v.name)
+        }
+    }
+
+    @Test
     fun every_supported_version_and_cipher_has_a_vector_set() {
         val covered = cipherDirs().flatMap { positives(it) }.map { it.version to it.cipher_id }.toSet()
         for (pair in DchmFormat.SUPPORTED) {
