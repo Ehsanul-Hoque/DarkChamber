@@ -469,6 +469,33 @@ class VaultObjects(
     }
 
     /**
+     * Open object [id] for reads of any byte range ([RangeReader]), decrypting only the chunks a read
+     * touches. Opening reads the container's prelude, header and last chunk, and checks its exact
+     * length, so a damaged, truncated or misfiled object fails here rather than at some later read.
+     * The caller closes the reader. An unknown id → `VaultError.Io(NoSuchElementException)`.
+     */
+    fun openRange(id: ByteArray): Outcome<RangeReader> {
+        val row = when (val got = catalog.getItem(id)) {
+            is Outcome.Err -> return got
+            is Outcome.Ok -> got.value ?: return absent(id)
+        }
+        return openRangeOver(id, row.dek_wrapped, stillWanted = { session.isOpen })
+    }
+
+    /**
+     * [openRange] for an object whose row may not exist yet — import reads back what it has just
+     * written before the row is inserted — with [stillWanted] polled before every read, so a lock or
+     * a cancelled import stops the reader rather than letting it finish.
+     */
+    internal fun openRangeOver(id: ByteArray, dekWrapped: ByteArray, stillWanted: () -> Boolean): Outcome<RangeReader> {
+        val file = when (val opened = storage.openObjectReader(id)) {
+            is Outcome.Err -> return opened
+            is Outcome.Ok -> opened.value
+        }
+        return ChunkRangeReader.open(session, codec, file, id, dekWrapped, stillWanted)
+    }
+
+    /**
      * The list-view metadata ({name, mime}) for object [id], read from the catalog row's `enc_meta`
      * **without touching the object store** — cheap enough for a gallery listing. An unknown id →
      * `VaultError.Io(NoSuchElementException)`; a tampered `enc_meta` → the codec error from
