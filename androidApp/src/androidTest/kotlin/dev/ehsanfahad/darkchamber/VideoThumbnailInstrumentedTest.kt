@@ -8,8 +8,21 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import dev.ehsanfahad.darkchamber.app.di.platformModule
+import dev.ehsanfahad.darkchamber.core.crypto.CryptographyKotlinEngine
+import dev.ehsanfahad.darkchamber.core.crypto.DchmCodec
+import dev.ehsanfahad.darkchamber.core.crypto.DefaultKeyDerivation
+import dev.ehsanfahad.darkchamber.core.crypto.PassphraseKdfProfile
+import dev.ehsanfahad.darkchamber.core.crypto.VaultSession
+import dev.ehsanfahad.darkchamber.core.db.CatalogStore
+import dev.ehsanfahad.darkchamber.core.db.DriverFactory
+import dev.ehsanfahad.darkchamber.core.model.Outcome
+import dev.ehsanfahad.darkchamber.core.model.VaultError
+import dev.ehsanfahad.darkchamber.core.storage.VaultStorage
+import dev.ehsanfahad.darkchamber.core.vault.RangeReader
 import dev.ehsanfahad.darkchamber.core.vault.ThumbnailEncoder
+import dev.ehsanfahad.darkchamber.core.vault.VaultObjects
 import kotlinx.io.Buffer
+import kotlinx.io.files.Path
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -19,6 +32,7 @@ import org.junit.runner.RunWith
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.KoinApplication
 import org.koin.dsl.koinApplication
+import java.io.File
 
 /**
  * Video previews from the platform's own frame grabber, which only a device has. The clips are made
@@ -31,10 +45,12 @@ import org.koin.dsl.koinApplication
  * - `rotated.mp4`: 320×240, red left half and blue right, tagged to be shown turned 90° clockwise;
  * - `short.mp4`: 0.3 s of green; `audio-only.mp4`: no video track.
  *
- * Reached through the platform module's binding, as the vault reaches it. Touches no vault: the
- * clips are read from the test's assets into memory and handed over as streams, the way an import
- * hands over a file. Run on its own with `am instrument -e class …` — the connected Gradle task
- * uninstalls the app afterwards, and with it any vault on the device.
+ * Reached through the platform module's binding, as the vault reaches it, and read the way an import
+ * now reads a video for its preview: each clip is encrypted into a throwaway vault in the test's own
+ * cache directory and handed over as a [RangeReader] over that stored object, so the grabber's
+ * requests go through real positioned reads and real chunk decrypts. The app's own vault is not
+ * touched. Run on its own with `am instrument -e class …` — the connected Gradle task uninstalls the
+ * app afterwards, and with it any vault on the device.
  */
 @RunWith(AndroidJUnit4::class)
 class VideoThumbnailInstrumentedTest {
@@ -45,15 +61,50 @@ class VideoThumbnailInstrumentedTest {
     }
     private val encoder = koin.koin.get<ThumbnailEncoder>()
 
+    // A vault of the test's own: storage under cacheDir, a catalog file beside it, a cheap key derivation.
+    private val vaultDir = File(context.cacheDir, "frame-test-${System.nanoTime()}")
+    private val engine = CryptographyKotlinEngine()
+    private val session = VaultSession.createVault(
+        engine,
+        DefaultKeyDerivation(engine),
+        "frame test".encodeToByteArray(),
+        PassphraseKdfProfile.Argon2id(memoryKib = 256, iterations = 1, parallelism = 1),
+    ).session
+    private val catalogDriver = DriverFactory(context, File(vaultDir, "catalog.db").also { it.parentFile?.mkdirs() }.absolutePath).create()
+    private val objects = VaultObjects(
+        session,
+        VaultStorage(Path(File(vaultDir, "root").apply { mkdirs() }.absolutePath)),
+        (CatalogStore.create(catalogDriver) as Outcome.Ok).value,
+        DchmCodec(engine),
+        clock = { 0L },
+        random = { n -> engine.randomBytes(n) },
+    )
+
     @After
-    fun close() = koin.close()
+    fun close() {
+        koin.close()
+        session.close()
+        catalogDriver.close()
+        vaultDir.deleteRecursively()
+    }
 
     private fun clip(name: String): ByteArray =
         InstrumentationRegistry.getInstrumentation().context.assets.open("video/$name").use { it.readBytes() }
 
+    // Stores [bytes] as a vault object and opens it for reads by position, as import does for a preview.
+    private fun stored(bytes: ByteArray): RangeReader {
+        val id = objects.importObject(kind = 0, name = "clip", mime = "application/octet-stream", chunkSize = 64 * 1024,
+            openSource = { Buffer().apply { write(bytes) } })
+        return (objects.openRange((id as Outcome.Ok).value) as Outcome.Ok).value
+    }
+
     private fun preview(name: String, mime: String = "video/mp4"): Bitmap? {
-        val bytes = clip(name)
-        val encoded = encoder.encode(mime, 512) { Buffer().apply { write(bytes) } } ?: return null
+        val reader = stored(clip(name))
+        val encoded = try {
+            encoder.encode(mime, 512, reader)
+        } finally {
+            reader.close()
+        } ?: return null
         return BitmapFactory.decodeByteArray(encoded, 0, encoded.size)
     }
 
@@ -118,15 +169,46 @@ class VideoThumbnailInstrumentedTest {
 
     @Test
     fun bytes_that_are_not_a_video_have_no_preview() {
-        val bytes = "not a video".encodeToByteArray()
+        val reader = stored("not a video".encodeToByteArray())
+        assertNull(encoder.encode("video/mp4", 512, reader))
+        reader.close()
+    }
+
+    /** The MIME is what routes the reader; an image type is not read as a video. */
+    @Test
+    fun only_a_video_type_reaches_the_frame_grabber() {
+        val reader = stored(clip("colour.mp4"))
+        assertNull(encoder.encode("image/jpeg", 512, reader))
+        assertTrue(encoder.encode("VIDEO/MP4", 512, reader) != null)
+        reader.close()
+    }
+
+    /** A video handed over as a stream is declined: the grabber needs reads by position, which a stream cannot give. */
+    @Test
+    fun a_video_handed_over_as_a_stream_is_declined() {
+        val bytes = clip("colour.mp4")
         assertNull(encoder.encode("video/mp4", 512) { Buffer().apply { write(bytes) } })
     }
 
-    /** The MIME is what routes the bytes; an image type is not read as a video. */
+    /**
+     * The size is known up front now, so the grabber is told it — and a reader that fails partway
+     * (a damaged chunk, a lock) ends in no preview rather than a crash or a frame of something else.
+     */
     @Test
-    fun only_a_video_type_reaches_the_frame_grabber() {
+    fun a_reader_that_fails_partway_gives_no_preview() {
         val bytes = clip("colour.mp4")
-        assertNull(encoder.encode("image/jpeg", 512) { Buffer().apply { write(bytes) } })
-        assertTrue(encoder.encode("VIDEO/MP4", 512) { Buffer().apply { write(bytes) } } != null)
+        val failing = object : RangeReader {
+            override val length: Long = bytes.size.toLong()
+            override fun readAt(position: Long, into: ByteArray, offset: Int, size: Int): Outcome<Int> =
+                if (position < 4096) {
+                    val n = minOf(size.toLong(), length - position).toInt()
+                    bytes.copyInto(into, offset, position.toInt(), position.toInt() + n)
+                    Outcome.Ok(n)
+                } else {
+                    Outcome.Err(VaultError.Crypto.IntegrityFailure)
+                }
+            override fun close() {}
+        }
+        assertNull(encoder.encode("video/mp4", 512, failing))
     }
 }

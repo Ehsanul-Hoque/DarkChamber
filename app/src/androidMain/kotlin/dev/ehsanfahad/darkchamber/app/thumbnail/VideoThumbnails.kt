@@ -4,25 +4,27 @@ import android.graphics.Bitmap
 import android.media.MediaDataSource
 import android.media.MediaMetadataRetriever
 import android.os.Build
-import kotlinx.io.RawSource
+import dev.ehsanfahad.darkchamber.core.model.Outcome
+import dev.ehsanfahad.darkchamber.core.vault.RangeReader
+import java.io.IOException
 
 /**
  * One frame of a video, at most [maxEdgePx] on its longest edge, or `null` — no video track, a codec
  * the platform cannot decode, or any failure on the way.
  *
- * `MediaMetadataRetriever` wants random access and the vault hands over a stream, so it reads through
- * a [SeekingReader]: forward jumps skip, backward ones re-open, and the blocks read last are kept. An
- * MP4 whose index (`moov`) is at the end — every phone's recorder writes it there — costs one read
- * through the file to reach it: about 1.4 s for a 1.1 GB clip on a Pixel 7 Pro, against a quarter of
- * a second with the index at the start. The retriever is given the bytes directly, never a path, so
- * it has no file of its own to make.
+ * `MediaMetadataRetriever` wants random access, and [reader] gives it: each read the retriever makes
+ * decrypts only the chunk it lands in, so an MP4 whose index (`moov`) is at the end — as phones write
+ * it — costs a read at the end, not a read through the file to get there. The retriever is given the
+ * bytes directly, never a path, so it has no file of its own to make.
  *
  * The frame comes back upright for a clip tagged to be shown turned: the size asked for is the
  * displayed one, and the platform applies the rotation (checked on Android 17). Below API 27 the
  * frame is decoded whole and scaled after; that path has not run on a device.
+ *
+ * [reader] belongs to the caller, which closes it; the retriever's own close of its data source does
+ * not reach it.
  */
-internal fun videoFrame(maxEdgePx: Int, openSource: () -> RawSource): Bitmap? {
-    val reader = SeekingReader(openSource = openSource)
+internal fun videoFrame(maxEdgePx: Int, reader: RangeReader): Bitmap? {
     val retriever = MediaMetadataRetriever()
     return try {
         retriever.setDataSource(ReaderDataSource(reader))
@@ -34,7 +36,6 @@ internal fun videoFrame(maxEdgePx: Int, openSource: () -> RawSource): Bitmap? {
         null
     } finally {
         runCatching { retriever.release() }
-        reader.close()
     }
 }
 
@@ -63,12 +64,21 @@ private fun MediaMetadataRetriever.frameNear(atUs: Long, target: ThumbnailSize):
     return null
 }
 
-/** The retriever's view of a [SeekingReader]. The size is not known up front; -1 says so. */
-private class ReaderDataSource(private val reader: SeekingReader) : MediaDataSource() {
+/**
+ * The retriever's view of a [RangeReader]: its plaintext size, known from the moment it opened, and
+ * reads that end in -1. A failed read — a chunk that fails its tag, a lock — is thrown as the
+ * `IOException` this contract expects, so the retriever gives up on the file rather than being handed
+ * a short read it would take as the end.
+ */
+private class ReaderDataSource(private val reader: RangeReader) : MediaDataSource() {
     override fun readAt(position: Long, buffer: ByteArray, offset: Int, size: Int): Int =
-        reader.readAt(position, buffer, offset, size)
+        when (val read = reader.readAt(position, buffer, offset, size)) {
+            is Outcome.Ok -> if (read.value == RangeReader.END) -1 else read.value
+            is Outcome.Err -> throw IOException("the vault object could not be read")
+        }
 
-    override fun getSize(): Long = -1
+    override fun getSize(): Long = reader.length
 
-    override fun close() = reader.close()
+    // The reader is the caller's to close.
+    override fun close() = Unit
 }

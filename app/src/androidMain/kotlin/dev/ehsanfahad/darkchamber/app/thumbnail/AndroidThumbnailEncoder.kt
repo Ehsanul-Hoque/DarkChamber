@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import androidx.exifinterface.media.ExifInterface
+import dev.ehsanfahad.darkchamber.core.vault.RangeReader
 import dev.ehsanfahad.darkchamber.core.vault.ThumbnailEncoder
 import kotlinx.io.RawSource
 import kotlinx.io.asInputStream
@@ -28,8 +29,9 @@ import java.io.ByteArrayOutputStream
  *
  * ### Why it can decline
  *
- * A video is handled apart: one frame about a second in, from the platform's frame grabber
- * ([videoFrame]), compressed like a photo's preview.
+ * A video is handled apart, through the overload that takes a [RangeReader] over the stored object:
+ * one frame about a second in, from the platform's frame grabber ([videoFrame]), compressed like a
+ * photo's preview. A video handed over as a stream is declined — the grabber needs reads by position.
  *
  * Returning `null` is an ordinary outcome, not an error (see [ThumbnailEncoder]). This encoder
  * declines a MIME that is neither an image nor a video, a file whose bytes are not what its MIME
@@ -38,7 +40,6 @@ import java.io.ByteArrayOutputStream
  */
 internal class AndroidThumbnailEncoder : ThumbnailEncoder {
     override fun encode(mime: String, maxEdgePx: Int, openSource: () -> RawSource): ByteArray? {
-        if (mime.startsWith(VIDEO_MIME_PREFIX, ignoreCase = true)) return encodeVideo(maxEdgePx, openSource)
         if (!mime.startsWith(IMAGE_MIME_PREFIX, ignoreCase = true)) return null
 
         val transform = readTransform(mime, openSource)
@@ -77,8 +78,9 @@ internal class AndroidThumbnailEncoder : ThumbnailEncoder {
     }
 
     /** A frame about a second in ([videoFrame]), encoded like a photo's preview. */
-    private fun encodeVideo(maxEdgePx: Int, openSource: () -> RawSource): ByteArray? {
-        val frame = videoFrame(maxEdgePx, openSource) ?: return null
+    override fun encode(mime: String, maxEdgePx: Int, reader: RangeReader): ByteArray? {
+        if (!mime.startsWith(VIDEO_MIME_PREFIX, ignoreCase = true)) return null
+        val frame = videoFrame(maxEdgePx, reader) ?: return null
         return try {
             frame.compressToBytes()
         } finally {
