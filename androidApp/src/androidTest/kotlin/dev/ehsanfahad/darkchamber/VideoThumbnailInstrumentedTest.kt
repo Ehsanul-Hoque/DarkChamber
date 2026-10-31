@@ -218,4 +218,43 @@ class VideoThumbnailInstrumentedTest {
         }
         assertNull(encoder.encode("video/mp4", 512, failing))
     }
+
+    /**
+     * A read refused while the frame is being decoded — where a lock lands mid-preview — makes the
+     * platform wait on each decoder it tries (two, 2 s each, on the Pixel 7 Pro) for that one frame
+     * request. A refusal is final, so no second frame request may follow it: with one, the time
+     * doubled (8.3 s against 4.2 s on that phone).
+     */
+    @Test
+    fun a_read_refused_while_the_frame_decodes_ends_the_preview_after_one_frame_request() {
+        val bytes = clip("colour.mp4")
+        var total = 0
+        val counting = object : RangeReader {
+            override val length: Long = bytes.size.toLong()
+            override fun readAt(position: Long, into: ByteArray, offset: Int, size: Int): Outcome<Int> {
+                total++
+                val n = minOf(size.toLong(), length - position).toInt()
+                bytes.copyInto(into, offset, position.toInt(), position.toInt() + n)
+                return Outcome.Ok(n)
+            }
+            override fun close() {}
+        }
+        checkNotNull(encoder.encode("video/mp4", 512, counting))
+        var seen = 0
+        val refusingTheLast = object : RangeReader {
+            override val length: Long = bytes.size.toLong()
+            override fun readAt(position: Long, into: ByteArray, offset: Int, size: Int): Outcome<Int> {
+                seen++
+                if (seen >= total) return Outcome.Err(VaultError.Io(IllegalStateException("stopped")))
+                val n = minOf(size.toLong(), length - position).toInt()
+                bytes.copyInto(into, offset, position.toInt(), position.toInt() + n)
+                return Outcome.Ok(n)
+            }
+            override fun close() {}
+        }
+        val started = System.nanoTime()
+        assertNull(encoder.encode("video/mp4", 512, refusingTheLast))
+        val ms = (System.nanoTime() - started) / 1_000_000
+        assertTrue("a refused read cost $ms ms; a second frame request was made after it", ms < 6_000)
+    }
 }
