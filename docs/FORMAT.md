@@ -79,6 +79,17 @@ chunk i = AES-256-GCM(
   object → no cross-object reuse. Nonce reuse under GCM is catastrophic; all three mechanisms are mandatory.
 - **AAD binding** of `file_id`, `chunk_index`, and `is_last_flag` makes chunk reordering, truncation, and cross-file splicing fail authentication.
 - Decryption MUST verify every chunk's tag before releasing its plaintext, MUST verify `is_last_flag` on the final chunk, and SHOULD verify the header's `sha256(plaintext)` on full-file reads.
+- **Reading by position** (the random access of §1). A reader that serves byte ranges opens the
+  prelude and the header, checks that the container is exactly
+  `16 + header_len + Σ (stored length of chunk i)` bytes long — each chunk's plaintext plus its 16-byte
+  tag — and authenticates the final chunk, with `is_last_flag = 1`, before it serves any read. It then
+  decrypts chunk `⌊offset / chunk_size⌋` for each read. Every chunk it returns has passed its tag with
+  `file_id`, `chunk_index` and `is_last_flag` bound, so reordering, truncation, splicing and a container
+  opened under the wrong `file_id` still fail — the last two at the open, since the header carries no
+  `file_id` and only a chunk can prove it. What such a reader **cannot** verify is `sha256(plaintext)`,
+  which needs the whole plaintext: a damaged chunk it never reads goes unnoticed **by that reader**,
+  while every chunk it does return is authentic. The digest is defence in depth against a chunking bug;
+  against anyone without the DEK, the per-chunk tags already decide.
 
 ## 3. Key hierarchy (what a decryptor needs)
 
