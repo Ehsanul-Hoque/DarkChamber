@@ -3,6 +3,7 @@ package dev.ehsanfahad.darkchamber.core.crypto
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
 import dev.ehsanfahad.darkchamber.core.model.map
+import kotlin.concurrent.Volatile
 
 /** What [VaultSession.createVault] hands back: the live session, its KeyStore, and the recovery key. */
 class CreatedVault(
@@ -28,6 +29,8 @@ class VaultSession private constructor(
     private val kdf: KeyDerivation,
     private val mk: ByteArray,
 ) {
+    // Volatile: a lock closes the session on one thread while work on another reads it.
+    @Volatile
     private var closed = false
 
     /**
@@ -79,14 +82,19 @@ class VaultSession private constructor(
     /**
      * Unwraps a `dek_wrapped` blob to the raw DEK. The **caller must zeroize** the result — prefer
      * [useDek], which does it for you. A tampered/foreign blob → `IntegrityFailure`; a structurally
-     * short blob → `MalformedContainer`.
+     * short blob → `MalformedContainer`. A closed session throws `IllegalStateException`, and so does
+     * one that a lock closes while the unwrap runs — never an `IntegrityFailure` the lock caused.
      */
     fun unwrapDek(wrappedDek: ByteArray): Outcome<ByteArray> {
         check(!closed) { "vault session is closed" }
         if (wrappedDek.size <= WRAP_NONCE_SIZE) return Outcome.Err(VaultError.Crypto.MalformedContainer)
         val nonce = wrappedDek.copyOfRange(0, WRAP_NONCE_SIZE)
         val ciphertext = wrappedDek.copyOfRange(WRAP_NONCE_SIZE, wrappedDek.size)
-        return engine.aeadOpen(mk, nonce, DEK_WRAP_AAD, ciphertext)
+        val opened = engine.aeadOpen(mk, nonce, DEK_WRAP_AAD, ciphertext)
+        // A lock that lands after the check above zeroes the MK under the open, and the tag fails. That
+        // failure is the lock's, not tampering: answer it as the closed session the check would have.
+        check(opened is Outcome.Ok || !closed) { "vault session is closed" }
+        return opened
     }
 
     /**
@@ -197,8 +205,10 @@ class VaultSession private constructor(
     /** Zeroizes the MK. Idempotent; after this, every operation throws. */
     fun close() {
         if (!closed) {
-            mk.fill(0)
+            // Marked closed before the MK is zeroed, so an unwrap that fails because the zeroing
+            // reached it finds the session closed when it looks again.
             closed = true
+            mk.fill(0)
         }
     }
 
