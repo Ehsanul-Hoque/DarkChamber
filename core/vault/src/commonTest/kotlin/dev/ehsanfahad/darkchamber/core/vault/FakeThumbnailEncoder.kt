@@ -73,15 +73,15 @@ class FakeThumbnailEncoder(
     var lastRangedError: dev.ehsanfahad.darkchamber.core.model.VaultError? = null
         private set
 
+    /** The reader the most recent ranged call was handed — kept so a test can check it was closed after. */
+    var lastReader: RangeReader? = null
+        private set
+
     /**
      * Reads the whole object front to back in small, uneven steps, as a frame grabber would not — but
      * reading all of it is what lets a test see every chunk reached. A read error ends the reading and
      * the call returns `null`, as the platform encoders do when their reader fails.
      */
-    /** The reader the most recent ranged call was handed — kept so a test can check it was closed after. */
-    var lastReader: RangeReader? = null
-        private set
-
     override fun encode(mime: String, maxEdgePx: Int, reader: RangeReader): ByteArray? {
         rangedCount++
         lastReader = reader

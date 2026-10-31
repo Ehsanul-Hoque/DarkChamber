@@ -277,6 +277,40 @@ class VaultVideoPreviewTest {
         )
     }
 
+    // Reads once, runs [between] — after the open has passed, before the next read — then reads again.
+    private class StopsBetweenReads : ThumbnailEncoder {
+        var between: () -> Unit = {}
+        var secondRead: Outcome<Int>? = null
+
+        override fun encode(mime: String, maxEdgePx: Int, openSource: () -> RawSource): ByteArray? = null
+
+        override fun encode(mime: String, maxEdgePx: Int, reader: RangeReader): ByteArray? {
+            val into = ByteArray(8)
+            assertIs<Outcome.Ok<Int>>(reader.readAt(0, into, 0, into.size))
+            between()
+            secondRead = reader.readAt(8, into, 0, into.size)
+            return null
+        }
+    }
+
+    @Test
+    fun a_cancel_or_a_lock_between_two_preview_reads_is_a_stopped_read_not_damage() {
+        // The cancel and lock tests above stop the work before the reader opens. These stop it mid-preview, so the
+        // refusal comes back from a read — and a stopped read must end the import as no preview does.
+        var wanted = true
+        val cancelling = StopsBetweenReads().apply { between = { wanted = false } }
+        assertEquals(importedWithoutPreview, endingOf("video/mp4", cancelling, isActive = { wanted }))
+        val refused = assertIs<VaultError.Io>(assertIs<Outcome.Err>(cancelling.secondRead).error)
+        assertIs<OperationStoppedException>(refused.cause)
+
+        val locking = StopsBetweenReads()
+        assertEquals(
+            Ending(ok = false, error = "Unexpected", rows = 0, objects = 0, thumbnails = 0, hasPreview = false),
+            endingOf("video/mp4", locking, duringPreview = { session, _ -> locking.between = { session.close() } }),
+        )
+        assertIs<Outcome.Err>(locking.secondRead)
+    }
+
     @Test
     fun a_read_back_that_is_not_a_container_fails_the_import_and_leaves_nothing() {
         val (result, _) = opensDuringThePreview(FakeThumbnailEncoder(), "video/mp4") {
