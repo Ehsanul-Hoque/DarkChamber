@@ -22,7 +22,8 @@ interface RangeReader : AutoCloseable {
     /**
      * Copies up to [size] bytes of plaintext from [position] into [into] at [offset] and returns how
      * many it copied, or [END] when [position] is at or past [length]. A read may return fewer bytes
-     * than asked — at a chunk boundary, for one — as both platforms' readers allow.
+     * than asked — at a chunk boundary, for one — as both platforms' readers allow. A negative
+     * argument, or a [size] that does not fit in [into] from [offset], is an `Io` error.
      */
     fun readAt(position: Long, into: ByteArray, offset: Int, size: Int): Outcome<Int>
 
@@ -64,6 +65,10 @@ internal class ChunkRangeReader private constructor(
         if (!stillWanted()) {
             release()
             return Outcome.Err(VaultError.Io(OperationStoppedException()))
+        }
+        // Only a caller's bug gets here, but the copy below would throw on it, and nothing may.
+        if (position < 0 || offset < 0 || size < 0 || offset > into.size - size) {
+            return Outcome.Err(VaultError.Io(IllegalArgumentException("read outside its arguments")))
         }
         if (position >= length) return Outcome.Ok(RangeReader.END)
         val index = position / layout.chunkSize

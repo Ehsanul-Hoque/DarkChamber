@@ -102,7 +102,8 @@ class RangeReaderTest {
         val whole = ByteArray(200 + 3)
         var position = 0L
         while (true) {
-            val n = reader.readAt(position, whole, offset = 3 + position.toInt(), size = 50).ok()
+            val offset = 3 + position.toInt()
+            val n = reader.readAt(position, whole, offset, size = minOf(50, whole.size - offset)).ok()
             if (n == RangeReader.END) break
             position += n
         }
@@ -117,6 +118,29 @@ class RangeReaderTest {
 
         assertEquals(RangeReader.END, reader.readAt(position = 200, into = ByteArray(4), offset = 0, size = 4).ok())
         assertEquals(RangeReader.END, reader.readAt(position = 10_000, into = ByteArray(4), offset = 0, size = 4).ok())
+        reader.close()
+    }
+
+    @Test
+    fun a_read_outside_its_own_arguments_is_an_Err_not_a_throw_and_decrypts_nothing() {
+        // Only a caller's bug passes these, and the contract is that nothing throws: each is an Err,
+        // and none costs a key unwrap. Position 70 is in chunk 1, which the open has not decrypted.
+        val reader = objects.openRange(stored(content(200))).ok()
+        val into = ByteArray(4)
+
+        for ((position, offset, size) in listOf(
+            Triple(-1L, 0, 1),
+            Triple(70L, -1, 1),
+            Triple(70L, 0, -1),
+            Triple(70L, 2, 4),
+        )) {
+            val unwraps = unwrapsDuring {
+                val error = assertIs<Outcome.Err>(reader.readAt(position, into, offset, size)).error
+                assertIs<IllegalArgumentException>(assertIs<VaultError.Io>(error).cause)
+            }
+            assertEquals(0, unwraps, "position=$position offset=$offset size=$size")
+        }
+        assertEquals(1, reader.readByteAt(70)) // the reader still works after them
         reader.close()
     }
 
