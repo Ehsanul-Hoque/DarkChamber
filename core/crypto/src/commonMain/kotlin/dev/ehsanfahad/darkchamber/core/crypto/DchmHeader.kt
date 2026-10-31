@@ -1,5 +1,6 @@
 package dev.ehsanfahad.darkchamber.core.crypto
 
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 
 /**
@@ -39,7 +40,10 @@ class DchmHeader(
 
 /** CBOR (de)serialization of [DchmHeader] — the on-disk form before/after DEK sealing. */
 object DchmHeaderCodec {
+    // Experimental CBOR API: see darkChamberCbor for why that is acceptable.
+    @OptIn(ExperimentalSerializationApi::class)
     fun encode(header: DchmHeader): ByteArray = darkChamberCbor.encodeToByteArray(DchmHeader.serializer(), header)
 
+    @OptIn(ExperimentalSerializationApi::class)
     fun decode(bytes: ByteArray): DchmHeader = darkChamberCbor.decodeFromByteArray(DchmHeader.serializer(), bytes)
 }

@@ -1,5 +1,6 @@
 package dev.ehsanfahad.darkchamber.core.vault
 
+import kotlinx.io.Buffer
 import kotlinx.io.RawSource
 import kotlinx.io.buffered
 import kotlinx.io.readByteArray
@@ -57,11 +58,61 @@ class FakeThumbnailEncoder(
         lastMaxEdgePx = maxEdgePx
         lastSource = openSource().buffered().use { it.readByteArray() }
 
-        return when (mode) {
-            Mode.Encode -> thumbnail
-            Mode.Decline -> null
-            Mode.Empty -> ByteArray(0)
-            Mode.Throw -> error("decoder failed")
+        return outcome()
+    }
+
+    /** How many times the ranged [encode] was called. */
+    var rangedCount: Int = 0
+        private set
+
+    /** Everything the most recent ranged call read from its reader, up to the end or the first error. */
+    var lastRanged: ByteArray? = null
+        private set
+
+    /** The first error the most recent ranged call's reader returned, if it returned one. */
+    var lastRangedError: dev.ehsanfahad.darkchamber.core.model.VaultError? = null
+        private set
+
+    /** The reader the most recent ranged call was handed — kept so a test can check it was closed after. */
+    var lastReader: RangeReader? = null
+        private set
+
+    /**
+     * Reads the whole object front to back in small, uneven steps, as a frame grabber would not — but
+     * reading all of it is what lets a test see every chunk reached. A read error ends the reading and
+     * the call returns `null`, as the platform encoders do when their reader fails.
+     */
+    override fun encode(mime: String, maxEdgePx: Int, reader: RangeReader): ByteArray? {
+        rangedCount++
+        lastReader = reader
+        lastMime = mime
+        lastMaxEdgePx = maxEdgePx
+        lastRangedError = null
+        val out = Buffer()
+        val step = ByteArray(37)
+        var position = 0L
+        while (true) {
+            when (val read = reader.readAt(position, step, 0, step.size)) {
+                is dev.ehsanfahad.darkchamber.core.model.Outcome.Err -> {
+                    lastRangedError = read.error
+                    lastRanged = out.readByteArray()
+                    return null
+                }
+                is dev.ehsanfahad.darkchamber.core.model.Outcome.Ok -> {
+                    if (read.value == RangeReader.END) break
+                    out.write(step, 0, read.value)
+                    position += read.value
+                }
+            }
         }
+        lastRanged = out.readByteArray()
+        return outcome()
+    }
+
+    private fun outcome(): ByteArray? = when (mode) {
+        Mode.Encode -> thumbnail
+        Mode.Decline -> null
+        Mode.Empty -> ByteArray(0)
+        Mode.Throw -> error("decoder failed")
     }
 }

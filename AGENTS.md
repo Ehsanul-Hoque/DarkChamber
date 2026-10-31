@@ -19,12 +19,15 @@ Package root: `dev.ehsanfahad.darkchamber`.
 >   in-memory `VaultSession`; and the injected `SecureKeyStore` + `BiometricAuthenticator` seams.
 >   Committed format + KeyStore test vectors. **The only module that touches cipher primitives.**
 > - **`:core:storage`** — `VaultStorage` over an injected root: atomic object/thumbnail/key-blob
->   stores + purge-on-lock `tmp/`. No `core:crypto` dep (`.dchm` bytes flow through opaque).
+>   stores + purge-on-lock `tmp/`, and positioned reads of an object (`FileChannel` / `pread`). No
+>   `core:crypto` dep (`.dchm` bytes flow through opaque).
 > - **`:core:db`** — SQLDelight schema v1 (`items`/`albums`/`audit_log`) + a fail-closed `CatalogStore`
 >   over an injected driver. Opaque encrypted-BLOB + plaintext-index columns only; no `core:crypto` dep.
 > - **`:core:vault`** — `VaultObjects`: streaming `importObject`/`openObject`/`openMeta`/`shredObject`,
->   albums, and live listings and counts (a count reads plaintext columns and opens nothing);
->   the one place crypto + storage + db compose. Imports no cipher primitive.
+>   `openRange` (any byte range of an object, decrypting only the chunks it touches, the key unwrapped
+>   per chunk and never held — what a video's preview reads now, and the viewers will), albums, and
+>   live listings and counts (a count reads plaintext columns and opens nothing); the one place
+>   crypto + storage + db compose. Imports no cipher primitive.
 > - **`:core:designsystem`** — `DarkChamberTheme` roles, the `Aperture` signature, the icon set as
 >   Kotlin `ImageVector`s (a drawable is unreachable from `commonMain`, so iOS would draw nothing)
 >   handed out only through composables that take a theme role, and `ExcludeFromPlatformStructures` —
@@ -75,7 +78,8 @@ Package root: `dev.ehsanfahad.darkchamber`.
 >
 > Still a stub (marker + smoke test): `:core:testing`. **In progress: Phase 1** — albums and browsing
 > are in and merged (browse refinement landed 2026-10-17), and the camera takes photos and records
-> video; next are the seek primitive and the in-app viewers (deferred from Phase 0). **Planned, not yet wired:** ktlint/detekt/Kover, Lefthook and
+> video; reads by byte range are in, and a video's preview is taken through them from the stored
+> object; next are the in-app viewers (deferred from Phase 0). **Planned, not yet wired:** ktlint/detekt/Kover, Lefthook and
 > `migrationTest` — verify a Gradle task exists before assuming it runs. CI:
 > `pr.yml` is enabled (build + commit-message check + a gated macOS job that runs the **iOS unit
 > tests** and compiles the device architecture); its `quality` job stays

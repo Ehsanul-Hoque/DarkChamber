@@ -122,20 +122,9 @@ class DchmCodec(private val engine: CryptoEngine) {
         }
         return try {
             val sealedHeader = input.readByteArray(prelude.headerLen)
-            val headerCbor = when (
-                val opened = engine.aeadOpen(dek, headerNonce(prelude.noncePrefix), preludeBytes, sealedHeader)
-            ) {
+            val header = when (val opened = openHeader(dek, preludeBytes, prelude, sealedHeader)) {
                 is Outcome.Err -> return opened
                 is Outcome.Ok -> opened.value
-            }
-            val header = DchmHeaderCodec.decode(headerCbor)
-
-            // Guard against invalid (though authenticated) header fields before driving the chunk loop.
-            if (header.chunkSize <= 0 || header.plaintextSize < 0) {
-                return Outcome.Err(VaultError.Crypto.MalformedContainer)
-            }
-            if (chunkCountFor(header.plaintextSize, header.chunkSize) > DchmFormat.HEADER_NONCE_COUNTER.toLong()) {
-                return Outcome.Err(VaultError.Crypto.MalformedContainer)
             }
 
             val out = sink.buffered()
@@ -184,6 +173,50 @@ class DchmCodec(private val engine: CryptoEngine) {
     }
 
     /**
+     * Open a container for reads by position, without reading it through: the prelude, the sealed
+     * header and the last chunk, and nothing in between. [size] is the container's stored length and
+     * [read] returns exactly `length` bytes at `position` (it may throw; that surfaces as `Io`).
+     */
+    fun openLayout(
+        dek: ByteArray,
+        fileId: ByteArray,
+        size: Long,
+        read: (position: Long, length: Int) -> ByteArray,
+    ): Outcome<OpenedContainer> {
+        // Same answers as decryptContainer gives for the same bytes: too short for a prelude is not a
+        // container at all; a prelude whose header is cut short has been truncated.
+        if (size < DchmFormat.PRELUDE_SIZE) return Outcome.Err(VaultError.Crypto.MalformedContainer)
+        return try {
+            val preludeBytes = read(0, DchmFormat.PRELUDE_SIZE)
+            val prelude = when (val parsed = Prelude.read(preludeBytes)) {
+                is Outcome.Err -> return parsed
+                is Outcome.Ok -> parsed.value
+            }
+            if (size < DchmFormat.PRELUDE_SIZE + prelude.headerLen) return Outcome.Err(VaultError.Crypto.IntegrityFailure)
+            val sealedHeader = read(DchmFormat.PRELUDE_SIZE.toLong(), prelude.headerLen)
+            val header = when (val opened = openHeader(dek, preludeBytes, prelude, sealedHeader)) {
+                is Outcome.Err -> return opened
+                is Outcome.Ok -> opened.value
+            }
+            // Only the numbers are kept. The name, MIME type and digest were decrypted with them; the
+            // digest is zeroed, and nothing that outlives this call holds the header.
+            header.sha256Plaintext.fill(0)
+            val layout = ChunkLayout(prelude.headerLen, header.chunkSize, header.plaintextSize)
+            // The counterpart of a full decrypt's truncation and trailing-bytes checks, done up front:
+            // a container of any other length has lost or gained bytes, and no chunk of it is read.
+            if (size != layout.containerLength) return Outcome.Err(VaultError.Crypto.IntegrityFailure)
+            val last = layout.chunkCount - 1
+            val lastCiphertext = read(layout.chunkOffset(last), layout.storedChunkLength(last))
+            when (val opened = openChunk(dek, prelude.noncePrefix, fileId, last, isLast = true, lastCiphertext)) {
+                is Outcome.Err -> opened
+                is Outcome.Ok -> Outcome.Ok(OpenedContainer(prelude.noncePrefix, layout, opened.value))
+            }
+        } catch (e: Exception) {
+            Outcome.Err(VaultError.Io(e))
+        }
+    }
+
+    /**
      * Decrypt a single, already-sliced chunk — the random-access / seek primitive (FORMAT.md §1).
      * The caller (e.g. a Media3 `DataSource`) reads the prelude+header once, then seeks to byte
      * `PRELUDE_SIZE + header_len + chunkIndex·(chunkSize + GCM_TAG_SIZE)`, reads that chunk's bytes,
@@ -198,6 +231,38 @@ class DchmCodec(private val engine: CryptoEngine) {
         isLast: Boolean,
         ciphertext: ByteArray,
     ): Outcome<ByteArray> = openChunk(dek, noncePrefix, fileId, chunkIndex, isLast, ciphertext)
+
+    /**
+     * Authenticate and decode the header, with the prelude as its AAD, and refuse authenticated
+     * values no encoder writes — one set of rules for [decryptContainer] and [openLayout]. The decoded
+     * CBOR is zeroed once read; the header's plaintext lives on only in the returned object.
+     */
+    private fun openHeader(
+        dek: ByteArray,
+        preludeBytes: ByteArray,
+        prelude: Prelude,
+        sealedHeader: ByteArray,
+    ): Outcome<DchmHeader> {
+        val headerCbor = when (
+            val opened = engine.aeadOpen(dek, headerNonce(prelude.noncePrefix), preludeBytes, sealedHeader)
+        ) {
+            is Outcome.Err -> return opened
+            is Outcome.Ok -> opened.value
+        }
+        val header = try {
+            DchmHeaderCodec.decode(headerCbor)
+        } finally {
+            headerCbor.fill(0)
+        }
+        // Guard against invalid (though authenticated) header fields before anything is sized from them.
+        if (header.chunkSize <= 0 || header.plaintextSize < 0) {
+            return Outcome.Err(VaultError.Crypto.MalformedContainer)
+        }
+        if (chunkCountFor(header.plaintextSize, header.chunkSize) > DchmFormat.HEADER_NONCE_COUNTER.toLong()) {
+            return Outcome.Err(VaultError.Crypto.MalformedContainer)
+        }
+        return Outcome.Ok(header)
+    }
 
     private fun sealChunk(
         dek: ByteArray,
@@ -218,6 +283,17 @@ class DchmCodec(private val engine: CryptoEngine) {
     ): Outcome<ByteArray> =
         engine.aeadOpen(dek, chunkNonce(noncePrefix, index), chunkAad(fileId, index, isLast), ciphertext)
 }
+
+/**
+ * A container opened by [DchmCodec.openLayout]: what reading any chunk by position needs, and the
+ * last chunk, already authenticated and decrypted. [lastChunk] is plaintext; whoever holds it zeroes
+ * it when done.
+ */
+class OpenedContainer internal constructor(
+    val noncePrefix: ByteArray,
+    val layout: ChunkLayout,
+    val lastChunk: ByteArray,
+)
 
 /**
  * Number of chunks for a plaintext of [size] bytes at [chunkSize]: `ceil(size / chunkSize)`, but an

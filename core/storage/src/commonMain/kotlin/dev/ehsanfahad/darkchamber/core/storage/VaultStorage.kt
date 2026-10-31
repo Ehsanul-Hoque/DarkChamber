@@ -70,6 +70,13 @@ class VaultStorage internal constructor(
     fun <R> readObject(fileId: ByteArray, block: (RawSource) -> R): Outcome<R> =
         objects.read(fileId, block)
 
+    /**
+     * Opens the encrypted object for reads at any position — what a seek into a large object needs,
+     * where [readObject] can only go forwards. The caller closes the reader. It reads the real
+     * file at the object's path, whatever filesystem this storage was given.
+     */
+    fun openObjectReader(fileId: ByteArray): Outcome<ObjectReader> = objects.openReader(fileId)
+
     /** Deletes the object blob (idempotent). Authoritative shred is destroying the DEK. */
     fun deleteObject(fileId: ByteArray): Outcome<Unit> = objects.delete(fileId)
 

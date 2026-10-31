@@ -153,6 +153,36 @@ class VideoLaneTest {
         h.sessionJob.cancel()
     }
 
+    /**
+     * The import fails when a clip it has just written does not read back — the bytes on disk are not
+     * the bytes written. That is neither a full disk nor a lock, and the user's answer is the same as
+     * for any failed save, so it must read as one: never as "out of space", and never as lost to a lock.
+     */
+    @Test
+    fun a_clip_that_does_not_read_back_is_reported_as_not_saved_and_nothing_more() = runTest {
+        for (damage in listOf(VaultError.Crypto.IntegrityFailure, VaultError.Crypto.MalformedContainer)) {
+            val open = Harness(this)
+            open.vault.nextResult = { Outcome.Err(damage) }
+            val clip = FakeClipFile()
+            open.lane.save(clip, albumId = null)
+            testScheduler.advanceUntilIdle()
+
+            assertTrue(clip.deleted, "$damage: the scratch file goes")
+            assertEquals(VideoNotice.SaveFailed, open.lane.state.value.notice, "$damage on an open camera")
+            assertTrue(open.reports.isEmpty())
+            open.sessionJob.cancel()
+
+            val closed = Harness(this)
+            closed.lane.screenOpen = false
+            closed.vault.nextResult = { Outcome.Err(damage) }
+            closed.lane.save(FakeClipFile(), albumId = null)
+            testScheduler.advanceUntilIdle()
+
+            assertEquals(listOf(Triple(NotSavedKind.Video, NotSavedReason.CouldNotSave, 1)), closed.reports, "$damage after close")
+            closed.sessionJob.cancel()
+        }
+    }
+
     /** No screen is left to say so, so the record does — and names space only when space was the cause. */
     @Test
     fun a_failure_after_the_camera_closed_goes_to_the_record_with_its_reason() = runTest {

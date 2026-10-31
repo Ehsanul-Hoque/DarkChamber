@@ -2,6 +2,7 @@ package dev.ehsanfahad.darkchamber.core.crypto
 
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
+import kotlinx.serialization.ExperimentalSerializationApi
 
 /** Current KeyStore blob format version. Readers reject anything higher (FORMAT.md §3.1 / §6). */
 const val KEYSTORE_VERSION = 1
@@ -24,8 +25,11 @@ val SUPPORTED_KDFS = setOf(KdfId.PBKDF2_SHA256, KdfId.HKDF_SHA256, KdfId.ARGON2I
  *   [VaultError.Crypto.UnsupportedFormatVersion] (the "update the app" path, distinct from tampering)
  */
 object KeyStoreCodec {
+    // Experimental CBOR API: see darkChamberCbor for why that is acceptable.
+    @OptIn(ExperimentalSerializationApi::class)
     fun encode(blob: KeyStoreBlob): ByteArray = darkChamberCbor.encodeToByteArray(KeyStoreBlob.serializer(), blob)
 
+    @OptIn(ExperimentalSerializationApi::class)
     fun decode(bytes: ByteArray): Outcome<KeyStoreBlob> {
         val blob = try {
             darkChamberCbor.decodeFromByteArray(KeyStoreBlob.serializer(), bytes)

@@ -52,14 +52,27 @@ interface ThumbnailEncoder {
      * must never cost the user their file.
      *
      * [mime] is a parameter so that kinds beyond images can be added implementation-side without
-     * reshaping this interface or its call site — as video was: a frame grabber that wants random
-     * access reads through re-opens of [openSource], which costs at most about one extra read of the
-     * file. Images produce bytes, and videos where the platform's encoder grabs frames; every other
-     * type returns `null` and the tile keeps its type badge. The cheaper signature — bytes in, bytes
-     * out — is precisely the one that would have to be broken to add a kind that needs to know what it
-     * is looking at before it starts reading.
+     * reshaping this interface or its call site. Images produce bytes; every other type handed here
+     * returns `null` and the tile keeps its type badge. Video does not come through here at all — a
+     * frame grabber wants random access, which a stream cannot give, so it gets the overload below. The
+     * cheaper signature — bytes in, bytes out — is precisely the one that would have to be broken to
+     * add a kind that needs to know what it is looking at before it starts reading.
      */
     fun encode(mime: String, maxEdgePx: Int, openSource: () -> RawSource): ByteArray?
+
+    /**
+     * The same, for a video: grab a frame through [reader], which reads the **stored** object at any
+     * position, decrypting only the chunks asked for. A frame grabber jumps around a file — to its
+     * index, often at the end, then back to a frame — and a stream can only go forwards, so this is
+     * what video is handed instead of a source. The encoder does not own [reader]; the caller closes it.
+     *
+     * A failed read comes back as an `Err` from [RangeReader.readAt]; an implementation turns it into
+     * whatever its platform's grabber expects and returns `null`. The caller sees the reader's errors
+     * itself, so the encoder never has to report them.
+     *
+     * The default declines, which is what an encoder that handles no video should do.
+     */
+    fun encode(mime: String, maxEdgePx: Int, reader: RangeReader): ByteArray? = null
 }
 
 /**
