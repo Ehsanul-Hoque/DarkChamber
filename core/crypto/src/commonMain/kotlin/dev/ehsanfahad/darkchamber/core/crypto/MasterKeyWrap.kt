@@ -1,6 +1,7 @@
 package dev.ehsanfahad.darkchamber.core.crypto
 
 import dev.ehsanfahad.darkchamber.core.model.Outcome
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 
 /**
@@ -16,6 +17,8 @@ object MasterKeyWrap {
     @Serializable
     private class WrapAad(val slot: Slot, val kdfId: KdfId, val kdfParams: KdfParams)
 
+    // Experimental CBOR API: see darkChamberCbor for why that is acceptable.
+    @OptIn(ExperimentalSerializationApi::class)
     private fun aad(slot: Slot, kdfId: KdfId, params: KdfParams): ByteArray =
         darkChamberCbor.encodeToByteArray(WrapAad.serializer(), WrapAad(slot, kdfId, params))
 
