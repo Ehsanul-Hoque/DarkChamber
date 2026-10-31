@@ -454,24 +454,10 @@ class VaultObjects(
         chunkSize: Int,
         previewWanted: () -> Boolean,
     ): Outcome<ByteArray?> {
-        // TEMPORARY device-run probe: wall time and counts of one preview, no names, ids or types.
-        PreviewProbe.reset()
-        val probeStart = kotlin.time.TimeSource.Monotonic.markNow()
-        var probeLength = -1L
-        var probeMade = false
-        fun probeLine(outcome: String) = println(
-            "DCPROBE preview ms=${probeStart.elapsedNow().inWholeMilliseconds} outcome=$outcome made=$probeMade " +
-                "len=$probeLength chunks=${PreviewProbe.chunks} cipherBytes=${PreviewProbe.cipherBytes} " +
-                "reads=${PreviewProbe.reads} plainBytes=${PreviewProbe.plainBytes}",
-        )
         val reader = when (val opened = openRangeOver(fileId, dekWrapped, previewWanted)) {
-            is Outcome.Err -> {
-                probeLine(if (opened.error.isDamage()) "damage" else "openFailed")
-                return if (opened.error.isDamage()) opened else Outcome.Ok(null)
-            }
+            is Outcome.Err -> return if (opened.error.isDamage()) opened else Outcome.Ok(null)
             is Outcome.Ok -> DamageWatchingReader(opened.value)
         }
-        probeLength = reader.length
         val key = try {
             val preview = thumbnails.encode(mime, THUMBNAIL_MAX_EDGE_PX, reader)
             if (preview == null || preview.isEmpty()) null else sealThumbnail(fileId, createdAt, chunkSize, preview)
@@ -481,8 +467,6 @@ class VaultObjects(
         } finally {
             reader.close()
         }
-        probeMade = key != null
-        probeLine(if (reader.damage != null) "damage" else "done")
         return reader.damage?.let { Outcome.Err(it) } ?: Outcome.Ok(key)
     }
 
