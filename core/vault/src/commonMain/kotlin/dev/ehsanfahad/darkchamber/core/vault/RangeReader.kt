@@ -84,6 +84,8 @@ internal class ChunkRangeReader private constructor(
         val from = (position - index * layout.chunkSize).toInt()
         val n = minOf(size, chunk.size - from)
         chunk.copyInto(into, destinationOffset = offset, startIndex = from, endIndex = from + n)
+        PreviewProbe.reads++
+        PreviewProbe.plainBytes += n
         return Outcome.Ok(n)
     }
 
@@ -103,6 +105,8 @@ internal class ChunkRangeReader private constructor(
     }
 
     private fun decrypt(index: Long): Outcome<ByteArray> {
+        PreviewProbe.chunks++
+        PreviewProbe.cipherBytes += layout.storedChunkLength(index)
         val stored = when (val read = file.readFully(layout.chunkOffset(index), layout.storedChunkLength(index))) {
             is Outcome.Err -> return read
             is Outcome.Ok -> read.value
@@ -135,7 +139,9 @@ internal class ChunkRangeReader private constructor(
             val opened = try {
                 if (!stillWanted()) throw IllegalStateException("stopped before the open")
                 session.useDek(dekWrapped) { dek ->
+                    PreviewProbe.chunks++ // the last chunk, authenticated at open
                     codec.openLayout(dek, fileId, file.size) { position, length ->
+                        PreviewProbe.cipherBytes += length
                         when (val read = file.readFully(position, length)) {
                             is Outcome.Err -> throw ReadFailed(read.error)
                             is Outcome.Ok -> read.value
@@ -172,6 +178,21 @@ internal class DamageWatchingReader(private val delegate: RangeReader) : RangeRe
         delegate.readAt(position, into, offset, size).also { read ->
             if (read is Outcome.Err && damage == null && read.error.isDamage()) damage = read.error
         }
+}
+
+// TEMPORARY device-run probe: counts only, one preview at a time. Reverted before the PR is ready.
+internal object PreviewProbe {
+    var chunks = 0
+    var cipherBytes = 0L
+    var reads = 0
+    var plainBytes = 0L
+
+    fun reset() {
+        chunks = 0
+        cipherBytes = 0L
+        reads = 0
+        plainBytes = 0L
+    }
 }
 
 // Carries a storage read's own error out through the codec's read callback, which can only throw.
