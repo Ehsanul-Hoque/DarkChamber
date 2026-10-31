@@ -183,7 +183,9 @@ private fun ObjectReader.readFully(position: Long, length: Int): Outcome<ByteArr
         when (val read = readAt(position + got, out, got, length - got)) {
             is Outcome.Err -> return read
             is Outcome.Ok -> {
-                if (read.value == ObjectReader.END) {
+                // A read that makes no progress has run out too: below the size taken at open, a file
+                // that has since lost its tail answers 0 from `pread` where `FileChannel` answers -1.
+                if (read.value == ObjectReader.END || read.value == 0) {
                     return Outcome.Err(VaultError.Io(IllegalStateException("object ended early")))
                 }
                 got += read.value

@@ -11,6 +11,8 @@ import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
 import dev.ehsanfahad.darkchamber.core.storage.VaultStorage
 import kotlinx.io.Buffer
+import kotlinx.io.buffered
+import kotlinx.io.readByteArray
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 import kotlinx.io.files.SystemTemporaryDirectory
@@ -248,6 +250,29 @@ class RangeReaderTest {
         val result = objects.openRange(id)
 
         assertIs<OperationStoppedException>(assertIs<VaultError.Io>(assertIs<Outcome.Err>(result).error).cause)
+    }
+
+    @Test
+    fun a_file_cut_short_after_the_open_fails_the_read_rather_than_spinning() {
+        // The size is taken at open. A file that loses its tail afterwards answers a read below that
+        // size with -1 on the JVM and with 0 from `pread`; either way the read must fail, not loop.
+        val id = stored(content(200)) // chunks of 64: 0..3
+        val reader = objects.openRange(id).ok()
+        val file = storedObjectFile()
+        val bytes = SystemFileSystem.source(file).buffered().use { it.readByteArray() }
+        val headerLen = (bytes[6].toInt() and 0xFF) or ((bytes[7].toInt() and 0xFF) shl 8)
+        SystemFileSystem.sink(file).buffered().use { it.write(bytes, 0, 16 + headerLen + 64 + 16) } // chunk 0 only
+
+        assertIs<VaultError.Io>(assertIs<Outcome.Err>(reader.readAt(position = 64, into = ByteArray(1), offset = 0, size = 1)).error)
+        reader.close()
+    }
+
+    // The one object file in this test's vault.
+    private fun storedObjectFile(): Path {
+        fun walk(dir: Path): List<Path> = SystemFileSystem.list(dir).flatMap { p ->
+            if (SystemFileSystem.metadataOrNull(p)?.isDirectory == true) walk(p) else listOf(p)
+        }
+        return walk(Path(testDir, "objects")).single { it.name.endsWith(".dchm") }
     }
 
     @Test
