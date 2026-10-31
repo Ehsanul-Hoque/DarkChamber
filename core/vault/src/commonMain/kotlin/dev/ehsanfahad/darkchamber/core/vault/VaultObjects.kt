@@ -322,7 +322,7 @@ class VaultObjects(
         //    else is decoded front to back from the source. Null — and nothing left behind — for
         //    everything the platform cannot preview, the ordinary case for most of a vault.
         onPreviewAttempt()
-        val thumbnailKey = if (mime.startsWith(VIDEO_MIME_PREFIX)) {
+        val thumbnailKey = if (mime.startsWith(VIDEO_MIME_PREFIX, ignoreCase = true)) {
             when (val preview = makeVideoThumbnail(fileId, dekWrapped, mime, createdAt, chunkSize, previewWanted)) {
                 is Outcome.Ok -> preview.value
                 is Outcome.Err -> {
@@ -929,7 +929,8 @@ class VaultObjects(
         // the day a second variant exists, the existing rows say which one they are.
         const val KEK_VARIANT_MASTER_KEY = 0
 
-        // Which imports take their preview from the stored object, read by position.
+        // Which imports take their preview from the stored object, read by position. Matched without
+        // regard to case, as MIME types are and as the platform encoders match it.
         const val VIDEO_MIME_PREFIX = "video/"
     }
 }

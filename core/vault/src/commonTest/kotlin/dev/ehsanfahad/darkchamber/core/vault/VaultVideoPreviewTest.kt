@@ -98,6 +98,20 @@ class VaultVideoPreviewTest {
     }
 
     @Test
+    fun a_video_type_in_capitals_is_still_a_video() {
+        // MIME types are case-insensitive, and so is the platform encoders' check: a type the stream
+        // path would hand to an encoder that only takes video by reader would lose its preview.
+        val encoder = FakeThumbnailEncoder()
+
+        val (result, opens) = opensDuringThePreview(encoder, "Video/MP4")
+
+        result.ok()
+        assertEquals(1, encoder.rangedCount)
+        assertEquals(0, encoder.encodeCount)
+        assertEquals(0, opens)
+    }
+
+    @Test
     fun the_reader_is_closed_once_the_preview_is_made_or_the_encoder_fails() {
         // A reader left open would keep decrypted chunks in memory, and a file handle, past the import.
         for (mode in listOf(FakeThumbnailEncoder.Mode.Encode, FakeThumbnailEncoder.Mode.Throw)) {
