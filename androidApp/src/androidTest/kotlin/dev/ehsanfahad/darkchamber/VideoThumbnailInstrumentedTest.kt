@@ -86,6 +86,13 @@ class VideoThumbnailInstrumentedTest {
         session.close()
         catalogDriver.close()
         vaultDir.deleteRecursively()
+        // The SQLite driver keeps a process lock file for each database at cacheDir + the database's
+        // absolute path + ".lck"; it outlives the vault, so remove that mirror too, and then any
+        // directory it leaves empty (delete() refuses a non-empty one, so nothing else goes).
+        var mirror: File? = File(context.cacheDir, vaultDir.absolutePath.trimStart('/'))
+        mirror?.deleteRecursively()
+        mirror = mirror?.parentFile
+        while (mirror != null && mirror != context.cacheDir && mirror.delete()) mirror = mirror.parentFile
     }
 
     private fun clip(name: String): ByteArray =
