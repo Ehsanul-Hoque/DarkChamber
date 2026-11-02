@@ -8,31 +8,31 @@
 > not something a contributor needs. If you see an old reference to one (e.g. in git history), read it
 > as "an early build increment within a phase" — nothing more.
 
-## 1. Hooks — Lefthook
+## 1. Hooks
 
-**Lefthook** (single binary, no Node runtime) runs local hooks; installed via `lefthook install` (wrapped as `./gradlew installHooks`). Commit-message validation uses a small shell regex — no Node dependency:
+The hooks are tracked in [`.githooks/`](../../.githooks) — plain shell, no hook manager and nothing to
+install beyond git. Point your clone at them once:
 
-```yaml
-# lefthook.yml
-pre-commit:
-  parallel: true
-  commands:
-    ktlint:
-      glob: "*.{kt,kts}"
-      run: ./gradlew ktlintCheck --daemon
-    detekt:
-      glob: "*.{kt,kts}"
-      run: ./gradlew detekt --daemon
-
-commit-msg:
-  commands:
-    conventional:
-      run: |
-        grep -qE '^(feat|fix|perf|refactor|docs|test|chore|ci|build|style)(\([a-z0-9-]+\))?!?: .+' "$1" \
-          || { echo "commit message must follow Conventional Commits"; exit 1; }
+```bash
+./gradlew installGitHooks      # sets: git config core.hooksPath .githooks
 ```
 
-Hooks are convenience, not the gate — CI re-checks everything on the PR, so bypassed hooks change nothing.
+**`commit-msg`** refuses a message before the commit exists. It runs exactly the check CI runs —
+[`scripts/check-commits.sh`](../../scripts/check-commits.sh) `--message-file` — so the subject pattern and
+the scope list in [`config/commit-scopes.txt`](../../config/commit-scopes.txt) (§2) cannot differ between
+your machine and the PR. Subjects git writes itself (merges, `fixup!` / `squash!` / `amend!`) pass the
+hook; a fixup still has to be squashed before you push, because the PR check refuses it. The hook also
+refuses attribution trailers and links (`Co-Authored-By:`, "Generated with", `claude.ai/` URLs) — a rule
+of this repository's maintainer that CI does not apply.
+
+The checker has its own fixtures, which CI runs before using it:
+
+```bash
+bash scripts/test-check-commits.sh
+```
+
+Hooks are convenience, not the gate — CI re-checks every commit on the PR, so a skipped hook
+(`--no-verify`) changes nothing. Formatting and static-analysis hooks arrive with that tooling.
 
 ## 2. Commit conventions
 
@@ -46,7 +46,12 @@ Hooks are convenience, not the gate — CI re-checks everything on the PR, so by
 | `feat!:` / `BREAKING CHANGE:` footer                                     | breaking           | **major** (minor while 0.x) |
 | `refactor:` / `docs:` / `test:` / `chore:` / `ci:` / `build:` / `style:` | no behavior change | none                        |
 
-Scopes are free-form but conventional per module: `feat(camera): …`, `fix(crypto): …`. A `fix(crypto)` or anything touching `core:crypto` additionally requires the security-review label on its PR (§3).
+A scope is optional, and when present it must be listed in
+[`config/commit-scopes.txt`](../../config/commit-scopes.txt): a module's Gradle path in kebab case
+(`:feature:camera` → `feat(feature-camera): …`, `:core:crypto` → `fix(core-crypto): …`), `ios-app` for the
+Xcode host, or one of a few non-module scopes (`build-logic`, `ci`, `deps`, `docs`, `format`, …). Lower case
+only. A change that adds a module adds its scope to the list in the same commit. A `fix(core-crypto)` or
+anything touching `core:crypto` additionally requires the security-review label on its PR (§3).
 
 ## 3. Branching & PRs
 

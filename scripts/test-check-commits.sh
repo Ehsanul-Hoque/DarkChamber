@@ -65,6 +65,42 @@ while IFS= read -r scope; do
   expect pass "listed scope '$scope'" "chore($scope): a change"
 done < "$HERE/../config/commit-scopes.txt"
 
+# --- the commit-msg hook (.githooks/commit-msg) -------------------------------------------------
+# The hook runs the same check, and also refuses attribution trailers — a local rule only, so the
+# message-file mode CI shares must still accept them.
+HOOK="$HERE/../.githooks/commit-msg"
+
+# expect_hook <want: pass|fail> <name> <message>
+expect_hook() {
+  local want="$1" name="$2" message="$3"
+  local file="$WORK/hook-msg"
+  printf '%s\n' "$message" > "$file"
+  CASES=$((CASES + 1))
+  if bash "$HOOK" "$file" > /dev/null 2>&1; then got=pass; else got=fail; fi
+  if [ "$got" != "$want" ]; then
+    echo "✗ hook: $name: expected $want, got $got" >&2
+    FAILED=$((FAILED + 1))
+  fi
+}
+
+CLEAN="feat(core-vault): shred many items at once"
+expect_hook pass "a clean message"            "$(printf '%s\n' "$CLEAN" "" "Why it matters.")"
+expect_hook fail "a bad subject"              "feat(viewer): open an image"
+for trailer in \
+  "Co-Authored-By: Someone <someone@example.com>" \
+  "co-authored-by: Someone <someone@example.com>" \
+  "🤖 Generated with [Claude Code](https://claude.com/claude-code)" \
+  "Generated with a tool" \
+  "https://claude.ai/code/session_abc123"; do
+  expect_hook fail "a trailer: $trailer"      "$(printf '%s\n' "$CLEAN" "" "Body." "" "$trailer")"
+  expect      pass "message-file mode ignores: $trailer" "$(printf '%s\n' "$CLEAN" "" "Body." "" "$trailer")"
+done
+# A word in a sentence is not a trailer.
+expect_hook pass "the words in prose"         "$(printf '%s\n' "$CLEAN" "" "Thumbnails are generated with their own key.")"
+# Git's '#' comment lines are never part of the message, so nothing in them is refused. (The line is
+# one the link check *would* match if it were read — an anchored trailer would not discriminate.)
+expect_hook pass "a link only in a comment"   "$(printf '%s\n' "$CLEAN" "# see https://claude.ai/code/x")"
+
 # --- the range mode CI runs ---------------------------------------------------------------------
 # A throwaway repository: one base commit, then the subjects under test, each case on its own
 # branch so a range holds exactly the commits named.

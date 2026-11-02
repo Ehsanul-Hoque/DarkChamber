@@ -79,8 +79,10 @@ Package root: `dev.ehsanfahad.darkchamber`.
 > Still a stub (marker + smoke test): `:core:testing`. **In progress: Phase 1** — albums and browsing
 > are in and merged (browse refinement landed 2026-10-17), and the camera takes photos and records
 > video; reads by byte range are in, and a video's preview is taken through them from the stored
-> object; next are the in-app viewers (deferred from Phase 0). **Planned, not yet wired:** ktlint/detekt/Kover, Lefthook and
-> `migrationTest` — verify a Gradle task exists before assuming it runs. CI:
+> object; next are the in-app viewers (deferred from Phase 0). **Planned, not yet wired:** ktlint/detekt/Kover and
+> `migrationTest` — verify a Gradle task exists before assuming it runs. **Wired:** a tracked `commit-msg`
+> hook (`./gradlew installGitHooks`) runs CI's own commit check, scopes listed in
+> `config/commit-scopes.txt`. CI:
 > `pr.yml` is enabled (build + commit-message check + a gated macOS job that runs the **iOS unit
 > tests** and compiles the device architecture); its `quality` job stays
 > commented out until those plugins land, and `nightly`/`release`/`test-build` stay committed

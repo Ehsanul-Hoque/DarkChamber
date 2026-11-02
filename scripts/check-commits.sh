@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# check-commits.sh — verify every commit in a range follows Conventional Commits.
-# Node-free replacement for commitlint, used by CI on PRs (re-checking what the
-# local Lefthook hook already checked, so bypassed hooks change nothing).
+# check-commits.sh — verify commit messages follow Conventional Commits, with a scope from
+# config/commit-scopes.txt. Node-free. CI runs the range mode over a PR; the tracked commit-msg hook
+# (.githooks/commit-msg) runs the message-file mode, so a skipped hook changes nothing.
 #
 # Usage: check-commits.sh <base-sha> <head-sha>      every commit in the range (CI)
 #        check-commits.sh --message-file <path>      one message, as git hands it to commit-msg
