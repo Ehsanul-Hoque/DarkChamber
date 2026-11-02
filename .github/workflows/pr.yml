@@ -49,8 +49,8 @@ jobs:
               # :app is shared KMP code too — the composition root and the session gate — and it
               # carries 100 of the iOS tests. Without this line a change confined to its commonMain
               # skips the whole iOS job: `**/iosMain/**` below only catches its platform half, and
-              # `core/**` does not reach it. The session-gate fix in this cycle was exactly such a
-              # change, with those 100 tests covering it.
+              # `core/**` does not reach it. A fix to the session gate is exactly such a change, with
+              # those tests covering it.
               - 'app/**'
               - '**/iosMain/**'
               - 'iosApp/**'
@@ -63,6 +63,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0   # the checker walks the full PR commit range
+      - name: Test the commit-message checker
+        # Its fixtures, including the scope list in config/commit-scopes.txt: a checker that has
+        # quietly stopped refusing anything would otherwise pass every PR.
+        run: bash ./scripts/test-check-commits.sh
       - name: Validate commit messages (all commits in the PR)
         # Node-free Conventional Commits check (docs/engineering/WORKFLOW.md §2).
         run: bash ./scripts/check-commits.sh "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
