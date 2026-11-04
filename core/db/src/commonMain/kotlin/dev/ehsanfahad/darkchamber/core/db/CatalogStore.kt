@@ -116,9 +116,17 @@ class CatalogStore private constructor(
     fun clearAlbumOnItems(albumId: ByteArray): Outcome<Unit> =
         catchingDb { items.clearAlbumOnItems(albumId) }
 
-    /** Remove the item with [id]. Idempotent — an absent id is `Ok`, never a throw. */
+    /**
+     * Remove the item with [id]. Idempotent — an absent id is `Ok`, never a throw.
+     *
+     * The row holds the item's wrapped key, so this delete is the crypto-shred, and it is followed by
+     * [forgetDeletedPages] so the key's bytes are gone from the files as well as from the table.
+     */
     fun deleteItem(id: ByteArray): Outcome<Unit> =
-        catchingDb { items.deleteItemById(id) }
+        catchingDb {
+            items.deleteItemById(id)
+            driver.forgetDeletedPages()
+        }
 
     /** Number of item rows. */
     fun countItems(): Outcome<Long> =
@@ -281,6 +289,25 @@ private inline fun <T> catchingDb(block: () -> T): Outcome<T> =
     } catch (e: Exception) {
         Outcome.Err(VaultError.Db(e))
     }
+
+/**
+ * After a delete has committed: move the WAL's pages into the database and truncate the log.
+ *
+ * `secure_delete` ([CatalogPragmas]) zeroes deleted content as SQLite frees it — but in WAL mode
+ * (iOS's driver) the frames an *earlier* transaction wrote, the insert's with the key in it, sit in
+ * the `-wal` file until a checkpoint copies the pages back and the log is reset. A `TRUNCATE`
+ * checkpoint does both and leaves the log empty. In a rollback-journal catalog (Android's) it is a
+ * no-op. A reader mid-query can keep the checkpoint from finishing; the frames are then overwritten
+ * by a later one rather than now, which is the same limit flash storage already puts on any delete.
+ */
+private fun SqlDriver.forgetDeletedPages() {
+    executeQuery(
+        identifier = null,
+        sql = "PRAGMA wal_checkpoint(TRUNCATE)",
+        mapper = { cursor -> QueryResult.Value(cursor.next().value) },
+        parameters = 0,
+    )
+}
 
 /** Current `PRAGMA user_version` (0 on a fresh driver). */
 private fun SqlDriver.userVersion(): Long =
