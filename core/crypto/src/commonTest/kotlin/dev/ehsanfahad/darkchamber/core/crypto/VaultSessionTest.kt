@@ -372,6 +372,53 @@ class VaultSessionTest {
     }
 
     @Test
+    fun a_lock_landing_inside_a_metadata_open_is_a_closed_session_not_tampering() {
+        // The same race on the listing's path: every row's name is opened through openMeta, and a
+        // lock mid-open must not draw that row as damaged.
+        val racing = LockMidOpen(engine)
+        val session = VaultSession.createVault(racing, DefaultKeyDerivation(racing), pw(), cheapKdf).session
+        val blob = session.sealMeta("name.jpg".encodeToByteArray())
+        racing.beforeOpen = { session.close() }
+
+        assertFailsWith<IllegalStateException> { session.openMeta(blob) }
+    }
+
+    // The seal side of the race: an engine that runs [beforeSeal] inside the next aeadSeal.
+    private class LockMidSeal(private val real: CryptoEngine) : CryptoEngine by real {
+        var beforeSeal: (() -> Unit)? = null
+
+        override fun aeadSeal(key: ByteArray, nonce: ByteArray, aad: ByteArray, plaintext: ByteArray): ByteArray {
+            beforeSeal?.also { beforeSeal = null }?.invoke()
+            return real.aeadSeal(key, nonce, aad, plaintext)
+        }
+    }
+
+    @Test
+    fun a_lock_landing_inside_a_seal_returns_nothing_sealed_under_the_zeroed_key() {
+        // A seal never fails: one the lock reached seals under a zeroed (or half-zeroed) master key
+        // and returns a blob nothing can ever open. An item row or album name written with it would
+        // read as damaged for good, so the seal must refuse instead of returning it.
+        for (seal in listOf<(VaultSession) -> Unit>(
+            { session -> session.sealMeta("name.jpg".encodeToByteArray()) },
+            { session -> session.generateDek() },
+        )) {
+            val racing = LockMidSeal(engine)
+            val session = VaultSession.createVault(racing, DefaultKeyDerivation(racing), pw(), cheapKdf).session
+            racing.beforeSeal = { session.close() }
+
+            assertFailsWith<IllegalStateException> { seal(session) }
+        }
+    }
+
+    @Test
+    fun a_metadata_blob_that_fails_on_a_live_session_is_still_tampering() {
+        val session = newVault().session
+        val blob = session.sealMeta("name.jpg".encodeToByteArray()).also { it[it.size - 1] = (it[it.size - 1].toInt() xor 1).toByte() }
+
+        assertEquals(Outcome.Err(VaultError.Crypto.IntegrityFailure), session.openMeta(blob))
+    }
+
+    @Test
     fun a_wrapped_key_that_fails_on_a_live_session_is_still_tampering() {
         // The other side of the re-check: with no lock, a tag failure stays IntegrityFailure.
         val session = newVault().session
