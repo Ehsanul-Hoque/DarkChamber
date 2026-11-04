@@ -21,9 +21,11 @@ install beyond git. Point your clone at them once:
 [`scripts/check-commits.sh`](../../scripts/check-commits.sh) `--message-file` — so the subject pattern and
 the scope list in [`config/commit-scopes.txt`](../../config/commit-scopes.txt) (§2) cannot differ between
 your machine and the PR. Subjects git writes itself (merges, `fixup!` / `squash!` / `amend!`) pass the
-hook; a fixup still has to be squashed before you push, because the PR check refuses it. The hook also
-refuses attribution trailers and links (`Co-Authored-By:`, "Generated with", `claude.ai/` URLs) — a rule
-of this repository's maintainer that CI does not apply.
+hook; a fixup still has to be squashed before you push, because the PR check refuses it.
+
+A rule of your own can run beside it: make an executable `hooks/commit-msg.local` in your git directory
+(`.git/hooks/commit-msg.local` in a plain clone). The shared hook runs it after the shared check, with the
+same message file. It lives inside `.git/`, so it is never committed and applies to your clone alone.
 
 The checker has its own fixtures, which CI runs before using it:
 

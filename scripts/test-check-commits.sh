@@ -66,9 +66,13 @@ while IFS= read -r scope; do
 done < "$HERE/../config/commit-scopes.txt"
 
 # --- the commit-msg hook (.githooks/commit-msg) -------------------------------------------------
-# The hook runs the same check, and also refuses attribution trailers — a local rule only, so the
-# message-file mode CI shares must still accept them.
+# The hook runs exactly the shared check, then a personal hook if the clone has one. It always runs
+# here inside a throwaway repository, so a personal hook in the clone running these fixtures can
+# never change their answers.
 HOOK="$HERE/../.githooks/commit-msg"
+HOOK_REPO="$WORK/hook-repo"
+git init -q "$HOOK_REPO"
+PERSONAL="$(git -C "$HOOK_REPO" rev-parse --absolute-git-dir)/hooks/commit-msg.local"
 
 # expect_hook <want: pass|fail> <name> <message>
 expect_hook() {
@@ -76,7 +80,7 @@ expect_hook() {
   local file="$WORK/hook-msg"
   printf '%s\n' "$message" > "$file"
   CASES=$((CASES + 1))
-  if bash "$HOOK" "$file" > /dev/null 2>&1; then got=pass; else got=fail; fi
+  if (cd "$HOOK_REPO" && bash "$HOOK" "$file" > /dev/null 2>&1); then got=pass; else got=fail; fi
   if [ "$got" != "$want" ]; then
     echo "✗ hook: $name: expected $want, got $got" >&2
     FAILED=$((FAILED + 1))
@@ -86,20 +90,26 @@ expect_hook() {
 CLEAN="feat(core-vault): shred many items at once"
 expect_hook pass "a clean message"            "$(printf '%s\n' "$CLEAN" "" "Why it matters.")"
 expect_hook fail "a bad subject"              "feat(viewer): open an image"
-for trailer in \
-  "Co-Authored-By: Someone <someone@example.com>" \
-  "co-authored-by: Someone <someone@example.com>" \
-  "🤖 Generated with [Claude Code](https://claude.com/claude-code)" \
-  "Generated with a tool" \
-  "https://claude.ai/code/session_abc123"; do
-  expect_hook fail "a trailer: $trailer"      "$(printf '%s\n' "$CLEAN" "" "Body." "" "$trailer")"
-  expect      pass "message-file mode ignores: $trailer" "$(printf '%s\n' "$CLEAN" "" "Body." "" "$trailer")"
-done
-# A word in a sentence is not a trailer.
-expect_hook pass "the words in prose"         "$(printf '%s\n' "$CLEAN" "" "Thumbnails are generated with their own key.")"
-# Git's '#' comment lines are never part of the message, so nothing in them is refused. (The line is
-# one the link check *would* match if it were read — an anchored trailer would not discriminate.)
-expect_hook pass "a link only in a comment"   "$(printf '%s\n' "$CLEAN" "# see https://claude.ai/code/x")"
+# A co-author is legitimate in a shared repository: the shared hook, like CI, accepts one.
+expect_hook pass "a co-author trailer"        "$(printf '%s\n' "$CLEAN" "" "Body." "" "Co-Authored-By: Someone <someone@example.com>")"
+
+# A personal hook, when the clone has one, runs after the shared check and can refuse.
+mkdir -p "$(dirname "$PERSONAL")"
+printf '#!/usr/bin/env bash\nexit 1\n' > "$PERSONAL" && chmod +x "$PERSONAL"
+expect_hook fail "a personal hook that refuses" "$CLEAN"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$PERSONAL"
+expect_hook pass "a personal hook that accepts" "$CLEAN"
+# It is handed the message file, as git hands it to the hook.
+printf '#!/usr/bin/env bash\ngrep -q "^%s$" "$1"\n' "$CLEAN" > "$PERSONAL"
+expect_hook pass "the personal hook reads the message" "$CLEAN"
+expect_hook fail "the personal hook reads a different message" "docs: something else"
+# The shared check still runs first: a bad subject is refused whatever the personal hook says.
+printf '#!/usr/bin/env bash\nexit 0\n' > "$PERSONAL"
+expect_hook fail "a bad subject with a permissive personal hook" "feat(viewer): open an image"
+# Not executable → not run (git's own rule for hooks).
+printf '#!/usr/bin/env bash\nexit 1\n' > "$PERSONAL" && chmod -x "$PERSONAL"
+expect_hook pass "a personal hook that is not executable" "$CLEAN"
+rm -f "$PERSONAL"
 
 # --- the range mode CI runs ---------------------------------------------------------------------
 # A throwaway repository: one base commit, then the subjects under test, each case on its own

@@ -2,13 +2,13 @@
 #
 # commit-msg — refuse a commit message before the commit exists.
 #
-# Installed by `./gradlew installGitHooks` (sets core.hooksPath to .githooks). Two checks:
+# Installed by `./gradlew installGitHooks` (sets core.hooksPath to .githooks). It runs the same rule
+# CI applies — scripts/check-commits.sh --message-file — so the subject pattern and the scope list
+# (config/commit-scopes.txt) can never differ between here and the PR check.
 #
-#   1. The same rule CI applies: scripts/check-commits.sh --message-file, so the subject pattern and
-#      the scope list (config/commit-scopes.txt) can never differ between here and the PR check.
-#   2. No attribution trailers or links — Co-Authored-By, "Generated with", claude.ai URLs. The
-#      maintainer's rule for this repository; CI does not apply it, because a human co-author is
-#      legitimate for other contributors.
+# A rule of your own can sit beside it: an executable `hooks/commit-msg.local` inside your git
+# directory (`.git/hooks/commit-msg.local` in a plain clone) runs after the shared check, with the
+# same message file. It lives in .git/, so it is never committed and never reaches anyone else.
 #
 # CI stays the gate: a hook can be skipped (--no-verify), the PR check cannot.
 #
@@ -19,20 +19,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 bash "$ROOT/scripts/check-commits.sh" --message-file "$FILE"
 
-
-# The message as git will record it: git's '#' comment lines are not part of it.
-message="$(grep -v '^#' "$FILE" || true)"
-found="$(
-  printf '%s\n' "$message" | grep -inE '^co-authored-by:' || true
-  printf '%s\n' "$message" | grep -nE '^[^[:alnum:]]*Generated with' || true
-  printf '%s\n' "$message" | grep -nF 'claude.ai/' || true
-)"
-
-if [ -n "$found" ]; then
-  echo "✗ attribution in the commit message:" >&2
-  printf '%s\n' "$found" | sed 's/^/    line /' >&2
-  echo "" >&2
-  echo "This repository's commits carry no attribution trailers or links — end the message at its" >&2
-  echo "last line of content." >&2
-  exit 1
+PERSONAL="$(git rev-parse --git-common-dir)/hooks/commit-msg.local"
+if [ -x "$PERSONAL" ]; then
+  "$PERSONAL" "$FILE"
 fi
