@@ -128,6 +128,30 @@ class CatalogStore private constructor(
             driver.forgetDeletedPages()
         }
 
+    /**
+     * Remove every item in [ids], returning **how many rows were deleted**. Each row holds its item's
+     * wrapped key, so this is the crypto-shred of the whole set.
+     *
+     * All or nothing: one statement inside one transaction, so a failure part-way leaves every row,
+     * and the listings are notified once on commit rather than once per item. Ids already gone are
+     * skipped and not counted — an item shredded between selection and delete is an ordinary race,
+     * and the count is how a caller tells it from a clean run. An empty [ids] runs nothing, because
+     * even a delete that matches no row would make every listing re-read itself.
+     *
+     * After the commit, [forgetDeletedPages] — once for the set, and outside the transaction, since a
+     * checkpoint cannot copy pages a transaction still holds.
+     */
+    fun deleteItems(ids: List<ByteArray>): Outcome<Long> =
+        if (ids.isEmpty()) {
+            Outcome.Ok(0L)
+        } else {
+            catchingDb {
+                val deleted = db.transactionWithResult { items.deleteItemsById(ids).value }
+                driver.forgetDeletedPages()
+                deleted
+            }
+        }
+
     /** Number of item rows. */
     fun countItems(): Outcome<Long> =
         catchingDb { items.countItems().executeAsOne() }

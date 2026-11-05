@@ -118,4 +118,20 @@ class SecureDeleteTest {
         assertTrue(filesHoldingTheKey().isEmpty(), "wrapped key still on disk in ${filesHoldingTheKey()}")
         driver.close()
     }
+
+    @Test
+    fun deleting_many_items_leaves_no_wrapped_key_in_a_wal_catalog_while_it_stays_open() {
+        // The batch delete's own path: one transaction, then the checkpoint once it has committed (a
+        // checkpoint cannot run inside the transaction it would have to copy).
+        val driver = openDriver(wal = true)
+        val catalog = store(driver)
+        catalog.upsertItem(item(1))
+        catalog.upsertItem(item(2))
+        assertTrue(filesHoldingTheKey() == listOf("catalog.db-wal"), "control: the key should be in the WAL, was in ${filesHoldingTheKey()}")
+
+        catalog.deleteItems(listOf(byteArrayOf(1), byteArrayOf(2)))
+
+        assertTrue(filesHoldingTheKey().isEmpty(), "wrapped key still on disk in ${filesHoldingTheKey()}")
+        driver.close()
+    }
 }

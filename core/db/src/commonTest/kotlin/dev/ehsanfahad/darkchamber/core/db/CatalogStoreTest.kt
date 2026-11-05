@@ -415,6 +415,92 @@ class CatalogStoreTest {
         assertTrue(store.deleteItem(byteArrayOf(1)) is Outcome.Ok)
     }
 
+    @Test
+    fun deleteItems_removes_exactly_the_named_items_and_counts_them() {
+        store.upsertItem(item(1, createdAt = 100L)).unwrap()
+        store.upsertItem(item(2, createdAt = 200L)).unwrap()
+        store.upsertItem(item(3, createdAt = 300L)).unwrap()
+
+        // Fresh arrays, never the instances the rows were written with: a catalog hands ids back
+        // decoded from SQLite, so an identity comparison anywhere would pass here and fail for real.
+        val deleted = store.deleteItems(listOf(byteArrayOf(1), byteArrayOf(3))).unwrap()
+
+        assertEquals(2L, deleted, "the count is the rows deleted")
+        assertEquals(
+            listOf<Byte>(2),
+            store.listItems(ItemFilter.All).unwrap().map { it.id.single() },
+            "only the item nobody named is left",
+        )
+    }
+
+    /**
+     * An id that is already gone is skipped, not an error, and not counted: an item shredded between
+     * selection and delete is an ordinary race. The count is how a caller tells it from a clean run.
+     */
+    @Test
+    fun deleteItems_skips_an_id_that_is_already_gone_and_does_not_count_it() {
+        store.upsertItem(item(1)).unwrap()
+
+        val deleted = store.deleteItems(listOf(byteArrayOf(1), byteArrayOf(9))).unwrap()
+
+        assertEquals(1L, deleted, "only the row that existed is counted")
+        assertEquals(0L, store.countItems().unwrap())
+    }
+
+    /**
+     * A delete of fifty items must reach the listings **once** — each emission re-decrypts every
+     * row's metadata in the gallery above — and an empty one not at all: SQLite accepts `IN ()`, but
+     * running it would still tell every listing that `items` changed.
+     */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    @Test
+    fun deleteItems_notifies_the_listings_once_and_an_empty_delete_not_at_all() = runTest {
+        val obsDriver = testSqlDriver()
+        val obsStore = CatalogStore.create(obsDriver, UnconfinedTestDispatcher(testScheduler)).unwrap()
+        obsStore.upsertItem(item(1, createdAt = 100L)).unwrap()
+        obsStore.upsertItem(item(2, createdAt = 200L)).unwrap()
+        obsStore.upsertItem(item(3, createdAt = 300L)).unwrap()
+
+        obsStore.observeItems(ItemFilter.All).test {
+            assertEquals(listOf<Byte>(3, 2, 1), awaitItem().map { it.id.single() })
+
+            assertEquals(0L, obsStore.deleteItems(emptyList()).unwrap(), "an empty delete deletes nothing")
+            expectNoEvents()
+
+            obsStore.deleteItems(listOf(byteArrayOf(1), byteArrayOf(2), byteArrayOf(3))).unwrap()
+            assertEquals(emptyList(), awaitItem(), "one emission for the whole set")
+            expectNoEvents()
+
+            cancelAndIgnoreRemainingEvents()
+        }
+        obsDriver.close()
+    }
+
+    /**
+     * All or nothing. A delete that fails part-way must leave every row — a selection half-shredded
+     * is one the user cannot see the edges of. A trigger that refuses to delete id 3 is the failure.
+     */
+    @Test
+    fun deleteItems_that_fails_part_way_deletes_nothing() {
+        val failingDriver = testSqlDriver()
+        val failing = CatalogStore.create(failingDriver).unwrap()
+        failing.upsertItem(item(1)).unwrap()
+        failing.upsertItem(item(2)).unwrap()
+        failing.upsertItem(item(3)).unwrap()
+        failingDriver.execute(
+            identifier = null,
+            sql = "CREATE TRIGGER refuse_three BEFORE DELETE ON items WHEN OLD.id = x'03' " +
+                "BEGIN SELECT RAISE(ABORT, 'refused'); END",
+            parameters = 0,
+        )
+
+        val result = failing.deleteItems(listOf(byteArrayOf(1), byteArrayOf(2), byteArrayOf(3)))
+
+        assertTrue(result is Outcome.Err && result.error is VaultError.Db, "a failed delete is Err(Db), not a throw")
+        assertEquals(3L, failing.countItems().unwrap(), "and every row is still there")
+        failingDriver.close()
+    }
+
     private fun album(
         id: Byte,
         kekVariant: Int = 0,
