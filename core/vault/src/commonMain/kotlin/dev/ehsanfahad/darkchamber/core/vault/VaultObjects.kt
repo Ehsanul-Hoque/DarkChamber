@@ -855,6 +855,31 @@ class VaultObjects(
         return Outcome.Ok(Unit)
     }
 
+    /**
+     * Crypto-shred every item in [ids] at once, returning **how many were shredded**.
+     *
+     * The rows go first and together — one catalog transaction, so a failure leaves every item
+     * intact and readable, and the listings re-read once rather than once per item. That is the
+     * shred: each row held its item's wrapped DEK. Then, best-effort, each item's object and
+     * preview files, exactly as [shredObject] does for one: ciphertext with no DEK cannot be read, so
+     * a file that will not delete does not un-shred anything, and is not reported.
+     *
+     * An id already gone (shredded between selection and now) is skipped and not counted, which is
+     * how a caller tells that ordinary race from a clean run. A catalog failure is `Err`, and then
+     * nothing at all was shredded.
+     */
+    fun shredObjects(ids: List<ByteArray>): Outcome<Long> {
+        val deleted = when (val rows = catalog.deleteItems(ids)) {
+            is Outcome.Err -> return rows
+            is Outcome.Ok -> rows.value
+        }
+        for (id in ids) {
+            storage.deleteObject(id) // best-effort; the DEK is already gone
+            storage.deleteThumbnail(id) // its key lived in the row's enc_meta, so it is gone too
+        }
+        return Outcome.Ok(deleted)
+    }
+
     // Runs the encrypt inside a scoped DEK + an atomic object write, returning the measured size.
     private fun streamEncrypt(
         dekWrapped: ByteArray,
