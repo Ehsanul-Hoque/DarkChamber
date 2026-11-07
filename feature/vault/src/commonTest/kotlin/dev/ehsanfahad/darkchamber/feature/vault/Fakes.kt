@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.io.Buffer
+import kotlinx.io.RawSink
 import kotlinx.io.RawSource
 import kotlin.concurrent.Volatile
 import kotlin.coroutines.CoroutineContext
@@ -383,8 +384,20 @@ internal class FakeVaultItems(
     private val assignedOf: (Int) -> Int = { it },
     /** A filing refused outright — a destination album that is no longer there, say. */
     private val assignFailure: VaultError? = null,
+    /**
+     * What opening an object does: write whatever it likes into the sink, then answer. The default
+     * is the vault's answer for an id it does not hold. A function rather than bytes, because the
+     * cases that matter write part of an object **and then** fail.
+     */
+    private val onOpen: (id: ByteArray, sink: RawSink) -> Outcome<Unit> = { _, _ ->
+        Outcome.Err(VaultError.Io(NoSuchElementException("no such object")))
+    },
 ) : VaultItems {
     var thumbnailCalls = 0
+        private set
+
+    /** How many times an object was opened — zero is what "nothing was read" looks like. */
+    var openCalls = 0
         private set
     val summaries = MutableStateFlow<List<VaultItemSummary>>(emptyList())
     val albums = MutableStateFlow<List<AlbumSummary>>(emptyList())
@@ -526,6 +539,17 @@ internal class FakeVaultItems(
         thumbnailCalls++
         return thumbnails[id.toList()] ?: NO_THUMBNAIL
     }
+
+    override fun open(id: ByteArray, sink: RawSink): Outcome<Unit> {
+        openCalls++
+        return onOpen(id, sink)
+    }
+}
+
+/** Write [bytes] into [sink] the way the codec does: through a buffer, then flush. */
+internal fun RawSink.writeBytes(bytes: ByteArray) {
+    write(Buffer().apply { write(bytes) }, bytes.size.toLong())
+    flush()
 }
 
 /** Unknown ids answer "no preview", which is what the real seam does for an item without one. */
@@ -566,6 +590,9 @@ internal class ExplodingVaultItems : VaultItems {
     ): Outcome<ByteArray> = Outcome.Ok(byteArrayOf(1))
 
     override fun thumbnail(id: ByteArray): Outcome<ByteArray?> = Outcome.Ok(null)
+
+    override fun open(id: ByteArray, sink: RawSink): Outcome<Unit> =
+        Outcome.Err(VaultError.Io(IllegalStateException("catalog unreadable")))
 }
 
 /** A seam whose import blows up rather than returning — the "should never happen" path. */
@@ -595,6 +622,8 @@ internal class ThrowingVaultItems : VaultItems {
     ): Outcome<ByteArray> = throw IllegalStateException("import exploded")
 
     override fun thumbnail(id: ByteArray): Outcome<ByteArray?> = NO_THUMBNAIL
+
+    override fun open(id: ByteArray, sink: RawSink): Outcome<Unit> = throw IllegalStateException("open exploded")
 }
 
 /** A seam that behaves like an import interrupted by a lock cancelling the scope. */
@@ -626,6 +655,9 @@ internal class CancellingVaultItems : VaultItems {
     ): Outcome<ByteArray> = throw CancellationException("the session was torn down mid-import")
 
     override fun thumbnail(id: ByteArray): Outcome<ByteArray?> = NO_THUMBNAIL
+
+    override fun open(id: ByteArray, sink: RawSink): Outcome<Unit> =
+        throw CancellationException("the session was torn down mid-open")
 }
 
 internal fun summary(
