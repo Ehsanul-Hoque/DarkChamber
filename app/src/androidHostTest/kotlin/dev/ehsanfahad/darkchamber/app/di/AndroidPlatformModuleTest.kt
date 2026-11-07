@@ -3,9 +3,11 @@ package dev.ehsanfahad.darkchamber.app.di
 import android.content.Context
 import android.content.ContextWrapper
 import dev.ehsanfahad.darkchamber.app.camera.AndroidCameraController
+import dev.ehsanfahad.darkchamber.app.image.AndroidViewerImageDecoder
 import dev.ehsanfahad.darkchamber.app.thumbnail.AndroidThumbnailEncoder
 import dev.ehsanfahad.darkchamber.core.vault.ThumbnailEncoder
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraController
+import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerImageDecoder
 import org.koin.dsl.koinApplication
 import org.koin.dsl.module
 import kotlin.test.Test
@@ -43,6 +45,17 @@ class AndroidPlatformModuleTest {
         }
         try {
             assertIs<AndroidCameraController>(app.koin.get<CameraController>())
+        } finally {
+            app.close()
+        }
+    }
+
+    /** The viewer has no fallback decoder; a missing binding would be a viewer that draws nothing. */
+    @Test
+    fun the_platform_module_binds_the_android_viewer_decoder() {
+        val app = koinApplication { modules(platformModule()) }
+        try {
+            assertIs<AndroidViewerImageDecoder>(app.koin.getOrNull<ViewerImageDecoder>())
         } finally {
             app.close()
         }

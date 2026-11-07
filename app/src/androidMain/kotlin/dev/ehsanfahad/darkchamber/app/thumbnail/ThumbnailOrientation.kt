@@ -1,6 +1,9 @@
 package dev.ehsanfahad.darkchamber.app.thumbnail
 
+import android.graphics.Bitmap
+import android.graphics.Matrix
 import androidx.exifinterface.media.ExifInterface
+import java.io.InputStream
 
 /**
  * What has to be done to a decoded bitmap for it to look like the photo the user took.
@@ -54,5 +57,47 @@ internal fun orientationTransform(orientation: Int): ThumbnailTransform = when (
  */
 internal fun carriesOrientation(mime: String): Boolean =
     ORIENTED_MIMES.any { mime.equals(it, ignoreCase = true) }
+
+/** What an image with no orientation tag needs doing to it: nothing. */
+internal val UPRIGHT = ThumbnailTransform(degrees = 0, mirrored = false)
+
+/**
+ * The orientation tag read from the stream [open] returns, or "nothing to do" — which is the answer
+ * for most images and for every failure to read one.
+ *
+ * A failure here is never an error: an unreadable tag means the picture is drawn the way the decoder
+ * produced it. `ExifInterface` reads the header and stops.
+ */
+internal fun readOrientation(open: () -> InputStream): ThumbnailTransform {
+    val orientation = try {
+        open().use { stream ->
+            ExifInterface(stream).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
+        }
+    } catch (_: Exception) {
+        return UPRIGHT
+    }
+    return orientationTransform(orientation)
+}
+
+/**
+ * Applies the rotation and flip [transform] asks for; returns the receiver when there is none, or when
+ * the platform will not make the copy — out of memory, or a bitmap it declines to copy. A sideways
+ * picture beats none. The caller compares by identity before recycling.
+ */
+internal fun Bitmap.transformedBy(transform: ThumbnailTransform): Bitmap {
+    if (transform.isIdentity) return this
+    val matrix = Matrix().apply {
+        // Mirror before rotating, which is the order the tag's own vocabulary is defined in.
+        if (transform.mirrored) postScale(-1f, 1f)
+        if (transform.degrees != 0) postRotate(transform.degrees.toFloat())
+    }
+    return try {
+        Bitmap.createBitmap(this, 0, 0, width, height, matrix, true)
+    } catch (_: Exception) {
+        this
+    } catch (_: OutOfMemoryError) {
+        this
+    }
+}
 
 private val ORIENTED_MIMES = listOf("image/jpeg", "image/jpg", "image/heic", "image/heif")

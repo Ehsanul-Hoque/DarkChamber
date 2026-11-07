@@ -8,6 +8,7 @@ import dev.ehsanfahad.darkchamber.app.auth.AndroidBiometricAuthenticator
 import dev.ehsanfahad.darkchamber.app.auth.DefaultActivityHolder
 import dev.ehsanfahad.darkchamber.app.camera.AndroidCameraController
 import dev.ehsanfahad.darkchamber.app.camera.AndroidFreeSpace
+import dev.ehsanfahad.darkchamber.app.image.AndroidViewerImageDecoder
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraController
 import dev.ehsanfahad.darkchamber.feature.camera.api.FreeSpace
 import dev.ehsanfahad.darkchamber.app.picker.AndroidFilePicker
@@ -25,6 +26,7 @@ import dev.ehsanfahad.darkchamber.core.model.VaultError
 import dev.ehsanfahad.darkchamber.core.vault.ThumbnailEncoder
 import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
 import dev.ehsanfahad.darkchamber.feature.vault.api.PhotoPicker
+import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerImageDecoder
 import kotlinx.io.files.Path
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.module.Module
@@ -71,6 +73,8 @@ actual fun platformModule(): Module = module {
     // Decodes a preview during import. Stateless and context-free — BitmapFactory works on the
     // stream the vault hands it, so nothing platform-scoped has to be threaded in here.
     single<ThumbnailEncoder> { AndroidThumbnailEncoder() }
+    // Decodes an image for the viewer, from memory. Stateless for the same reason as the encoder.
+    single<ViewerImageDecoder> { AndroidViewerImageDecoder() }
     // The application context, not an activity: the scheduled clear outlives the screen that copied.
     single<SecretClipboard> { AndroidSecretClipboard(androidContext()) }
     single<CatalogProvider> {
