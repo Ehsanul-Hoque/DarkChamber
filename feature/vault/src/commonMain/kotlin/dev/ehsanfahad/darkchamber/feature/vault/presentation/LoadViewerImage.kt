@@ -3,8 +3,9 @@ package dev.ehsanfahad.darkchamber.feature.vault.presentation
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
+import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerPage
 import dev.ehsanfahad.darkchamber.feature.vault.domain.VaultItems
-import kotlinx.coroutines.CoroutineDispatcher
+import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.cancellation.CancellationException
@@ -60,7 +61,7 @@ internal sealed interface LoadedPage<out T> {
 internal class LoadViewerImage<T>(
     private val items: VaultItems,
     private val decode: (bytes: ByteArray, targetLongEdge: Int) -> T?,
-    private val io: CoroutineDispatcher,
+    private val io: CoroutineContext,
     private val cap: Long = IMAGE_CAP,
     private val newBuffer: (size: Int) -> ByteArray = { ByteArray(it) },
 ) {

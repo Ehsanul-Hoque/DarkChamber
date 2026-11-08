@@ -7,6 +7,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.FakeVaultItems
 import dev.ehsanfahad.darkchamber.feature.vault.ManualDispatcher
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
+import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerPage
 import dev.ehsanfahad.darkchamber.feature.vault.writeBytes
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch

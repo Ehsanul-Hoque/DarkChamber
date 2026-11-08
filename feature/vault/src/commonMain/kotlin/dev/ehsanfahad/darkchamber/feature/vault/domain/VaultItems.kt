@@ -137,4 +137,11 @@ internal interface VaultItems {
      * of a tampered or truncated object, and must be dropped, never drawn.
      */
     fun open(id: ByteArray, sink: RawSink): Outcome<Unit>
+
+    /**
+     * Crypto-shred the item [id]: its catalog row goes first — the row holds its only wrapped key, so
+     * the item is unreadable the moment that commits — then its files, best effort. `Ok` once the row
+     * is gone; `Err` means nothing was deleted, including for an id that is no longer there.
+     */
+    fun shred(id: ByteArray): Outcome<Unit>
 }

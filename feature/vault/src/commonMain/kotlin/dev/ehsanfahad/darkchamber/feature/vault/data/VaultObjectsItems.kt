@@ -61,4 +61,6 @@ internal class VaultObjectsItems(private val objects: VaultObjects) : VaultItems
     override fun thumbnail(id: ByteArray): Outcome<ByteArray?> = objects.openThumbnail(id)
 
     override fun open(id: ByteArray, sink: RawSink): Outcome<Unit> = objects.openObject(id, sink)
+
+    override fun shred(id: ByteArray): Outcome<Unit> = objects.shredObject(id)
 }

@@ -392,6 +392,8 @@ internal class FakeVaultItems(
     private val onOpen: (id: ByteArray, sink: RawSink) -> Outcome<Unit> = { _, _ ->
         Outcome.Err(VaultError.Io(NoSuchElementException("no such object")))
     },
+    /** What a shred answers. The default succeeds; the listing is the test's to change, as the catalog's would. */
+    private val onShred: (id: ByteArray) -> Outcome<Unit> = { Outcome.Ok(Unit) },
 ) : VaultItems {
     var thumbnailCalls = 0
         private set
@@ -544,6 +546,14 @@ internal class FakeVaultItems(
         openCalls++
         return onOpen(id, sink)
     }
+
+    /** Every id a shred was asked for, in order, as content (a list compares by value). */
+    val shredded = mutableListOf<List<Byte>>()
+
+    override fun shred(id: ByteArray): Outcome<Unit> {
+        shredded += id.toList()
+        return onShred(id)
+    }
 }
 
 /** Write [bytes] into [sink] the way the codec does: through a buffer, then flush. */
@@ -593,6 +603,9 @@ internal class ExplodingVaultItems : VaultItems {
 
     override fun open(id: ByteArray, sink: RawSink): Outcome<Unit> =
         Outcome.Err(VaultError.Io(IllegalStateException("catalog unreadable")))
+
+    override fun shred(id: ByteArray): Outcome<Unit> =
+        Outcome.Err(VaultError.Io(IllegalStateException("catalog unreadable")))
 }
 
 /** A seam whose import blows up rather than returning — the "should never happen" path. */
@@ -624,6 +637,8 @@ internal class ThrowingVaultItems : VaultItems {
     override fun thumbnail(id: ByteArray): Outcome<ByteArray?> = NO_THUMBNAIL
 
     override fun open(id: ByteArray, sink: RawSink): Outcome<Unit> = throw IllegalStateException("open exploded")
+
+    override fun shred(id: ByteArray): Outcome<Unit> = throw IllegalStateException("shred exploded")
 }
 
 /** A seam that behaves like an import interrupted by a lock cancelling the scope. */
@@ -658,6 +673,9 @@ internal class CancellingVaultItems : VaultItems {
 
     override fun open(id: ByteArray, sink: RawSink): Outcome<Unit> =
         throw CancellationException("the session was torn down mid-open")
+
+    override fun shred(id: ByteArray): Outcome<Unit> =
+        throw CancellationException("the session was torn down mid-shred")
 }
 
 internal fun summary(

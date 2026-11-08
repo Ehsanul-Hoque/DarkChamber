@@ -2,25 +2,7 @@ package dev.ehsanfahad.darkchamber.feature.vault.presentation
 
 import dev.ehsanfahad.darkchamber.core.model.VaultError
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
-
-/** What one page of the viewer shows. */
-internal sealed interface ViewerPage {
-    data object Loading : ViewerPage
-
-    data object Picture : ViewerPage
-
-    data class NotViewable(val badge: String) : ViewerPage
-
-    data object TooLarge : ViewerPage
-
-    data object CantShow : ViewerPage
-
-    data object Unverified : ViewerPage
-
-    data object NeedsUpdate : ViewerPage
-
-    data object CouldntOpen : ViewerPage
-}
+import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerPage
 
 /** What to do with an item before anything is read. */
 internal sealed interface OpenPlan {
