@@ -186,6 +186,7 @@ fun vaultViewerComponent(
     return DefaultVaultViewerComponent(
         componentContext = componentContext,
         observeGallery = ObserveGallery(items),
+        observeAlbum = ObserveAlbum(items),
         load = loader::load,
         shred = { id -> shredItem(id) },
         filter = filter,

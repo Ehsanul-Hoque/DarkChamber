@@ -117,7 +117,15 @@ class SecurityArchitectureTest {
             // The **call**, not the name: the first version of this looked for the bare identifier
             // and was satisfied by the import line, so deleting the call from a dialog while
             // leaving the import — the exact shape of an accidental removal — passed.
-            .filterNot { codeOf(it).contains("$EXCLUDES_FROM_STRUCTURES()") }
+            //
+            // And **one call per window**: a file opening a sheet and a dialog with one exclusion
+            // between them passed while asking only whether the file mentioned it — measured by
+            // removing the sheet's call from a file that kept the dialog's.
+            .filter { file ->
+                val code = codeOf(file)
+                Regex(Regex.escape("$EXCLUDES_FROM_STRUCTURES()")).findAll(code).count() <
+                    OPENS_A_WINDOW.findAll(code).count()
+            }
 
         assertTrue(
             violations.isEmpty(),
@@ -125,7 +133,7 @@ class SecurityArchitectureTest {
                 appendLine(
                     "A window is opened without excluding it from the platform's autofill " +
                         "and content-capture structures (hard rules #1/#5). Call " +
-                        "$EXCLUDES_FROM_STRUCTURES() inside the window's content.",
+                        "$EXCLUDES_FROM_STRUCTURES() inside each window's content — one per window.",
                 )
                 violations.forEach { appendLine("  ${it.projectPath}") }
             },

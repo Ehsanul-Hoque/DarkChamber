@@ -10,6 +10,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultViewerComponent
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerState
 import dev.ehsanfahad.darkchamber.feature.vault.domain.GalleryControls
+import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveAlbum
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveGallery
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ViewerPosition
 import dev.ehsanfahad.darkchamber.feature.vault.domain.following
@@ -27,6 +28,10 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
+import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
+import dev.ehsanfahad.darkchamber.feature.vault.domain.AlbumPresence
 import kotlinx.coroutines.launch
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerDeleteStage
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerNotice
@@ -53,6 +58,7 @@ import kotlin.coroutines.CoroutineContext
 internal open class ViewerComponent<T>(
     componentContext: ComponentContext,
     observeGallery: ObserveGallery,
+    observeAlbum: ObserveAlbum,
     private val load: suspend (item: GalleryItem, targetLongEdge: Int) -> LoadedPage<T>,
     private val shred: suspend (id: ByteArray) -> Outcome<Unit>,
     filter: ItemFilter,
@@ -94,13 +100,25 @@ internal open class ViewerComponent<T>(
 
         // The gallery's own pipeline, keyed by the filter alone; the order and the search are fixed
         // for the viewer's life and applied downstream, so the sequence is exactly the grid's.
-        observeGallery(filter, flowOf(controls))
+        val listing = observeGallery(filter, flowOf(controls)).map { it.items }
+        // The grid names an item's album only on the whole vault; inside an album the question does
+        // not arise there. Details asks it, so here every item in an album's listing carries that
+        // album's name — following a rename, and saying so when the name will not open.
+        val named = if (filter is ItemFilter.Album) {
+            combine(listing, observeAlbum(filter.id)) { items, presence ->
+                val name = (presence as? AlbumPresence.Present)?.name
+                items.map { it.inAlbum(name) }
+            }
+        } else {
+            listing
+        }
+        named
             .catch { cause ->
                 // A listing that cannot be read leaves nothing to show. The grid behind reports it.
                 logVaultError(LISTING_STAGE, VaultError.Unexpected(cause))
                 close(position?.id ?: startId)
             }
-            .onEach { listing -> onListing(listing.items) }
+            .onEach(::onListing)
             .launchIn(scope)
     }
 
@@ -214,6 +232,9 @@ internal open class ViewerComponent<T>(
         onBack(lastViewedId)
     }
 
+    private fun GalleryItem.inAlbum(name: AlbumTileName?): GalleryItem =
+        GalleryItem(id = id, kind = kind, size = size, createdAt = createdAt, meta = meta, album = name)
+
     private companion object {
         const val LISTING_STAGE = "viewer.listing"
     }
@@ -223,6 +244,7 @@ internal open class ViewerComponent<T>(
 internal class DefaultVaultViewerComponent(
     componentContext: ComponentContext,
     observeGallery: ObserveGallery,
+    observeAlbum: ObserveAlbum,
     load: suspend (item: GalleryItem, targetLongEdge: Int) -> LoadedPage<ImageBitmap>,
     shred: suspend (id: ByteArray) -> Outcome<Unit>,
     filter: ItemFilter,
@@ -231,5 +253,5 @@ internal class DefaultVaultViewerComponent(
     onBack: (lastViewedId: ByteArray) -> Unit,
     mainContext: CoroutineContext = Dispatchers.Main,
 ) : ViewerComponent<ImageBitmap>(
-    componentContext, observeGallery, load, shred, filter, controls, startId, onBack, mainContext,
+    componentContext, observeGallery, observeAlbum, load, shred, filter, controls, startId, onBack, mainContext,
 ), VaultViewerComponent

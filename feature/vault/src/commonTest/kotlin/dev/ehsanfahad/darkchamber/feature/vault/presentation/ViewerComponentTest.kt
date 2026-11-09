@@ -22,6 +22,9 @@ import dev.ehsanfahad.darkchamber.feature.vault.ManualDispatcher
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerDeleteStage
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerNotice
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ShredItem
+import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveAlbum
+import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
+import dev.ehsanfahad.darkchamber.core.vault.AlbumSummary
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -66,6 +69,7 @@ class ViewerComponentTest {
     ) = ViewerComponent(
         componentContext = DefaultComponentContext(lifecycle),
         observeGallery = ObserveGallery(items),
+        observeAlbum = ObserveAlbum(items),
         load = load,
         shred = shred,
         filter = filter,
@@ -190,6 +194,46 @@ class ViewerComponentTest {
 
         assertEquals(1, items.observeCalls)
     }
+
+    // ---- which album an item is in -----------------------------------------------------------------
+
+    /**
+     * The grid's own album listing fills in an item's album only on the whole vault — inside an album
+     * the question does not arise there. The viewer's Details does ask it, so from inside an album
+     * every item carries that album's name, and follows a rename.
+     */
+    @Test
+    fun viewed_from_inside_an_album_every_item_carries_that_albums_name() = runTest {
+        val albumId = byteArrayOf(7)
+        val album = ItemFilter.Album(albumId.copyOf())
+        val items = FakeVaultItems()
+        items.summariesByFilter[album] = MutableStateFlow(listOf(item(1), item(2)))
+        items.albums.value = listOf(albumSummary(albumId.copyOf(), Outcome.Ok("Holiday")))
+
+        val viewer = viewer(items, start = 1, filter = album)
+
+        assertEquals(
+            listOf(AlbumTileName.Readable("Holiday"), AlbumTileName.Readable("Holiday")),
+            viewer.state.value.items.map { it.album },
+        )
+
+        items.albums.value = listOf(albumSummary(albumId.copyOf(), Outcome.Err(VaultError.Crypto.IntegrityFailure)))
+        assertEquals(AlbumTileName.Unreadable, viewer.state.value.items.first().album, "a name that will not open says so")
+    }
+
+    @Test
+    fun the_unfiled_listing_names_no_album() = runTest {
+        val items = FakeVaultItems()
+        items.summariesByFilter[ItemFilter.Unfiled] = MutableStateFlow(listOf(item(1)))
+        items.albums.value = listOf(albumSummary(byteArrayOf(7), Outcome.Ok("Holiday")))
+
+        val viewer = viewer(items, start = 1, filter = ItemFilter.Unfiled)
+
+        assertNull(viewer.state.value.items.single().album)
+    }
+
+    private fun albumSummary(id: ByteArray, name: Outcome<String>) =
+        AlbumSummary(id = id, name = name, itemCount = 0, coverItemId = null, createdAt = 1L)
 
     // ---- the pages: what is decoded, and when ------------------------------------------------------
 

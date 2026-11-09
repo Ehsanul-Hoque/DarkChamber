@@ -3,6 +3,7 @@ package dev.ehsanfahad.darkchamber.feature.vault.presentation
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
+import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerNotice
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerPage
 import dev.ehsanfahad.darkchamber.feature.vault.api.label
 
@@ -91,6 +92,30 @@ internal object ViewerFormat {
 
     /** The catalog deletes all or nothing, so this is true; why it failed is not known, so no why. */
     fun deleteFailed(): String = "Couldn't delete. Nothing was deleted."
+
+    /** What the viewer says after a delete from it — always one file. */
+    fun notice(notice: ViewerNotice): String =
+        when (notice) {
+            ViewerNotice.Deleted -> deleted(1)
+            ViewerNotice.DeleteFailed -> deleteFailed()
+        }
+
+    /** The mark drawn above a page's message. */
+    fun pageBadge(page: ViewerPage, meta: GalleryItemMeta): String =
+        when {
+            page is ViewerPage.NotViewable -> page.badge
+            page == ViewerPage.Unverified -> WARNING_BADGE
+            meta is GalleryItemMeta.Readable -> GalleryFormat.typeBadge(meta.mime)
+            else -> WARNING_BADGE
+        }
+
+    fun cancel(): String = "Cancel"
+
+    /** The confirm button once pressed: the only thing saying why the buttons stopped responding. */
+    fun deleting(): String = "Deleting…"
+
+    /** The grid's mark for something that could not be verified. */
+    private const val WARNING_BADGE = "!"
 
     fun back(): String = "Back"
 

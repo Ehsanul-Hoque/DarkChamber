@@ -3,6 +3,7 @@ package dev.ehsanfahad.darkchamber.feature.vault.presentation
 import dev.ehsanfahad.darkchamber.core.model.VaultItemKind
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
+import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerNotice
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerPage
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
 import dev.ehsanfahad.darkchamber.feature.vault.api.label
@@ -195,6 +196,33 @@ class ViewerFormatTest {
         assertEquals("1 file deleted.", ViewerFormat.deleted(1))
         assertEquals("5 files deleted.", ViewerFormat.deleted(5))
         assertEquals("Nothing was deleted.", ViewerFormat.deleted(0))
+    }
+
+    /**
+     * A page with no picture still says what kind of file it is, as the grid's tile does — and a page
+     * that failed its check, or whose details will not open, carries the grid's warning mark instead.
+     */
+    @Test
+    fun a_page_without_a_picture_carries_the_grids_badge() {
+        val jpeg = GalleryItemMeta.Readable("a.jpg", "image/jpeg")
+        assertEquals("VID", ViewerFormat.pageBadge(ViewerPage.NotViewable("VID"), GalleryItemMeta.Readable("a.mp4", "video/mp4")))
+        assertEquals(GalleryFormat.typeBadge("image/jpeg"), ViewerFormat.pageBadge(ViewerPage.TooLarge, jpeg))
+        assertEquals(GalleryFormat.typeBadge("image/jpeg"), ViewerFormat.pageBadge(ViewerPage.CantShow, jpeg))
+        assertEquals("!", ViewerFormat.pageBadge(ViewerPage.Unverified, jpeg))
+        assertEquals("!", ViewerFormat.pageBadge(ViewerPage.CouldntOpen, GalleryItemMeta.Unreadable))
+    }
+
+    @Test
+    fun the_dialogs_buttons_say_what_they_do() {
+        assertEquals("Cancel", ViewerFormat.cancel())
+        assertEquals("Deleting…", ViewerFormat.deleting())
+    }
+
+    /** The viewer deletes one file at a time, and says which way it went. */
+    @Test
+    fun the_viewers_notice_is_the_one_file_result_or_the_refusal() {
+        assertEquals("1 file deleted.", ViewerFormat.notice(ViewerNotice.Deleted))
+        assertEquals("Couldn't delete. Nothing was deleted.", ViewerFormat.notice(ViewerNotice.DeleteFailed))
     }
 
     /** A refused delete is all or nothing in the catalog, so "nothing was deleted" is true; why is unknown. */
