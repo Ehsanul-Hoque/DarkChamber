@@ -69,6 +69,22 @@ interface VaultGalleryComponent {
     /** Tap a tile while selecting: add it or remove it. A no-op outside selecting mode. */
     fun toggleItem(id: ByteArray)
 
+    /**
+     * Tap a tile: while selecting, add it or remove it; otherwise open it in the viewer, which is
+     * navigation and so leaves through the host's callback, carrying the order and search the grid is
+     * showing so the viewer swipes through the same sequence.
+     */
+    fun tapItem(id: ByteArray)
+
+    /**
+     * Back from the viewer: bring the item last viewed into view, if it is still listed. Published as
+     * [GalleryState.revealKey] for the screen to act on once.
+     */
+    fun revealItem(id: ByteArray)
+
+    /** The screen has acted on [GalleryState.revealKey]. */
+    fun revealHandled()
+
     /** Select everything the screen is currently showing — which inside an album is that album. */
     fun selectAllItems()
 
@@ -217,6 +233,11 @@ data class GalleryState(
      * from a vault that is genuinely empty, and the screen would go back to saying so.
      */
     val listingUnreadable: Boolean = false,
+    /**
+     * The item to bring into view, as its id in lower-case hex — set on the way back from the viewer,
+     * cleared once the screen has acted. An id, never content.
+     */
+    val revealKey: String? = null,
 ) {
     /** Whether a batch is between the user asking for one and it ending. */
     val importing: Boolean get() = batch is ImportState.Picking || batch is ImportState.Running

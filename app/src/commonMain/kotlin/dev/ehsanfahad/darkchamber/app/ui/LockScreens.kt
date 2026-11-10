@@ -60,6 +60,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryScope
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultThumbnail
 import dev.ehsanfahad.darkchamber.feature.vault.presentation.VaultAlbumsContent
 import dev.ehsanfahad.darkchamber.feature.vault.presentation.VaultGalleryContent
+import dev.ehsanfahad.darkchamber.feature.vault.presentation.VaultViewerContent
 
 /**
  * The shared UI for the session gate (docs/DESIGN.md). Copy is honest (hard rule #6): the recovery
@@ -349,7 +350,7 @@ private fun ScreenBar(component: UnlockedComponent, child: UnlockedChild) {
     // above, and a crumb that did not follow it would be the only stale name on screen.
     val gallery = when (child) {
         is UnlockedChild.Gallery -> child.component.state.subscribeAsState().value
-        is UnlockedChild.Albums, is UnlockedChild.Camera -> null
+        is UnlockedChild.Albums, is UnlockedChild.Camera, is UnlockedChild.Viewer -> null
     }
     UnlockedBar(
         onLock = component::lock,
@@ -385,6 +386,10 @@ private fun UnlockedScreen(component: UnlockedComponent, child: UnlockedChild) {
         // builds a loader of its own, so the lock's cache clear covers it.
         // Held upright for as long as it is composed, so it is released when the screen is popped and
         // when a lock replaces the subtree.
+        // Full-screen, under the system bars, with its own bars inside the insets. It decodes through
+        // its own seam rather than the grid's loader, and holds its pictures in its own component,
+        // which the lock destroys with the subtree.
+        is UnlockedChild.Viewer -> VaultViewerContent(child.component)
         is UnlockedChild.Camera -> {
             HoldPortrait()
             component.imageLoader?.let { loader ->

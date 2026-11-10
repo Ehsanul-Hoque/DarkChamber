@@ -40,6 +40,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -110,7 +111,8 @@ internal fun GalleryScreen(
     onKeepOriginals: () -> Unit,
     onDismissError: () -> Unit,
     onSelectItem: (ByteArray) -> Unit,
-    onToggleItem: (ByteArray) -> Unit,
+    onTapItem: (ByteArray) -> Unit,
+    onRevealHandled: () -> Unit,
     onSelectAll: () -> Unit,
     onClearSelection: () -> Unit,
     onStartFiling: () -> Unit,
@@ -146,6 +148,18 @@ internal fun GalleryScreen(
     // it at the moment of the tap — see [BrowsingScroll].
     val gridState = rememberLazyGridState()
     val scroll = rememberBrowsingScroll(gridState, state.items, state.search)
+
+    // Back from the viewer: bring the item last viewed into view, once. From a side effect for the
+    // reason the re-order scroll uses one — asked for before the frame is measured, never drawn in
+    // the wrong place first. Left alone when it is already on screen or no longer listed.
+    state.revealKey?.let { key ->
+        SideEffect {
+            val visible = gridState.layoutInfo.visibleItemsInfo
+            val range = if (visible.isEmpty()) IntRange.EMPTY else visible.first().index..visible.last().index
+            revealScroll(state.items, key, range)?.let { gridState.requestScrollToItem(it) }
+            onRevealHandled()
+        }
+    }
 
     // No insets here: the host applies them once for the whole unlocked subtree, so a screen that
     // added its own would inset twice.
@@ -205,7 +219,7 @@ internal fun GalleryScreen(
                     bottomInset = barHeight,
                     selection = state.selection,
                     onSelectItem = onSelectItem,
-                    onToggleItem = onToggleItem,
+                    onTapItem = onTapItem,
                 )
             }
         }
@@ -1235,7 +1249,7 @@ private fun ItemGrid(
     bottomInset: Dp,
     selection: GallerySelection,
     onSelectItem: (ByteArray) -> Unit,
-    onToggleItem: (ByteArray) -> Unit,
+    onTapItem: (ByteArray) -> Unit,
 ) {
     val spacing = DarkChamberTheme.spacing
     val arrival = tileArrival(DarkChamberTheme.motion, prefersReducedMotion(), reordering)
@@ -1273,7 +1287,7 @@ private fun ItemGrid(
                 selecting = selection.active,
                 selected = selection.contains(item.id),
                 onLongPress = { onSelectItem(item.id) },
-                onTap = { onToggleItem(item.id) },
+                onTap = { onTapItem(item.id) },
                 modifier = Modifier.animateItem(
                     fadeInSpec = arrival.fadeIn?.let { tween(it) },
                     placementSpec = arrival.placement?.let { tween<IntOffset>(it) },
@@ -1305,10 +1319,10 @@ private fun ItemTile(
             // The whole tile is the target, caption included: a thumbnail is a small thing to hit,
             // and the name under it is part of what the user is pointing at.
             //
-            // A tap does nothing outside selecting mode. Opening an item is the viewers' work, and
-            // wiring a tap to anything now would be inventing a behaviour that has to be taken back.
+            // A tap toggles while selecting and opens the item otherwise — decided by the component
+            // (`tapItem`), not here, so the tile never branches on a mode the component also tracks.
             .combinedClickable(
-                onClick = { if (selecting) onTap() },
+                onClick = onTap,
                 onLongClick = onLongPress,
             ),
     ) {

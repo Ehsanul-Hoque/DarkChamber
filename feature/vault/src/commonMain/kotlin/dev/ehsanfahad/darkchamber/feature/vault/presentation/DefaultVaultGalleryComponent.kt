@@ -125,6 +125,9 @@ internal class DefaultVaultGalleryComponent(
     // Where the camera button goes. The host opens the camera on this listing — the destination is
     // the screen's own filter, which the host already holds.
     private val onOpenCamera: () -> Unit = {},
+    // Where opening an item goes: the viewer, on this listing, in the order and under the search the
+    // grid is showing at the tap.
+    private val onOpenItem: (id: ByteArray, order: GalleryOrder, query: String) -> Unit = { _, _, _ -> },
 ) : VaultGalleryComponent, ComponentContext by componentContext {
 
     /**
@@ -343,6 +346,25 @@ internal class DefaultVaultGalleryComponent(
     }
 
     override fun toggleItem(id: ByteArray) = selection.toggle(id)
+
+    override fun tapItem(id: ByteArray) {
+        if (_state.value.selection.active) {
+            selection.toggle(id)
+            return
+        }
+        // What the grid is showing at the tap, read from the controls the listing is built from — so
+        // the viewer's sequence is this one. A closed search filters nothing and hands on nothing.
+        val shown = controls.value
+        onOpenItem(id, shown.order, shown.query)
+    }
+
+    override fun revealItem(id: ByteArray) {
+        _state.value = _state.value.copy(revealKey = id.toListKey())
+    }
+
+    override fun revealHandled() {
+        _state.value = _state.value.copy(revealKey = null)
+    }
 
     override fun selectAllItems() = selection.selectAll()
 

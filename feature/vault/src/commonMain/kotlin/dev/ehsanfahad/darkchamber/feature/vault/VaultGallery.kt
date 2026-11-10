@@ -106,6 +106,10 @@ fun vaultGalleryComponent(
     // Where the camera button goes. The host opens the camera with this listing's filter as its
     // destination; this component never learns that a camera exists.
     onOpenCamera: () -> Unit = {},
+    // Where a tap on a tile goes outside selecting: the viewer, on this listing, with the order and
+    // the search the grid is showing. The query is part of a file name the user typed — hand it on in
+    // memory, never through a navigation config.
+    onOpenItem: (id: ByteArray, order: GalleryOrder, query: String) -> Unit = { _, _, _ -> },
 ): VaultGalleryComponent {
     val items = VaultObjectsItems(vaultObjects)
     return DefaultVaultGalleryComponent(
@@ -123,6 +127,7 @@ fun vaultGalleryComponent(
         openedAlbumName = openedAlbumName,
         onLeaveAlbum = onLeaveAlbum,
         onOpenCamera = onOpenCamera,
+        onOpenItem = onOpenItem,
     )
 }
 

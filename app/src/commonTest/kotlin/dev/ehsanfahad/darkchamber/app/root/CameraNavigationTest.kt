@@ -287,10 +287,11 @@ class CameraNavigationTest {
 
     /**
      * The camera is drawn without the vault's bar — its own ✕ is the way out, and the bar's lock
-     * button and crumb would sit on top of a viewfinder. Every other screen keeps it.
+     * button and crumb would sit on top of a viewfinder. The grid keeps it. (The viewer hides it too,
+     * for its own reasons; `ViewerNavigationTest` says so.)
      */
     @Test
-    fun only_the_camera_hides_the_vault_bar() = runTest {
+    fun the_camera_hides_the_vault_bar_and_the_grid_keeps_it() = runTest {
         val component = component(openVault())
         assertTrue(showsUnlockedBar(component.active), "the grid")
 

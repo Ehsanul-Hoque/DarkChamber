@@ -40,6 +40,8 @@ internal fun crumbFor(child: UnlockedChild, gallery: GalleryState?): String? =
         // Drawn without the bar (see [showsUnlockedBar]); its own top bar names its destination.
         is UnlockedChild.Camera -> null
 
+        is UnlockedChild.Viewer -> null
+
         is UnlockedChild.Gallery -> when (val listing = child.scope) {
             // The vault *is* the destination, so a second label would repeat the name beside it.
             GalleryScope.WholeVault -> null
@@ -55,7 +57,9 @@ internal fun crumbFor(child: UnlockedChild, gallery: GalleryState?): String? =
  * ✕, and the vault's lock button and crumb would sit over the viewfinder. The vault still locks on
  * background and from the power button, so nothing about locking is lost with the button.
  */
-internal fun showsUnlockedBar(child: UnlockedChild): Boolean = child !is UnlockedChild.Camera
+internal fun showsUnlockedBar(child: UnlockedChild): Boolean =
+    // Nor above the viewer, which draws its own bars over the picture and hides them on a tap.
+    child !is UnlockedChild.Camera && child !is UnlockedChild.Viewer
 
 /**
  * Whether the host keeps [child] clear of the system bars. Not the camera: its black and its
@@ -63,7 +67,9 @@ internal fun showsUnlockedBar(child: UnlockedChild): Boolean = child !is Unlocke
  * padded from outside, the viewfinder would stop short of the edges with a strip of nothing above
  * and below it.
  */
-internal fun paddedByHost(child: UnlockedChild): Boolean = child !is UnlockedChild.Camera
+internal fun paddedByHost(child: UnlockedChild): Boolean =
+    // Nor the viewer, for the same reason: the picture runs under the system bars.
+    child !is UnlockedChild.Camera && child !is UnlockedChild.Viewer
 
 /** The same word the entry point that leads here uses, and the one the feature's own copy uses. */
 private const val ALBUMS = "Albums"

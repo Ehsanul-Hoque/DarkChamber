@@ -31,6 +31,10 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.label
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultAlbumsComponent
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultGalleryComponent
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultImports
+import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryOrder
+import dev.ehsanfahad.darkchamber.feature.vault.api.VaultViewerComponent
+import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerImageDecoder
+import dev.ehsanfahad.darkchamber.feature.vault.vaultViewerComponent
 import dev.ehsanfahad.darkchamber.feature.vault.vaultAlbumsComponent
 import dev.ehsanfahad.darkchamber.feature.vault.vaultGalleryComponent
 import dev.ehsanfahad.darkchamber.feature.vault.vaultImageLoader
@@ -130,7 +134,7 @@ interface UnlockedComponent : BackHandlerOwner {
     fun onBack()
 }
 
-/** A screen inside the unlocked subtree. Viewers join this list once the seekable read path exists. */
+/** A screen inside the unlocked subtree. */
 sealed interface UnlockedChild {
     /**
      * The item grid. The same child serves the whole vault, one album and the unfiled items — which
@@ -147,6 +151,9 @@ sealed interface UnlockedChild {
 
     /** The camera, opened on the listing beneath it and drawn full-screen over the chrome. */
     class Camera(val component: CameraComponent) : UnlockedChild
+
+    /** The viewer, swiping through the listing that opened it, drawn full-screen over the chrome. */
+    class Viewer(val component: VaultViewerComponent) : UnlockedChild
 }
 
 class DefaultUnlockedComponent(
@@ -391,9 +398,13 @@ class DefaultUnlockedComponent(
     // Except the camera, which is left through its own close, as ✕ leaves it: a recording in
     // progress is finalized and handed to the save lane before the camera pops itself. Popping it
     // here would destroy the screen mid-recording, and a destroyed camera abandons its clip.
+    //
+    // And the viewer, left through its own back so the item last viewed is reported on the way out —
+    // a plain pop would return to the grid without it.
     override fun onBack() {
         when (val top = stack.value.active.instance) {
             is UnlockedChild.Camera -> top.component.close()
+            is UnlockedChild.Viewer -> top.component.back()
             else -> navigation.pop()
         }
     }
@@ -440,6 +451,19 @@ class DefaultUnlockedComponent(
      */
     private var openingAlbum: Pair<String, AlbumTileName>? = null
 
+    /**
+     * The order and search the grid was showing as a tile was tapped, for the viewer being built for
+     * that tap.
+     *
+     * **Not in the [Config]**, for [openingAlbum]'s reason and a stronger one: a search is a fragment
+     * of a file name the user typed. Set, pushed, cleared in one call — the push builds the child
+     * synchronously — so it exists only while that one viewer is built, and no other screen can see
+     * it; keying it to the config as well was tried and could not be told apart. A viewer built with
+     * no handoff (a host that restored the stack, a way in other than a tile) shows newest first,
+     * unsearched.
+     */
+    private var openingViewer: Pair<GalleryOrder, String>? = null
+
     private fun createChild(config: Config, context: ComponentContext): UnlockedChild =
         when (config) {
             is Config.Gallery -> {
@@ -469,6 +493,15 @@ class DefaultUnlockedComponent(
                     // where an import from here would. `pushNew` for the reason the albums entry
                     // gives — a double tap must be one camera, not a duplicate-config exception.
                     onOpenCamera = { navigation.pushNew(Config.Camera(config.filter)) },
+                    // A tile tapped outside selecting opens the viewer on this listing. Set, pushed,
+                    // cleared — as the album name is — so the order and the typed search reach the
+                    // viewer being built and nothing holds them afterwards. `pushNew` for the reason
+                    // the camera's entry gives: a double tap is one viewer.
+                    onOpenItem = { id, order, query ->
+                        openingViewer = order to query
+                        navigation.pushNew(Config.Viewer(config.filter, id.toHex()))
+                        openingViewer = null
+                    },
                 )
                 // Read back off the component rather than mapped from the config a second time.
                 // The feature decides what its filter means for a screen, and it publishes that
@@ -515,11 +548,38 @@ class DefaultUnlockedComponent(
                     mainContext = mainContext + featureWork,
                 ),
             )
+            is Config.Viewer -> {
+                val shown = openingViewer
+                UnlockedChild.Viewer(
+                    vaultViewerComponent(
+                        componentContext = context,
+                        vaultObjects = scope.get(),
+                        // Optional, for the thumbnail encoder's reason: without one, a picture page
+                        // says it can't be shown rather than the vault failing to open.
+                        decoder = koin.getOrNull<ViewerImageDecoder>() ?: UndecodableImages,
+                        filter = config.filter.toItemFilter(),
+                        startId = config.startIdHex.hexToBytes(),
+                        order = shown?.first ?: GalleryOrder.Newest,
+                        query = shown?.second.orEmpty(),
+                        // Pop, then hand the grid now on top the item last viewed, so it can bring it
+                        // into view. Whatever opened the viewer is what back returns to.
+                        onBack = { lastViewedId ->
+                            navigation.pop {
+                                (stack.value.active.instance as? UnlockedChild.Gallery)
+                                    ?.component?.revealItem(lastViewedId)
+                            }
+                        },
+                        mainContext = mainContext + featureWork,
+                        // Reading, decrypting and decoding a page, and shredding: all blocking.
+                        ioContext = ioContext,
+                    ),
+                )
+            }
         }
 
     /**
      * A screen's address inside the unlocked subtree. Configs carry **ids only** — never a session,
-     * never decrypted bytes — so that a future `Viewer(itemId)` stays safe to hold.
+     * never decrypted bytes, never text the user typed — which is what keeps [Viewer] safe to hold.
      */
     private sealed interface Config {
         data class Gallery(val filter: Filter = Filter.All) : Config
@@ -528,6 +588,14 @@ class DefaultUnlockedComponent(
 
         /** The camera, filing into and counting [filter] — the listing it was opened from. */
         data class Camera(val filter: Filter) : Config
+
+        /**
+         * The viewer on [filter]'s listing, opened at the item [startIdHex]. **No order and no
+         * search here**: a search is part of a file name the user typed, and a config is compared,
+         * held for the screen's life and serialized by a host that preserves state. Both arrive
+         * through [openingViewer] instead.
+         */
+        data class Viewer(val filter: Filter, val startIdHex: String) : Config
 
         /**
          * Which items a gallery child lists.
