@@ -117,8 +117,8 @@ checks confirm the suppression actually took effect — the copy itself working 
       → the vault is **Locked** when you come back. The exemption is a deferral, not an exemption
       without end.
 - [ ] No decrypted scratch survives a lock: after locking, the app-private `tmp/` holds nothing
-      (there is no viewer yet, so this is mostly a forward guarantee — confirm `tmp/` is
-      empty via `adb shell run-as … ls files/vault/tmp` on Android).
+      (the image viewer decodes in memory and writes nothing there; lock with a picture open and
+      confirm `tmp/` is empty via `adb shell run-as … ls files/vault/tmp` on Android).
 
 ### F. Honesty + confinement (spot check)
 - [ ] No screen promises more than `docs/THREAT_MODEL.md` allows (no "military-grade", no

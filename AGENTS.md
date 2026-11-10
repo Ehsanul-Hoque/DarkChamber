@@ -58,11 +58,18 @@ Package root: `dev.ehsanfahad.darkchamber`.
 >   the subscription is keyed by the listing filter alone, so re-ordering or typing never re-decrypts
 >   a row; a filed item's album drawn on its tile from the album listing, at no per-item cost; and the
 >   browse chrome (the controls row, the empty-result and damaged-item copy, the way back to a
->   just-imported file a filter would hide). Public surface is two factories plus the `api` package —
->   which includes `VaultThumbnail`, one item's encrypted preview drawn through the session's loader,
->   for a screen outside the feature; everything else is `internal`. Reaches the vault through
->   `core:vault` only, and navigates only through callbacks the host supplies (opening the camera is
->   one).
+>   just-imported file a filter would hide). Plus the **viewer**: a pager over the listing a tile was
+>   tapped in (same filter, order and search, through the same pipeline), images decoded through the
+>   `ViewerImageDecoder` seam the app implements per platform — read whole, decoded only after the read
+>   verifies, the buffer zeroed, sized at about twice the screen, an image over 64 MiB not read —
+>   decoded pictures held for the shown page ±1 and never in screen state (a Konsist rule), every other
+>   kind shown as its badge, and back handing the grid the item last viewed. And **delete**, which is
+>   crypto-shred: one item from the viewer, many from the grid's selection in one write, both behind a
+>   confirmation whose words promise no more than the shred does. Public surface is the factories plus
+>   the `api` package — which includes `VaultThumbnail`, one item's encrypted preview drawn through the
+>   session's loader, for a screen outside the feature; everything else is `internal`. Reaches the
+>   vault through `core:vault` only, and navigates only through callbacks the host supplies (opening
+>   the camera and opening an item are two).
 > - **`:feature:camera`** — the private camera, photos and video: the `CameraController` seam the app
 >   implements, a camera opened on the listing it came from (filing where an import from there would,
 >   counting that listing live). **Photos** go from memory straight into `importObject` — the JPEG's
@@ -72,14 +79,16 @@ Package root: `dev.ehsanfahad.darkchamber`.
 >   way out, with what a lock took reported on the next unlocked screen. Both save paths run in the
 >   **session's** scope, so closing the camera lets a capture finish and only a lock abandons one.
 >   The screen holds portrait, turns its icons and letterboxes the viewfinder at the capture's shape.
->   Does not depend on `:feature:vault`; the last-shot tile is the host's `VaultThumbnail` slot. See
->   `docs/ARCHITECTURE.md` §6.
+>   Does not depend on `:feature:vault`; the last-shot tile is the host's `VaultThumbnail` slot, and a
+>   tap on it reports the shot's id for the host to open in the viewer — only while nothing is
+>   capturing or recording, since covering the camera releases it. See `docs/ARCHITECTURE.md` §6.
 > - **`:konsist`** — the architecture + **security-invariant** rules, running in CI on every PR.
 >
 > Still a stub (marker + smoke test): `:core:testing`. **In progress: Phase 1** — albums and browsing
 > are in and merged (browse refinement landed 2026-10-17), and the camera takes photos and records
 > video; reads by byte range are in, and a video's preview is taken through them from the stored
-> object; next are the in-app viewers (deferred from Phase 0). **Planned, not yet wired:** ktlint/detekt/Kover and
+> object; the viewer opens images, and delete is in; next are the video, audio and PDF viewers.
+> **Planned, not yet wired:** ktlint/detekt/Kover and
 > `migrationTest` — verify a Gradle task exists before assuming it runs. **Wired:** a tracked `commit-msg`
 > hook (`./gradlew installGitHooks`) runs CI's own commit check, scopes listed in
 > `config/commit-scopes.txt`. CI:
