@@ -546,6 +546,11 @@ class DefaultUnlockedComponent(
                     unreadableNameLabel = AlbumTileName.Unreadable.label(),
                     onClose = { navigation.pop() },
                     mainContext = mainContext + featureWork,
+                    // The last-shot tile opens the viewer over the camera's own listing, at the shot,
+                    // with no handoff: newest first and unsearched, which is the camera's order. The
+                    // camera underneath stops while covered, releasing the hardware; back returns to
+                    // it still filing into the same place. `pushNew` for a double tap.
+                    onOpenLastShot = { id -> navigation.pushNew(Config.Viewer(config.filter, id.toHex())) },
                 ),
             )
             is Config.Viewer -> {
