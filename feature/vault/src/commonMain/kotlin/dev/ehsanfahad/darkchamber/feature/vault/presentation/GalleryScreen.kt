@@ -73,6 +73,8 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumState
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
 import dev.ehsanfahad.darkchamber.feature.vault.api.Filing
 import dev.ehsanfahad.darkchamber.feature.vault.api.SelectionDelete
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryError
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
@@ -1491,6 +1493,11 @@ private fun ItemTile(
                         },
                         style = DarkChamberTheme.typography.label,
                         color = if (damaged || unverified) colors.danger else colors.textSecondary,
+                        // Words instead of the glyph where the glyph would say nothing aloud; the
+                        // tile merges its children, so they are announced beside the name.
+                        modifier = GalleryFormat.badgeSpoken(item.meta, unverified)?.let { words ->
+                            Modifier.semantics { contentDescription = words }
+                        } ?: Modifier,
                     )
                 }
             }

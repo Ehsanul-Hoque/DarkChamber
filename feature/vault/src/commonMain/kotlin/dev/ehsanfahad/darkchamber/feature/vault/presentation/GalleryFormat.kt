@@ -2,6 +2,7 @@ package dev.ehsanfahad.darkchamber.feature.vault.presentation
 
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumDraftProblem
 import dev.ehsanfahad.darkchamber.feature.vault.api.FilingDestination
+import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryOrder
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryScope
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportStage
@@ -580,6 +581,17 @@ internal object GalleryFormat {
      * claimed (hard rule #6).
      */
     fun unverifiedPreview(): String = "Preview couldn't be verified"
+
+    /**
+     * What a tile's badge says to a screen reader, in place of its glyph; `null` to read the glyph.
+     *
+     * Only a preview that failed its check has words to add: its "!" would be read as "exclamation
+     * mark", so it speaks [unverifiedPreview] instead, and the tile — which merges its children —
+     * announces that beside the name. A type badge reads fine as itself. An item whose details will
+     * not open is never asked for a preview, and its name already says what is wrong.
+     */
+    fun badgeSpoken(meta: GalleryItemMeta, previewUnverified: Boolean): String? =
+        if (previewUnverified && meta is GalleryItemMeta.Readable) unverifiedPreview() else null
 
     private fun oneDecimal(value: Double): String {
         val scaled = (value * 10).toLong()
