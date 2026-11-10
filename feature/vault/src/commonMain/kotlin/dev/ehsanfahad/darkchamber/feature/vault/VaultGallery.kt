@@ -21,6 +21,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveAlbums
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveGallery
 import dev.ehsanfahad.darkchamber.feature.vault.domain.RenameAlbum
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ShredItem
+import dev.ehsanfahad.darkchamber.feature.vault.domain.ShredItems
 import dev.ehsanfahad.darkchamber.feature.vault.domain.GalleryControls
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryOrder
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultViewerComponent
@@ -122,6 +123,7 @@ fun vaultGalleryComponent(
         observeAlbums = ObserveAlbums(items),
         createAlbum = CreateAlbum(vault = items, ioContext = ioContext),
         fileItems = FileItems(vault = items, ioContext = ioContext),
+        shredItems = ShredItems(vault = items, ioContext = ioContext)::invoke,
         mainContext = mainContext,
         filter = filter,
         openedAlbumName = openedAlbumName,

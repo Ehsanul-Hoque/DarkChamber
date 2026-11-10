@@ -19,6 +19,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
 import dev.ehsanfahad.darkchamber.feature.vault.api.Filing
 import dev.ehsanfahad.darkchamber.feature.vault.api.FilingDestination
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryError
+import dev.ehsanfahad.darkchamber.feature.vault.api.SelectionDelete
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryOrder
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryScope
@@ -86,6 +87,11 @@ internal class DefaultVaultGalleryComponent(
     private val observeAlbums: ObserveAlbums,
     private val createAlbum: CreateAlbum,
     private val fileItems: FileItems,
+    // Deleting the selection for good, in one write. Defaulted to a refusal so a component built
+    // without it can say nothing was deleted rather than pretend; the factory wires the real shred.
+    private val shredItems: suspend (ids: List<ByteArray>) -> Outcome<Long> = {
+        Outcome.Err(VaultError.Unexpected(IllegalStateException("no shred wired")))
+    },
     mainContext: CoroutineContext = Dispatchers.Main,
     // How often a *running* batch is allowed to redraw. The batch reports every buffered read —
     // kilobytes apart — which is far finer than a screen can show or a user can perceive, and
@@ -475,6 +481,48 @@ internal class DefaultVaultGalleryComponent(
         val choosing = _state.value.filing as? Filing.Choosing ?: return
         if (choosing.creating?.saving == true) return
         publishFiling(choosing.copy(creating = null))
+    }
+
+    override fun requestDeleteSelection() {
+        val selection = _state.value.selection
+        if (!selection.active || selection.count == 0) return
+        // One thing at a time at the bottom of the screen: not over a move, nor over another delete.
+        if (_state.value.filing != null || _state.value.deletion != null) return
+        _state.value = _state.value.copy(deletion = SelectionDelete.Asking(selection.count))
+    }
+
+    /**
+     * One write over exactly the selected ids, read now — the selection is what was confirmed. On
+     * success the selection ends (the items are gone) and the report carries the count deleted; a
+     * refusal keeps the selection, since nothing was deleted and the next move is to try again.
+     */
+    override fun confirmDeleteSelection() {
+        val asking = _state.value.deletion as? SelectionDelete.Asking ?: return
+        val ids = selection.selectedIds()
+        _state.value = _state.value.copy(deletion = SelectionDelete.Deleting(asking.count))
+
+        scope.launch {
+            when (val done = shredItems(ids)) {
+                is Outcome.Ok -> {
+                    selection.clear()
+                    _state.value = _state.value.copy(deletion = SelectionDelete.Deleted(done.value))
+                }
+                is Outcome.Err -> {
+                    logVaultError(ITEMS_DELETE_STAGE, done.error)
+                    _state.value = _state.value.copy(deletion = null, error = GalleryError.DeleteFailed)
+                }
+            }
+        }
+    }
+
+    override fun cancelDeleteSelection() {
+        if (_state.value.deletion !is SelectionDelete.Asking) return
+        _state.value = _state.value.copy(deletion = null)
+    }
+
+    override fun acknowledgeDeletion() {
+        if (_state.value.deletion !is SelectionDelete.Deleted) return
+        _state.value = _state.value.copy(deletion = null)
     }
 
     override fun acknowledgeFiling() {
@@ -870,6 +918,7 @@ internal class DefaultVaultGalleryComponent(
         const val CHOOSER_STAGE = "vault-album-chooser"
         const val CREATE_STAGE = "vault-album-create"
         const val FILING_STAGE = "vault-items-filing"
+        const val ITEMS_DELETE_STAGE = "vault-items-delete"
 
         /** Roughly six frames at 60 Hz: fast enough to look continuous, slow enough to be free. */
         val PROGRESS_INTERVAL: Duration = 100.milliseconds

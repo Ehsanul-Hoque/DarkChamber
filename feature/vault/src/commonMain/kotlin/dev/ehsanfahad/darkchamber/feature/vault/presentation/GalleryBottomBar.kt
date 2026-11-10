@@ -3,6 +3,7 @@ package dev.ehsanfahad.darkchamber.feature.vault.presentation
 import dev.ehsanfahad.darkchamber.feature.vault.api.Filing
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryState
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportState
+import dev.ehsanfahad.darkchamber.feature.vault.api.SelectionDelete
 
 /**
  * Which bar the gallery's bottom area shows. **One at a time**: the add buttons, a batch's card, the
@@ -20,6 +21,9 @@ internal enum class GalleryBottomBar(
     /** A move running, or its report. */
     FilingReport,
 
+    /** A delete of the selection running, or its report. */
+    DeleteReport,
+
     /** Selecting mode. Ahead of any batch: the buttons that would start one are not on screen. */
     Selection,
     Progress,
@@ -36,8 +40,12 @@ internal enum class GalleryBottomBar(
 /** The one bar to show for this state, in the order the layout has always given them. */
 internal fun GalleryState.bottomBar(): GalleryBottomBar {
     val filing = filing
+    val deletion = deletion
     return when {
         filing is Filing.Moving || filing is Filing.Moved -> GalleryBottomBar.FilingReport
+        // Ahead of the selection bar for the move's reason: the selection it came from has nothing
+        // left to say while it runs, and is gone once it is done. Asking is a dialog over the bar.
+        deletion is SelectionDelete.Deleting || deletion is SelectionDelete.Deleted -> GalleryBottomBar.DeleteReport
         selection.active -> GalleryBottomBar.Selection
         else -> when (batch) {
             is ImportState.Running -> GalleryBottomBar.Progress

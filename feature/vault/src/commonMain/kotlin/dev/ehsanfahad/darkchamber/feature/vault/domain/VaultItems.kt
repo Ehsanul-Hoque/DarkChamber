@@ -144,4 +144,11 @@ internal interface VaultItems {
      * is gone; `Err` means nothing was deleted, including for an id that is no longer there.
      */
     fun shred(id: ByteArray): Outcome<Unit>
+
+    /**
+     * Crypto-shred every item in [ids] at once: the rows go together in one catalog transaction, so a
+     * failure leaves every item intact, and the listings re-read once. `Ok` carries how many were
+     * shredded — an id already gone is skipped, not counted; `Err` means nothing was deleted.
+     */
+    fun shredMany(ids: List<ByteArray>): Outcome<Long>
 }

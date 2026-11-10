@@ -394,6 +394,8 @@ internal class FakeVaultItems(
     },
     /** What a shred answers. The default succeeds; the listing is the test's to change, as the catalog's would. */
     private val onShred: (id: ByteArray) -> Outcome<Unit> = { Outcome.Ok(Unit) },
+    /** What a batch delete answers. The default deletes them all. */
+    private val onShredMany: (ids: List<ByteArray>) -> Outcome<Long> = { Outcome.Ok(it.size.toLong()) },
 ) : VaultItems {
     var thumbnailCalls = 0
         private set
@@ -554,6 +556,14 @@ internal class FakeVaultItems(
         shredded += id.toList()
         return onShred(id)
     }
+
+    /** Every batch a delete asked for, each as content — so a test can say *which* ids, not only how many. */
+    val shredBatches = mutableListOf<List<List<Byte>>>()
+
+    override fun shredMany(ids: List<ByteArray>): Outcome<Long> {
+        shredBatches += ids.map { it.toList() }
+        return onShredMany(ids)
+    }
 }
 
 /** Write [bytes] into [sink] the way the codec does: through a buffer, then flush. */
@@ -606,6 +616,9 @@ internal class ExplodingVaultItems : VaultItems {
 
     override fun shred(id: ByteArray): Outcome<Unit> =
         Outcome.Err(VaultError.Io(IllegalStateException("catalog unreadable")))
+
+    override fun shredMany(ids: List<ByteArray>): Outcome<Long> =
+        Outcome.Err(VaultError.Io(IllegalStateException("catalog unreadable")))
 }
 
 /** A seam whose import blows up rather than returning — the "should never happen" path. */
@@ -639,6 +652,8 @@ internal class ThrowingVaultItems : VaultItems {
     override fun open(id: ByteArray, sink: RawSink): Outcome<Unit> = throw IllegalStateException("open exploded")
 
     override fun shred(id: ByteArray): Outcome<Unit> = throw IllegalStateException("shred exploded")
+
+    override fun shredMany(ids: List<ByteArray>): Outcome<Long> = throw IllegalStateException("shred exploded")
 }
 
 /** A seam that behaves like an import interrupted by a lock cancelling the scope. */
@@ -675,6 +690,9 @@ internal class CancellingVaultItems : VaultItems {
         throw CancellationException("the session was torn down mid-open")
 
     override fun shred(id: ByteArray): Outcome<Unit> =
+        throw CancellationException("the session was torn down mid-shred")
+
+    override fun shredMany(ids: List<ByteArray>): Outcome<Long> =
         throw CancellationException("the session was torn down mid-shred")
 }
 

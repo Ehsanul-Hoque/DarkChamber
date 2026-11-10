@@ -133,6 +133,25 @@ interface VaultGalleryComponent {
     fun acknowledgeFiling()
 
     /**
+     * Ask to delete the selected items: opens the confirmation with their count. Ignored with nothing
+     * selected, and while a move or a delete is already under way.
+     */
+    fun requestDeleteSelection()
+
+    /**
+     * Delete the selected items for good, in one write. Ignored unless the confirmation is open. On
+     * success the selection ends and the result carries the count deleted; a refusal keeps the
+     * selection and says nothing was deleted.
+     */
+    fun confirmDeleteSelection()
+
+    /** Close the confirmation without deleting. Ignored once the delete has started. */
+    fun cancelDeleteSelection()
+
+    /** Dismiss the "deleted" report. */
+    fun acknowledgeDeletion()
+
+    /**
      * Open the rename dialog for the album being viewed, **prefilled with its current name**: a
      * rename starts from what the thing is called, and an empty field would make the common edit —
      * fixing a typo — a retype.
@@ -238,6 +257,8 @@ data class GalleryState(
      * cleared once the screen has acted. An id, never content.
      */
     val revealKey: String? = null,
+    /** Deleting the selection, if that is happening. */
+    val deletion: SelectionDelete? = null,
 ) {
     /** Whether a batch is between the user asking for one and it ending. */
     val importing: Boolean get() = batch is ImportState.Picking || batch is ImportState.Running
@@ -551,4 +572,27 @@ enum class GalleryError {
      * that did not land. Nothing moved; the items are where they were.
      */
     FilingFailed,
+
+    /**
+     * A delete of the selection was refused. The catalog deletes all or nothing, so nothing was
+     * deleted, and the selection is kept for another try.
+     */
+    DeleteFailed,
+}
+
+/**
+ * Deleting the selected items for good. Sealed like [Filing]: the screen shows one of these at a time.
+ */
+sealed interface SelectionDelete {
+    /** The confirmation is open, for [count] items. */
+    data class Asking(val count: Int) : SelectionDelete
+
+    /** Confirmed and under way; it cannot be called back. */
+    data class Deleting(val count: Int) : SelectionDelete
+
+    /**
+     * Done. [count] is how many were actually deleted — an item already gone by the time the write ran
+     * is skipped, and reporting the request as the result would claim a delete that did not happen.
+     */
+    data class Deleted(val count: Long) : SelectionDelete
 }
