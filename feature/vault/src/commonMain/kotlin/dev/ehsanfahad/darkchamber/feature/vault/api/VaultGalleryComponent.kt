@@ -30,6 +30,13 @@ interface VaultGalleryComponent {
      */
     fun openSearch()
 
+    /**
+     * The screen has focused the field it was asked to ([GallerySearch.Open.takesFocus]). From here on
+     * the field is only focused by the user, so a screen drawn again does not bring the keyboard back.
+     * Ignored while the search is closed.
+     */
+    fun searchFocused()
+
     /** What has been typed into it. Ignored while the search is closed. */
     fun editSearch(query: String)
 
@@ -283,10 +290,16 @@ sealed interface GallerySearch {
      * not open: a query cannot match a name nobody can read, and dropping such a row silently would
      * let a search conceal the one item worth looking at. It travels with the listing, so it is the
      * count for the items currently being searched rather than a running total.
+     *
+     * [takesFocus] is true from the moment the user opens the field until the screen reports it has
+     * focused it ([VaultGalleryComponent.searchFocused]). The field takes focus — and the keyboard
+     * comes up — once, because it was asked for; a screen drawn again later, such as the grid coming
+     * back from the viewer, finds it false and leaves the keyboard down.
      */
     data class Open(
         val query: String,
         val hiddenUnreadable: Int = 0,
+        val takesFocus: Boolean = false,
     ) : GallerySearch {
         /**
          * A length, never the text (hard rule #4).
@@ -296,7 +309,7 @@ sealed interface GallerySearch {
          * data-class `toString` would print it into any log line rendering a [GalleryState].
          */
         override fun toString(): String =
-            "Open(query=${query.length} chars, hiddenUnreadable=$hiddenUnreadable)"
+            "Open(query=${query.length} chars, hiddenUnreadable=$hiddenUnreadable, takesFocus=$takesFocus)"
     }
 }
 

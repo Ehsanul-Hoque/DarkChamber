@@ -102,6 +102,7 @@ internal fun GalleryScreen(
     imageLoader: ImageLoader,
     onChooseOrder: (GalleryOrder) -> Unit,
     onOpenSearch: () -> Unit,
+    onSearchFocused: () -> Unit,
     onEditSearch: (String) -> Unit,
     onCloseSearch: () -> Unit,
     onAddPhotos: () -> Unit,
@@ -198,6 +199,7 @@ internal fun GalleryScreen(
                         onChooseOrder(chosen)
                     },
                     onOpenSearch = onOpenSearch,
+                    onSearchFocused = onSearchFocused,
                     onEditSearch = onEditSearch,
                     onCloseSearch = onCloseSearch,
                     showsControls = state.showsBrowseControls(),

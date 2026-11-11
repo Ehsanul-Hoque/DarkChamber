@@ -287,7 +287,13 @@ internal class DefaultVaultGalleryComponent(
         // be a second tap on it, and re-opening would silently discard what has been typed.
         if (_state.value.search is GallerySearch.Open) return
         // No controls change: an empty query filters nothing, so the grid is left exactly as it is.
-        _state.value = _state.value.copy(search = GallerySearch.Open(query = ""))
+        // The field takes focus because the user asked for it — once. See [searchFocused].
+        _state.value = _state.value.copy(search = GallerySearch.Open(query = "", takesFocus = true))
+    }
+
+    override fun searchFocused() {
+        val open = _state.value.search as? GallerySearch.Open ?: return
+        _state.value = _state.value.copy(search = open.copy(takesFocus = false))
     }
 
     override fun editSearch(query: String) {

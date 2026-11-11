@@ -38,6 +38,7 @@ fun VaultGalleryContent(
         imageLoader = imageLoader,
         onChooseOrder = component::chooseOrder,
         onOpenSearch = component::openSearch,
+        onSearchFocused = component::searchFocused,
         onEditSearch = component::editSearch,
         onCloseSearch = component::closeSearch,
         onAddPhotos = component::importPhotos,
