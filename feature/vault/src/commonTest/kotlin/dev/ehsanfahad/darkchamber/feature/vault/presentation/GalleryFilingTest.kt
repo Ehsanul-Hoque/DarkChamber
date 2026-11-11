@@ -28,6 +28,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.coroutines.CoroutineContext
 import kotlin.test.Test
@@ -281,6 +282,49 @@ class GalleryFilingTest {
         component.acknowledgeFiling()
 
         assertNull(component.state.value.filing)
+    }
+
+    /**
+     * The report and the selection bar share the bottom of the screen, and the report wins. Starting a
+     * new selection while "Moved" still shows would leave its count and actions off screen, so starting
+     * one is taken as having read the report.
+     */
+    @Test
+    fun starting_a_selection_puts_away_a_finished_move_report() = runTest {
+        val vault = FakeVaultItems()
+        val component = component(vault, filter = ItemFilter.Album(thisAlbum))
+        advanceUntilIdle()
+        component.selectTwo(vault)
+        component.unfileSelection()
+        advanceUntilIdle()
+        assertIs<Filing.Moved>(component.state.value.filing)
+
+        component.selectItem(byteArrayOf(5))
+
+        assertNull(component.state.value.filing, "the report is put away")
+        assertEquals(GalleryBottomBar.Selection, component.state.value.bottomBar(), "and the selection bar shows")
+    }
+
+    /** A move still running is not a report to put away: its card stays until it lands. */
+    @Test
+    fun a_move_under_way_is_not_put_away_by_a_selection() = runTest {
+        val vault = FakeVaultItems()
+        val io = ManualDispatcher()
+        val component = component(vault, filter = ItemFilter.Album(thisAlbum), ioContext = io)
+        advanceUntilIdle()
+        component.selectTwo(vault)
+        component.unfileSelection()
+        runCurrent()
+        try {
+            assertEquals(Filing.Moving, component.state.value.filing)
+
+            component.selectItem(byteArrayOf(5))
+
+            assertEquals(Filing.Moving, component.state.value.filing)
+        } finally {
+            io.drain()
+            advanceUntilIdle()
+        }
     }
 
     /** Only from the chooser: a stray call with no chooser open writes nothing. */

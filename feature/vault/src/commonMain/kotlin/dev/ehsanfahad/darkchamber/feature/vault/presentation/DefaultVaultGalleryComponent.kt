@@ -354,9 +354,10 @@ internal class DefaultVaultGalleryComponent(
      */
     override fun selectItem(id: ByteArray) {
         if (_state.value.importing) return
-        // A finished delete's report holds the bar a new selection needs, so starting one is taken as
-        // having read it. A delete still running keeps its card: it cannot be called back.
+        // A finished delete's or move's report holds the bar a new selection needs, so starting one is
+        // taken as having read it. One still running keeps its card until it lands.
         if (_state.value.deletion is SelectionDelete.Deleted) acknowledgeDeletion()
+        if (_state.value.filing is Filing.Moved) acknowledgeFiling()
         selection.start(id)
     }
 
