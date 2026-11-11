@@ -61,10 +61,10 @@ class CatalogStore private constructor(
      * a destination has only two kinds of answer; a filter needs a third and so takes [ItemFilter]
      * instead. The two read alike and mean different things.
      *
-     * One statement for the whole set, inside one transaction: a bulk move either happens or does
-     * not, and listeners are notified once rather than once per item — a move of fifty items that
-     * emitted fifty times would have the gallery above it re-decrypt every row's metadata fifty
-     * times over.
+     * One transaction for the whole set — [IDS_PER_STATEMENT] ids to a statement, since an older
+     * SQLite binds at most 999 values in one: a bulk move either happens or does not, and listeners
+     * are notified once rather than once per item — a move of fifty items that emitted fifty times
+     * would have the gallery above it re-decrypt every row's metadata fifty times over.
      *
      * An empty [ids] short-circuits to `Ok` without running anything. Not for correctness — SQLite
      * accepts the generated `IN ()` and matches nothing — but because executing it would still
@@ -95,7 +95,9 @@ class CatalogStore private constructor(
                     if (albumId != null && albums.selectAlbumById(albumId).executeAsOneOrNull() == null) {
                         error("assignment destination album does not exist")
                     }
-                    items.updateItemAlbum(album_id = albumId, id = ids).value
+                    ids.chunked(IDS_PER_STATEMENT).sumOf { part ->
+                        items.updateItemAlbum(album_id = albumId, id = part).value
+                    }
                 }
             }
         }
@@ -123,17 +125,25 @@ class CatalogStore private constructor(
      * [forgetDeletedPages] so the key's bytes are gone from the files as well as from the table.
      */
     fun deleteItem(id: ByteArray): Outcome<Unit> =
-        catchingDb {
-            items.deleteItemById(id)
-            driver.forgetDeletedPages()
-        }
+        catchingDb { items.deleteItemById(id); Unit }.afterCommit()
+
+    /**
+     * Once a delete has committed, clear the log — and answer with the delete's outcome whatever the
+     * clearing does. The rows are gone either way; reporting the clean-up's failure as the delete's
+     * would tell the user nothing was deleted while the keys are already destroyed.
+     */
+    private fun <T> Outcome<T>.afterCommit(): Outcome<T> {
+        if (this is Outcome.Ok) driver.forgetDeletedPagesIfItCan()
+        return this
+    }
 
     /**
      * Remove every item in [ids], returning **how many rows were deleted**. Each row holds its item's
      * wrapped key, so this is the crypto-shred of the whole set.
      *
-     * All or nothing: one statement inside one transaction, so a failure part-way leaves every row,
-     * and the listings are notified once on commit rather than once per item. Ids already gone are
+     * All or nothing: one transaction, so a failure part-way leaves every row, and the listings are
+     * notified once on commit rather than once per item. Inside it the ids go [IDS_PER_STATEMENT] to a
+     * statement, because an older SQLite binds at most 999 values in one. Ids already gone are
      * skipped and not counted — an item shredded between selection and delete is an ordinary race,
      * and the count is how a caller tells it from a clean run. An empty [ids] runs nothing, because
      * even a delete that matches no row would make every listing re-read itself.
@@ -146,10 +156,10 @@ class CatalogStore private constructor(
             Outcome.Ok(0L)
         } else {
             catchingDb {
-                val deleted = db.transactionWithResult { items.deleteItemsById(ids).value }
-                driver.forgetDeletedPages()
-                deleted
-            }
+                db.transactionWithResult {
+                    ids.chunked(IDS_PER_STATEMENT).sumOf { part -> items.deleteItemsById(part).value }
+                }
+            }.afterCommit()
         }
 
     /** Number of item rows. */
@@ -313,6 +323,24 @@ private inline fun <T> catchingDb(block: () -> T): Outcome<T> =
     } catch (e: Exception) {
         Outcome.Err(VaultError.Db(e))
     }
+
+/**
+ * How many ids one `IN ?` statement binds. Before SQLite 3.32 — the system SQLite of every Android up
+ * to 11 — a statement takes at most 999 values; a move binds one more for its destination.
+ */
+internal const val IDS_PER_STATEMENT = 500
+
+/**
+ * [forgetDeletedPages], for after a delete has committed: a failure here leaves the old frames for a
+ * later checkpoint to overwrite — the same as a reader holding this one up — and is not the delete's.
+ */
+private fun SqlDriver.forgetDeletedPagesIfItCan() {
+    try {
+        forgetDeletedPages()
+    } catch (_: Exception) {
+        // Nothing to log that would help: the delete stands, and the next one tries again.
+    }
+}
 
 /**
  * After a delete has committed: move the WAL's pages into the database and truncate the log.
