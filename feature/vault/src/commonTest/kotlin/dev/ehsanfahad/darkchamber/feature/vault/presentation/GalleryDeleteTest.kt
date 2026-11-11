@@ -81,6 +81,48 @@ class GalleryDeleteTest {
         ids.drop(1).forEach { toggleItem(byteArrayOf(it)) }
     }
 
+    /**
+     * The report and the selection bar share the bottom of the screen, and the report wins. Starting a
+     * new selection while "N files deleted." still shows would leave the count and Delete off screen,
+     * so starting one is taken as having read the report.
+     */
+    @Test
+    fun starting_a_selection_puts_away_a_finished_delete_report() = runTest {
+        val vault = FakeVaultItems()
+        val component = component(vault)
+        vault.emit(1, 2, 3)
+        component.select(1, 3)
+        component.requestDeleteSelection()
+        component.confirmDeleteSelection()
+        assertEquals(SelectionDelete.Deleted(2), component.state.value.deletion)
+
+        component.selectItem(byteArrayOf(2))
+
+        assertNull(component.state.value.deletion, "the report is put away")
+        assertEquals(GalleryBottomBar.Selection, component.state.value.bottomBar(), "and the selection bar shows")
+        assertEquals(1, component.state.value.selection.count)
+    }
+
+    /** A delete still running is not a report to put away: it cannot be called back, and its card stays. */
+    @Test
+    fun a_delete_under_way_is_not_put_away_by_a_selection() = runTest {
+        val vault = FakeVaultItems()
+        val gate = CompletableDeferred<Unit>()
+        val component = component(vault, shred = { ids ->
+            gate.await()
+            vault.shredMany(ids)
+        })
+        vault.emit(1, 2, 3)
+        component.select(1, 3)
+        component.requestDeleteSelection()
+        component.confirmDeleteSelection()
+
+        component.selectItem(byteArrayOf(2))
+
+        assertEquals(SelectionDelete.Deleting(2), component.state.value.deletion)
+        gate.complete(Unit)
+    }
+
     @Test
     fun asking_to_delete_opens_the_confirmation_with_the_count() = runTest {
         val vault = FakeVaultItems()
