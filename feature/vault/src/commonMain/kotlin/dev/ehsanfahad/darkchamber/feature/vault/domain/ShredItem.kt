@@ -8,12 +8,6 @@ import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.cancellation.CancellationException
 
 /**
- * Delete one item for good: crypto-shred it through the vault, off the thread drawing the screen.
- *
- * The vault answers with an outcome; anything it throws instead becomes an `Err`, so the screen can
- * say nothing was deleted rather than closing. A cancellation stays one.
- */
-/**
  * Delete the selected items for good, in one write — see [VaultItems.shredMany]. Off the thread drawing
  * the grid; anything the vault throws becomes an `Err`, so the screen says nothing was deleted; a
  * cancellation stays one. An empty selection deletes nothing and touches nothing.
@@ -36,6 +30,12 @@ internal class ShredItems(
     }
 }
 
+/**
+ * Delete one item for good: crypto-shred it through the vault, off the thread drawing the screen.
+ *
+ * The vault answers with an outcome; anything it throws instead becomes an `Err`, so the screen can
+ * say nothing was deleted rather than closing. A cancellation stays one.
+ */
 internal class ShredItem(
     private val vault: VaultItems,
     private val ioContext: CoroutineContext = Dispatchers.Default,

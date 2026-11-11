@@ -130,6 +130,7 @@ class GalleryDeleteTest {
         component.requestDeleteSelection()
         component.confirmDeleteSelection()
         component.confirmDeleteSelection() // a double tap
+        component.requestDeleteSelection() // asking again while it runs reopens nothing
         assertEquals(SelectionDelete.Deleting(2), component.state.value.deletion)
         component.cancelDeleteSelection() // too late to call back
         assertEquals(SelectionDelete.Deleting(2), component.state.value.deletion)

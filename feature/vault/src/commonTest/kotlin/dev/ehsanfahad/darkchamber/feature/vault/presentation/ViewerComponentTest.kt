@@ -425,6 +425,7 @@ class ViewerComponentTest {
         viewer.requestDelete()
         viewer.confirmDelete()
         viewer.confirmDelete() // a double tap
+        viewer.requestDelete() // asking again while it runs reopens nothing
         assertEquals(ViewerDeleteStage.Deleting, viewer.state.value.delete)
         viewer.cancelDelete() // too late to call back
         assertEquals(ViewerDeleteStage.Deleting, viewer.state.value.delete)
