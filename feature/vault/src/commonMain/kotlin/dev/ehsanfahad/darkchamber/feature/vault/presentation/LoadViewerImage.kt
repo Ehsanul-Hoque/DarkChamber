@@ -6,7 +6,10 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerPage
 import dev.ehsanfahad.darkchamber.feature.vault.domain.VaultItems
 import kotlin.coroutines.CoroutineContext
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.io.Buffer
@@ -46,6 +49,11 @@ internal sealed interface LoadedPage<out T> {
  * - **Our copy is zeroed on every path** — decoded, declined, failed, thrown or cancelled — once the
  *   decoder has made its own. The decoder's internal buffers, and the vault's on the way here, are
  *   outside this code's reach and are not claimed.
+ * - **One load at a time.** Each holds a buffer the size of its file and then a decoded picture, and
+ *   the viewer asks for three pages at once; queued, the peak is one file rather than three. A load
+ *   waiting its turn has allocated nothing.
+ * - **Running out of memory is a page, not a crash.** An image within the cap can still be more than
+ *   the heap has free; the allocation or the decode failing that way shows [ViewerPage.TooLarge].
  * - **A cancelled load publishes nothing.** A lock cancels the viewer's work and then closes the
  *   session; a blocking read already under way runs to its end, and what it read is dropped
  *   undecoded.
@@ -70,37 +78,47 @@ internal class LoadViewerImage<T>(
             is OpenPlan.Show -> return LoadedPage.Page(plan.page)
             OpenPlan.Decode -> Unit
         }
-        return withContext(io) {
-            val buffer = newBuffer(item.size.toInt())
-            try {
-                val sink = ArraySink(buffer)
-                val read = try {
-                    items.open(item.id, sink)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    // The vault answers with outcomes; a throw is a session closed under the read,
-                    // or a "never happens". Either way the page names no cause it cannot know.
-                    Outcome.Err(VaultError.Unexpected(e))
-                }
-                when (read) {
-                    is Outcome.Err -> LoadedPage.Page(pageForOpenFailure(read.error))
-                    is Outcome.Ok -> if (sink.written != buffer.size) {
-                        LoadedPage.Page(ViewerPage.CouldntOpen)
-                    } else {
-                        ensureActive() // a lock during the read: drop it rather than decode a picture nobody will see
-                        decodeOrDecline(buffer, targetLongEdge)
-                    }
-                }
-            } finally {
-                buffer.fill(0)
+        return oneAtATime.withLock { withContext(io) { readAndDecode(item, targetLongEdge) } }
+    }
+
+    private val oneAtATime = Mutex()
+
+    private fun CoroutineScope.readAndDecode(item: GalleryItem, targetLongEdge: Int): LoadedPage<T> {
+        val buffer = try {
+            newBuffer(item.size.toInt())
+        } catch (_: OutOfMemoryError) {
+            return LoadedPage.Page(ViewerPage.TooLarge)
+        }
+        try {
+            val sink = ArraySink(buffer)
+            val read = try {
+                items.open(item.id, sink)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // The vault answers with outcomes; a throw is a session closed under the read,
+                // or a "never happens". Either way the page names no cause it cannot know.
+                Outcome.Err(VaultError.Unexpected(e))
             }
+            return when (read) {
+                is Outcome.Err -> LoadedPage.Page(pageForOpenFailure(read.error))
+                is Outcome.Ok -> if (sink.written != buffer.size) {
+                    LoadedPage.Page(ViewerPage.CouldntOpen)
+                } else {
+                    ensureActive() // a lock during the read: drop it rather than decode a picture nobody will see
+                    decodeOrDecline(buffer, targetLongEdge)
+                }
+            }
+        } finally {
+            buffer.fill(0)
         }
     }
 
     private fun decodeOrDecline(bytes: ByteArray, targetLongEdge: Int): LoadedPage<T> {
         val image = try {
             decode(bytes, targetLongEdge)
+        } catch (_: OutOfMemoryError) {
+            return LoadedPage.Page(ViewerPage.TooLarge)
         } catch (e: Exception) {
             null // the seam promises not to throw; one that does has declined, not crashed the viewer
         }

@@ -237,6 +237,9 @@ internal class ManualDispatcher : CoroutineDispatcher() {
         queued += block
     }
 
+    /** How many blocks are waiting to run — work handed to this dispatcher and not started. */
+    val pending: Int get() = queued.size
+
     /** Runs everything queued so far, including whatever those blocks queue in turn. */
     fun drain() {
         isRunning = true

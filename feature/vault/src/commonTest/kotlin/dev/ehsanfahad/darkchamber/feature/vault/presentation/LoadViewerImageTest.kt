@@ -350,4 +350,90 @@ class LoadViewerImageTest {
         assertEquals(0, items.openCalls)
         assertEquals(0, decoder.calls)
     }
+
+    /** Only a tampered catalog records a negative size; it gets a page, not a crash, and nothing is read. */
+    @Test
+    fun a_negative_recorded_size_reads_nothing() = runTest {
+        val items = FakeVaultItems(onOpen = { _, _ -> error("must not be read") })
+        val decoder = RecordingDecoder()
+
+        val loaded = loader(items, decoder).load(item(size = -1), targetLongEdge = 4_800)
+
+        assertEquals(LoadedPage.Page(ViewerPage.CouldntOpen), loaded)
+        assertEquals(0, items.openCalls)
+        assertEquals(0, buffers.size)
+    }
+
+    /**
+     * An image within the cap can still be more than the heap has free. Running out while allocating
+     * the read is a page for that file, not the end of the app, and nothing is read.
+     */
+    @Test
+    fun running_out_of_memory_for_the_read_gets_the_too_large_page() = runTest {
+        val items = FakeVaultItems(onOpen = { _, _ -> error("must not be read") })
+        val loaded = LoadViewerImage<String>(
+            items = items,
+            decode = { _, _ -> error("must not be decoded") },
+            io = UnconfinedTestDispatcher(testScheduler),
+            newBuffer = { throw OutOfMemoryError("no room") },
+        ).load(item(), targetLongEdge = 4_800)
+
+        assertEquals(LoadedPage.Page(ViewerPage.TooLarge), loaded)
+        assertEquals(0, items.openCalls)
+    }
+
+    /** A decoder that runs out of memory gets the same page, and our copy is still cleared. */
+    @Test
+    fun running_out_of_memory_while_decoding_gets_the_too_large_page() = runTest {
+        val items = FakeVaultItems(onOpen = { _, sink ->
+            sink.writeBytes(picture)
+            Outcome.Ok(Unit)
+        })
+        val loaded = LoadViewerImage<String>(
+            items = items,
+            decode = { _, _ -> throw OutOfMemoryError("no room") },
+            io = UnconfinedTestDispatcher(testScheduler),
+            newBuffer = { size -> ByteArray(size).also { buffers += it } },
+        ).load(item(), targetLongEdge = 4_800)
+
+        assertEquals(LoadedPage.Page(ViewerPage.TooLarge), loaded)
+        assertAllZero(buffers.single(), "after a decoder that ran out of memory")
+    }
+
+    /**
+     * Each load holds a buffer the size of its file, up to the cap, and the viewer asks for three pages
+     * at once. One at a time keeps the peak at one file: the second load is not handed to the
+     * dispatcher until the first has finished.
+     */
+    @Test
+    fun loads_run_one_at_a_time() = runTest {
+        val io = ManualDispatcher()
+        val items = FakeVaultItems(onOpen = { _, sink ->
+            sink.writeBytes(picture)
+            Outcome.Ok(Unit)
+        })
+        val loader = LoadViewerImage(items = items, decode = { _, _ -> "bitmap" }, io = io)
+        val loaded = mutableListOf<LoadedPage<String>>()
+
+        launch { loaded += loader.load(item(), targetLongEdge = 4_800) }
+        launch { loaded += loader.load(item(), targetLongEdge = 4_800) }
+        try {
+            runCurrent()
+            assertEquals(1, io.pending, "only the first load is running")
+
+            io.runNext()
+            runCurrent()
+            assertEquals(1, loaded.size, "the first has finished")
+            assertEquals(1, io.pending, "and only then does the second start")
+
+            io.runNext()
+            runCurrent()
+            assertEquals(2, loaded.size)
+        } finally {
+            // A failed assertion must not leave a load parked on the manual dispatcher, or the test
+            // waits for it for ever instead of reporting.
+            io.drain()
+            advanceUntilIdle()
+        }
+    }
 }

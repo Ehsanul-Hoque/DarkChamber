@@ -19,12 +19,17 @@ internal sealed interface OpenPlan {
  *   no decrypt, and an image too big to hold must not take the heap a passphrase unlock also needs.
  * - An item whose details will not open has no known type, but its object has its own key in the
  *   row and may open fine — so it is tried, within the cap, and the decoder decides from the bytes.
+ * - A negative size is a row nothing here wrote: nothing is read, and the page names no cause.
  */
 internal fun openPlan(meta: GalleryItemMeta, size: Long, cap: Long): OpenPlan {
     if (meta is GalleryItemMeta.Readable && !meta.mime.startsWith("image/")) {
         return OpenPlan.Show(ViewerPage.NotViewable(GalleryFormat.typeBadge(meta.mime)))
     }
-    return if (size > cap) OpenPlan.Show(ViewerPage.TooLarge) else OpenPlan.Decode
+    return when {
+        size < 0 -> OpenPlan.Show(ViewerPage.CouldntOpen)
+        size > cap -> OpenPlan.Show(ViewerPage.TooLarge)
+        else -> OpenPlan.Decode
+    }
 }
 
 /**

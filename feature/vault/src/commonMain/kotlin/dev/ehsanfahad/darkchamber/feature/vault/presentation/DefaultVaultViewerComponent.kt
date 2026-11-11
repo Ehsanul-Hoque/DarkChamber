@@ -159,7 +159,8 @@ internal open class ViewerComponent<T>(
         val target = target ?: return
         val shown = position ?: return
         val items = _state.value.items
-        val window = (shown.index - 1..shown.index + 1)
+        // The page on screen first: loads queue one at a time, and are taken in the order started.
+        val window = listOf(shown.index, shown.index + 1, shown.index - 1)
             .filter { it in items.indices }
             .associate { items[it].id.toListKey() to items[it] }
 

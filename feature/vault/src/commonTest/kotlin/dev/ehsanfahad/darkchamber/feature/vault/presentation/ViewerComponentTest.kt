@@ -278,6 +278,18 @@ class ViewerComponentTest {
         assertTrue(loads.calls.all { it.second == 4_800 }, "twice the viewport's long edge")
     }
 
+    /** Loads run one at a time, so the page on screen is asked for before the ones beside it. */
+    @Test
+    fun the_shown_page_is_loaded_first() = runTest {
+        val items = FakeVaultItems().apply { summaries.value = listOf(item(1), item(2), item(3)) }
+        val loads = Loads()
+        val viewer = viewer(items, start = 2, load = loads::load)
+
+        viewer.viewportMeasured(widthPx = 1_080, heightPx = 2_400)
+
+        assertEquals(id(2).toList(), loads.loadedIds().first())
+    }
+
     /** At most one page either side of the one shown: a full-screen bitmap is tens of megabytes. */
     @Test
     fun only_the_page_shown_and_one_either_side_are_decoded() = runTest {
