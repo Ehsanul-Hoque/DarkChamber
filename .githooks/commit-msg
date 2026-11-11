@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+#
+# commit-msg — refuse a commit message before the commit exists.
+#
+# Installed by `./gradlew installGitHooks` (sets core.hooksPath to .githooks). It runs the same rule
+# CI applies — scripts/check-commits.sh --message-file — so the subject pattern and the scope list
+# (config/commit-scopes.txt) can never differ between here and the PR check.
+#
+# A rule of your own can sit beside it: an executable `hooks/commit-msg.local` inside your git
+# directory (`.git/hooks/commit-msg.local` in a plain clone) runs after the shared check, with the
+# same message file. It lives in .git/, so it is never committed and never reaches anyone else.
+#
+# CI stays the gate: a hook can be skipped (--no-verify), the PR check cannot.
+#
+set -euo pipefail
+
+FILE="${1:?usage: commit-msg <message-file>}"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+bash "$ROOT/scripts/check-commits.sh" --message-file "$FILE"
+
+PERSONAL="$(git rev-parse --git-common-dir)/hooks/commit-msg.local"
+if [ -x "$PERSONAL" ]; then
+  "$PERSONAL" "$FILE"
+fi

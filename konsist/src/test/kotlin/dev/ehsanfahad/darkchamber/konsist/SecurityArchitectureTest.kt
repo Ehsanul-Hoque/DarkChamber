@@ -117,7 +117,15 @@ class SecurityArchitectureTest {
             // The **call**, not the name: the first version of this looked for the bare identifier
             // and was satisfied by the import line, so deleting the call from a dialog while
             // leaving the import — the exact shape of an accidental removal — passed.
-            .filterNot { codeOf(it).contains("$EXCLUDES_FROM_STRUCTURES()") }
+            //
+            // And **one call per window**: a file opening a sheet and a dialog with one exclusion
+            // between them passed while asking only whether the file mentioned it — measured by
+            // removing the sheet's call from a file that kept the dialog's.
+            .filter { file ->
+                val code = codeOf(file)
+                Regex(Regex.escape("$EXCLUDES_FROM_STRUCTURES()")).findAll(code).count() <
+                    OPENS_A_WINDOW.findAll(code).count()
+            }
 
         assertTrue(
             violations.isEmpty(),
@@ -125,7 +133,7 @@ class SecurityArchitectureTest {
                 appendLine(
                     "A window is opened without excluding it from the platform's autofill " +
                         "and content-capture structures (hard rules #1/#5). Call " +
-                        "$EXCLUDES_FROM_STRUCTURES() inside the window's content.",
+                        "$EXCLUDES_FROM_STRUCTURES() inside each window's content — one per window.",
                 )
                 violations.forEach { appendLine("  ${it.projectPath}") }
             },
@@ -213,6 +221,33 @@ class SecurityArchitectureTest {
                     "A not-saved type mentions a type that can carry content. The record outlives a " +
                         "lock, so it may hold counts, kinds and reasons only — never an id, a name or " +
                         "a path. Put the wording in a formatter file instead.",
+                )
+                violations.forEach { appendLine("  ${it.projectPath}") }
+            },
+        )
+    }
+
+    @Test
+    fun `screen state in a feature holds no picture`() {
+        // The session-gate rule: screen state holds ids and descriptions, never decrypted content.
+        // A decoded picture is the content itself, and state is what gets copied, compared, kept
+        // across recompositions and handed around — so a viewer keeps its pictures in a separate,
+        // windowed holder it drops on destroy. Read file-wide, like the not-saved rule, so a field
+        // whose type is inferred cannot slip past; a state type therefore lives in a file that
+        // mentions no picture type at all.
+        val files = productionFiles.filter {
+            it.projectPath.contains("/feature/") && DECLARES_A_STATE_TYPE.containsMatchIn(codeOf(it))
+        }
+        assertTrue(files.size >= 5, "the rule found too few feature state types to check — has it moved?")
+
+        val violations = files.filter { HOLDS_A_PICTURE.containsMatchIn(codeOf(it)) }
+
+        assertTrue(
+            violations.isEmpty(),
+            buildString {
+                appendLine(
+                    "A file declaring a feature's state type mentions a picture type. State holds ids " +
+                        "and descriptions only; keep decoded pictures in their own holder, in another file.",
                 )
                 violations.forEach { appendLine("  ${it.projectPath}") }
             },
@@ -315,6 +350,13 @@ class SecurityArchitectureTest {
                 """(?<![A-Za-z0-9_])(ByteArray|String|CharSequence|Path|RawSource|UByteArray|byteArrayOf)""" +
                     """(?![A-Za-z0-9_])|"""",
             )
+
+        /** A class whose name ends `State` — a screen's state, or a stage of one. */
+        val DECLARES_A_STATE_TYPE = Regex("""class\s+[A-Za-z0-9_]*State(?![A-Za-z0-9_])""")
+
+        /** The types a decoded picture travels as, on either platform or in Compose. */
+        val HOLDS_A_PICTURE =
+            Regex("""(?<![A-Za-z0-9_])(ImageBitmap|Bitmap|Painter|UIImage|CGImage)(?![A-Za-z0-9_])""")
 
         /** The helper that excludes the window it is composed in. */
         const val EXCLUDES_FROM_STRUCTURES = "ExcludeFromPlatformStructures"

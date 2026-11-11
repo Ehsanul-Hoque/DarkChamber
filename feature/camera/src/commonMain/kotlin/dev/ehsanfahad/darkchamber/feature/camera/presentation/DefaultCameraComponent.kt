@@ -68,6 +68,9 @@ internal class DefaultCameraComponent(
     override val unreadableNameLabel: String,
     mainContext: CoroutineContext,
     private val onClose: () -> Unit,
+    // Where tapping the last-shot tile goes: the host's viewer, on the shot's id. This module never
+    // learns a viewer exists.
+    private val onOpenLastShot: (itemId: ByteArray) -> Unit = {},
 ) : CameraComponent(), ComponentContext by componentContext {
 
     private val _state = MutableValue(
@@ -359,6 +362,14 @@ internal class DefaultCameraComponent(
     }
 
     override fun openSettings() = camera.openSettings()
+
+    override fun openLastShot() {
+        // The rule the tile is drawn from, read again at the tap: a photo pressed between the draw and
+        // the tap must not be failed by the camera being covered.
+        val shown = _state.value
+        if (closed || !shown.lastShotOpens) return
+        shown.lastShot?.let { onOpenLastShot(it.itemId) }
+    }
 
     override fun close() {
         if (closed) return

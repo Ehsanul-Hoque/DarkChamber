@@ -82,4 +82,11 @@ abstract class CameraComponent internal constructor() {
      * cannot pop the screen underneath too.
      */
     abstract fun close()
+
+    /**
+     * Tap the last-shot tile: open the newest capture in the host's viewer, which is navigation and so
+     * leaves through the host's callback with the item's id. Ignored unless the tile opens — see
+     * [CameraState.lastShotOpens] — since covering the camera releases it.
+     */
+    abstract fun openLastShot()
 }

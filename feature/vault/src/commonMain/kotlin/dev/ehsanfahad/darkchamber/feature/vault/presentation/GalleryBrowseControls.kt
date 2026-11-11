@@ -428,6 +428,7 @@ internal fun GalleryBrowseControls(
     search: GallerySearch,
     onChooseOrder: (GalleryOrder) -> Unit,
     onOpenSearch: () -> Unit,
+    onSearchFocused: () -> Unit,
     onEditSearch: (String) -> Unit,
     onCloseSearch: () -> Unit,
     // Whether the order and search controls themselves belong on the row — see [showsBrowseControls].
@@ -473,9 +474,16 @@ internal fun GalleryBrowseControls(
                 is GallerySearch.Open -> {
                     // Focused as it appears. The field is here because the user asked for it, and a
                     // field that has to be tapped a second time to type into makes the first tap
-                    // look like it did nothing.
+                    // look like it did nothing. Only then, though: this row is drawn again whenever
+                    // the grid comes back (from the viewer, say), and focusing it each time would
+                    // bring the keyboard up over the item the grid has just scrolled to.
                     val focus = remember { FocusRequester() }
-                    LaunchedEffect(Unit) { focus.requestFocus() }
+                    LaunchedEffect(search.takesFocus) {
+                        if (search.takesFocus) {
+                            focus.requestFocus()
+                            onSearchFocused()
+                        }
+                    }
 
                     OutlinedTextField(
                         value = search.query,

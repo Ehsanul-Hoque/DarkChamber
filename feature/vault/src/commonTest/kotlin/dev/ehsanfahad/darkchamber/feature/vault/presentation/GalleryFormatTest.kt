@@ -2,6 +2,7 @@ package dev.ehsanfahad.darkchamber.feature.vault.presentation
 
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumDraftProblem
 import dev.ehsanfahad.darkchamber.feature.vault.api.FilingDestination
+import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryOrder
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryScope
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportStage
@@ -664,6 +665,29 @@ class GalleryFormatTest {
         for (claim in listOf("tamper", "corrupt", "damaged", "broken", "file", "photo", "item")) {
             assertFalse(claim in lower, "a failed tag on a preview claims nothing more: $copy")
         }
+    }
+
+    /**
+     * The tile's mark for a preview that failed its check is a "!" — which a screen reader reads as
+     * "exclamation mark", saying nothing. So the badge speaks the words instead, and the tile, which
+     * merges its children, announces them beside the name.
+     */
+    @Test
+    fun a_tile_whose_preview_failed_its_check_says_so_to_a_screen_reader() {
+        val photo = GalleryItemMeta.Readable("beach.jpg", "image/jpeg")
+        assertEquals(GalleryFormat.unverifiedPreview(), GalleryFormat.badgeSpoken(photo, previewUnverified = true))
+    }
+
+    /**
+     * Everywhere else the badge reads as itself. An intact tile's type badge ("IMG", "PDF") is fine as
+     * text and adds nothing to the words; a tile whose name will not open already says so in its
+     * name, so its "!" must not claim anything about a preview it never asked for.
+     */
+    @Test
+    fun an_intact_or_unnamed_tile_says_nothing_about_a_preview() {
+        assertNull(GalleryFormat.badgeSpoken(GalleryItemMeta.Readable("beach.jpg", "image/jpeg"), previewUnverified = false))
+        assertNull(GalleryFormat.badgeSpoken(GalleryItemMeta.Unreadable, previewUnverified = false))
+        assertNull(GalleryFormat.badgeSpoken(GalleryItemMeta.Unreadable, previewUnverified = true), "no preview is asked for")
     }
 
     /**

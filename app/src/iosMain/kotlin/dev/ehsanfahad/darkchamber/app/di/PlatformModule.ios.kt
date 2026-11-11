@@ -6,6 +6,7 @@ import dev.ehsanfahad.darkchamber.app.VaultRootResolver
 import dev.ehsanfahad.darkchamber.app.auth.IosBiometricAuthenticator
 import dev.ehsanfahad.darkchamber.app.camera.IosCameraController
 import dev.ehsanfahad.darkchamber.app.camera.IosFreeSpace
+import dev.ehsanfahad.darkchamber.app.image.IosViewerImageDecoder
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraController
 import dev.ehsanfahad.darkchamber.feature.camera.api.FreeSpace
 import dev.ehsanfahad.darkchamber.app.picker.IosFilePicker
@@ -25,6 +26,7 @@ import dev.ehsanfahad.darkchamber.core.model.getOrNull
 import dev.ehsanfahad.darkchamber.core.vault.ThumbnailEncoder
 import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
 import dev.ehsanfahad.darkchamber.feature.vault.api.PhotoPicker
+import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerImageDecoder
 import kotlinx.io.files.Path
 import org.koin.core.module.Module
 import org.koin.dsl.module
@@ -59,6 +61,8 @@ actual fun platformModule(): Module = module {
     // Decodes a preview during import. Stateless: ImageIO works on the bytes the vault hands it,
     // so unlike the pickers there is no view controller to reach for.
     single<ThumbnailEncoder> { IosThumbnailEncoder() }
+    // Decodes an image for the viewer, from memory, with the same ImageIO call as the encoder.
+    single<ViewerImageDecoder> { IosViewerImageDecoder() }
     // Local-only and self-expiring; see the implementation for what a plain pasteboard write costs.
     single<SecretClipboard> { IosSecretClipboard() }
     single<CatalogProvider> { CatalogProvider { root -> openCatalog(root) } }

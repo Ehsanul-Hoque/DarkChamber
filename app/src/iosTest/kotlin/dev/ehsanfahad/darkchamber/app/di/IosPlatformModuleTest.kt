@@ -1,6 +1,8 @@
 package dev.ehsanfahad.darkchamber.app.di
 
 import dev.ehsanfahad.darkchamber.app.camera.IosCameraController
+import dev.ehsanfahad.darkchamber.app.image.IosViewerImageDecoder
+import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerImageDecoder
 import dev.ehsanfahad.darkchamber.app.thumbnail.IosThumbnailEncoder
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraController
 import dev.ehsanfahad.darkchamber.core.vault.ThumbnailEncoder
@@ -17,6 +19,17 @@ import kotlin.test.assertNotNull
  * going missing.
  */
 class IosPlatformModuleTest {
+    @Test
+    fun the_platform_module_binds_the_ios_viewer_decoder() {
+        // The viewer has no fallback decoder; a missing binding would be a viewer that draws nothing.
+        val app = koinApplication { modules(platformModule()) }
+        try {
+            assertIs<IosViewerImageDecoder>(app.koin.getOrNull<ViewerImageDecoder>())
+        } finally {
+            app.close()
+        }
+    }
+
     @Test
     fun the_platform_module_binds_the_ios_thumbnail_encoder() {
         val app = koinApplication { modules(platformModule()) }

@@ -1,33 +1,20 @@
 package dev.ehsanfahad.darkchamber.app.thumbnail
 
-import cnames.structs.__CFData
-import cnames.structs.__CFDictionary
 import dev.ehsanfahad.darkchamber.core.vault.RangeReader
 import dev.ehsanfahad.darkchamber.core.vault.ThumbnailEncoder
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
-import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.usePinned
 import kotlinx.io.RawSource
 import kotlinx.io.buffered
 import kotlinx.io.readByteArray
-import platform.CoreFoundation.CFDictionaryRef
-import platform.CoreFoundation.CFRelease
-import platform.CoreFoundation.CFRetain
 import platform.CoreGraphics.CGImageAlphaInfo
 import platform.CoreGraphics.CGImageGetAlphaInfo
 import platform.CoreGraphics.CGImageRef
 import platform.CoreGraphics.CGImageRelease
-import platform.Foundation.CFBridgingRelease
-import platform.Foundation.CFBridgingRetain
 import platform.Foundation.NSData
 import platform.Foundation.create
-import platform.ImageIO.CGImageSourceCreateThumbnailAtIndex
-import platform.ImageIO.CGImageSourceCreateWithData
-import platform.ImageIO.kCGImageSourceCreateThumbnailFromImageAlways
-import platform.ImageIO.kCGImageSourceCreateThumbnailWithTransform
-import platform.ImageIO.kCGImageSourceThumbnailMaxPixelSize
 import platform.UIKit.UIImage
 import platform.UIKit.UIImageJPEGRepresentation
 import platform.UIKit.UIImagePNGRepresentation
@@ -77,30 +64,12 @@ internal class IosThumbnailEncoder : ThumbnailEncoder {
         val bytes = openSource().buffered().use { it.readByteArray() }
         if (bytes.isEmpty()) return null
 
-        // CFBridgingRetain hands the NSData to CoreFoundation; the matching release is below. An
-        // image source over it must be released too — neither is ARC-managed from Kotlin.
-        val data = CFBridgingRetain(bytes.toNSData())
-        val source = CGImageSourceCreateWithData(data?.reinterpret<__CFData>(), null)
-        if (source == null) {
-            CFBridgingRelease(data)
-            return null // ImageIO would not open it: not the image the MIME claimed
-        }
-
+        // null: ImageIO would not open it — not the image the MIME claimed.
+        val thumbnail = imageIoThumbnail(bytes.toNSData(), maxEdgePx) ?: return null
         return try {
-            val options = thumbnailOptions(maxEdgePx)
-            val thumbnail = try {
-                CGImageSourceCreateThumbnailAtIndex(source, 0u, options)
-            } finally {
-                CFBridgingRelease(options) // balances the retain that built the dictionary
-            } ?: return null
-            try {
-                thumbnail.encodeToBytes()
-            } finally {
-                CGImageRelease(thumbnail)
-            }
+            thumbnail.encodeToBytes()
         } finally {
-            CFRelease(source)
-            CFBridgingRelease(data)
+            CGImageRelease(thumbnail)
         }
     }
 
@@ -115,21 +84,6 @@ internal class IosThumbnailEncoder : ThumbnailEncoder {
             CGImageRelease(frame)
         }
     }
-
-    @OptIn(ExperimentalForeignApi::class)
-    private fun thumbnailOptions(maxPixelSize: Int): CFDictionaryRef? =
-        CFBridgingRetain(
-            mapOf(
-                // Always: without it ImageIO is free to hand back a camera's *embedded* thumbnail,
-                // whose size and quality are the camera's choice — typically 160x120, which is a
-                // blurry tile. No test here reaches it: a generated image carries no embedded
-                // thumbnail, so ImageIO renders from the full image either way, and removing this
-                // line leaves every test green. It is verified on device against camera photos.
-                kCGImageSourceCreateThumbnailFromImageAlways.toKey() to true,
-                kCGImageSourceThumbnailMaxPixelSize.toKey() to maxPixelSize,
-                kCGImageSourceCreateThumbnailWithTransform.toKey() to true,
-            ),
-        )?.reinterpret<__CFDictionary>()
 
     /**
      * PNG when the image carries transparency, JPEG otherwise — the same rule as Android, for the
@@ -181,13 +135,3 @@ private fun NSData.toByteArray(): ByteArray {
     if (out.isNotEmpty()) out.usePinned { memcpy(it.addressOf(0), bytes, length) }
     return out
 }
-
-/**
- * The ImageIO option and property keys are `CFStringRef` **globals**, which we do not own.
- * `CFBridgingRelease` alone would hand ARC a reference that was never retained for us — an
- * over-release of a constant, which is the kind of fault that shows up much later and somewhere
- * else. Retaining first makes the pair balance: +1 here, -1 as ARC takes it over.
- */
-@OptIn(ExperimentalForeignApi::class)
-private fun platform.CoreFoundation.CFStringRef?.toKey(): Any? =
-    CFBridgingRelease(CFRetain(this))

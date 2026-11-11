@@ -206,6 +206,14 @@ internal class CameraState(
     val tile: TileState get() = TileState(lastShot = lastShot, saving = lane.busy, progress = lane.progress)
 
     /**
+     * Whether a tap on the tile opens the shot in the viewer. Opening covers the camera, and a covered
+     * camera releases the hardware — which fails a photo the platform still holds and ends a
+     * recording. So only with a shot to open, nothing recording, and no photo capturing. A clip still
+     * *saving* does not count: it runs in the session's lane, which covering the camera leaves alone.
+     */
+    val lastShotOpens: Boolean get() = lastShot != null && !recording && queue.capturing == 0
+
+    /**
      * A flip control only when there is another lens to flip to — and not while recording, since
      * switching lens would rebind the camera and end the clip.
      */

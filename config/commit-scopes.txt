@@ -1,0 +1,35 @@
+# Commit scopes check-commits.sh accepts, one per line. Read by the commit-msg hook and by CI, so
+# the two can never disagree. A subject may also have no scope at all.
+#
+# A module's scope is its Gradle path in kebab case (":core:vault" → core-vault). Add a line here in
+# the same change that adds a module.
+
+# Modules
+android-app
+app
+core-crypto
+core-db
+core-designsystem
+core-logging
+core-model
+core-storage
+core-testing
+core-vault
+feature-camera
+feature-vault
+konsist
+
+# The iOS host (the Xcode project under iosApp/)
+ios-app
+
+# Not modules
+build-logic
+ci
+deps
+docs
+format
+kb
+release
+roadmap
+scripts
+verification

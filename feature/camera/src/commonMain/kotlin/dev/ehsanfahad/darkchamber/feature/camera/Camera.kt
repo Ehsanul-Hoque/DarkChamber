@@ -69,6 +69,9 @@ fun cameraComponent(
     unreadableNameLabel: String,
     onClose: () -> Unit,
     mainContext: CoroutineContext = Dispatchers.Main,
+    // Where a tap on the last-shot tile goes, with the shot's item id: the host opens its viewer on
+    // this camera's destination listing. The camera only reports the tap.
+    onOpenLastShot: (itemId: ByteArray) -> Unit = {},
 ): CameraComponent {
     // The rule import follows: one album files into that album, and the whole vault and the unfiled
     // items both file nowhere.
@@ -100,5 +103,6 @@ fun cameraComponent(
         unreadableNameLabel = unreadableNameLabel,
         mainContext = mainContext,
         onClose = onClose,
+        onOpenLastShot = onOpenLastShot,
     )
 }

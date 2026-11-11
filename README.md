@@ -35,19 +35,24 @@ A Kotlin Multiplatform app for **Android** and **iOS** that encrypts, stores, an
 >   changing the order or typing never re-decrypts a row. The search covers names on the current
 >   listing and says so, an item whose name will not open is counted out rather than quietly dropped,
 >   and an empty grid names which of the five reasons it is empty;
-> - **a private camera, for photos** — opened from any listing, it files each shot where an import
->   from there would and shows that listing's count live. A photo goes from the camera into memory
->   and from memory into the vault's encryption: no file, nothing in the system photo library, no
->   location attached;
+> - **a private camera, for photos and video** — opened from any listing, it files each shot where an
+>   import from there would and shows that listing's count live. A photo goes from the camera into
+>   memory and from memory into the vault's encryption: no file, nothing in the system photo library,
+>   no location attached. A video passes through one app-private scratch file while it is recorded
+>   and encrypted, then is deleted;
+> - **a viewer for photos, and delete** — tap an item, or the camera's last-shot tile, to swipe through
+>   the listing it came from; delete one item there, or many from a selection. Delete destroys the
+>   item's key, so the app can never open it again; the threat model says what flash storage may
+>   still hold;
 > - **nothing handed to the rest of the phone** — screenshots and screen recording are blocked, and
 >   every window the app opens, each dialog included, keeps itself out of the platform's autofill and
 >   content-capture structures. That channel is **not** covered by the screenshot flag: it was
 >   measured sending a vault text field to another process, which is why a password manager cannot
 >   fill the passphrase here.
 >
-> What's left before the vault is usable: the camera's **video** and the **in-app viewers** — tapping
-> an item, or the camera's last-shot tile, is deliberately inert until those land — then export with
-> metadata scrubbing and the settings screen. The documents under [`docs/`](./docs) describe the target design.
+> What's left before the vault is usable: viewers for **video, audio and PDF** (they show a "can't be
+> opened here" page for now), then export with metadata scrubbing and the settings screen. The
+> documents under [`docs/`](./docs) describe the target design.
 
 ---
 
@@ -136,7 +141,7 @@ Essentials — the [Engineering Guide](./docs/engineering/README.md) has the det
 
 - **TDD** — tests first; coverage gated in CI (`core:crypto` ≈100%, domain 90%, overall 80%).
 - **Conventional Commits, per commit** (`feat:`, `fix:`, `docs:`, …) — we merge, not squash; commits drive automated versioning.
-- **Quality gates** — ktlint, detekt, Konsist (including security-invariant rules), Kover; locally via Lefthook, again in CI.
+- **Quality gates** — ktlint, detekt, Konsist (including security-invariant rules), Kover, in CI. A tracked `commit-msg` hook (`./gradlew installGitHooks`) checks each commit message locally with the same rule CI applies.
 - **Security-sensitive PRs** (crypto, storage, format, session/lock) need the `security-review` label and must state which threat-model invariants they touch.
 - **`main` is protected**; releases are tag-based and cut manually.
 

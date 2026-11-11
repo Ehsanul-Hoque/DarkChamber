@@ -40,6 +40,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -71,6 +72,9 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumDelete
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumState
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
 import dev.ehsanfahad.darkchamber.feature.vault.api.Filing
+import dev.ehsanfahad.darkchamber.feature.vault.api.SelectionDelete
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryError
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
@@ -98,6 +102,7 @@ internal fun GalleryScreen(
     imageLoader: ImageLoader,
     onChooseOrder: (GalleryOrder) -> Unit,
     onOpenSearch: () -> Unit,
+    onSearchFocused: () -> Unit,
     onEditSearch: (String) -> Unit,
     onCloseSearch: () -> Unit,
     onAddPhotos: () -> Unit,
@@ -110,7 +115,8 @@ internal fun GalleryScreen(
     onKeepOriginals: () -> Unit,
     onDismissError: () -> Unit,
     onSelectItem: (ByteArray) -> Unit,
-    onToggleItem: (ByteArray) -> Unit,
+    onTapItem: (ByteArray) -> Unit,
+    onRevealHandled: () -> Unit,
     onSelectAll: () -> Unit,
     onClearSelection: () -> Unit,
     onStartFiling: () -> Unit,
@@ -122,6 +128,10 @@ internal fun GalleryScreen(
     onConfirmFilingCreate: () -> Unit,
     onCancelFilingCreate: () -> Unit,
     onAcknowledgeFiling: () -> Unit,
+    onRequestDeleteSelection: () -> Unit,
+    onConfirmDeleteSelection: () -> Unit,
+    onCancelDeleteSelection: () -> Unit,
+    onAcknowledgeDeletion: () -> Unit,
     onStartAlbumRename: () -> Unit,
     onEditAlbumName: (String) -> Unit,
     onConfirmAlbumRename: () -> Unit,
@@ -146,6 +156,18 @@ internal fun GalleryScreen(
     // it at the moment of the tap — see [BrowsingScroll].
     val gridState = rememberLazyGridState()
     val scroll = rememberBrowsingScroll(gridState, state.items, state.search)
+
+    // Back from the viewer: bring the item last viewed into view, once. From a side effect for the
+    // reason the re-order scroll uses one — asked for before the frame is measured, never drawn in
+    // the wrong place first. Left alone when it is already on screen or no longer listed.
+    state.revealKey?.let { key ->
+        SideEffect {
+            val visible = gridState.layoutInfo.visibleItemsInfo
+            val range = if (visible.isEmpty()) IntRange.EMPTY else visible.first().index..visible.last().index
+            revealScroll(state.items, key, range)?.let { gridState.requestScrollToItem(it) }
+            onRevealHandled()
+        }
+    }
 
     // No insets here: the host applies them once for the whole unlocked subtree, so a screen that
     // added its own would inset twice.
@@ -177,6 +199,7 @@ internal fun GalleryScreen(
                         onChooseOrder(chosen)
                     },
                     onOpenSearch = onOpenSearch,
+                    onSearchFocused = onSearchFocused,
                     onEditSearch = onEditSearch,
                     onCloseSearch = onCloseSearch,
                     showsControls = state.showsBrowseControls(),
@@ -205,7 +228,7 @@ internal fun GalleryScreen(
                     bottomInset = barHeight,
                     selection = state.selection,
                     onSelectItem = onSelectItem,
-                    onToggleItem = onToggleItem,
+                    onTapItem = onTapItem,
                 )
             }
         }
@@ -231,6 +254,9 @@ internal fun GalleryScreen(
             when (state.bottomBar()) {
                 GalleryBottomBar.FilingReport ->
                     FilingCard(filing = state.filing as Filing, onDismiss = onAcknowledgeFiling)
+                // The same place and shape for the same kind of news: a delete running, or what it did.
+                GalleryBottomBar.DeleteReport ->
+                    DeleteCard(deletion = state.deletion as SelectionDelete, onDismiss = onAcknowledgeDeletion)
                 // Selecting takes the bottom area over entirely, ahead of any batch state. That is also
                 // why nothing guards against starting an import mid-selection: the buttons that would
                 // start one are not on screen while this is.
@@ -239,10 +265,11 @@ internal fun GalleryScreen(
                     // Offered only where every selected item is in the album being viewed. On the whole
                     // vault the selection is a mix of filed and unfiled items, so the button would
                     // silently do nothing to some of them; from Unfiled there is nothing to take out.
-                    // No shredding here either — that is destructive, needs its own disclosure, and
-                    // belongs to the work that owns it.
                     onUnfile = onUnfileSelection.takeIf { state.scope == GalleryScope.Album },
                     onMoveToAlbum = onStartFiling,
+                    // Destructive, so it asks first — the confirmation below carries the count and
+                    // says what deleting does and what it cannot undo.
+                    onDelete = onRequestDeleteSelection,
                     onSelectAll = onSelectAll,
                     onClear = onClearSelection,
                 )
@@ -311,6 +338,24 @@ internal fun GalleryScreen(
                 onConfirmCreate = onConfirmFilingCreate,
                 onCancelCreate = onCancelFilingCreate,
             )
+        }
+
+        // Deleting the selection: asked before anything happens, and the dialog stays up, deaf, while
+        // it runs — a shred cannot be called back.
+        when (val deletion = state.deletion) {
+            is SelectionDelete.Asking -> SelectionDeleteDialog(
+                count = deletion.count,
+                deleting = false,
+                onConfirm = onConfirmDeleteSelection,
+                onCancel = onCancelDeleteSelection,
+            )
+            is SelectionDelete.Deleting -> SelectionDeleteDialog(
+                count = deletion.count,
+                deleting = true,
+                onConfirm = onConfirmDeleteSelection,
+                onCancel = onCancelDeleteSelection,
+            )
+            is SelectionDelete.Deleted, null -> Unit
         }
 
         // The album's own two dialogs, above the grid they act on. Never both: each intent refuses
@@ -538,6 +583,89 @@ private fun FilingCard(filing: Filing, onDismiss: () -> Unit) {
 
             // The chooser is a dialog, so this card is never asked to draw it.
             is Filing.Choosing -> Unit
+        }
+    }
+}
+
+/** A delete of the selection running, or how many it deleted — shaped like [FilingCard]. */
+@Composable
+private fun DeleteCard(deletion: SelectionDelete, onDismiss: () -> Unit) {
+    val colors = DarkChamberTheme.colors
+    val spacing = DarkChamberTheme.spacing
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(color = colors.surface, shape = DarkChamberTheme.shapes.large)
+            .padding(spacing.spaceMd),
+    ) {
+        when (deletion) {
+            is SelectionDelete.Deleting -> Row(verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(color = colors.danger, modifier = Modifier.size(spacing.spaceMd))
+                Text(
+                    text = ViewerFormat.deleting(),
+                    style = DarkChamberTheme.typography.body,
+                    color = colors.textSecondary,
+                    modifier = Modifier.padding(start = spacing.spaceSm),
+                )
+            }
+            is SelectionDelete.Deleted -> {
+                Text(text = ViewerFormat.deleted(deletion.count), style = DarkChamberTheme.typography.body, color = colors.textPrimary)
+                Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                    TextButton(onClick = onDismiss) {
+                        Text(text = "OK", style = DarkChamberTheme.typography.label, color = colors.accent)
+                    }
+                }
+            }
+            // The confirmation is a dialog, so this card is never asked to draw it.
+            is SelectionDelete.Asking -> Unit
+        }
+    }
+}
+
+/**
+ * The confirmation for deleting the selection: the count, what deleting does and that it cannot be
+ * undone, a neutral cancel and the destructive action in the danger role. Its own window, so its own
+ * exclusion. Once confirmed nothing on it responds, and the action says why.
+ */
+@Composable
+private fun SelectionDeleteDialog(count: Int, deleting: Boolean, onConfirm: () -> Unit, onCancel: () -> Unit) {
+    val colors = DarkChamberTheme.colors
+    val spacing = DarkChamberTheme.spacing
+    Dialog(
+        onDismissRequest = onCancel,
+        properties = DialogProperties(dismissOnBackPress = !deleting, dismissOnClickOutside = !deleting),
+    ) {
+        ExcludeFromPlatformStructures()
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(color = colors.surface, shape = DarkChamberTheme.shapes.large)
+                .padding(spacing.spaceLg),
+        ) {
+            Text(text = ViewerFormat.deleteQuestion(count), style = DarkChamberTheme.typography.title, color = colors.textPrimary)
+            Text(
+                text = ViewerFormat.deleteExplanation(count),
+                style = DarkChamberTheme.typography.body,
+                color = colors.textSecondary,
+                modifier = Modifier.padding(top = spacing.spaceSm),
+            )
+            Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth().padding(top = spacing.spaceMd)) {
+                TextButton(onClick = onCancel, enabled = !deleting) {
+                    Text(
+                        text = ViewerFormat.cancel(),
+                        style = DarkChamberTheme.typography.label,
+                        color = if (deleting) colors.textSecondary else colors.textPrimary,
+                    )
+                }
+                TextButton(onClick = onConfirm, enabled = !deleting) {
+                    Text(
+                        text = if (deleting) ViewerFormat.deleting() else ViewerFormat.deleteAction(count),
+                        style = DarkChamberTheme.typography.label,
+                        color = if (deleting) colors.textSecondary else colors.danger,
+                    )
+                }
+            }
         }
     }
 }
@@ -828,6 +956,7 @@ private fun SelectionBar(
     count: Int,
     onUnfile: (() -> Unit)?,
     onMoveToAlbum: () -> Unit,
+    onDelete: () -> Unit,
     onSelectAll: () -> Unit,
     onClear: () -> Unit,
 ) {
@@ -844,6 +973,7 @@ private fun SelectionBar(
             count = count,
             onUnfile = onUnfile,
             onMoveToAlbum = onMoveToAlbum,
+            onDelete = onDelete,
             onSelectAll = onSelectAll,
             onClear = onClear,
         )
@@ -864,6 +994,7 @@ private fun SelectionActions(
     count: Int,
     onUnfile: (() -> Unit)?,
     onMoveToAlbum: () -> Unit,
+    onDelete: () -> Unit,
     onSelectAll: () -> Unit,
     onClear: () -> Unit,
 ) {
@@ -892,6 +1023,15 @@ private fun SelectionActions(
                 // a button vanishing and returning as the count changes would be the thing that reads
                 // as broken.
                 color = if (count > 0) DarkChamberTheme.colors.accent else DarkChamberTheme.colors.textSecondary,
+            )
+        }
+        TextButton(onClick = onDelete, enabled = count > 0) {
+            Text(
+                text = ViewerFormat.deleteAction(count),
+                style = DarkChamberTheme.typography.label,
+                // The danger role: this one does destroy something, and it must not look like the
+                // moves beside it.
+                color = if (count > 0) DarkChamberTheme.colors.danger else DarkChamberTheme.colors.textSecondary,
             )
         }
         TextButton(onClick = onSelectAll) {
@@ -1235,7 +1375,7 @@ private fun ItemGrid(
     bottomInset: Dp,
     selection: GallerySelection,
     onSelectItem: (ByteArray) -> Unit,
-    onToggleItem: (ByteArray) -> Unit,
+    onTapItem: (ByteArray) -> Unit,
 ) {
     val spacing = DarkChamberTheme.spacing
     val arrival = tileArrival(DarkChamberTheme.motion, prefersReducedMotion(), reordering)
@@ -1273,7 +1413,7 @@ private fun ItemGrid(
                 selecting = selection.active,
                 selected = selection.contains(item.id),
                 onLongPress = { onSelectItem(item.id) },
-                onTap = { onToggleItem(item.id) },
+                onTap = { onTapItem(item.id) },
                 modifier = Modifier.animateItem(
                     fadeInSpec = arrival.fadeIn?.let { tween(it) },
                     placementSpec = arrival.placement?.let { tween<IntOffset>(it) },
@@ -1305,10 +1445,10 @@ private fun ItemTile(
             // The whole tile is the target, caption included: a thumbnail is a small thing to hit,
             // and the name under it is part of what the user is pointing at.
             //
-            // A tap does nothing outside selecting mode. Opening an item is the viewers' work, and
-            // wiring a tap to anything now would be inventing a behaviour that has to be taken back.
+            // A tap toggles while selecting and opens the item otherwise — decided by the component
+            // (`tapItem`), not here, so the tile never branches on a mode the component also tracks.
             .combinedClickable(
-                onClick = { if (selecting) onTap() },
+                onClick = onTap,
                 onLongClick = onLongPress,
             ),
     ) {
@@ -1355,6 +1495,11 @@ private fun ItemTile(
                         },
                         style = DarkChamberTheme.typography.label,
                         color = if (damaged || unverified) colors.danger else colors.textSecondary,
+                        // Words instead of the glyph where the glyph would say nothing aloud; the
+                        // tile merges its children, so they are announced beside the name.
+                        modifier = GalleryFormat.badgeSpoken(item.meta, unverified)?.let { words ->
+                            Modifier.semantics { contentDescription = words }
+                        } ?: Modifier,
                     )
                 }
             }
@@ -1571,6 +1716,8 @@ private fun ErrorBanner(error: GalleryError, onDismiss: () -> Unit) {
                 // Says where they are rather than only what failed: the user is looking at a selection
                 // that did not move, and the one thing they need to know is that nothing was lost.
                 GalleryError.FilingFailed -> "Those items couldn't be moved. They are where they were."
+                // The catalog deletes all or nothing, so "nothing was deleted" is true; why is unknown.
+                GalleryError.DeleteFailed -> ViewerFormat.deleteFailed()
             },
             style = DarkChamberTheme.typography.body,
             color = colors.textPrimary,

@@ -2,8 +2,6 @@ package dev.ehsanfahad.darkchamber.app.thumbnail
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.Matrix
-import androidx.exifinterface.media.ExifInterface
 import dev.ehsanfahad.darkchamber.core.vault.RangeReader
 import dev.ehsanfahad.darkchamber.core.vault.ThumbnailEncoder
 import kotlinx.io.RawSource
@@ -101,34 +99,7 @@ internal class AndroidThumbnailEncoder : ThumbnailEncoder {
      */
     private fun readTransform(mime: String, openSource: () -> RawSource): ThumbnailTransform {
         if (!carriesOrientation(mime)) return UPRIGHT
-        val orientation = try {
-            openSource().buffered().asInputStream().use { stream ->
-                ExifInterface(stream).getAttributeInt(
-                    ExifInterface.TAG_ORIENTATION,
-                    ExifInterface.ORIENTATION_NORMAL,
-                )
-            }
-        } catch (_: Exception) {
-            return UPRIGHT
-        }
-        return orientationTransform(orientation)
-    }
-
-    /** Applies the rotation and flip the tag asked for; returns the receiver when there is none. */
-    private fun Bitmap.transformedBy(transform: ThumbnailTransform): Bitmap {
-        if (transform.isIdentity) return this
-        val matrix = Matrix().apply {
-            // Mirror before rotating, which is the order the tag's own vocabulary is defined in.
-            if (transform.mirrored) postScale(-1f, 1f)
-            if (transform.degrees != 0) postRotate(transform.degrees.toFloat())
-        }
-        return try {
-            Bitmap.createBitmap(this, 0, 0, width, height, matrix, true)
-        } catch (_: Exception) {
-            // Out of memory, or a bitmap the platform declined to copy. A sideways preview beats no
-            // preview, and neither is worth failing an import over.
-            this
-        }
+        return readOrientation { openSource().buffered().asInputStream() }
     }
 
     // The subsampled bitmap is a power-of-two step above the target, so this is the exact-size step.
@@ -157,9 +128,6 @@ internal class AndroidThumbnailEncoder : ThumbnailEncoder {
     private companion object {
         const val IMAGE_MIME_PREFIX = "image/"
         const val VIDEO_MIME_PREFIX = "video/"
-
-        /** What an image with no orientation tag needs doing to it: nothing. */
-        val UPRIGHT = ThumbnailTransform(degrees = 0, mirrored = false)
 
         // 82 is where JPEG artefacts stop being visible at tile size while the file stays small;
         // ignored for PNG, which is lossless.

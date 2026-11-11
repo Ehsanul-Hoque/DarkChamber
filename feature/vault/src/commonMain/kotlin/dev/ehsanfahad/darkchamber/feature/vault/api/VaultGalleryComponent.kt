@@ -30,6 +30,13 @@ interface VaultGalleryComponent {
      */
     fun openSearch()
 
+    /**
+     * The screen has focused the field it was asked to ([GallerySearch.Open.takesFocus]). From here on
+     * the field is only focused by the user, so a screen drawn again does not bring the keyboard back.
+     * Ignored while the search is closed.
+     */
+    fun searchFocused()
+
     /** What has been typed into it. Ignored while the search is closed. */
     fun editSearch(query: String)
 
@@ -68,6 +75,22 @@ interface VaultGalleryComponent {
 
     /** Tap a tile while selecting: add it or remove it. A no-op outside selecting mode. */
     fun toggleItem(id: ByteArray)
+
+    /**
+     * Tap a tile: while selecting, add it or remove it; otherwise open it in the viewer, which is
+     * navigation and so leaves through the host's callback, carrying the order and search the grid is
+     * showing so the viewer swipes through the same sequence.
+     */
+    fun tapItem(id: ByteArray)
+
+    /**
+     * Back from the viewer: bring the item last viewed into view, if it is still listed. Published as
+     * [GalleryState.revealKey] for the screen to act on once.
+     */
+    fun revealItem(id: ByteArray)
+
+    /** The screen has acted on [GalleryState.revealKey]. */
+    fun revealHandled()
 
     /** Select everything the screen is currently showing — which inside an album is that album. */
     fun selectAllItems()
@@ -115,6 +138,25 @@ interface VaultGalleryComponent {
 
     /** Dismiss the "moved" report. */
     fun acknowledgeFiling()
+
+    /**
+     * Ask to delete the selected items: opens the confirmation with their count. Ignored with nothing
+     * selected, and while a move or a delete is already under way.
+     */
+    fun requestDeleteSelection()
+
+    /**
+     * Delete the selected items for good, in one write. Ignored unless the confirmation is open. On
+     * success the selection ends and the result carries the count deleted; a refusal keeps the
+     * selection and says nothing was deleted.
+     */
+    fun confirmDeleteSelection()
+
+    /** Close the confirmation without deleting. Ignored once the delete has started. */
+    fun cancelDeleteSelection()
+
+    /** Dismiss the "deleted" report. */
+    fun acknowledgeDeletion()
 
     /**
      * Open the rename dialog for the album being viewed, **prefilled with its current name**: a
@@ -217,6 +259,13 @@ data class GalleryState(
      * from a vault that is genuinely empty, and the screen would go back to saying so.
      */
     val listingUnreadable: Boolean = false,
+    /**
+     * The item to bring into view, as its id in lower-case hex — set on the way back from the viewer,
+     * cleared once the screen has acted. An id, never content.
+     */
+    val revealKey: String? = null,
+    /** Deleting the selection, if that is happening. */
+    val deletion: SelectionDelete? = null,
 ) {
     /** Whether a batch is between the user asking for one and it ending. */
     val importing: Boolean get() = batch is ImportState.Picking || batch is ImportState.Running
@@ -241,10 +290,16 @@ sealed interface GallerySearch {
      * not open: a query cannot match a name nobody can read, and dropping such a row silently would
      * let a search conceal the one item worth looking at. It travels with the listing, so it is the
      * count for the items currently being searched rather than a running total.
+     *
+     * [takesFocus] is true from the moment the user opens the field until the screen reports it has
+     * focused it ([VaultGalleryComponent.searchFocused]). The field takes focus — and the keyboard
+     * comes up — once, because it was asked for; a screen drawn again later, such as the grid coming
+     * back from the viewer, finds it false and leaves the keyboard down.
      */
     data class Open(
         val query: String,
         val hiddenUnreadable: Int = 0,
+        val takesFocus: Boolean = false,
     ) : GallerySearch {
         /**
          * A length, never the text (hard rule #4).
@@ -254,7 +309,7 @@ sealed interface GallerySearch {
          * data-class `toString` would print it into any log line rendering a [GalleryState].
          */
         override fun toString(): String =
-            "Open(query=${query.length} chars, hiddenUnreadable=$hiddenUnreadable)"
+            "Open(query=${query.length} chars, hiddenUnreadable=$hiddenUnreadable, takesFocus=$takesFocus)"
     }
 }
 
@@ -530,4 +585,27 @@ enum class GalleryError {
      * that did not land. Nothing moved; the items are where they were.
      */
     FilingFailed,
+
+    /**
+     * A delete of the selection was refused. The catalog deletes all or nothing, so nothing was
+     * deleted, and the selection is kept for another try.
+     */
+    DeleteFailed,
+}
+
+/**
+ * Deleting the selected items for good. Sealed like [Filing]: the screen shows one of these at a time.
+ */
+sealed interface SelectionDelete {
+    /** The confirmation is open, for [count] items. */
+    data class Asking(val count: Int) : SelectionDelete
+
+    /** Confirmed and under way; it cannot be called back. */
+    data class Deleting(val count: Int) : SelectionDelete
+
+    /**
+     * Done. [count] is how many were actually deleted — an item already gone by the time the write ran
+     * is skipped, and reporting the request as the result would claim a delete that did not happen.
+     */
+    data class Deleted(val count: Long) : SelectionDelete
 }

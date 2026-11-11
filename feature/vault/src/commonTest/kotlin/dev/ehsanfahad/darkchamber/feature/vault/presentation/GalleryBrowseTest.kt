@@ -111,8 +111,49 @@ class GalleryBrowseTest {
 
         component.openSearch()
 
-        assertEquals(GallerySearch.Open(query = "", hiddenUnreadable = 0), component.state.value.search)
+        assertEquals(GallerySearch.Open(query = "", hiddenUnreadable = 0, takesFocus = true), component.state.value.search)
         assertEquals(3, component.state.value.items.size)
+    }
+
+    /**
+     * The field takes focus once, because the user asked for it. After the screen reports it has, a
+     * screen drawn again — the grid coming back from the viewer — must find nothing asking for focus,
+     * or the keyboard comes back up over the item it scrolled to.
+     */
+    @Test
+    fun once_the_field_has_focus_nothing_asks_for_it_again() = runTest {
+        val vault = FakeVaultItems()
+        val component = component(vault)
+        vault.emit()
+
+        component.openSearch()
+        component.searchFocused()
+        assertEquals(false, (component.state.value.search as GallerySearch.Open).takesFocus)
+
+        component.editSearch("al")
+        vault.emit() // the listing moves on underneath
+        component.openSearch() // a second tap on the field
+
+        val search = component.state.value.search as GallerySearch.Open
+        assertEquals(false, search.takesFocus, "typing, a new listing or a re-tap does not ask again")
+        assertEquals("al", search.query, "and what was typed stays")
+    }
+
+    @Test
+    fun a_search_closed_and_opened_again_asks_for_focus_again() = runTest {
+        val vault = FakeVaultItems()
+        val component = component(vault)
+        vault.emit()
+
+        component.openSearch()
+        component.searchFocused()
+        component.closeSearch()
+        component.searchFocused() // nothing open: ignored
+        assertEquals(GallerySearch.Closed, component.state.value.search)
+
+        component.openSearch()
+
+        assertEquals(true, (component.state.value.search as GallerySearch.Open).takesFocus)
     }
 
     @Test

@@ -415,6 +415,173 @@ class CatalogStoreTest {
         assertTrue(store.deleteItem(byteArrayOf(1)) is Outcome.Ok)
     }
 
+    @Test
+    fun deleteItems_removes_exactly_the_named_items_and_counts_them() {
+        store.upsertItem(item(1, createdAt = 100L)).unwrap()
+        store.upsertItem(item(2, createdAt = 200L)).unwrap()
+        store.upsertItem(item(3, createdAt = 300L)).unwrap()
+
+        // Fresh arrays, never the instances the rows were written with: a catalog hands ids back
+        // decoded from SQLite, so an identity comparison anywhere would pass here and fail for real.
+        val deleted = store.deleteItems(listOf(byteArrayOf(1), byteArrayOf(3))).unwrap()
+
+        assertEquals(2L, deleted, "the count is the rows deleted")
+        assertEquals(
+            listOf<Byte>(2),
+            store.listItems(ItemFilter.All).unwrap().map { it.id.single() },
+            "only the item nobody named is left",
+        )
+    }
+
+    /**
+     * An id that is already gone is skipped, not an error, and not counted: an item shredded between
+     * selection and delete is an ordinary race. The count is how a caller tells it from a clean run.
+     */
+    @Test
+    fun deleteItems_skips_an_id_that_is_already_gone_and_does_not_count_it() {
+        store.upsertItem(item(1)).unwrap()
+
+        val deleted = store.deleteItems(listOf(byteArrayOf(1), byteArrayOf(9))).unwrap()
+
+        assertEquals(1L, deleted, "only the row that existed is counted")
+        assertEquals(0L, store.countItems().unwrap())
+    }
+
+    /**
+     * A delete of fifty items must reach the listings **once** — each emission re-decrypts every
+     * row's metadata in the gallery above — and an empty one not at all: SQLite accepts `IN ()`, but
+     * running it would still tell every listing that `items` changed.
+     */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    @Test
+    fun deleteItems_notifies_the_listings_once_and_an_empty_delete_not_at_all() = runTest {
+        val obsDriver = testSqlDriver()
+        val obsStore = CatalogStore.create(obsDriver, UnconfinedTestDispatcher(testScheduler)).unwrap()
+        obsStore.upsertItem(item(1, createdAt = 100L)).unwrap()
+        obsStore.upsertItem(item(2, createdAt = 200L)).unwrap()
+        obsStore.upsertItem(item(3, createdAt = 300L)).unwrap()
+
+        obsStore.observeItems(ItemFilter.All).test {
+            assertEquals(listOf<Byte>(3, 2, 1), awaitItem().map { it.id.single() })
+
+            assertEquals(0L, obsStore.deleteItems(emptyList()).unwrap(), "an empty delete deletes nothing")
+            expectNoEvents()
+
+            obsStore.deleteItems(listOf(byteArrayOf(1), byteArrayOf(2), byteArrayOf(3))).unwrap()
+            assertEquals(emptyList(), awaitItem(), "one emission for the whole set")
+            expectNoEvents()
+
+            cancelAndIgnoreRemainingEvents()
+        }
+        obsDriver.close()
+    }
+
+    /**
+     * All or nothing. A delete that fails part-way must leave every row — a selection half-shredded
+     * is one the user cannot see the edges of. A trigger that refuses to delete id 3 is the failure.
+     */
+    @Test
+    fun deleteItems_that_fails_part_way_deletes_nothing() {
+        val failingDriver = testSqlDriver()
+        val failing = CatalogStore.create(failingDriver).unwrap()
+        failing.upsertItem(item(1)).unwrap()
+        failing.upsertItem(item(2)).unwrap()
+        failing.upsertItem(item(3)).unwrap()
+        failingDriver.execute(
+            identifier = null,
+            sql = "CREATE TRIGGER refuse_three BEFORE DELETE ON items WHEN OLD.id = x'03' " +
+                "BEGIN SELECT RAISE(ABORT, 'refused'); END",
+            parameters = 0,
+        )
+
+        val result = failing.deleteItems(listOf(byteArrayOf(1), byteArrayOf(2), byteArrayOf(3)))
+
+        assertTrue(result is Outcome.Err && result.error is VaultError.Db, "a failed delete is Err(Db), not a throw")
+        assertEquals(3L, failing.countItems().unwrap(), "and every row is still there")
+        failingDriver.close()
+    }
+
+    /** Before SQLite 3.32 — every Android up to 11 — one statement binds at most 999 values. */
+    private val oldSqliteLimit = 999
+
+    /** More items than an old SQLite can name in one statement, with two-byte ids. */
+    private fun manyIds(count: Int = 1_200) = (0 until count).map { byteArrayOf((it shr 8).toByte(), it.toByte()) }
+
+    private fun CatalogStore.insertAll(ids: List<ByteArray>) {
+        ids.forEach { id -> upsertItem(item(0).copy(id = id)).unwrap() }
+    }
+
+    @Test
+    fun deleteItems_of_more_items_than_an_old_sqlite_binds_at_once_deletes_them_all() {
+        val watching = WatchingSqlDriver(testSqlDriver())
+        val catalog = CatalogStore.create(watching).unwrap()
+        val ids = manyIds()
+        catalog.insertAll(ids)
+
+        val deleted = catalog.deleteItems(ids.map { it.copyOf() }).unwrap()
+
+        assertEquals(ids.size.toLong(), deleted)
+        assertEquals(0L, catalog.countItems().unwrap())
+        assertTrue(watching.mostParameters <= oldSqliteLimit, "one statement bound ${watching.mostParameters} values")
+        watching.close()
+    }
+
+    /** Taken in parts, still all or nothing: a refusal in the last part leaves the earlier parts' rows. */
+    @Test
+    fun deleteItems_of_many_items_that_fails_in_a_later_part_deletes_nothing() {
+        val failingDriver = testSqlDriver()
+        val failing = CatalogStore.create(failingDriver).unwrap()
+        val ids = manyIds()
+        failing.insertAll(ids)
+        failingDriver.execute(
+            identifier = null,
+            sql = "CREATE TRIGGER refuse_last BEFORE DELETE ON items WHEN OLD.id = x'04AF' " + // the 1200th
+                "BEGIN SELECT RAISE(ABORT, 'refused'); END",
+            parameters = 0,
+        )
+
+        val result = failing.deleteItems(ids)
+
+        assertTrue(result is Outcome.Err && result.error is VaultError.Db, "a failed delete is Err(Db)")
+        assertEquals(ids.size.toLong(), failing.countItems().unwrap(), "and every row is still there")
+        failingDriver.close()
+    }
+
+    @Test
+    fun updateItemAlbum_of_more_items_than_an_old_sqlite_binds_at_once_moves_them_all() {
+        val watching = WatchingSqlDriver(testSqlDriver())
+        val catalog = CatalogStore.create(watching).unwrap()
+        val ids = manyIds()
+        catalog.insertAll(ids)
+        catalog.upsertAlbum(album(7)).unwrap()
+
+        val moved = catalog.updateItemAlbum(ids, albumId = byteArrayOf(7)).unwrap()
+
+        assertEquals(ids.size.toLong(), moved)
+        assertEquals(ids.size, catalog.listItems(ItemFilter.Album(byteArrayOf(7))).unwrap().size)
+        assertTrue(watching.mostParameters <= oldSqliteLimit, "one statement bound ${watching.mostParameters} values")
+        watching.close()
+    }
+
+    /**
+     * Clearing the log runs after the delete has committed. If it fails, the rows are already gone: the
+     * answer is the delete's, not the clean-up's, or the screen would say nothing was deleted while the
+     * keys are gone and the files left behind.
+     */
+    @Test
+    fun a_delete_that_committed_is_Ok_even_if_clearing_the_log_afterwards_fails() {
+        val watching = WatchingSqlDriver(testSqlDriver())
+        val catalog = CatalogStore.create(watching).unwrap()
+        catalog.insertAll(manyIds(3))
+        watching.failWhere = "wal_checkpoint"
+
+        assertTrue(catalog.deleteItem(byteArrayOf(0, 0)) is Outcome.Ok, "one item")
+        assertEquals(2L, catalog.deleteItems(listOf(byteArrayOf(0, 1), byteArrayOf(0, 2))).unwrap(), "many items")
+        watching.failWhere = null
+        assertEquals(0L, catalog.countItems().unwrap())
+        watching.close()
+    }
+
     private fun album(
         id: Byte,
         kekVariant: Int = 0,

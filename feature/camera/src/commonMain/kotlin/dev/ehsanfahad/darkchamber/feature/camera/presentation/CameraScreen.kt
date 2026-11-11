@@ -136,6 +136,7 @@ internal fun CameraScreen(
     onFlip: () -> Unit,
     onCycleFlash: () -> Unit,
     onToggleTorch: () -> Unit,
+    onOpenLastShot: () -> Unit,
     onSwitchQuality: () -> Unit,
     onToggleSound: () -> Unit,
     onRequestMicrophone: () -> Unit,
@@ -172,6 +173,7 @@ internal fun CameraScreen(
             onFlip = onFlip,
             onCycleFlash = onCycleFlash,
             onToggleTorch = onToggleTorch,
+            onOpenLastShot = onOpenLastShot,
         )
         when (layout) {
             CameraLayout.Below -> Box(modifier = Modifier.fillMaxSize()) {
@@ -261,6 +263,7 @@ private class Controls(
     val onFlip: () -> Unit,
     val onCycleFlash: () -> Unit,
     val onToggleTorch: () -> Unit,
+    val onOpenLastShot: () -> Unit,
 )
 
 /**
@@ -801,9 +804,9 @@ private fun FlipControl(controls: Controls) {
 /**
  * The newest capture this camera has saved, drawn by the host's slot through the session's loader,
  * with an accent ring round it while a clip is still being saved — filling as the encrypt goes, or
- * whole when there is nothing to measure. **Display-only**: no click, no ripple, nothing that reads
- * as a control — there is no viewer to open yet, and a tile that looks tappable and does nothing is a
- * small lie.
+ * whole when there is nothing to measure. A tap opens the shot in the viewer — but only when
+ * [CameraState.lastShotOpens] says covering the camera costs nothing; otherwise the tile is disabled,
+ * with no ripple, so it never reads as a control that does nothing.
  */
 @Composable
 private fun LastShotTile(controls: Controls) {
@@ -820,6 +823,8 @@ private fun LastShotTile(controls: Controls) {
         modifier = Modifier
             .size(TileSize)
             .turned(controls.angle)
+            .clip(shape)
+            .clickable(enabled = controls.state.lastShotOpens, role = Role.Button, onClick = controls.onOpenLastShot)
             .semantics { contentDescription = description },
     ) {
         Box(

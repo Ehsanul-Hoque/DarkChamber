@@ -35,6 +35,9 @@ import dev.ehsanfahad.darkchamber.feature.camera.api.RecordingEnd
 import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryScope
 import dev.ehsanfahad.darkchamber.feature.vault.api.PhotoPicker
+import dev.ehsanfahad.darkchamber.core.model.VaultItemKind
+import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryOrder
+import kotlinx.io.Buffer
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
@@ -156,6 +159,61 @@ class CameraNavigationTest {
         this@CameraNavigationTest.camera.recording!!.finish(RecordingEnd.Finalized)
         assertIs<UnlockedChild.Gallery>(component.active, "popped once the clip is handed over")
         assertEquals(1L, vaultObjects(open).observeItemCount(ItemFilter.All).first(), "and the clip is in the vault")
+        component.lock()
+    }
+
+    // --- The last shot, opened in the viewer ---
+
+    /**
+     * The tile opens the viewer on the shot, over the camera's own listing — newest first and
+     * unsearched, whatever the grid was showing: the order and search reach a viewer only from a tile
+     * tap in the grid, and a handoff left over from one would leak a typed search into this one.
+     */
+    @Test
+    fun the_last_shot_opens_the_viewer_newest_first_unsearched() = runTest {
+        val open = openVault()
+        val objects = vaultObjects(open)
+        val earlier = listOf("cherry.jpg", "apple.jpg").map { name ->
+            (objects.importObject(kind = VaultItemKind.FILE.code, name = name, mime = "image/jpeg", openSource = { Buffer().apply { write(byteArrayOf(1, 2, 3)) } }) as Outcome.Ok).value
+        }
+        val component = component(open)
+        val grid = assertIs<UnlockedChild.Gallery>(component.active).component
+        grid.chooseOrder(GalleryOrder.NameAsc)
+        grid.openSearch()
+        grid.editSearch("apple")
+        grid.tapItem(earlier[1].copyOf()) // a viewer opened from the grid, sorted and searched
+        component.onBack()
+
+        component.openCameraFromTop()
+        val cam = assertIs<UnlockedChild.Camera>(component.active).component
+        cam.shoot()
+        cam.openLastShot()
+
+        val viewer = assertIs<UnlockedChild.Viewer>(component.active).component
+        val shown = viewer.state.value
+        assertEquals(3, shown.items.size, "unsearched: every item, not only the grid's match")
+        val shot = shown.items[shown.index].id.toList()
+        assertFalse(shot in earlier.map { it.toList() }, "opened at the shot")
+        assertEquals(0, shown.index, "newest first: the shot just taken leads")
+        component.lock()
+    }
+
+    /** Covered by the viewer, the camera lets go of the hardware; back returns to it, and it opens again. */
+    @Test
+    fun the_camera_is_released_while_the_viewer_covers_it_and_back_returns_to_it() = runTest {
+        val component = component(openVault())
+        component.openCameraFromTop()
+        val cam = assertIs<UnlockedChild.Camera>(component.active).component
+        cam.shoot()
+        assertTrue(camera.isOpen)
+
+        cam.openLastShot()
+        assertIs<UnlockedChild.Viewer>(component.active)
+        assertFalse(camera.isOpen, "released while covered")
+
+        component.onBack()
+        assertIs<UnlockedChild.Camera>(component.active)
+        assertTrue(camera.isOpen, "and open again on the way back")
         component.lock()
     }
 
@@ -287,10 +345,11 @@ class CameraNavigationTest {
 
     /**
      * The camera is drawn without the vault's bar — its own ✕ is the way out, and the bar's lock
-     * button and crumb would sit on top of a viewfinder. Every other screen keeps it.
+     * button and crumb would sit on top of a viewfinder. The grid keeps it. (The viewer hides it too,
+     * for its own reasons; `ViewerNavigationTest` says so.)
      */
     @Test
-    fun only_the_camera_hides_the_vault_bar() = runTest {
+    fun the_camera_hides_the_vault_bar_and_the_grid_keeps_it() = runTest {
         val component = component(openVault())
         assertTrue(showsUnlockedBar(component.active), "the grid")
 

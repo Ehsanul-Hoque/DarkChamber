@@ -46,14 +46,19 @@ class VaultSession private constructor(
     /**
      * A fresh per-object DEK, returned **only in wrapped form** (`nonce ‖ GCM(MK, DEK)`), suitable for
      * the catalog's `dek_wrapped` column. The raw DEK never leaves this call — access it later through
-     * [useDek]. Destroying the wrapped bytes is crypto-shredding the object.
+     * [useDek]. Destroying the wrapped bytes is crypto-shredding the object. A closed session throws
+     * `IllegalStateException`, and so does one that a lock closes during the seal.
      */
     fun generateDek(): ByteArray {
         check(!closed) { "vault session is closed" }
         val dek = engine.randomBytes(DchmFormat.DEK_SIZE)
         val nonce = engine.randomBytes(WRAP_NONCE_SIZE)
         return try {
-            nonce + engine.aeadSeal(mk, nonce, DEK_WRAP_AAD, dek)
+            val wrapped = nonce + engine.aeadSeal(mk, nonce, DEK_WRAP_AAD, dek)
+            // A seal cannot fail, so one a lock reached returns a wrap under a zeroed MK. close()
+            // marks the session closed before zeroing, so looking again here catches it.
+            check(!closed) { "vault session is closed" }
+            wrapped
         } finally {
             dek.fill(0)
         }
@@ -102,23 +107,34 @@ class VaultSession private constructor(
      * plaintext)`, same construction as [generateDek] but with a distinct AAD so a meta blob can never
      * be opened as a wrapped DEK (or vice-versa). The [plaintext] is caller-owned — not zeroized here.
      * Openable without the object's DEK, so a list view can read names/mime without touching the object.
+     * A closed session throws `IllegalStateException`, and so does one that a lock closes during the seal.
      */
     fun sealMeta(plaintext: ByteArray): ByteArray {
         check(!closed) { "vault session is closed" }
         val nonce = engine.randomBytes(WRAP_NONCE_SIZE)
-        return nonce + engine.aeadSeal(mk, nonce, META_AAD, plaintext)
+        val sealed = nonce + engine.aeadSeal(mk, nonce, META_AAD, plaintext)
+        // As in [generateDek]: a blob sealed under a key the lock was zeroing would be stored and
+        // then read as damaged for good (an item's name, an album's name). Refuse it instead.
+        check(!closed) { "vault session is closed" }
+        return sealed
     }
 
     /**
      * Opens a blob produced by [sealMeta]. A tampered/foreign blob (including a wrapped DEK) →
-     * `IntegrityFailure`; a structurally short blob → `MalformedContainer`.
+     * `IntegrityFailure`; a structurally short blob → `MalformedContainer`. A closed session throws
+     * `IllegalStateException`, and so does one that a lock closes while the open runs — as
+     * [unwrapDek] does, so a listing caught by a lock never draws a row as damaged.
      */
     fun openMeta(blob: ByteArray): Outcome<ByteArray> {
         check(!closed) { "vault session is closed" }
         if (blob.size <= WRAP_NONCE_SIZE) return Outcome.Err(VaultError.Crypto.MalformedContainer)
         val nonce = blob.copyOfRange(0, WRAP_NONCE_SIZE)
         val ciphertext = blob.copyOfRange(WRAP_NONCE_SIZE, blob.size)
-        return engine.aeadOpen(mk, nonce, META_AAD, ciphertext)
+        val opened = engine.aeadOpen(mk, nonce, META_AAD, ciphertext)
+        // A lock after the check above zeroes the MK under the open and the tag fails: the lock's
+        // doing, not tampering. Answer it as the closed session the check would have.
+        check(opened is Outcome.Ok || !closed) { "vault session is closed" }
+        return opened
     }
 
     /**

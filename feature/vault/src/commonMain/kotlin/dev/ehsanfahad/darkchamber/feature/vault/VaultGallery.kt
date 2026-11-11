@@ -20,6 +20,14 @@ import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveAlbum
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveAlbums
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveGallery
 import dev.ehsanfahad.darkchamber.feature.vault.domain.RenameAlbum
+import dev.ehsanfahad.darkchamber.feature.vault.domain.ShredItem
+import dev.ehsanfahad.darkchamber.feature.vault.domain.ShredItems
+import dev.ehsanfahad.darkchamber.feature.vault.domain.GalleryControls
+import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryOrder
+import dev.ehsanfahad.darkchamber.feature.vault.api.VaultViewerComponent
+import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerImageDecoder
+import dev.ehsanfahad.darkchamber.feature.vault.presentation.DefaultVaultViewerComponent
+import dev.ehsanfahad.darkchamber.feature.vault.presentation.LoadViewerImage
 import coil3.ImageLoader
 import coil3.PlatformContext
 import dev.ehsanfahad.darkchamber.feature.vault.presentation.DefaultVaultAlbumsComponent
@@ -99,6 +107,10 @@ fun vaultGalleryComponent(
     // Where the camera button goes. The host opens the camera with this listing's filter as its
     // destination; this component never learns that a camera exists.
     onOpenCamera: () -> Unit = {},
+    // Where a tap on a tile goes outside selecting: the viewer, on this listing, with the order and
+    // the search the grid is showing. The query is part of a file name the user typed — hand it on in
+    // memory, never through a navigation config.
+    onOpenItem: (id: ByteArray, order: GalleryOrder, query: String) -> Unit = { _, _, _ -> },
 ): VaultGalleryComponent {
     val items = VaultObjectsItems(vaultObjects)
     return DefaultVaultGalleryComponent(
@@ -111,11 +123,13 @@ fun vaultGalleryComponent(
         observeAlbums = ObserveAlbums(items),
         createAlbum = CreateAlbum(vault = items, ioContext = ioContext),
         fileItems = FileItems(vault = items, ioContext = ioContext),
+        shredItems = ShredItems(vault = items, ioContext = ioContext)::invoke,
         mainContext = mainContext,
         filter = filter,
         openedAlbumName = openedAlbumName,
         onLeaveAlbum = onLeaveAlbum,
         onOpenCamera = onOpenCamera,
+        onOpenItem = onOpenItem,
     )
 }
 
@@ -146,6 +160,47 @@ fun vaultAlbumsComponent(
         mainContext = mainContext,
         onOpenAlbum = onOpenAlbum,
         onOpenUnfiled = onOpenUnfiled,
+    )
+}
+
+/**
+ * Build the viewer: one item at a time, swiping through the listing it was opened from. Same rules as
+ * the gallery's factory — [vaultObjects] must come from the session scope, and everything behind this
+ * stays `internal`.
+ *
+ * [filter] and [startId] are ids, and may come from a navigation config. [order] and [query] are what
+ * the grid was showing at the tap: [query] is part of a file name the user typed, so the host hands
+ * both over in memory and never through a config — absent, the viewer shows newest first, unsearched.
+ */
+fun vaultViewerComponent(
+    componentContext: ComponentContext,
+    vaultObjects: VaultObjects,
+    decoder: ViewerImageDecoder,
+    filter: ItemFilter,
+    startId: ByteArray,
+    order: GalleryOrder = GalleryOrder.Newest,
+    query: String = "",
+    // Leaving, with the id of the item last shown, so the grid can bring it into view.
+    onBack: (lastViewedId: ByteArray) -> Unit,
+    mainContext: CoroutineContext = Dispatchers.Main,
+    // Where a page is read, decrypted and decoded, and where a delete runs: all blocking, all large
+    // or slow, none of it for the thread drawing the pager.
+    ioContext: CoroutineContext = Dispatchers.Default,
+): VaultViewerComponent {
+    val items = VaultObjectsItems(vaultObjects)
+    val loader = LoadViewerImage(items = items, decode = decoder::decode, io = ioContext)
+    val shredItem = ShredItem(vault = items, ioContext = ioContext)
+    return DefaultVaultViewerComponent(
+        componentContext = componentContext,
+        observeGallery = ObserveGallery(items),
+        observeAlbum = ObserveAlbum(items),
+        load = loader::load,
+        shred = { id -> shredItem(id) },
+        filter = filter,
+        controls = GalleryControls(order = order, query = query),
+        startId = startId,
+        onBack = onBack,
+        mainContext = mainContext,
     )
 }
 

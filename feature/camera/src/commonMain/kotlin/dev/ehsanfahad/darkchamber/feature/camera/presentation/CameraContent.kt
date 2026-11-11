@@ -35,6 +35,7 @@ fun CameraContent(
         onFlip = component::flipLens,
         onCycleFlash = component::cycleFlash,
         onToggleTorch = component::toggleTorch,
+        onOpenLastShot = component::openLastShot,
         onSwitchQuality = component::switchQuality,
         onToggleSound = component::toggleSound,
         onRequestMicrophone = component::requestMicrophone,

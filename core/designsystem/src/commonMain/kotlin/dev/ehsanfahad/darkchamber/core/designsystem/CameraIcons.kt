@@ -26,7 +26,7 @@ import androidx.compose.ui.unit.dp
  */
 
 /** One 24-unit icon with a single black-filled path, the shape every supplied mark has. */
-private fun markVector(name: String, pathData: PathBuilder.() -> Unit): ImageVector =
+internal fun markVector(name: String, pathData: PathBuilder.() -> Unit): ImageVector =
     ImageVector.Builder(
         name = name,
         defaultWidth = 24.dp,

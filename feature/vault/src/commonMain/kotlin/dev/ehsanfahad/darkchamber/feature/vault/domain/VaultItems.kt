@@ -7,6 +7,7 @@ import dev.ehsanfahad.darkchamber.core.vault.AssignSummary
 import dev.ehsanfahad.darkchamber.core.vault.ImportPhase
 import dev.ehsanfahad.darkchamber.core.vault.VaultItemSummary
 import kotlinx.coroutines.flow.Flow
+import kotlinx.io.RawSink
 import kotlinx.io.RawSource
 
 /**
@@ -126,4 +127,28 @@ internal interface VaultItems {
      * fallback badge an unsupported type gets would hide it.
      */
     fun thumbnail(id: ByteArray): Outcome<ByteArray?>
+
+    /**
+     * Decrypt the object [id] into [sink], blocking, in bounded RAM on the vault's side.
+     *
+     * **The sink sees plaintext before the whole object is verified.** Each chunk is released as soon
+     * as *that chunk's* tag checks out, and the whole-plaintext digest is compared only at the end. So
+     * what reached the sink means nothing until this returns `Ok`: on `Err` it may hold the first part
+     * of a tampered or truncated object, and must be dropped, never drawn.
+     */
+    fun open(id: ByteArray, sink: RawSink): Outcome<Unit>
+
+    /**
+     * Crypto-shred the item [id]: its catalog row goes first — the row holds its only wrapped key, so
+     * the item is unreadable the moment that commits — then its files, best effort. `Ok` once the row
+     * is gone; `Err` means nothing was deleted, including for an id that is no longer there.
+     */
+    fun shred(id: ByteArray): Outcome<Unit>
+
+    /**
+     * Crypto-shred every item in [ids] at once: the rows go together in one catalog transaction, so a
+     * failure leaves every item intact, and the listings re-read once. `Ok` carries how many were
+     * shredded — an id already gone is skipped, not counted; `Err` means nothing was deleted.
+     */
+    fun shredMany(ids: List<ByteArray>): Outcome<Long>
 }
