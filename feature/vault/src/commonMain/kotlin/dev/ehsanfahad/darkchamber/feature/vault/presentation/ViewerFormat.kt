@@ -27,10 +27,21 @@ internal object ViewerFormat {
             is ViewerPage.NotViewable -> "This file can't be opened here."
             ViewerPage.TooLarge -> "This file is too large to open here."
             ViewerPage.CantShow -> "This file can't be shown on this device."
+            ViewerPage.CantPlay -> "This device can't play this file."
             ViewerPage.Unverified ->
                 "This file couldn't be verified, so none of it is shown. It may have changed since it was saved."
             ViewerPage.NeedsUpdate -> "This file was saved by a newer version of DarkChamber. Update the app to open it."
             ViewerPage.CouldntOpen -> "This file couldn't be opened."
+        }
+
+    /**
+     * The note on a page that plays in part. The device is the limit, as on [ViewerPage.CantPlay]: it
+     * says what is missing and where the limit is, and nothing about the file's state.
+     */
+    fun trackNote(note: TrackNote): String =
+        when (note) {
+            TrackNote.NoPicture -> "Video can't be shown on this device"
+            TrackNote.NoSound -> "No sound — this device can't play this audio"
         }
 
     /** The bar's title: the item's name, or the grid's own words for one that will not open. */

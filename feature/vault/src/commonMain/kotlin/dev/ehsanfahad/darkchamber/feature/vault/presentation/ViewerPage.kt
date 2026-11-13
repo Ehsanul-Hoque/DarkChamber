@@ -2,6 +2,9 @@ package dev.ehsanfahad.darkchamber.feature.vault.presentation
 
 import dev.ehsanfahad.darkchamber.core.model.VaultError
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
+import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerFailure
+import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerTracks
+import dev.ehsanfahad.darkchamber.feature.vault.api.TrackSupport
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerPage
 
 /** What to do with an item before anything is read. */
@@ -43,3 +46,39 @@ internal fun pageForOpenFailure(error: VaultError): ViewerPage =
         VaultError.Crypto.UnsupportedFormatVersion -> ViewerPage.NeedsUpdate
         else -> ViewerPage.CouldntOpen
     }
+
+/**
+ * The page for playback that ended early, decided by where the failure came from: a refused read is
+ * judged as an open would be ([pageForOpenFailure]), so only the vault's own integrity check makes a
+ * file [ViewerPage.Unverified]; a decoder that declines the format is [ViewerPage.CantPlay], never
+ * damage; a stop or a lock is no page at all (`null`) — the player was let go, not failed.
+ */
+internal fun pageForPlayerFailure(failure: PlayerFailure): ViewerPage? =
+    when (failure) {
+        is PlayerFailure.Reader -> pageForOpenFailure(failure.error)
+        PlayerFailure.Decoder -> ViewerPage.CantPlay
+        PlayerFailure.Stopped -> null
+        PlayerFailure.Other -> ViewerPage.CouldntOpen
+    }
+
+/** What a playing page says is missing: its picture, or its sound. */
+internal enum class TrackNote { NoPicture, NoSound }
+
+/**
+ * The note for an item that plays in part: one kind of track this device cannot play while the other
+ * plays. `null` when everything found plays, when there is nothing to play at all (that is
+ * [nothingPlays]'s page), and before the tracks are known. A track the item simply does not have — a
+ * silent clip, an audio file's picture — is not missing.
+ */
+internal fun trackNote(tracks: PlayerTracks): TrackNote? =
+    when {
+        tracks.video == TrackSupport.Unplayable && tracks.audio == TrackSupport.Playable -> TrackNote.NoPicture
+        tracks.audio == TrackSupport.Unplayable && tracks.video == TrackSupport.Playable -> TrackNote.NoSound
+        else -> null
+    }
+
+/** Every track found is one this device cannot play: the whole page is [ViewerPage.CantPlay]. */
+internal fun nothingPlays(tracks: PlayerTracks): Boolean {
+    val found = listOf(tracks.video, tracks.audio).filter { it != TrackSupport.Absent }
+    return found.isNotEmpty() && found.none { it == TrackSupport.Playable }
+}

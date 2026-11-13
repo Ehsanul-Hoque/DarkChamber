@@ -21,6 +21,12 @@ sealed interface ViewerPage {
     /** Read and verified, but the platform could not make a picture of it. Not damage. */
     data object CantShow : ViewerPage
 
+    /**
+     * A video or audio item none of whose tracks this device's decoders play. Not damage: what was read
+     * verified, and the file is unchanged in the vault.
+     */
+    data object CantPlay : ViewerPage
+
     /** Failed its integrity check, or is not a container at all. Nothing of it is shown. */
     data object Unverified : ViewerPage
 

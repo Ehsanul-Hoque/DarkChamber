@@ -23,6 +23,7 @@ class ViewerFormatTest {
         ViewerPage.NotViewable("PDF"),
         ViewerPage.TooLarge,
         ViewerPage.CantShow,
+        ViewerPage.CantPlay,
         ViewerPage.Unverified,
         ViewerPage.NeedsUpdate,
         ViewerPage.CouldntOpen,
@@ -58,7 +59,7 @@ class ViewerFormatTest {
      */
     @Test
     fun the_pages_for_a_working_file_never_sound_like_damage() {
-        for (page in listOf(ViewerPage.NotViewable("PDF"), ViewerPage.TooLarge, ViewerPage.CantShow, ViewerPage.NeedsUpdate)) {
+        for (page in listOf(ViewerPage.NotViewable("PDF"), ViewerPage.TooLarge, ViewerPage.CantShow, ViewerPage.CantPlay, ViewerPage.NeedsUpdate)) {
             assertSaysNone(message(page), "damage", "corrupt", "tamper", "verif", "integrity", "broken")
         }
     }
@@ -73,6 +74,32 @@ class ViewerFormatTest {
         assertTrue(text.contains("couldn't be verified", ignoreCase = true), text)
         assertTrue(text.contains("none of it is shown", ignoreCase = true), text)
         assertSaysNone(text, "tamper", "corrupt", "attack", "hack", "safe", "damaged")
+    }
+
+    /**
+     * No decoder here plays it: the limit is the device, and the line says so. It does not blame the
+     * file or the vault, and it does not name a cause (a format, a codec) it was never told.
+     */
+    @Test
+    fun a_file_this_device_cannot_play_puts_the_limit_on_the_device() {
+        val text = message(ViewerPage.CantPlay)
+        assertTrue(text.contains("this device can't play", ignoreCase = true), text)
+        assertSaysNone(text, "vault", "DarkChamber", "format", "codec", "unsupported", "because", "safe", "intact")
+    }
+
+    /**
+     * A note on a page that plays in part says what is missing, and that the device is the limit — never
+     * that the file is damaged, and never a cause it does not know.
+     */
+    @Test
+    fun a_note_says_which_part_is_missing_and_puts_the_limit_on_the_device() {
+        val noPicture = ViewerFormat.trackNote(TrackNote.NoPicture)
+        val noSound = ViewerFormat.trackNote(TrackNote.NoSound)
+        assertEquals("Video can't be shown on this device", noPicture)
+        assertEquals("No sound — this device can't play this audio", noSound)
+        for (text in listOf(noPicture, noSound)) {
+            assertSaysNone(text, "damage", "corrupt", "tamper", "verif", "integrity", "broken", "vault", "format", "codec")
+        }
     }
 
     @Test
