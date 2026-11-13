@@ -2,6 +2,7 @@ package dev.ehsanfahad.darkchamber.feature.vault.presentation
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerKind
 import kotlin.math.abs
 
 /**
@@ -64,8 +65,6 @@ internal object PlayerGestures {
         return (level - dy / band).coerceIn(0f, 1f)
     }
 }
-
-internal enum class PlayerKind { Video, Audio }
 
 internal enum class Half { Left, Right }
 

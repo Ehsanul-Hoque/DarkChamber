@@ -3,7 +3,9 @@ package dev.ehsanfahad.darkchamber.feature.vault.presentation
 import dev.ehsanfahad.darkchamber.core.model.VaultError
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
 import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerFailure
+import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerKind
 import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerTracks
+import dev.ehsanfahad.darkchamber.feature.vault.api.TrackNote
 import dev.ehsanfahad.darkchamber.feature.vault.api.TrackSupport
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerPage
 
@@ -36,6 +38,20 @@ internal fun openPlan(meta: GalleryItemMeta, size: Long, cap: Long): OpenPlan {
 }
 
 /**
+ * Which player an item gets: a stored video or audio type plays; anything else, and an item whose
+ * details will not open — its type unknown — does not (`null`). Decided from the stored type alone,
+ * before anything is read.
+ */
+internal fun mediaKind(meta: GalleryItemMeta): PlayerKind? {
+    if (meta !is GalleryItemMeta.Readable) return null
+    return when {
+        meta.mime.startsWith("video/") -> PlayerKind.Video
+        meta.mime.startsWith("audio/") -> PlayerKind.Audio
+        else -> null
+    }
+}
+
+/**
  * The page for an object that would not open. Only a failed integrity check (or a container that is
  * not one) is [ViewerPage.Unverified]; a newer format asks for an update; anything else names no
  * cause. A lock is none of these — the session refuses by throwing, and the screen is gone.
@@ -60,9 +76,6 @@ internal fun pageForPlayerFailure(failure: PlayerFailure): ViewerPage? =
         PlayerFailure.Stopped -> null
         PlayerFailure.Other -> ViewerPage.CouldntOpen
     }
-
-/** What a playing page says is missing: its picture, or its sound. */
-internal enum class TrackNote { NoPicture, NoSound }
 
 /**
  * The note for an item that plays in part: one kind of track this device cannot play while the other

@@ -5,6 +5,7 @@ import dev.ehsanfahad.darkchamber.core.model.ItemFilter
 import dev.ehsanfahad.darkchamber.core.vault.VaultObjects
 import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
 import dev.ehsanfahad.darkchamber.feature.vault.api.PhotoPicker
+import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPlayerFactory
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultAlbumsComponent
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultGalleryComponent
@@ -182,6 +183,8 @@ fun vaultViewerComponent(
     query: String = "",
     // Leaving, with the id of the item last shown, so the grid can bring it into view.
     onBack: (lastViewedId: ByteArray) -> Unit,
+    // The platform's player. Without one, a video or audio page shows its badge, as before playback.
+    players: VaultPlayerFactory? = null,
     mainContext: CoroutineContext = Dispatchers.Main,
     // Where a page is read, decrypted and decoded, and where a delete runs: all blocking, all large
     // or slow, none of it for the thread drawing the pager.
@@ -200,7 +203,10 @@ fun vaultViewerComponent(
         controls = GalleryControls(order = order, query = query),
         startId = startId,
         onBack = onBack,
+        openRange = items::openRange,
+        playerFactory = players,
         mainContext = mainContext,
+        ioContext = ioContext,
     )
 }
 

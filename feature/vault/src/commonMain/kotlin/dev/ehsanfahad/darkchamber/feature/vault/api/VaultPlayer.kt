@@ -2,7 +2,6 @@ package dev.ehsanfahad.darkchamber.feature.vault.api
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import dev.ehsanfahad.darkchamber.core.model.VaultError
 import dev.ehsanfahad.darkchamber.core.vault.RangeReader
 import kotlinx.coroutines.flow.StateFlow
 
@@ -54,60 +53,13 @@ interface VaultPlayer {
     fun Picture(modifier: Modifier)
 
     /**
-     * Stops, closes the reader and lets go of the platform player. Safe to call more than once, and
-     * from the lock: it must not wait on the main thread for a decoder that blocks, and anything the
-     * released player reports afterwards is ignored.
+     * Stops, closes the reader and lets go of the platform player. Safe to call more than once.
+     *
+     * **The viewer calls this off the main thread**, so a lock is never held up by a decoder that
+     * blocks while it shuts down; an implementation whose player is bound to a thread hands the work to
+     * that thread itself. The viewer has stopped listening to [state] before it calls this, so whatever
+     * the released player reports afterwards is ignored.
      */
     fun release()
 }
 
-/** Where one player stands. Times are milliseconds. */
-data class PlayerState(
-    val positionMs: Long = 0L,
-    /** `null` until the player knows it. */
-    val durationMs: Long? = null,
-    val playing: Boolean = false,
-    /** Played to its end and stopped there. */
-    val ended: Boolean = false,
-    /** The level [VaultPlayer.setVolume] last set, or the platform's own when the player opened. */
-    val volume: Float = 1f,
-    val tracks: PlayerTracks = PlayerTracks(),
-    /** Why playback ended early, or `null` while it has not. */
-    val failure: PlayerFailure? = null,
-)
-
-/** What the item holds, and whether this device can play it — the tracks found against those chosen. */
-data class PlayerTracks(
-    val video: TrackSupport = TrackSupport.Absent,
-    val audio: TrackSupport = TrackSupport.Absent,
-)
-
-enum class TrackSupport {
-    /** The item has no track of this kind, or the player has not found one yet. */
-    Absent,
-
-    /** There is one and this device plays it. */
-    Playable,
-
-    /** There is one and none of this device's decoders can play it. */
-    Unplayable,
-}
-
-/**
- * Why playback ended early, by **where it came from** — the implementation records the reader's own
- * outcome, so a decoder's refusal is never mistaken for damage, nor damage for a format this device
- * does not play.
- */
-sealed interface PlayerFailure {
-    /** The vault refused a read, with its own error: a failed integrity check, a newer format, I/O. */
-    data class Reader(val error: VaultError) : PlayerFailure
-
-    /** No decoder on this device handles the item's format or profile, and no read failed behind it. */
-    data object Decoder : PlayerFailure
-
-    /** The player was released, or the vault locked under it. Not a failure of the item. */
-    data object Stopped : PlayerFailure
-
-    /** Anything else; it names no cause. */
-    data object Other : PlayerFailure
-}

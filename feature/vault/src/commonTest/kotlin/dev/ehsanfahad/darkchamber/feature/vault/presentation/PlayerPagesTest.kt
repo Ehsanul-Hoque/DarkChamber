@@ -3,6 +3,7 @@ package dev.ehsanfahad.darkchamber.feature.vault.presentation
 import dev.ehsanfahad.darkchamber.core.model.VaultError
 import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerFailure
 import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerTracks
+import dev.ehsanfahad.darkchamber.feature.vault.api.TrackNote
 import dev.ehsanfahad.darkchamber.feature.vault.api.TrackSupport
 import dev.ehsanfahad.darkchamber.feature.vault.api.TrackSupport.Absent
 import dev.ehsanfahad.darkchamber.feature.vault.api.TrackSupport.Playable

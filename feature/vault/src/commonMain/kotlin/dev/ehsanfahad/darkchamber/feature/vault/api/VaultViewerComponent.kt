@@ -24,6 +24,13 @@ interface VaultViewerComponent {
     val pictures: Value<Map<String, ImageBitmap>>
 
     /**
+     * The player of the page shown, keyed like [pictures] — **at most one**, and only while a video or
+     * audio page is the one on screen. Leaving that page pauses it, remembers where it was and lets it
+     * go; coming back opens a new one there. Held apart from [state] for the same reason as [pictures].
+     */
+    val players: Value<Map<String, VaultPlayer>>
+
+    /**
      * The size of the area a picture is drawn in, in pixels. Nothing is decoded until this is known,
      * because the decode is sized from it.
      */
@@ -31,6 +38,12 @@ interface VaultViewerComponent {
 
     /** The pager settled on the page at [index]. */
     fun showPage(index: Int)
+
+    /**
+     * Set the playing speed to [speed], one of the setting's choices — it applies now and to every item
+     * played after, until the viewer closes. Anything the setting does not offer is ignored.
+     */
+    fun chooseSpeed(speed: Float)
 
     /** Ask to delete the item shown: opens the confirmation. */
     fun requestDelete()
