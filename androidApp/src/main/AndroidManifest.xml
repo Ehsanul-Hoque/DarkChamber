@@ -31,13 +31,20 @@
         android:name="android.hardware.microphone"
         android:required="false" />
 
-    <!-- Not ours, and removed. CameraX pulls in its video module, which brings media3-common, whose
-         library manifest asks to read network state for streaming playback. This app has no network
-         code and no INTERNET permission (ADR-004), and nothing it uses from CameraX reads the network,
-         so the permission would be one more line in the app's request for nothing — and it is not in
-         config/permissions-allowlist.txt. -->
+    <!-- Not ours, and removed. Media3 (the player, and CameraX's video module through media3-common)
+         asks in its library manifest to read network state for streaming playback. This app has no
+         network code and no INTERNET permission (ADR-004), and the player only reads items from the
+         vault, so the permission would be one more line in the app's request for nothing — and it is
+         not in config/permissions-allowlist.txt. -->
     <uses-permission
         android:name="android.permission.ACCESS_NETWORK_STATE"
+        tools:node="remove" />
+    <!-- Also Media3's, and removed. The player asks for a wake lock to keep playing with the screen
+         off; this app stops playback when it leaves the screen, and a playing video keeps the screen
+         on through its view instead. So the player must never be given a wake mode: without this
+         permission, asking for one fails. -->
+    <uses-permission
+        android:name="android.permission.WAKE_LOCK"
         tools:node="remove" />
 
     <application

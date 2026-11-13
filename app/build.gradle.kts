@@ -81,6 +81,13 @@ kotlin {
             implementation(libs.androidx.camera.lifecycle)
             implementation(libs.androidx.camera.view)
             implementation(libs.androidx.camera.video)
+            // The player's Android actual. ExoPlayer reads an item through a DataSource of our own
+            // that asks the vault for byte ranges, so decrypted bytes stay in memory and nothing is
+            // written to a cache. Its controls are drawn in Compose and its picture goes to a bare
+            // SurfaceView, so media3-ui's PlayerView (its own layout, controls and resources) is not
+            // needed.
+            implementation(libs.media3.exoplayer)
+            implementation(libs.media3.common)
         }
         // iOS platform module builds the native driver + opens the catalog (SqlDriver type).
         listOf("iosArm64Main", "iosSimulatorArm64Main").forEach { name ->
