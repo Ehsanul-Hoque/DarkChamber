@@ -65,3 +65,15 @@ public fun redactCause(error: VaultError): String =
 public fun logVaultError(stage: String, error: VaultError) {
     Logger.e { "$stage failed: ${redactCause(error)}" }
 }
+
+/**
+ * A measurement line: `<event>: <name>=<number> …`. Values are numbers by type, so nothing of a
+ * vault item can reach it; [event] and the names MUST be fixed, caller-supplied tokens.
+ */
+public fun measurementLine(event: String, vararg numbers: Pair<String, Long>): String =
+    "$event: " + numbers.joinToString(" ") { (name, value) -> "$name=$value" }
+
+/** Log a [measurementLine] at info severity — counts, sizes and durations for a device check. */
+public fun logMeasurement(event: String, vararg numbers: Pair<String, Long>) {
+    Logger.i { measurementLine(event, *numbers) }
+}

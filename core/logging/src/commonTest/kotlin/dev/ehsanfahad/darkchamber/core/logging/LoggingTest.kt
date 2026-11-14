@@ -70,4 +70,13 @@ class LoggingTest {
             assertTrue(code.none { it.isDigit() || it == '/' }, "code '$code' may carry content")
         }
     }
+
+    @Test
+    fun a_measurement_line_is_the_event_then_each_named_number() {
+        assertEquals(
+            "player released: chunks=12 bytes=4096",
+            measurementLine("player released", "chunks" to 12L, "bytes" to 4_096L),
+        )
+        assertEquals("tick: ", measurementLine("tick"))
+    }
 }
