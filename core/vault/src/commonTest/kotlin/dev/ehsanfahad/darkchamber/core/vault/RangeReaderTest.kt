@@ -193,6 +193,36 @@ class RangeReaderTest {
         reader.close()
     }
 
+    /** The count a player's measurement reads: chunks decrypted after the open, a held one not counted. */
+    @Test
+    fun the_reader_counts_the_chunks_it_decrypts_and_not_the_ones_it_already_holds() {
+        val reader = objects.openRange(stored(content(200))).ok() // holds chunk 3 from the open
+
+        assertEquals(0L, reader.chunksDecrypted, "the open's own chunk is not a read's decrypt")
+        reader.readByteAt(0)
+        assertEquals(1L, reader.chunksDecrypted)
+        reader.readByteAt(64) // drops chunk 3
+        assertEquals(2L, reader.chunksDecrypted)
+        reader.readByteAt(1) // chunk 0, still held
+        assertEquals(2L, reader.chunksDecrypted)
+        reader.readByteAt(195) // chunk 3 again: a re-decrypt, counted
+        assertEquals(3L, reader.chunksDecrypted)
+        reader.close()
+    }
+
+    @Test
+    fun a_chunk_that_fails_to_decrypt_is_not_counted() {
+        // Past the read's own check, so the decrypt itself is reached and refused.
+        val id = stored(content(200))
+        val reader = objects.openRangeOver(id, dekWrappedOf(id), stillWanted = { true }).ok()
+        session.close()
+
+        assertIs<Outcome.Err>(reader.readAt(position = 0, into = ByteArray(1), offset = 0, size = 1))
+
+        assertEquals(0L, reader.chunksDecrypted)
+        reader.close()
+    }
+
     private fun ByteArray.isZeroed() = all { it == 0.toByte() }
 
     @Test
