@@ -84,7 +84,7 @@ kotlin {
             // The player's Android actual. ExoPlayer reads an item through a DataSource of our own
             // that asks the vault for byte ranges, so decrypted bytes stay in memory and nothing is
             // written to a cache. Its controls are drawn in Compose and its picture goes to a bare
-            // SurfaceView, so media3-ui's PlayerView (its own layout, controls and resources) is not
+            // TextureView, so media3-ui's PlayerView (its own layout, controls and resources) is not
             // needed.
             implementation(libs.media3.exoplayer)
             implementation(libs.media3.common)
