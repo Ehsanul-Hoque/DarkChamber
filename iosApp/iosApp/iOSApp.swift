@@ -12,8 +12,9 @@ struct iOSApp: App {
     }
 }
 
-/// Where UIKit asks which orientations the window may take. The camera screen holds portrait while
-/// it is in front (Kotlin `holdsPortrait()`); otherwise the answer is the one the project's
+/// Where UIKit asks which orientations the window may take. A screen holding portrait (the camera, or
+/// the player's portrait choice) gets portrait (Kotlin `holdsPortrait()`); the player's landscape
+/// choice gets either landscape (`holdsLandscape()`); otherwise the answer is the one the project's
 /// Info.plist settings give.
 final class AppDelegate: NSObject, UIApplicationDelegate {
     func application(
@@ -21,6 +22,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         supportedInterfaceOrientationsFor window: UIWindow?
     ) -> UIInterfaceOrientationMask {
         if OrientationKt.holdsPortrait() { return .portrait }
+        if OrientationKt.holdsLandscape() { return .landscape }
         return UIDevice.current.userInterfaceIdiom == .pad ? .all : .allButUpsideDown
     }
 }

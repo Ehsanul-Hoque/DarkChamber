@@ -1,0 +1,59 @@
+package dev.ehsanfahad.darkchamber.app.player
+
+import android.content.pm.ActivityInfo
+import android.provider.Settings
+import android.view.WindowManager
+import dev.ehsanfahad.darkchamber.app.auth.ActivityHolder
+import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerDisplay
+import dev.ehsanfahad.darkchamber.feature.vault.api.ScreenOrientation
+
+/**
+ * The display controls on Android, on the activity in front: this window's brightness (the rest of the
+ * phone is untouched, and the window forgets it when it goes) and the activity's requested orientation,
+ * which holds whatever auto-rotate is set to. With no activity in front there is nothing to change.
+ */
+internal class AndroidPlayerDisplay(private val activities: ActivityHolder) : PlayerDisplay {
+    override fun brightness(): Float {
+        val activity = activities.activity ?: return DisplayMapping.UNKNOWN_BRIGHTNESS
+        val set = activity.window.attributes.screenBrightness
+        if (set >= 0f) return set
+        // Following the system: start the slide from the system's own level, as near as it says.
+        return runCatching {
+            Settings.System.getInt(activity.contentResolver, Settings.System.SCREEN_BRIGHTNESS) / SYSTEM_MAX
+        }.getOrDefault(DisplayMapping.UNKNOWN_BRIGHTNESS).coerceIn(0f, 1f)
+    }
+
+    override fun setBrightness(level: Float?) {
+        val window = activities.activity?.window ?: return
+        window.attributes = window.attributes.apply { screenBrightness = DisplayMapping.windowBrightness(level) }
+    }
+
+    override fun setOrientation(orientation: ScreenOrientation) {
+        activities.activity?.requestedOrientation = DisplayMapping.requestedOrientation(orientation)
+    }
+
+    private companion object {
+        const val SYSTEM_MAX = 255f
+    }
+}
+
+/** The Android values behind the display controls. */
+internal object DisplayMapping {
+    /** Where the slide starts when the system will not say. */
+    const val UNKNOWN_BRIGHTNESS = 0.5f
+
+    /** The dimmest the slide goes: at 0 some screens switch their backlight off. */
+    const val DIMMEST = 0.02f
+
+    /** A window brightness: [level] held above [DIMMEST], or the system's own when `null`. */
+    fun windowBrightness(level: Float?): Float =
+        level?.coerceIn(DIMMEST, 1f) ?: WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+
+    /** The requested orientation: the app's own, portrait, or either landscape by the sensor. */
+    fun requestedOrientation(orientation: ScreenOrientation): Int =
+        when (orientation) {
+            ScreenOrientation.AppDefault -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            ScreenOrientation.Portrait -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            ScreenOrientation.Landscape -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        }
+}
