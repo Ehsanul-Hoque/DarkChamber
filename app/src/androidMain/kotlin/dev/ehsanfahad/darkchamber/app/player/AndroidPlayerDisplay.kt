@@ -32,6 +32,16 @@ internal class AndroidPlayerDisplay(private val activities: ActivityHolder) : Pl
         activities.activity?.requestedOrientation = DisplayMapping.requestedOrientation(orientation)
     }
 
+    // A window flag, so it goes with the window: nothing is left holding the screen after the app.
+    override fun keepScreenOn(on: Boolean) {
+        val window = activities.activity?.window ?: return
+        if (on) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
+
     private companion object {
         const val SYSTEM_MAX = 255f
     }

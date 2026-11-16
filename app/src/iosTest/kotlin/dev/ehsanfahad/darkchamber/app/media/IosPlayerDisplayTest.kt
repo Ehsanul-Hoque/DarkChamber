@@ -137,4 +137,19 @@ class IosPlayerDisplayTest {
         display.setBrightness(-0.2f)
         assertEquals(0.0, screen.level, 0.0001)
     }
+
+    // ---- keeping the screen on -------------------------------------------------------------------
+
+    private class FakeIdleTimer(override var disabled: Boolean = false) : IdleTimer
+
+    @Test
+    fun keeping_the_screen_on_turns_the_sleep_timer_off_and_back_on() {
+        val idle = FakeIdleTimer()
+        val display = IosPlayerDisplay(FakeScreen(0.5), idle)
+
+        display.keepScreenOn(true)
+        assertTrue(idle.disabled)
+        display.keepScreenOn(false)
+        assertFalse(idle.disabled)
+    }
 }

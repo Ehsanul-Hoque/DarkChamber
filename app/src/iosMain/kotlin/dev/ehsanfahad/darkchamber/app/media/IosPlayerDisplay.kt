@@ -3,6 +3,7 @@ package dev.ehsanfahad.darkchamber.app.media
 import dev.ehsanfahad.darkchamber.app.forceOrientation
 import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerDisplay
 import dev.ehsanfahad.darkchamber.feature.vault.api.ScreenOrientation
+import platform.UIKit.UIApplication
 import platform.UIKit.UIScreen
 
 /**
@@ -14,6 +15,7 @@ import platform.UIKit.UIScreen
  */
 internal class IosPlayerDisplay(
     private val screen: ScreenBrightness = MainScreenBrightness,
+    private val idle: IdleTimer = ApplicationIdleTimer,
 ) : PlayerDisplay {
     /** The phone's brightness before the first change, while the player holds it; `null` otherwise. */
     private var before: Double? = null
@@ -31,6 +33,24 @@ internal class IosPlayerDisplay(
     }
 
     override fun setOrientation(orientation: ScreenOrientation) = forceOrientation(orientation)
+
+    override fun keepScreenOn(on: Boolean) {
+        idle.disabled = on
+    }
+}
+
+/** The phone's sleep timer: [disabled] keeps the screen on while this app is in front. */
+internal interface IdleTimer {
+    var disabled: Boolean
+}
+
+// Reaches UIApplication, which a test process does not have: tests pass a stand-in.
+private object ApplicationIdleTimer : IdleTimer {
+    override var disabled: Boolean
+        get() = UIApplication.sharedApplication.idleTimerDisabled
+        set(value) {
+            UIApplication.sharedApplication.idleTimerDisabled = value
+        }
 }
 
 /** The screen's brightness, from 0 to 1. */

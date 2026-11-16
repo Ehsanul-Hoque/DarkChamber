@@ -3,10 +3,12 @@ package dev.ehsanfahad.darkchamber.feature.vault.presentation
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
+import dev.ehsanfahad.darkchamber.feature.vault.api.ScreenOrientation
 import dev.ehsanfahad.darkchamber.feature.vault.api.TrackNote
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerNotice
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerPage
 import dev.ehsanfahad.darkchamber.feature.vault.api.label
+import kotlin.math.roundToInt
 
 /** The viewer's words. Every line is written from the failure path (hard rule 6). */
 internal object ViewerFormat {
@@ -44,6 +46,68 @@ internal object ViewerFormat {
             TrackNote.NoPicture -> "Video can't be shown on this device"
             TrackNote.NoSound -> "No sound — this device can't play this audio"
         }
+
+    // ---- the player ------------------------------------------------------------------------------
+
+    /** A time on the clock a player shows: "0:42", "12:05", "1:02:03". */
+    fun playTime(ms: Long): String {
+        val seconds = ms.coerceAtLeast(0L) / 1_000L
+        val hours = seconds / 3_600L
+        val minutes = seconds / 60L % 60L
+        val secs = (seconds % 60L).toString().padStart(2, '0')
+        return if (hours > 0L) "$hours:${minutes.toString().padStart(2, '0')}:$secs" else "$minutes:$secs"
+    }
+
+    /** Elapsed and total under the seek bar, "0:42 / 1:51"; the elapsed time alone until the total is known. */
+    fun playTimes(positionMs: Long, durationMs: Long?): String =
+        if (durationMs == null) playTime(positionMs) else "${playTime(positionMs)} / ${playTime(durationMs)}"
+
+    /** What the seek bar says it stands at, to a screen reader: "0:42 of 1:51". */
+    fun seekState(positionMs: Long, durationMs: Long?): String =
+        if (durationMs == null) playTime(positionMs) else "${playTime(positionMs)} of ${playTime(durationMs)}"
+
+    fun seekLabel(): String = "Position"
+
+    /** A speed as the setting and the hold show it: "0.5×", "1×", "1.25×". */
+    fun speed(speed: Float): String {
+        val hundredths = (speed * 100f).roundToInt()
+        val whole = hundredths / 100
+        val part = hundredths % 100
+        val written = when {
+            part == 0 -> "$whole"
+            part % 10 == 0 -> "$whole.${part / 10}"
+            else -> "$whole.${part.toString().padStart(2, '0')}"
+        }
+        return "$written×"
+    }
+
+    /** The speed setting, to a screen reader. */
+    fun speedDescription(speed: Float): String = "Speed, ${speed(speed)}"
+
+    /** The centre control's words: what pressing it does. */
+    fun centreControl(control: CentreControl): String =
+        when (control) {
+            CentreControl.Play -> "Play"
+            CentreControl.Pause -> "Pause"
+            CentreControl.Replay -> "Play again"
+        }
+
+    /** The orientation button's label: where it turns the screen. */
+    fun orientationLabel(target: ScreenOrientation): String =
+        if (target == ScreenOrientation.Landscape) "Landscape" else "Portrait"
+
+    /** The orientation button, to a screen reader. */
+    fun orientationDescription(target: ScreenOrientation): String =
+        "Turn to ${orientationLabel(target).lowercase()}"
+
+    /** What a double tap shows as it moves: "+10 s", "−10 s". */
+    fun skipFeedback(forward: Boolean): String {
+        val seconds = PlaybackRules.SKIP_MS / 1_000L
+        return if (forward) "+$seconds s" else "−$seconds s"
+    }
+
+    /** A brightness or volume level as a slide shows it: "60%". */
+    fun levelFeedback(level: Float): String = "${(level * 100f).roundToInt()}%"
 
     /** The bar's title: the item's name, or the grid's own words for one that will not open. */
     fun title(meta: GalleryItemMeta): String = meta.label()

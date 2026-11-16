@@ -16,6 +16,13 @@ data class ViewerState(
     val loading: Boolean = true,
     val delete: ViewerDeleteStage? = null,
     val notice: ViewerNotice? = null,
+    /** The speed the speed setting shows: what every item plays at, outside a hold. */
+    val speed: Float = 1f,
+    /**
+     * Where the orientation button on a video page turns the screen — what its label names — or `null`
+     * where the screen cannot be turned, and there is no button.
+     */
+    val orientationTarget: ScreenOrientation? = null,
 )
 
 /** Where a delete from the viewer stands. */

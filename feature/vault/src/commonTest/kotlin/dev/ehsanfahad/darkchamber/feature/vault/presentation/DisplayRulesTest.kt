@@ -4,6 +4,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.ScreenOrientation.AppDefault
 import dev.ehsanfahad.darkchamber.feature.vault.api.ScreenOrientation.Landscape
 import dev.ehsanfahad.darkchamber.feature.vault.api.ScreenOrientation.Portrait
 import dev.ehsanfahad.darkchamber.feature.vault.presentation.DisplayCommand.Brightness
+import dev.ehsanfahad.darkchamber.feature.vault.presentation.DisplayCommand.KeepScreenOn
 import dev.ehsanfahad.darkchamber.feature.vault.presentation.DisplayCommand.Orientation
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -170,5 +171,46 @@ class DisplayRulesTest {
         assertTrue(rules.pageShown(video = true).isEmpty())
         assertTrue(rules.orientationPressed().isEmpty())
         assertTrue(rules.brightnessSlid(0.5f).isEmpty())
+        assertTrue(rules.playbackChanged(playing = true).isEmpty())
+    }
+
+    // ---- keeping the screen on -------------------------------------------------------------------
+
+    @Test
+    fun the_screen_stays_on_while_something_plays_and_is_let_sleep_when_it_stops() {
+        val rules = DisplayRules().also { it.pageShown(video = false) } // audio plays too
+
+        assertEquals(listOf(KeepScreenOn(true)), rules.playbackChanged(playing = true))
+        assertEquals(listOf(KeepScreenOn(false)), rules.playbackChanged(playing = false))
+    }
+
+    @Test
+    fun only_a_change_is_sent() {
+        val rules = DisplayRules()
+
+        assertTrue(rules.playbackChanged(playing = false).isEmpty(), "the screen was never held")
+        rules.playbackChanged(playing = true)
+        assertTrue(rules.playbackChanged(playing = true).isEmpty())
+    }
+
+    @Test
+    fun closing_while_playing_lets_the_screen_sleep_after_putting_the_rest_back() {
+        val rules = onVideo()
+        rules.orientationPressed()
+        rules.playbackChanged(playing = true)
+
+        assertEquals(
+            listOf(Orientation(AppDefault), KeepScreenOn(false)),
+            rules.closed(),
+        )
+    }
+
+    @Test
+    fun closing_while_paused_does_not_touch_the_screen() {
+        val rules = onVideo()
+        rules.playbackChanged(playing = true)
+        rules.playbackChanged(playing = false)
+
+        assertTrue(rules.closed().isEmpty())
     }
 }

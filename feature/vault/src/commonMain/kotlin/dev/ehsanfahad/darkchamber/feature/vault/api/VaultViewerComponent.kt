@@ -45,6 +45,33 @@ interface VaultViewerComponent {
      */
     fun chooseSpeed(speed: Float)
 
+    /** The centre control: pauses a playing item, plays a paused one, and starts a finished one again. */
+    fun playPause()
+
+    /** Moves the item shown to [positionMs], kept between its start and its end. */
+    fun seekTo(positionMs: Long)
+
+    /** Moves the item shown ten seconds, [forward] or back, kept between its start and its end. */
+    fun skip(forward: Boolean)
+
+    /** Plays at double speed ([faster]) or half speed until [releaseSpeed]. */
+    fun holdSpeed(faster: Boolean)
+
+    /** Back to the speed set, once a hold ends. */
+    fun releaseSpeed()
+
+    /** Sets the volume the slide controls, from 0 to 1 (see [VaultPlayer.setVolume]). */
+    fun setVolume(level: Float)
+
+    /** The screen's brightness now, where a slide starts from; `null` where it cannot be changed. */
+    fun brightness(): Float?
+
+    /** Sets the screen's brightness, from 0 to 1, while the video page is shown. Ignored on any other page. */
+    fun setBrightness(level: Float)
+
+    /** Turns a video page to the orientation [ViewerState.orientationTarget] names. */
+    fun switchOrientation()
+
     /** Ask to delete the item shown: opens the confirmation. */
     fun requestDelete()
 

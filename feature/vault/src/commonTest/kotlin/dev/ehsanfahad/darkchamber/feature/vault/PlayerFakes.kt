@@ -4,7 +4,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.vault.RangeReader
+import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerDisplay
 import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerState
+import dev.ehsanfahad.darkchamber.feature.vault.api.ScreenOrientation
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPlayer
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPlayerFactory
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -60,6 +62,26 @@ internal class FakePlayer(val reader: RangeReader, val mime: String) : VaultPlay
     override fun release() {
         calls += "release"
         reader.close()
+    }
+}
+
+/** A display that records what it was told, in order, and reports [level] as the brightness. */
+internal class FakePlayerDisplay(var level: Float = 0.6f) : PlayerDisplay {
+    /** Every call, in order: "brightness:0.4", "brightness:null", "orientation:Landscape", "awake:true". */
+    val calls = mutableListOf<String>()
+
+    override fun brightness(): Float = level
+
+    override fun setBrightness(level: Float?) {
+        calls += "brightness:$level"
+    }
+
+    override fun setOrientation(orientation: ScreenOrientation) {
+        calls += "orientation:$orientation"
+    }
+
+    override fun keepScreenOn(on: Boolean) {
+        calls += "awake:$on"
     }
 }
 

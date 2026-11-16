@@ -8,6 +8,9 @@ internal sealed interface DisplayCommand {
 
     /** `null` hands the brightness back to the system. */
     data class Brightness(val level: Float?) : DisplayCommand
+
+    /** Hold the screen awake, or let it sleep again. */
+    data class KeepScreenOn(val on: Boolean) : DisplayCommand
 }
 
 /**
@@ -19,7 +22,9 @@ internal sealed interface DisplayCommand {
  *   nobody is left held sideways with no way back; swiping back to a video page applies the choice again.
  * - **Brightness** set by the slide lasts while its video page is shown: leaving that page hands it back
  *   to the system, and so does closing the viewer or a lock.
- * - **Closing** (and a lock, which closes the viewer with the rest) puts back both.
+ * - **The screen stays on** while the page shown plays — video or audio, since a screen that sleeps
+ *   backgrounds the app and the vault locks — and is let sleep when it pauses, ends or stops.
+ * - **Closing** (and a lock, which closes the viewer with the rest) puts back all of it.
  */
 internal class DisplayRules {
     private var closed = false
@@ -33,6 +38,9 @@ internal class DisplayRules {
 
     /** Whether the brightness is the slide's rather than the system's. */
     private var brightened = false
+
+    /** Whether the screen is being held awake. */
+    private var awake = false
 
     /** The orientation the button would switch to now: what its label names. */
     val buttonTarget: ScreenOrientation
@@ -62,6 +70,13 @@ internal class DisplayRules {
         return listOf(DisplayCommand.Brightness(level))
     }
 
+    /** The page shown started or stopped playing. */
+    fun playbackChanged(playing: Boolean): List<DisplayCommand> {
+        if (closed || playing == awake) return emptyList()
+        awake = playing
+        return listOf(DisplayCommand.KeepScreenOn(playing))
+    }
+
     /** The viewer is going: closed, or taken down by a lock. */
     fun closed(): List<DisplayCommand> {
         if (closed) return emptyList()
@@ -69,6 +84,10 @@ internal class DisplayRules {
         handBackBrightness(commands)
         onVideo = false
         applyOrientation(commands)
+        if (awake) {
+            awake = false
+            commands += DisplayCommand.KeepScreenOn(false)
+        }
         closed = true
         return commands
     }

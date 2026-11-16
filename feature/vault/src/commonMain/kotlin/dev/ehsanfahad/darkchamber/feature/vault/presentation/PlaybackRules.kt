@@ -1,5 +1,8 @@
 package dev.ehsanfahad.darkchamber.feature.vault.presentation
 
+import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerState
+import kotlin.math.roundToLong
+
 /**
  * The player's seek, speed and end-of-media rules — every decision the controls and gestures make,
  * kept out of the page and the platform players so it can be tested. Times are milliseconds.
@@ -22,8 +25,25 @@ internal object PlaybackRules {
         return if (durationMs == null) landed else landed.coerceAtMost(durationMs)
     }
 
+    /** How far along the seek bar [positionMs] is, from 0 to 1; 0 while the length is not known. */
+    fun seekFraction(positionMs: Long, durationMs: Long?): Float {
+        if (durationMs == null || durationMs <= 0L) return 0f
+        return (positionMs.toFloat() / durationMs).coerceIn(0f, 1f)
+    }
+
+    /** The position a point [fraction] along the seek bar stands for. */
+    fun seekPosition(fraction: Float, durationMs: Long): Long =
+        (fraction.coerceIn(0f, 1f).toDouble() * durationMs).roundToLong()
+
     /** The speed the player runs at: a held half's speed while it is held, else the one that was set. */
     fun runningSpeed(setSpeed: Float, held: HeldSpeed?): Float = held?.speed ?: setSpeed
+
+    /** Where a player that reported [state] stands: an ended item is ended, whatever else it says. */
+    fun status(state: PlayerState): PlaybackStatus = when {
+        state.ended -> PlaybackStatus.Ended
+        state.playing -> PlaybackStatus.Playing
+        else -> PlaybackStatus.Paused
+    }
 
     /** What the play/pause control in the centre shows, and does, for [status]. */
     fun centreControl(status: PlaybackStatus): CentreControl = when (status) {

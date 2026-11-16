@@ -7,6 +7,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerNotice
 import dev.ehsanfahad.darkchamber.feature.vault.api.TrackNote
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerPage
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
+import dev.ehsanfahad.darkchamber.feature.vault.api.ScreenOrientation
 import dev.ehsanfahad.darkchamber.feature.vault.api.label
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -275,5 +276,68 @@ class ViewerFormatTest {
         for (page in everyMessagePage - ViewerPage.Unverified + ViewerPage.Picture + ViewerPage.Loading) {
             assertEquals(false, ViewerFormat.pageIsWarning(page), "for $page")
         }
+    }
+
+    // ---- the player ------------------------------------------------------------------------------
+
+    @Test
+    fun a_play_time_reads_like_a_clock() {
+        assertEquals("0:00", ViewerFormat.playTime(0L))
+        assertEquals("0:00", ViewerFormat.playTime(999L), "a second not yet reached is not shown")
+        assertEquals("0:42", ViewerFormat.playTime(42_000L))
+        assertEquals("1:51", ViewerFormat.playTime(111_500L))
+        assertEquals("12:05", ViewerFormat.playTime(725_000L))
+        assertEquals("59:59", ViewerFormat.playTime(3_599_000L))
+        assertEquals("1:00:00", ViewerFormat.playTime(3_600_000L), "hours appear only when there are some")
+        assertEquals("1:02:03", ViewerFormat.playTime(3_723_000L))
+        assertEquals("0:00", ViewerFormat.playTime(-3_000L), "never a minus sign")
+    }
+
+    @Test
+    fun the_times_under_the_seek_bar_show_the_total_once_it_is_known() {
+        assertEquals("0:42 / 1:51", ViewerFormat.playTimes(42_000L, 111_000L))
+        assertEquals("0:42", ViewerFormat.playTimes(42_000L, null))
+    }
+
+    @Test
+    fun the_seek_bar_is_spoken_as_where_it_stands() {
+        assertEquals("Position", ViewerFormat.seekLabel())
+        assertEquals("0:42 of 1:51", ViewerFormat.seekState(42_000L, 111_000L))
+        assertEquals("0:42", ViewerFormat.seekState(42_000L, null))
+    }
+
+    @Test
+    fun a_speed_is_written_without_trailing_zeros() {
+        assertEquals("0.5×", ViewerFormat.speed(0.5f))
+        assertEquals("1×", ViewerFormat.speed(1f))
+        assertEquals("1.25×", ViewerFormat.speed(1.25f))
+        assertEquals("1.5×", ViewerFormat.speed(1.5f))
+        assertEquals("2×", ViewerFormat.speed(2f))
+        assertEquals("Speed, 1.25×", ViewerFormat.speedDescription(1.25f))
+    }
+
+    @Test
+    fun the_centre_control_says_what_pressing_it_does() {
+        assertEquals("Play", ViewerFormat.centreControl(CentreControl.Play))
+        assertEquals("Pause", ViewerFormat.centreControl(CentreControl.Pause))
+        assertEquals("Play again", ViewerFormat.centreControl(CentreControl.Replay))
+    }
+
+    @Test
+    fun the_orientation_button_names_where_it_turns_the_screen() {
+        assertEquals("Landscape", ViewerFormat.orientationLabel(ScreenOrientation.Landscape))
+        assertEquals("Portrait", ViewerFormat.orientationLabel(ScreenOrientation.Portrait))
+        assertEquals("Turn to landscape", ViewerFormat.orientationDescription(ScreenOrientation.Landscape))
+        assertEquals("Turn to portrait", ViewerFormat.orientationDescription(ScreenOrientation.Portrait))
+    }
+
+    @Test
+    fun a_gesture_shows_what_it_did() {
+        assertEquals("+10 s", ViewerFormat.skipFeedback(forward = true))
+        assertEquals("−10 s", ViewerFormat.skipFeedback(forward = false), "a true minus sign")
+        assertEquals("60%", ViewerFormat.levelFeedback(0.6f))
+        assertEquals("0%", ViewerFormat.levelFeedback(0f))
+        assertEquals("100%", ViewerFormat.levelFeedback(1f))
+        assertEquals("33%", ViewerFormat.levelFeedback(0.334f), "rounded")
     }
 }

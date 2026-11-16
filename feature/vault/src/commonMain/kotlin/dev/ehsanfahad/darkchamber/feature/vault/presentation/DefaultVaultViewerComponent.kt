@@ -9,6 +9,7 @@ import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.vault.RangeReader
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
+import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerDisplay
 import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerKind
 import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerState
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPlayer
@@ -77,6 +78,8 @@ internal open class ViewerComponent<T>(
     private val openRange: (id: ByteArray) -> Outcome<RangeReader>,
     /** The platform's player, or `null` where there is none: a video or audio page then shows its badge. */
     private val playerFactory: VaultPlayerFactory?,
+    /** The screen's brightness, orientation and sleep, or `null` where there is none to change. */
+    private val display: PlayerDisplay? = null,
     mainContext: CoroutineContext = Dispatchers.Main,
     private val ioContext: CoroutineContext = Dispatchers.Default,
     /** Where a player is let go: never the main thread, so a decoder that blocks cannot hold up a lock. */
@@ -111,10 +114,102 @@ internal open class ViewerComponent<T>(
 
     private class Opening(val key: String, val job: Job)
 
+    /** When the screen changes and when it goes back; every answer goes to [display]. */
+    private val displayRules = DisplayRules()
+
+    /** The page last reported to [displayRules]: its key, and whether it was a video page. */
+    private var displayedPage: Pair<String, Boolean>? = null
+
+    /** A half held down, for the page shown only: a new page starts at the speed set. */
+    private var held: HeldSpeed? = null
+
     fun chooseSpeed(speed: Float) {
         if (speed !in PlaybackRules.SPEEDS) return
         memory.chooseSpeed(speed)
-        playing?.player?.setSpeed(memory.speed)
+        _state.value = _state.value.copy(speed = memory.speed)
+        applySpeed()
+    }
+
+    fun playPause() {
+        val player = playing?.player ?: return
+        when (PlaybackRules.centreControl(PlaybackRules.status(player.state.value))) {
+            CentreControl.Pause -> player.pause()
+            CentreControl.Play -> player.play()
+            CentreControl.Replay -> {
+                player.seekTo(0L)
+                player.play()
+            }
+        }
+    }
+
+    fun seekTo(positionMs: Long) {
+        val player = playing?.player ?: return
+        player.seekTo(PlaybackRules.skipped(positionMs, 0L, player.state.value.durationMs))
+    }
+
+    fun skip(forward: Boolean) {
+        val player = playing?.player ?: return
+        val now = player.state.value
+        val by = if (forward) PlaybackRules.SKIP_MS else -PlaybackRules.SKIP_MS
+        player.seekTo(PlaybackRules.skipped(now.positionMs, by, now.durationMs))
+    }
+
+    fun holdSpeed(faster: Boolean) {
+        if (playing == null) return
+        held = if (faster) HeldSpeed.Fast else HeldSpeed.Slow
+        applySpeed()
+    }
+
+    fun releaseSpeed() {
+        held = null
+        applySpeed()
+    }
+
+    private fun applySpeed() {
+        playing?.player?.setSpeed(PlaybackRules.runningSpeed(memory.speed, held))
+    }
+
+    fun setVolume(level: Float) {
+        playing?.player?.setVolume(level.coerceIn(0f, 1f))
+    }
+
+    fun brightness(): Float? = display?.brightness()
+
+    fun setBrightness(level: Float) = send(displayRules.brightnessSlid(level.coerceIn(0f, 1f)))
+
+    fun switchOrientation() {
+        send(displayRules.orientationPressed())
+        publishOrientationTarget()
+    }
+
+    private fun publishOrientationTarget() {
+        if (display == null) return
+        _state.value = _state.value.copy(orientationTarget = displayRules.buttonTarget)
+    }
+
+    /**
+     * Tell the rules when the page shown changes — another item, or the same one turning out not to
+     * play — and nothing otherwise, since each report hands the brightness back.
+     */
+    private fun syncDisplay() {
+        val shown = position ?: return
+        val key = shown.id.toListKey()
+        val page = _state.value.pages[key]
+        val video = page is ViewerPage.Media && page.kind == PlayerKind.Video
+        if (displayedPage == key to video) return
+        displayedPage = key to video
+        send(displayRules.pageShown(video))
+    }
+
+    private fun send(commands: List<DisplayCommand>) {
+        val display = display ?: return
+        for (command in commands) {
+            when (command) {
+                is DisplayCommand.Brightness -> display.setBrightness(command.level)
+                is DisplayCommand.Orientation -> display.setOrientation(command.orientation)
+                is DisplayCommand.KeepScreenOn -> display.keepScreenOn(command.on)
+            }
+        }
     }
 
     /** The page shown, by item and index; `null` until the first listing places it. */
@@ -130,9 +225,12 @@ internal open class ViewerComponent<T>(
     private val loads = mutableMapOf<String, Job>()
 
     init {
+        publishOrientationTarget()
         doOnDestroy {
             // Before the scope goes: silences the player and hands its release to its own thread.
             stopPlaying(remember = false)
+            // A lock: the screen goes back as it was, the phone-wide brightness on iOS above all.
+            send(displayRules.closed())
             scope.cancel()
             loads.clear()
             // The pictures are vault content: drop the references now rather than whenever the
@@ -223,6 +321,7 @@ internal open class ViewerComponent<T>(
         starting.keys.forEach { key -> pages[key] = ViewerPage.Loading }
         _state.value = _state.value.copy(pages = pages)
         refreshPlayer(items[shown.index])
+        syncDisplay()
         if (target == null) return
 
         // Registered before started: a load can answer at once, and its answer is only taken from a
@@ -324,6 +423,7 @@ internal open class ViewerComponent<T>(
             return
         }
         val page = _state.value.pages[key] as? ViewerPage.Media ?: return
+        send(displayRules.playbackChanged(PlaybackRules.keepsScreenOn(PlaybackRules.status(reported))))
         val note = trackNote(reported.tracks)
         if (page.note != note) setPage(key, page.copy(note = note))
     }
@@ -336,6 +436,8 @@ internal open class ViewerComponent<T>(
         val stopping = playing ?: return
         playing = null
         stopping.watch.cancel()
+        held = null
+        send(displayRules.playbackChanged(playing = false))
         _players.value = emptyMap()
         if (remember) {
             val last = stopping.player.state.value
@@ -351,6 +453,7 @@ internal open class ViewerComponent<T>(
      */
     private fun setPage(key: String, page: ViewerPage) {
         _state.value = _state.value.copy(pages = _state.value.pages + (key to page))
+        syncDisplay()
     }
 
     fun requestDelete() {
@@ -392,6 +495,7 @@ internal open class ViewerComponent<T>(
         closed = true
         stopPlaying()
         opening?.job?.cancel()
+        send(displayRules.closed())
         onBack(lastViewedId)
     }
 
@@ -416,9 +520,10 @@ internal class DefaultVaultViewerComponent(
     onBack: (lastViewedId: ByteArray) -> Unit,
     openRange: (id: ByteArray) -> Outcome<RangeReader>,
     playerFactory: VaultPlayerFactory?,
+    display: PlayerDisplay?,
     mainContext: CoroutineContext = Dispatchers.Main,
     ioContext: CoroutineContext = Dispatchers.Default,
 ) : ViewerComponent<ImageBitmap>(
     componentContext, observeGallery, observeAlbum, load, shred, filter, controls, startId, onBack,
-    openRange, playerFactory, mainContext, ioContext,
+    openRange, playerFactory, display, mainContext, ioContext,
 ), VaultViewerComponent

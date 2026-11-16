@@ -40,8 +40,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -75,6 +78,9 @@ import dev.ehsanfahad.darkchamber.core.designsystem.DetailsMark
 import dev.ehsanfahad.darkchamber.core.designsystem.ExcludeFromPlatformStructures
 import dev.ehsanfahad.darkchamber.core.designsystem.prefersReducedMotion
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
+import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerKind
+import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerState
+import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPlayer
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultViewerComponent
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerDeleteStage
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerNotice
@@ -93,12 +99,29 @@ import kotlin.time.ExperimentalTime
 fun VaultViewerContent(component: VaultViewerComponent, modifier: Modifier = Modifier) {
     val state by component.state.subscribeAsState()
     val pictures by component.pictures.subscribeAsState()
+    val players by component.players.subscribeAsState()
     // Ages in Details are coarse (minutes at finest); "now" once per composition is enough.
     val now = remember { Clock.System.now().toEpochMilliseconds() }
+    val actions = remember(component) {
+        PlayerActions(
+            playPause = component::playPause,
+            seekTo = component::seekTo,
+            skip = component::skip,
+            holdSpeed = component::holdSpeed,
+            releaseSpeed = component::releaseSpeed,
+            setVolume = component::setVolume,
+            brightness = component::brightness,
+            setBrightness = component::setBrightness,
+            chooseSpeed = component::chooseSpeed,
+            switchOrientation = component::switchOrientation,
+        )
+    }
 
     ViewerScreen(
         state = state,
         pictures = pictures,
+        players = players,
+        playerActions = actions,
         now = now,
         onViewport = component::viewportMeasured,
         onShowPage = component::showPage,
@@ -119,6 +142,8 @@ fun VaultViewerContent(component: VaultViewerComponent, modifier: Modifier = Mod
 internal fun ViewerScreen(
     state: ViewerState,
     pictures: Map<String, ImageBitmap>,
+    players: Map<String, VaultPlayer>,
+    playerActions: PlayerActions,
     now: Long,
     onViewport: (widthPx: Int, heightPx: Int) -> Unit,
     onShowPage: (Int) -> Unit,
@@ -143,6 +168,23 @@ internal fun ViewerScreen(
 
         val shown: GalleryItem? = state.items.getOrNull(state.index)
         if (!state.loading && shown != null) {
+            val shownKey = shown.id.toListKey()
+            val media = state.pages[shownKey] as? ViewerPage.Media
+            val shownPlayer = players[shownKey]
+            val playerState: PlayerState? = key(shownPlayer) { shownPlayer?.state?.collectAsState()?.value }
+            // An audio page's controls stay on screen; a video page's hide after a while of playing,
+            // counted again from each touch of a control.
+            val barsVisible = barsShown || media?.kind == PlayerKind.Audio
+            var interactions by remember { mutableIntStateOf(0) }
+            val videoPlaying = media?.kind == PlayerKind.Video &&
+                playerState != null && PlaybackRules.status(playerState) == PlaybackStatus.Playing
+            LaunchedEffect(barsShown, videoPlaying, interactions) {
+                if (barsShown && videoPlaying) {
+                    delay(AUTO_HIDE_MS)
+                    barsShown = false
+                }
+            }
+
             val pager = rememberPagerState(initialPage = state.index) { state.items.size }
             // The pager settling is the user's choice of page; the component's index is the listing's
             // answer when it changes under the pager (a delete, an import). Each follows the other.
@@ -169,21 +211,51 @@ internal fun ViewerScreen(
                     isShown = isShown,
                     onTap = { barsShown = !barsShown },
                     onZoomedIn = { if (isShown) zoomedIn = it },
+                    player = players[key],
+                    playerState = if (key == shownKey) playerState else null,
+                    playerActions = playerActions,
+                    onInteraction = { interactions++ },
+                )
+            }
+
+            if (media != null && playerState != null) {
+                CentreControlButton(
+                    visible = barsVisible,
+                    state = playerState,
+                    onClick = {
+                        playerActions.playPause()
+                        interactions++
+                    },
+                    modifier = Modifier.align(Alignment.Center),
                 )
             }
 
             ViewerTopBar(
-                visible = barsShown,
+                visible = barsVisible,
                 title = ViewerFormat.title(shown.meta),
                 position = ViewerFormat.position(state.index, state.items.size),
                 onBack = onBack,
                 modifier = Modifier.align(Alignment.TopCenter),
             )
             ViewerBottomBar(
-                visible = barsShown,
+                visible = barsVisible,
                 onDetails = { detailsOpen = true },
                 onDelete = onRequestDelete,
                 modifier = Modifier.align(Alignment.BottomCenter),
+                controls = if (media != null && playerState != null) {
+                    {
+                        PlayerControls(
+                            kind = media.kind,
+                            state = playerState,
+                            speed = state.speed,
+                            orientationTarget = state.orientationTarget,
+                            actions = playerActions,
+                            onInteraction = { interactions++ },
+                        )
+                    }
+                } else {
+                    null
+                },
             )
             if (detailsOpen) {
                 DetailsSheet(rows = ViewerFormat.details(shown, shown.album, now), onDismiss = { detailsOpen = false })
@@ -214,8 +286,23 @@ private fun ViewerPageView(
     isShown: Boolean,
     onTap: () -> Unit,
     onZoomedIn: (Boolean) -> Unit,
+    player: VaultPlayer?,
+    playerState: PlayerState?,
+    playerActions: PlayerActions,
+    onInteraction: () -> Unit,
 ) {
     when {
+        page is ViewerPage.Media ->
+            PlayerPageView(
+                kind = page.kind,
+                badge = ViewerFormat.pageBadge(page, item.meta),
+                note = page.note,
+                player = player,
+                playerState = playerState,
+                actions = playerActions,
+                onToggleBars = onTap,
+                onInteraction = onInteraction,
+            )
         page == ViewerPage.Picture && picture != null ->
             ZoomablePicture(
                 picture = picture,
@@ -398,9 +485,18 @@ private fun ViewerTopBar(visible: Boolean, title: String, position: String, onBa
     }
 }
 
-/** Details and Delete, labelled, Delete in the danger role — over a scrim rising from the bottom edge. */
+/**
+ * Details and Delete, labelled, Delete in the danger role — over a scrim rising from the bottom edge.
+ * A player page puts its [controls] above them.
+ */
 @Composable
-private fun ViewerBottomBar(visible: Boolean, onDetails: () -> Unit, onDelete: () -> Unit, modifier: Modifier) {
+private fun ViewerBottomBar(
+    visible: Boolean,
+    onDetails: () -> Unit,
+    onDelete: () -> Unit,
+    modifier: Modifier,
+    controls: (@Composable () -> Unit)? = null,
+) {
     val duration = barsTransition()
     AnimatedVisibility(
         visible = visible,
@@ -409,19 +505,21 @@ private fun ViewerBottomBar(visible: Boolean, onDetails: () -> Unit, onDelete: (
         modifier = modifier.fillMaxWidth(),
     ) {
         val colors = DarkChamberTheme.colors
-        Row(
-            horizontalArrangement = Arrangement.SpaceEvenly,
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(Brush.verticalGradient(listOf(Color.Transparent, ScrimDark)))
                 .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
                 .padding(vertical = DarkChamberTheme.spacing.spaceXs),
         ) {
-            BarAction(label = ViewerFormat.detailsAction(), color = colors.textPrimary, onClick = onDetails) { tint ->
-                DetailsMark(contentDescription = null, tint = tint)
-            }
-            BarAction(label = ViewerFormat.deleteAction(1), color = colors.danger, onClick = onDelete) { tint ->
-                DeleteMark(contentDescription = null, tint = tint)
+            controls?.invoke()
+            Row(horizontalArrangement = Arrangement.SpaceEvenly, modifier = Modifier.fillMaxWidth()) {
+                BarAction(label = ViewerFormat.detailsAction(), color = colors.textPrimary, onClick = onDetails) { tint ->
+                    DetailsMark(contentDescription = null, tint = tint)
+                }
+                BarAction(label = ViewerFormat.deleteAction(1), color = colors.danger, onClick = onDelete) { tint ->
+                    DeleteMark(contentDescription = null, tint = tint)
+                }
             }
         }
     }
@@ -548,8 +646,14 @@ private fun NoticeBanner(text: String, warning: Boolean, onDismiss: () -> Unit, 
     )
 }
 
-/** The bars' scrim: black over a photo, like the camera's bands — a media surface, so a raw colour. */
-private val ScrimDark = Color.Black.copy(alpha = 0.6f)
+/**
+ * The bars' scrim, and the player's controls over a picture: black, like the camera's bands — a media
+ * surface, so a raw colour.
+ */
+internal val ScrimDark = Color.Black.copy(alpha = 0.6f)
 
 private const val INDICATOR_DELAY_MS = 400L
 private const val NOTICE_MS = 4_000L
+
+/** How long a playing video's controls stay after the last touch. */
+private const val AUTO_HIDE_MS = 3_000L

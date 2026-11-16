@@ -1,5 +1,6 @@
 package dev.ehsanfahad.darkchamber.feature.vault.presentation
 
+import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -59,6 +60,36 @@ class PlaybackRulesTest {
         assertEquals(CentreControl.Pause, PlaybackRules.centreControl(PlaybackStatus.Playing))
         assertEquals(CentreControl.Play, PlaybackRules.centreControl(PlaybackStatus.Paused))
         assertEquals(CentreControl.Replay, PlaybackRules.centreControl(PlaybackStatus.Ended))
+    }
+
+    @Test
+    fun the_seek_bar_stands_where_the_item_is() {
+        assertEquals(0.25f, PlaybackRules.seekFraction(30_000L, 120_000L), 0.0001f, "0:30 of 2:00")
+        assertEquals(1f, PlaybackRules.seekFraction(120_000L, 120_000L), 0.0001f, "at the end")
+        assertEquals(1f, PlaybackRules.seekFraction(121_000L, 120_000L), 0.0001f, "a report past the end")
+        assertEquals(0f, PlaybackRules.seekFraction(-5L, 120_000L), 0.0001f)
+    }
+
+    @Test
+    fun a_seek_bar_with_no_length_yet_stands_at_the_start() {
+        assertEquals(0f, PlaybackRules.seekFraction(30_000L, null))
+        assertEquals(0f, PlaybackRules.seekFraction(30_000L, 0L), "an empty item")
+    }
+
+    @Test
+    fun a_point_on_the_seek_bar_is_that_far_into_the_item() {
+        assertEquals(30_000L, PlaybackRules.seekPosition(0.25f, 120_000L), "a quarter of 2:00 is 0:30")
+        assertEquals(0L, PlaybackRules.seekPosition(-0.1f, 120_000L))
+        assertEquals(120_000L, PlaybackRules.seekPosition(1.2f, 120_000L))
+        assertEquals(1L, PlaybackRules.seekPosition(0.25f, 3L), "0.75 ms rounds to the nearest, not down")
+    }
+
+    @Test
+    fun a_reported_state_is_playing_paused_or_ended_and_ended_wins() {
+        assertEquals(PlaybackStatus.Playing, PlaybackRules.status(PlayerState(playing = true)))
+        assertEquals(PlaybackStatus.Paused, PlaybackRules.status(PlayerState(playing = false)))
+        assertEquals(PlaybackStatus.Ended, PlaybackRules.status(PlayerState(playing = false, ended = true)))
+        assertEquals(PlaybackStatus.Ended, PlaybackRules.status(PlayerState(playing = true, ended = true)))
     }
 
     @Test

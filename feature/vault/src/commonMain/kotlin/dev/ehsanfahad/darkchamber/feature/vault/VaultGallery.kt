@@ -5,6 +5,7 @@ import dev.ehsanfahad.darkchamber.core.model.ItemFilter
 import dev.ehsanfahad.darkchamber.core.vault.VaultObjects
 import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
 import dev.ehsanfahad.darkchamber.feature.vault.api.PhotoPicker
+import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerDisplay
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPlayerFactory
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultAlbumsComponent
@@ -185,6 +186,9 @@ fun vaultViewerComponent(
     onBack: (lastViewedId: ByteArray) -> Unit,
     // The platform's player. Without one, a video or audio page shows its badge, as before playback.
     players: VaultPlayerFactory? = null,
+    // The screen's brightness, orientation and sleep for a player page. Without it a video page has
+    // no orientation button and no brightness slide.
+    display: PlayerDisplay? = null,
     mainContext: CoroutineContext = Dispatchers.Main,
     // Where a page is read, decrypted and decoded, and where a delete runs: all blocking, all large
     // or slow, none of it for the thread drawing the pager.
@@ -205,6 +209,7 @@ fun vaultViewerComponent(
         onBack = onBack,
         openRange = items::openRange,
         playerFactory = players,
+        display = display,
         mainContext = mainContext,
         ioContext = ioContext,
     )
