@@ -335,9 +335,9 @@ internal fun PlayerControls(
                 modifier = Modifier.weight(1f),
             )
             SpeedSetting(speed = speed, onChoose = actions.chooseSpeed, onInteraction = onInteraction)
-            if (kind == PlayerKind.Video && orientationTarget != null) {
+            PlayerChrome.orientationButton(kind, orientationTarget)?.let { target ->
                 ControlButton(
-                    description = ViewerFormat.orientationDescription(orientationTarget),
+                    description = ViewerFormat.orientationDescription(target),
                     onClick = {
                         actions.switchOrientation()
                         onInteraction()
@@ -345,7 +345,7 @@ internal fun PlayerControls(
                 ) {
                     RotationMark(contentDescription = null)
                     Text(
-                        text = ViewerFormat.orientationLabel(orientationTarget),
+                        text = ViewerFormat.orientationLabel(target),
                         style = DarkChamberTheme.typography.label,
                         color = colors.textPrimary,
                         modifier = Modifier.padding(start = spacing.spaceXxs),

@@ -78,7 +78,6 @@ import dev.ehsanfahad.darkchamber.core.designsystem.DetailsMark
 import dev.ehsanfahad.darkchamber.core.designsystem.ExcludeFromPlatformStructures
 import dev.ehsanfahad.darkchamber.core.designsystem.prefersReducedMotion
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
-import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerKind
 import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerState
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPlayer
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultViewerComponent
@@ -174,12 +173,11 @@ internal fun ViewerScreen(
             val playerState: PlayerState? = key(shownPlayer) { shownPlayer?.state?.collectAsState()?.value }
             // An audio page's controls stay on screen; a video page's hide after a while of playing,
             // counted again from each touch of a control.
-            val barsVisible = barsShown || media?.kind == PlayerKind.Audio
+            val barsVisible = PlayerChrome.barsVisible(media?.kind, barsShown)
             var interactions by remember { mutableIntStateOf(0) }
-            val videoPlaying = media?.kind == PlayerKind.Video &&
-                playerState != null && PlaybackRules.status(playerState) == PlaybackStatus.Playing
-            LaunchedEffect(barsShown, videoPlaying, interactions) {
-                if (barsShown && videoPlaying) {
+            val autoHides = PlayerChrome.autoHides(media?.kind, playerState)
+            LaunchedEffect(barsShown, autoHides, interactions) {
+                if (barsShown && autoHides) {
                     delay(AUTO_HIDE_MS)
                     barsShown = false
                 }
