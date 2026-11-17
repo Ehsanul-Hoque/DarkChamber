@@ -7,11 +7,17 @@ import android.view.WindowManager
 import dev.ehsanfahad.darkchamber.app.auth.ActivityHolder
 import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerDisplay
 import dev.ehsanfahad.darkchamber.feature.vault.api.ScreenOrientation
+import java.lang.ref.WeakReference
 
 /**
  * The display controls on Android, on the activity in front: this window's brightness (the rest of the
  * phone is untouched, and the window forgets it when it goes) and the activity's requested orientation,
- * which holds whatever auto-rotate is set to. With no activity in front there is nothing to change now.
+ * which holds whatever auto-rotate is set to.
+ *
+ * **Which window.** The one in front — or, while none is, the one last in front ([windowToChange]):
+ * a lock runs in `onStop`, after `onPause` has cleared the one in front, and what the lock puts back
+ * must reach the window that comes back after it, or it would return still bright, held sideways and
+ * never sleeping.
  *
  * What it holds is remembered ([HeldDisplay]) and told to every window that comes to the front after:
  * the orientation button itself recreates the activity, and the new window would otherwise start at
@@ -20,8 +26,15 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.ScreenOrientation
 internal class AndroidPlayerDisplay(private val activities: ActivityHolder) : PlayerDisplay {
     private val held = HeldDisplay()
 
+    /** The activity last in front, held weakly: a window going away is not kept alive for this. */
+    private var lastShown: WeakReference<Activity>? = null
+
+    private fun window(): Activity? =
+        windowToChange(activities.activity, lastShown?.get(), gone = { it.isFinishing || it.isDestroyed })
+
     init {
         activities.whenShown { activity ->
+            lastShown = WeakReference(activity)
             val told = held.forNewWindow()
             told.brightness?.let { applyBrightness(activity, it) }
             if (told.keepOn) applyKeepOn(activity, true)
@@ -41,18 +54,18 @@ internal class AndroidPlayerDisplay(private val activities: ActivityHolder) : Pl
 
     override fun setBrightness(level: Float?) {
         held.brightness = level
-        activities.activity?.let { applyBrightness(it, level) }
+        window()?.let { applyBrightness(it, level) }
     }
 
     override fun setOrientation(orientation: ScreenOrientation) {
         held.orientation = orientation
-        activities.activity?.requestedOrientation = DisplayMapping.requestedOrientation(orientation)
+        window()?.requestedOrientation = DisplayMapping.requestedOrientation(orientation)
     }
 
-    // A window flag, so it goes with the window: nothing is left holding the screen after the app.
+    // A window flag: cleared on this window when playback stops, the viewer closes or the vault locks.
     override fun keepScreenOn(on: Boolean) {
         held.keepOn = on
-        activities.activity?.let { applyKeepOn(it, on) }
+        window()?.let { applyKeepOn(it, on) }
     }
 
     private fun applyBrightness(activity: Activity, level: Float?) {

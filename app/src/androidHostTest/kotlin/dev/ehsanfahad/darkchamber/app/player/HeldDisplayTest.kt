@@ -31,6 +31,25 @@ class HeldDisplayTest {
         assertEquals(null, held.forNewWindow().orientation)
     }
 
+    // ---- which window a change goes to ---------------------------------------------------------
+
+    @Test
+    fun a_change_goes_to_the_window_in_front() {
+        assertEquals("front", windowToChange("front", "last", gone = { false }))
+    }
+
+    @Test
+    fun a_lock_after_the_pause_still_reaches_the_window_that_was_in_front() {
+        // onPause cleared the one in front; the lock in onStop must still put this window back.
+        assertEquals("last", windowToChange(null, "last", gone = { false }))
+    }
+
+    @Test
+    fun a_window_that_is_going_away_is_not_touched() {
+        assertEquals(null, windowToChange(null, "last", gone = { true }))
+        assertEquals(null, windowToChange<String>(null, null, gone = { false }), "none ever shown")
+    }
+
     @Test
     fun a_portrait_hold_is_told_again_too() {
         val held = HeldDisplay().apply { orientation = ScreenOrientation.Portrait }
