@@ -45,6 +45,10 @@
     - **Its bytes in memory.** The app zeroes **its own** copies of a shot — after it is saved, after a save fails, and when a lock abandons it. The camera framework's capture buffers, and any copy a decoder makes while generating the thumbnail, belong to the platform and are outside the app's reach; they are freed when the platform frees them, not wiped. No copy may claim that a shot's memory is erased.
     - **Its sound.** On Android the app plays a shutter sound only where the platform reports that the region requires one, and none elsewhere. iOS plays one in some regions whatever an app does; the app cannot mute it, and no copy may call the camera silent.
 
+12. **What a playing video or audio item leaves in memory, and what streaming can check.** A player reads the item a byte range at a time, decrypted in memory, and nothing of it is written anywhere. Two limits follow.
+    - **Its bytes in memory.** The app's own reader holds at most two decrypted chunks and zeroes each as it lets it go. Everything past that point belongs to the platform: the player's read-ahead (capped at about fifteen seconds on Android and twelve on iOS, because all of it is plaintext), the decoders' input and frame buffers, and the audio and video pipelines below them. They are released when the player is — on leaving the page, closing the viewer, or a lock, which does not wait for it — and freed when the platform frees them, **not wiped**. No copy may claim that a played item's memory is erased. Whether AVFoundation keeps anything of a stream beyond its memory buffers has not yet been checked on an iPhone; the app hands it bytes only in memory.
+    - **What is verified as it plays.** Every chunk is authenticated before any of it reaches the player: a changed, reordered, truncated or spliced chunk fails its tag, and playback stops there with the page saying the file could not be verified. What streaming **cannot** check is the digest of the whole plaintext, which needs every byte read first (`FORMAT.md` §2.3): the parts played before a damaged chunk were each authentic, and a damaged chunk the player never reaches — past where it was stopped, or skipped over by a seek — goes unnoticed while playing. Against anyone without the item's key the per-chunk tags already decide; the digest is a defence against the app's own chunking going wrong.
+
 ## Security invariants (enforced in code review)
 
 - Plaintext exists only in memory or in app-private `tmp/`, never in shared storage.
@@ -59,6 +63,10 @@
   (wear-levelling), as for the shredder: the file's contents can survive on the storage chip after it
   is gone from the file system, out of reach of any app but not of forensic recovery from the chip.
   Nothing about a clip reaches shared storage or the system photo library.
+- **A video or audio item plays from memory only.** The player reads it through the vault's range
+  reader; there is no player cache, no file and no `tmp/` stage. Nothing about it reaches a media
+  session, a notification, the lock screen or an external playback route, and the player asks for no
+  permission the app did not already hold.
 - No plaintext thumbnails outside the encrypted thumbnail store. A preview is generated in memory,
   sealed under its own key and written only there; no image cache on disk, at any layer, ever holds
   what it decrypted.
