@@ -109,6 +109,7 @@ fun VaultViewerContent(component: VaultViewerComponent, modifier: Modifier = Mod
             holdSpeed = component::holdSpeed,
             releaseSpeed = component::releaseSpeed,
             setVolume = component::setVolume,
+            volume = component::volume,
             brightness = component::brightness,
             setBrightness = component::setBrightness,
             chooseSpeed = component::chooseSpeed,
@@ -210,7 +211,6 @@ internal fun ViewerScreen(
                     onTap = { barsShown = !barsShown },
                     onZoomedIn = { if (isShown) zoomedIn = it },
                     player = players[key],
-                    playerState = if (key == shownKey) playerState else null,
                     playerActions = playerActions,
                     onInteraction = { interactions++ },
                 )
@@ -285,7 +285,6 @@ private fun ViewerPageView(
     onTap: () -> Unit,
     onZoomedIn: (Boolean) -> Unit,
     player: VaultPlayer?,
-    playerState: PlayerState?,
     playerActions: PlayerActions,
     onInteraction: () -> Unit,
 ) {
@@ -296,7 +295,6 @@ private fun ViewerPageView(
                 badge = ViewerFormat.pageBadge(page, item.meta),
                 note = page.note,
                 player = player,
-                playerState = playerState,
                 actions = playerActions,
                 onToggleBars = onTap,
                 onInteraction = onInteraction,

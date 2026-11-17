@@ -173,6 +173,8 @@ internal open class ViewerComponent<T>(
         playing?.player?.setVolume(level.coerceIn(0f, 1f))
     }
 
+    fun volume(): Float? = playing?.player?.volume()
+
     fun brightness(): Float? = display?.brightness()
 
     fun setBrightness(level: Float) = send(displayRules.brightnessSlid(level.coerceIn(0f, 1f)))

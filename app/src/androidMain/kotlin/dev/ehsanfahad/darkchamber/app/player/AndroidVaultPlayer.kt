@@ -82,7 +82,7 @@ internal class AndroidVaultPlayer(
     private val released = AtomicBoolean(false)
     private val audio = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
-    private val _state = MutableStateFlow(PlayerState(volume = currentVolume()))
+    private val _state = MutableStateFlow(PlayerState())
     override val state: StateFlow<PlayerState> = _state.asStateFlow()
 
     /** Width over height of the picture as it should be shown, once known. */
@@ -205,8 +205,10 @@ internal class AndroidVaultPlayer(
         if (released.get()) return
         val max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
         runCatching { audio.setStreamVolume(AudioManager.STREAM_MUSIC, PlayerMapping.volumeStep(level, max), 0) }
-        _state.update { it.copy(volume = currentVolume()) }
     }
+
+    // Read from the phone each time, so the volume keys pressed since the last slide count.
+    override fun volume(): Float = currentVolume()
 
     @Composable
     override fun Picture(modifier: Modifier) {

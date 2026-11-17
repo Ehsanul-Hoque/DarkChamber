@@ -56,6 +56,11 @@ internal class FakePlayer(val reader: RangeReader, val mime: String) : VaultPlay
         calls += "volume:$level"
     }
 
+    /** The volume as the platform has it now — a test changes it as the phone's keys would. */
+    var level: Float = 0.5f
+
+    override fun volume(): Float = level
+
     @Composable
     override fun Picture(modifier: Modifier) = Unit
 

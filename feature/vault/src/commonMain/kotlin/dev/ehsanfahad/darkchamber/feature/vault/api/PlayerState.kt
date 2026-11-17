@@ -15,8 +15,6 @@ data class PlayerState(
     val playing: Boolean = false,
     /** Played to its end and stopped there. */
     val ended: Boolean = false,
-    /** The volume level last set, from 0 to 1, or the platform's own when playback opened. */
-    val volume: Float = 1f,
     val tracks: PlayerTracks = PlayerTracks(),
     /** Why playback ended early, or `null` while it has not. */
     val failure: PlayerFailure? = null,

@@ -190,6 +190,21 @@ class ViewerControlsTest {
         assertEquals(listOf("volume:0.3", "volume:1.0", "volume:0.0"), latest.calls)
     }
 
+    @Test
+    fun a_volume_slide_starts_from_the_level_as_it_is_now() = runTest {
+        val viewer = viewer()
+
+        latest.level = 0.3f
+        assertEquals(0.3f, viewer.volume())
+        latest.level = 0.8f // the phone's keys, between two slides
+        assertEquals(0.8f, viewer.volume())
+    }
+
+    @Test
+    fun with_nothing_playing_there_is_no_volume_to_start_from() = runTest {
+        assertNull(viewer(start = 2).volume(), "a photo")
+    }
+
     // ---- the screen ------------------------------------------------------------------------------
 
     @Test

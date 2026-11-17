@@ -275,6 +275,6 @@ class IosVaultPlayerTest {
         player.setVolume(0.4f)
         spin(0.1)
 
-        assertEquals(0.4f, player.state.value.volume)
+        assertEquals(0.4f, player.volume(), "and a slide after starts from it")
     }
 }

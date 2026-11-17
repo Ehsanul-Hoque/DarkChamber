@@ -33,7 +33,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -77,6 +76,8 @@ internal class PlayerActions(
     val holdSpeed: (faster: Boolean) -> Unit,
     val releaseSpeed: () -> Unit,
     val setVolume: (Float) -> Unit,
+    /** Where a volume slide starts: the level now; `null` while nothing plays. */
+    val volume: () -> Float?,
     /** Where a brightness slide starts; `null` where the brightness cannot be set. */
     val brightness: () -> Float?,
     val setBrightness: (Float) -> Unit,
@@ -103,7 +104,6 @@ internal fun PlayerPageView(
     badge: String,
     note: TrackNote?,
     player: VaultPlayer?,
-    playerState: PlayerState?,
     actions: PlayerActions,
     onToggleBars: () -> Unit,
     onInteraction: () -> Unit,
@@ -117,7 +117,6 @@ internal fun PlayerPageView(
             feedback = null
         }
     }
-    val state by rememberUpdatedState(playerState)
     val density = LocalDensity.current
     val insets = WindowInsets.safeDrawing
 
@@ -180,7 +179,10 @@ internal fun PlayerPageView(
                                     owner = DragOwner.Nobody
                                     0f
                                 }
-                                DragOwner.Volume -> state?.volume ?: 1f
+                                DragOwner.Volume -> actions.volume() ?: run {
+                                    owner = DragOwner.Nobody
+                                    0f
+                                }
                                 else -> 0f
                             }
                         },

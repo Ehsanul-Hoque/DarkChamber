@@ -63,6 +63,9 @@ interface VaultViewerComponent {
     /** Sets the volume the slide controls, from 0 to 1 (see [VaultPlayer.setVolume]). */
     fun setVolume(level: Float)
 
+    /** The volume now, where a slide starts from; `null` while nothing plays. */
+    fun volume(): Float?
+
     /** The screen's brightness now, where a slide starts from; `null` where it cannot be changed. */
     fun brightness(): Float?
 

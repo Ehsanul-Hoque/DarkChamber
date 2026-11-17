@@ -48,6 +48,12 @@ interface VaultPlayer {
      */
     fun setVolume(level: Float)
 
+    /**
+     * The level [setVolume] controls, as it is **now**, from 0 to 1 — read when a slide starts, so a
+     * change made since (the phone's volume keys, on Android) is where the slide begins.
+     */
+    fun volume(): Float
+
     /** The item's picture, for a video page. An audio item draws nothing. */
     @Composable
     fun Picture(modifier: Modifier)

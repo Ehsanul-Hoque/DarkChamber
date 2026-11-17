@@ -214,6 +214,8 @@ class ViewerPlayerWiringTest {
             calls += "volume:$level"
         }
 
+        override fun volume(): Float = 0.5f
+
         @Composable
         override fun Picture(modifier: Modifier) = Unit
 

@@ -43,6 +43,7 @@ import platform.AVFoundation.setPreferredForwardBufferDuration
 import platform.AVFoundation.setPreventsDisplaySleepDuringVideoPlayback
 import platform.AVFoundation.setRate
 import platform.AVFoundation.setVolume
+import platform.AVFoundation.volume
 import platform.AVFoundation.rate
 import platform.AVFoundation.timeControlStatus
 import platform.AVFoundation.tracks
@@ -107,7 +108,7 @@ internal class IosVaultPlayer(private val reader: RangeReader, mime: String) : V
     }
     private val layer = AVPlayerLayer.playerLayerWithPlayer(player).also { it.videoGravity = AVLayerVideoGravityResizeAspect }
 
-    private val _state = MutableStateFlow(PlayerState(volume = 1f))
+    private val _state = MutableStateFlow(PlayerState())
     override val state: StateFlow<PlayerState> = _state.asStateFlow()
 
     private var tracksRead = false
@@ -165,10 +166,10 @@ internal class IosVaultPlayer(private val reader: RangeReader, mime: String) : V
 
     /** iOS gives apps no way to set the phone's volume: the slide sets this player's own. */
     override fun setVolume(level: Float) = onMain {
-        val clamped = level.coerceIn(0f, 1f)
-        player.setVolume(clamped)
-        _state.update { it.copy(volume = clamped) }
+        player.setVolume(level.coerceIn(0f, 1f))
     }
+
+    override fun volume(): Float = player.volume
 
     @Composable
     override fun Picture(modifier: Modifier) {
