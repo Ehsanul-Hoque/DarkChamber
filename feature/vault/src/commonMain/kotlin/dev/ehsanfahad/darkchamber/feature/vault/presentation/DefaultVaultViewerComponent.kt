@@ -413,7 +413,7 @@ internal open class ViewerComponent<T>(
     private fun onPlayerState(key: String, reported: PlayerState) {
         val failure = reported.failure
         if (failure != null) {
-            pageForPlayerFailure(failure)?.let { setPage(key, it) }
+            setPage(key, pageForPlayerFailure(failure))
             stopPlaying(remember = false)
             return
         }

@@ -52,11 +52,6 @@ class PlayerPagesTest {
         assertEquals(ViewerPage.CouldntOpen, pageForPlayerFailure(PlayerFailure.Other))
     }
 
-    @Test
-    fun a_stop_or_a_lock_is_no_page_at_all() {
-        assertNull(pageForPlayerFailure(PlayerFailure.Stopped))
-    }
-
     private fun tracks(video: TrackSupport, audio: TrackSupport) = PlayerTracks(video = video, audio = audio)
 
     @Test

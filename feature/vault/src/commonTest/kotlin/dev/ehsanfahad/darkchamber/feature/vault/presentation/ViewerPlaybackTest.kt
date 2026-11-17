@@ -332,16 +332,6 @@ class ViewerPlaybackTest {
     }
 
     @Test
-    fun a_player_reporting_it_was_stopped_leaves_the_page_as_it_was() = runTest {
-        val viewer = viewer(start = 1)
-
-        player(0).state.value = PlayerState(failure = PlayerFailure.Stopped)
-
-        assertEquals(ViewerPage.Media(PlayerKind.Video), viewer.page(1), "a stop is not a failure of the item")
-        assertTrue(viewer.players.value.isEmpty())
-    }
-
-    @Test
     fun tracks_none_of_which_this_device_plays_show_cant_play() = runTest {
         val viewer = viewer(start = 1)
 

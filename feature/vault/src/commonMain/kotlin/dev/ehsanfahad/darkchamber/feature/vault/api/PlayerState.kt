@@ -51,9 +51,6 @@ sealed interface PlayerFailure {
     /** No decoder on this device handles the item's format or profile, and no read failed behind it. */
     data object Decoder : PlayerFailure
 
-    /** Playback was let go, or the vault locked under it. Not a failure of the item. */
-    data object Stopped : PlayerFailure
-
     /** Anything else; it names no cause. */
     data object Other : PlayerFailure
 }

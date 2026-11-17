@@ -66,17 +66,17 @@ internal fun pageForOpenFailure(error: VaultError): ViewerPage =
 /**
  * The page for playback that ended early, decided by where the failure came from: a refused read is
  * judged as an open would be ([pageForOpenFailure]), so only the vault's own integrity check makes a
- * file [ViewerPage.Unverified]; a decoder that declines the format is [ViewerPage.CantPlay], never
- * damage; a stop or a lock is no page at all (`null`) — the player was let go, not failed.
+ * file unverified (mid-play, [ViewerPage.StoppedUnverified]); a decoder that declines the format is
+ * [ViewerPage.CantPlay], never damage. A lock is no failure at all: it stops the viewer listening
+ * before the session closes, so nothing the released player reports afterwards reaches here.
  */
-internal fun pageForPlayerFailure(failure: PlayerFailure): ViewerPage? =
+internal fun pageForPlayerFailure(failure: PlayerFailure): ViewerPage =
     when (failure) {
         // Mid-play, the verified chunks before the refused one have already played.
         is PlayerFailure.Reader -> pageForOpenFailure(failure.error).let {
             if (it == ViewerPage.Unverified) ViewerPage.StoppedUnverified else it
         }
         PlayerFailure.Decoder -> ViewerPage.CantPlay
-        PlayerFailure.Stopped -> null
         PlayerFailure.Other -> ViewerPage.CouldntOpen
     }
 
