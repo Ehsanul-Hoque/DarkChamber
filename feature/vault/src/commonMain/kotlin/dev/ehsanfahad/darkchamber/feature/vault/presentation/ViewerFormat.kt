@@ -22,6 +22,9 @@ internal object ViewerFormat {
      * - **Unverified.** A failed integrity check is all that is known. It cannot tell decay from
      *   interference, so it names neither — it says the file may have changed, which both would be —
      *   and that none of it is shown, which is the rule: never render part of an unverified file.
+     * - **Stopped unverified.** A clip refused partway through playing: every part that played was a
+     *   verified chunk, and playback stopped at the first that was not. So it says playback stopped —
+     *   never that none of it was shown, which would be false — and, as above, names no cause.
      * - **Couldn't open.** Why is not known, so no why.
      */
     fun pageMessage(page: ViewerPage): String? =
@@ -33,6 +36,8 @@ internal object ViewerFormat {
             ViewerPage.CantPlay -> "This device can't play this file."
             ViewerPage.Unverified ->
                 "This file couldn't be verified, so none of it is shown. It may have changed since it was saved."
+            ViewerPage.StoppedUnverified ->
+                "This file couldn't be verified from here on, so playback stopped. It may have changed since it was saved."
             ViewerPage.NeedsUpdate -> "This file was saved by a newer version of DarkChamber. Update the app to open it."
             ViewerPage.CouldntOpen -> "This file couldn't be opened."
         }
@@ -180,7 +185,7 @@ internal object ViewerFormat {
     fun pageBadge(page: ViewerPage, meta: GalleryItemMeta): String =
         when {
             page is ViewerPage.NotViewable -> page.badge
-            page == ViewerPage.Unverified -> WARNING_BADGE
+            page == ViewerPage.Unverified || page == ViewerPage.StoppedUnverified -> WARNING_BADGE
             meta is GalleryItemMeta.Readable -> GalleryFormat.typeBadge(meta.mime)
             else -> WARNING_BADGE
         }
@@ -213,5 +218,5 @@ internal object ViewerFormat {
     }
 
     /** Only a failed integrity check takes the warning style (DESIGN: danger is for integrity failures). */
-    fun pageIsWarning(page: ViewerPage): Boolean = page == ViewerPage.Unverified
+    fun pageIsWarning(page: ViewerPage): Boolean = page == ViewerPage.Unverified || page == ViewerPage.StoppedUnverified
 }

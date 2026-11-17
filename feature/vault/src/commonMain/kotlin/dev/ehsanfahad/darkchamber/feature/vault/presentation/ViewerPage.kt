@@ -71,7 +71,10 @@ internal fun pageForOpenFailure(error: VaultError): ViewerPage =
  */
 internal fun pageForPlayerFailure(failure: PlayerFailure): ViewerPage? =
     when (failure) {
-        is PlayerFailure.Reader -> pageForOpenFailure(failure.error)
+        // Mid-play, the verified chunks before the refused one have already played.
+        is PlayerFailure.Reader -> pageForOpenFailure(failure.error).let {
+            if (it == ViewerPage.Unverified) ViewerPage.StoppedUnverified else it
+        }
         PlayerFailure.Decoder -> ViewerPage.CantPlay
         PlayerFailure.Stopped -> null
         PlayerFailure.Other -> ViewerPage.CouldntOpen

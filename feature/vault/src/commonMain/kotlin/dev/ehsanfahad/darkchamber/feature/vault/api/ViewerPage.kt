@@ -37,6 +37,13 @@ sealed interface ViewerPage {
     /** Failed its integrity check, or is not a container at all. Nothing of it is shown. */
     data object Unverified : ViewerPage
 
+    /**
+     * A video or audio item the vault refused partway through playing: what played before was each
+     * verified chunk, and playback stopped where a chunk failed. Not [Unverified], whose words say
+     * none of the file was shown.
+     */
+    data object StoppedUnverified : ViewerPage
+
     /** Written by a newer version of the format; the app needs updating to open it. */
     data object NeedsUpdate : ViewerPage
 

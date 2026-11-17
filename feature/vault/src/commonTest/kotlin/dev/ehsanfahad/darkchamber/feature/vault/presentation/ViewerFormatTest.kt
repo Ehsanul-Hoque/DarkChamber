@@ -27,6 +27,7 @@ class ViewerFormatTest {
         ViewerPage.CantShow,
         ViewerPage.CantPlay,
         ViewerPage.Unverified,
+        ViewerPage.StoppedUnverified,
         ViewerPage.NeedsUpdate,
         ViewerPage.CouldntOpen,
     )
@@ -76,6 +77,20 @@ class ViewerFormatTest {
         assertTrue(text.contains("couldn't be verified", ignoreCase = true), text)
         assertTrue(text.contains("none of it is shown", ignoreCase = true), text)
         assertSaysNone(text, "tamper", "corrupt", "attack", "hack", "safe", "damaged")
+    }
+
+    /**
+     * A clip that failed its check partway through playing: some of it was shown — every part that
+     * played was verified — so it must not say none of it was; it says playback stopped and why it
+     * knows, and, like the page above, names no cause and never calls what played safe.
+     */
+    @Test
+    fun a_clip_stopped_partway_says_playback_stopped_not_that_none_was_shown() {
+        val text = message(ViewerPage.StoppedUnverified)
+        assertTrue(text.contains("couldn't be verified", ignoreCase = true), text)
+        assertTrue(text.contains("playback stopped", ignoreCase = true), text)
+        assertTrue(text.contains("may have changed", ignoreCase = true), text)
+        assertSaysNone(text, "none of it", "tamper", "corrupt", "attack", "hack", "safe", "damaged")
     }
 
     /**
@@ -238,6 +253,7 @@ class ViewerFormatTest {
         assertEquals(GalleryFormat.typeBadge("image/jpeg"), ViewerFormat.pageBadge(ViewerPage.TooLarge, jpeg))
         assertEquals(GalleryFormat.typeBadge("image/jpeg"), ViewerFormat.pageBadge(ViewerPage.CantShow, jpeg))
         assertEquals("!", ViewerFormat.pageBadge(ViewerPage.Unverified, jpeg))
+        assertEquals("!", ViewerFormat.pageBadge(ViewerPage.StoppedUnverified, GalleryItemMeta.Readable("a.mp4", "video/mp4")))
         assertEquals("!", ViewerFormat.pageBadge(ViewerPage.CouldntOpen, GalleryItemMeta.Unreadable))
     }
 
@@ -269,11 +285,13 @@ class ViewerFormatTest {
         assertEquals("Delete", ViewerFormat.deleteAction(1))
     }
 
-    /** Only the integrity failure takes the warning style; styling is a claim too. */
+    /** Only an integrity failure takes the warning style — at open or mid-play; styling is a claim too. */
     @Test
-    fun only_the_unverified_page_is_a_warning() {
+    fun only_the_unverified_pages_are_warnings() {
         assertTrue(ViewerFormat.pageIsWarning(ViewerPage.Unverified))
-        for (page in everyMessagePage - ViewerPage.Unverified + ViewerPage.Picture + ViewerPage.Loading) {
+        assertTrue(ViewerFormat.pageIsWarning(ViewerPage.StoppedUnverified))
+        val integrity = setOf<ViewerPage>(ViewerPage.Unverified, ViewerPage.StoppedUnverified)
+        for (page in everyMessagePage - integrity + ViewerPage.Picture + ViewerPage.Loading) {
             assertEquals(false, ViewerFormat.pageIsWarning(page), "for $page")
         }
     }

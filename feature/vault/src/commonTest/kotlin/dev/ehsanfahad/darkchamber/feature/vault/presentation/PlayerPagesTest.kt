@@ -21,10 +21,16 @@ import kotlin.test.assertTrue
  * unverified.
  */
 class PlayerPagesTest {
+    /**
+     * A read the vault refused while playing stops playback there — after whatever verified chunks
+     * came before it played — so it is its own page, not the one that says none of the file was shown.
+     * A refusal when the reader is opened, before anything plays, stays [ViewerPage.Unverified].
+     */
     @Test
-    fun a_read_the_vault_refused_as_damaged_is_unverified() {
-        assertEquals(ViewerPage.Unverified, pageForPlayerFailure(PlayerFailure.Reader(VaultError.Crypto.IntegrityFailure)))
-        assertEquals(ViewerPage.Unverified, pageForPlayerFailure(PlayerFailure.Reader(VaultError.Crypto.MalformedContainer)))
+    fun a_read_the_vault_refused_while_playing_stopped_playback_there() {
+        assertEquals(ViewerPage.StoppedUnverified, pageForPlayerFailure(PlayerFailure.Reader(VaultError.Crypto.IntegrityFailure)))
+        assertEquals(ViewerPage.StoppedUnverified, pageForPlayerFailure(PlayerFailure.Reader(VaultError.Crypto.MalformedContainer)))
+        assertEquals(ViewerPage.Unverified, pageForOpenFailure(VaultError.Crypto.IntegrityFailure), "refused at open: nothing played")
     }
 
     @Test

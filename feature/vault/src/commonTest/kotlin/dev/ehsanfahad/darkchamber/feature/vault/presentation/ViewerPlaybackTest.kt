@@ -290,12 +290,12 @@ class ViewerPlaybackTest {
     // ---- what playback reports -------------------------------------------------------------------
 
     @Test
-    fun a_read_refused_as_damaged_mid_play_shows_unverified_and_lets_the_player_go() = runTest {
+    fun a_read_refused_as_damaged_mid_play_stops_playback_there_and_lets_the_player_go() = runTest {
         val viewer = viewer(start = 1)
 
         player(0).state.value = PlayerState(failure = PlayerFailure.Reader(VaultError.Crypto.IntegrityFailure))
 
-        assertEquals(ViewerPage.Unverified, viewer.page(1))
+        assertEquals(ViewerPage.StoppedUnverified, viewer.page(1))
         assertTrue(viewer.players.value.isEmpty(), "nothing after the bad chunk is drawn")
         release.drain()
         assertTrue(player(0).released)
@@ -303,7 +303,7 @@ class ViewerPlaybackTest {
 
         viewer.viewportMeasured(1_000, 2_000) // a refresh while it is still the page shown
         assertEquals(1, factory.made.size, "a page that failed is not opened again")
-        assertEquals(ViewerPage.Unverified, viewer.page(1))
+        assertEquals(ViewerPage.StoppedUnverified, viewer.page(1))
     }
 
     @Test
