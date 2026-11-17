@@ -2,8 +2,8 @@ package dev.ehsanfahad.darkchamber.feature.vault.api
 
 /**
  * The display controls a player page needs from the platform: the screen's brightness, a forced
- * orientation, and keeping the screen awake while something plays. The app implements it per platform. Volume is not here — it belongs to each player
- * ([VaultPlayer.setVolume]).
+ * orientation, and keeping the screen awake while something plays. The app implements it per platform.
+ * Volume is not here — it belongs to each player ([VaultPlayer.setVolume]).
  *
  * The viewer decides when; this only does. It changes nothing on its own, and everything it changes
  * the viewer puts back: brightness when a video page is left, and all of it when the viewer closes or

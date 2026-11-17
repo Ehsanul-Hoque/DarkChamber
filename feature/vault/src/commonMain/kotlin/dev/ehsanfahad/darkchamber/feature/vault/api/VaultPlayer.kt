@@ -14,9 +14,9 @@ import kotlinx.coroutines.flow.StateFlow
  * - **Reads only through [RangeReader].** The player asks for byte ranges; the reader decrypts only the
  *   chunks a range touches. Nothing decrypted is written to a file or a cache, the player's own disk
  *   cache included (hard rule #1).
- * - **Owns the reader it is given.** [create] hands it over; [VaultPlayer.release] closes it, and so does
- *   every failure that ends playback. The reader serves one caller, so the implementation serialises
- *   the player's reads into it.
+ * - **Owns the reader it is given.** [create] hands it over; [VaultPlayer.release] closes it — the
+ *   viewer releases a player as soon as it reports a failure, so a failure that ends playback closes it
+ *   too. The reader serves one caller, so the implementation serialises the player's reads into it.
  * - **Reports where a failure came from**, never from an error's text: see [PlayerFailure].
  * - **Shows nothing outside the app** — no media session, notification, lock-screen or external
  *   playback route.
