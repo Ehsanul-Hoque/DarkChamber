@@ -179,6 +179,9 @@ internal class AndroidVaultPlayer(
             exo.addListener(listener)
             exo.setMediaSource(
                 ProgressiveMediaSource.Factory(shared.factory(), DefaultExtractorsFactory())
+                    // A read the vault refused is its verdict; trying again would only decrypt the
+                    // same chunk to the same answer and hold the page back.
+                    .setLoadErrorHandlingPolicy(VaultLoadErrorPolicy)
                     .createMediaSource(MediaItem.Builder().setUri(ITEM_URI).setMimeType(mime).build()),
             )
             exo.prepare()
