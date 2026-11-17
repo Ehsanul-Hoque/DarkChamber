@@ -94,9 +94,18 @@ class IosVaultPlayerTest {
 
     @Test
     fun a_format_or_decoder_this_device_lacks_is_the_decoders() {
-        for (code in listOf(AVErrorFileFormatNotRecognized, AVErrorDecoderNotFound, AVErrorDecoderTemporarilyUnavailable, AVErrorFormatUnsupported)) {
+        for (code in listOf(AVErrorFileFormatNotRecognized, AVErrorDecoderNotFound, AVErrorFormatUnsupported)) {
             assertEquals(PlayerFailure.Decoder, IosPlayerMapping.failureOf(listOf(ErrorLink(avf, code)), null), "code $code")
         }
+    }
+
+    /**
+     * A decoder busy for now — another app holding it, or this one not in front — is not a device that
+     * cannot play the file, which is what the decoder's page says. It names no cause.
+     */
+    @Test
+    fun a_decoder_that_is_busy_for_now_is_not_a_file_this_device_cannot_play() {
+        assertEquals(PlayerFailure.Other, IosPlayerMapping.failureOf(listOf(ErrorLink(avf, AVErrorDecoderTemporarilyUnavailable)), null))
     }
 
     @Test

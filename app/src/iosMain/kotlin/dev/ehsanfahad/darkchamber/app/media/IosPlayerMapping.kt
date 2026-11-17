@@ -5,7 +5,6 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerFailure
 import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerTracks
 import dev.ehsanfahad.darkchamber.feature.vault.api.TrackSupport
 import platform.AVFoundation.AVErrorDecoderNotFound
-import platform.AVFoundation.AVErrorDecoderTemporarilyUnavailable
 import platform.AVFoundation.AVErrorFileFormatNotRecognized
 import platform.AVFoundation.AVErrorFormatUnsupported
 import platform.AVFoundation.AVFoundationErrorDomain
@@ -21,11 +20,14 @@ internal object IosPlayerMapping {
      */
     const val FORWARD_BUFFER_SECONDS = 12.0
 
-    /** AVFoundation's codes for a format, or a decoder, this device does not have. */
+    /**
+     * AVFoundation's codes for a format, or a decoder, this device does not have. Not
+     * `AVErrorDecoderTemporarilyUnavailable`: a decoder busy for now is not a device that cannot play
+     * the file, so it names no cause.
+     */
     val DECODER_CODES: Set<Long> = setOf(
         AVErrorFileFormatNotRecognized,
         AVErrorDecoderNotFound,
-        AVErrorDecoderTemporarilyUnavailable,
         AVErrorFormatUnsupported,
     )
 
