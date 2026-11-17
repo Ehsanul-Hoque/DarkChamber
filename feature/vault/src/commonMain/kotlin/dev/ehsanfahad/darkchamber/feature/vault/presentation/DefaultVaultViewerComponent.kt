@@ -523,7 +523,8 @@ internal class DefaultVaultViewerComponent(
     display: PlayerDisplay?,
     mainContext: CoroutineContext = Dispatchers.Main,
     ioContext: CoroutineContext = Dispatchers.Default,
+    releaseContext: CoroutineContext = Dispatchers.Default,
 ) : ViewerComponent<ImageBitmap>(
     componentContext, observeGallery, observeAlbum, load, shred, filter, controls, startId, onBack,
-    openRange, playerFactory, display, mainContext, ioContext,
+    openRange, playerFactory, display, mainContext, ioContext, releaseContext,
 ), VaultViewerComponent

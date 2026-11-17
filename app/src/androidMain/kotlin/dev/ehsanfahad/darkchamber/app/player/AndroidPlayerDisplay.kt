@@ -1,5 +1,6 @@
 package dev.ehsanfahad.darkchamber.app.player
 
+import android.app.Activity
 import android.content.pm.ActivityInfo
 import android.provider.Settings
 import android.view.WindowManager
@@ -10,9 +11,24 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.ScreenOrientation
 /**
  * The display controls on Android, on the activity in front: this window's brightness (the rest of the
  * phone is untouched, and the window forgets it when it goes) and the activity's requested orientation,
- * which holds whatever auto-rotate is set to. With no activity in front there is nothing to change.
+ * which holds whatever auto-rotate is set to. With no activity in front there is nothing to change now.
+ *
+ * What it holds is remembered ([HeldDisplay]) and told to every window that comes to the front after:
+ * the orientation button itself recreates the activity, and the new window would otherwise start at
+ * the system's brightness and let the screen sleep mid-video.
  */
 internal class AndroidPlayerDisplay(private val activities: ActivityHolder) : PlayerDisplay {
+    private val held = HeldDisplay()
+
+    init {
+        activities.whenShown { activity ->
+            val told = held.forNewWindow()
+            told.brightness?.let { applyBrightness(activity, it) }
+            if (told.keepOn) applyKeepOn(activity, true)
+            told.orientation?.let { activity.requestedOrientation = DisplayMapping.requestedOrientation(it) }
+        }
+    }
+
     override fun brightness(): Float {
         val activity = activities.activity ?: return DisplayMapping.UNKNOWN_BRIGHTNESS
         val set = activity.window.attributes.screenBrightness
@@ -24,21 +40,31 @@ internal class AndroidPlayerDisplay(private val activities: ActivityHolder) : Pl
     }
 
     override fun setBrightness(level: Float?) {
-        val window = activities.activity?.window ?: return
-        window.attributes = window.attributes.apply { screenBrightness = DisplayMapping.windowBrightness(level) }
+        held.brightness = level
+        activities.activity?.let { applyBrightness(it, level) }
     }
 
     override fun setOrientation(orientation: ScreenOrientation) {
+        held.orientation = orientation
         activities.activity?.requestedOrientation = DisplayMapping.requestedOrientation(orientation)
     }
 
     // A window flag, so it goes with the window: nothing is left holding the screen after the app.
     override fun keepScreenOn(on: Boolean) {
-        val window = activities.activity?.window ?: return
+        held.keepOn = on
+        activities.activity?.let { applyKeepOn(it, on) }
+    }
+
+    private fun applyBrightness(activity: Activity, level: Float?) {
+        val window = activity.window
+        window.attributes = window.attributes.apply { screenBrightness = DisplayMapping.windowBrightness(level) }
+    }
+
+    private fun applyKeepOn(activity: Activity, on: Boolean) {
         if (on) {
-            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            activity.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         } else {
-            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
     }
 

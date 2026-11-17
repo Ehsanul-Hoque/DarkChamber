@@ -4,6 +4,10 @@ import android.content.Context
 import android.content.ContextWrapper
 import dev.ehsanfahad.darkchamber.app.camera.AndroidCameraController
 import dev.ehsanfahad.darkchamber.app.image.AndroidViewerImageDecoder
+import dev.ehsanfahad.darkchamber.app.player.AndroidPlayerDisplay
+import dev.ehsanfahad.darkchamber.app.player.AndroidVaultPlayerFactory
+import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerDisplay
+import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPlayerFactory
 import dev.ehsanfahad.darkchamber.app.thumbnail.AndroidThumbnailEncoder
 import dev.ehsanfahad.darkchamber.core.vault.ThumbnailEncoder
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraController
@@ -56,6 +60,23 @@ class AndroidPlatformModuleTest {
         val app = koinApplication { modules(platformModule()) }
         try {
             assertIs<AndroidViewerImageDecoder>(app.koin.getOrNull<ViewerImageDecoder>())
+        } finally {
+            app.close()
+        }
+    }
+
+    /**
+     * The player and the display are resolved optionally — without them a video page shows its badge
+     * — so a deleted binding would ship as a viewer that never plays, and nothing else would complain.
+     */
+    @Test
+    fun the_platform_module_binds_the_android_player_and_display() {
+        val app = koinApplication {
+            modules(module { single<Context> { ContextWrapper(null) } }, platformModule())
+        }
+        try {
+            assertIs<AndroidVaultPlayerFactory>(app.koin.getOrNull<VaultPlayerFactory>())
+            assertIs<AndroidPlayerDisplay>(app.koin.getOrNull<PlayerDisplay>())
         } finally {
             app.close()
         }

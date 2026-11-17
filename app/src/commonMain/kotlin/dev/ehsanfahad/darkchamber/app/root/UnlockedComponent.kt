@@ -33,6 +33,8 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.VaultGalleryComponent
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultImports
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryOrder
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultViewerComponent
+import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerDisplay
+import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPlayerFactory
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerImageDecoder
 import dev.ehsanfahad.darkchamber.feature.vault.vaultViewerComponent
 import dev.ehsanfahad.darkchamber.feature.vault.vaultAlbumsComponent
@@ -170,6 +172,9 @@ class DefaultUnlockedComponent(
     // reading a freshly pushed screen's state otherwise races a background dispatcher it cannot
     // drive, and passes or fails on how much slow work happened to come first.
     private val mapContext: CoroutineContext = Dispatchers.Default,
+    // Where the viewer lets a player go. Off the main thread, so a lock is not held up by a decoder
+    // that blocks as it shuts down; injected so a test can hold the release and see the lock finish.
+    private val releaseContext: CoroutineContext = Dispatchers.Default,
     // How long the offer to leave stands after a back press at the grid.
     private val leaveWindow: Duration = LEAVE_WINDOW,
     // **Monotonic, and injected.** Monotonic because the app's own `nowEpochMillis()` is a wall
@@ -574,9 +579,16 @@ class DefaultUnlockedComponent(
                                     ?.component?.revealItem(lastViewedId)
                             }
                         },
+                        // Optional, for the decoder's reason: without them a video or audio page
+                        // shows its badge, as before playback, and a video page has no orientation
+                        // button or brightness slide. Both platform modules bind them, and a test on
+                        // each says so.
+                        players = koin.getOrNull<VaultPlayerFactory>(),
+                        display = koin.getOrNull<PlayerDisplay>(),
                         mainContext = mainContext + featureWork,
                         // Reading, decrypting and decoding a page, and shredding: all blocking.
                         ioContext = ioContext,
+                        releaseContext = releaseContext,
                     ),
                 )
             }

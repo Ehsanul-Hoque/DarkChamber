@@ -7,6 +7,8 @@ import dev.ehsanfahad.darkchamber.app.auth.IosBiometricAuthenticator
 import dev.ehsanfahad.darkchamber.app.camera.IosCameraController
 import dev.ehsanfahad.darkchamber.app.camera.IosFreeSpace
 import dev.ehsanfahad.darkchamber.app.image.IosViewerImageDecoder
+import dev.ehsanfahad.darkchamber.app.media.IosPlayerDisplay
+import dev.ehsanfahad.darkchamber.app.media.IosVaultPlayerFactory
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraController
 import dev.ehsanfahad.darkchamber.feature.camera.api.FreeSpace
 import dev.ehsanfahad.darkchamber.app.picker.IosFilePicker
@@ -26,6 +28,8 @@ import dev.ehsanfahad.darkchamber.core.model.getOrNull
 import dev.ehsanfahad.darkchamber.core.vault.ThumbnailEncoder
 import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
 import dev.ehsanfahad.darkchamber.feature.vault.api.PhotoPicker
+import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerDisplay
+import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPlayerFactory
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerImageDecoder
 import kotlinx.io.files.Path
 import org.koin.core.module.Module
@@ -63,6 +67,10 @@ actual fun platformModule(): Module = module {
     single<ThumbnailEncoder> { IosThumbnailEncoder() }
     // Decodes an image for the viewer, from memory, with the same ImageIO call as the encoder.
     single<ViewerImageDecoder> { IosViewerImageDecoder() }
+    // Plays a video or audio item through its range reader, with AVPlayer.
+    single<VaultPlayerFactory> { IosVaultPlayerFactory() }
+    // The phone's brightness (put back exactly), the forced orientation and the sleep timer.
+    single<PlayerDisplay> { IosPlayerDisplay() }
     // Local-only and self-expiring; see the implementation for what a plain pasteboard write costs.
     single<SecretClipboard> { IosSecretClipboard() }
     single<CatalogProvider> { CatalogProvider { root -> openCatalog(root) } }
