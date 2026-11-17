@@ -307,6 +307,21 @@ class ViewerPlaybackTest {
     }
 
     @Test
+    fun an_item_whose_playback_failed_is_not_resumed_where_it_failed() = runTest {
+        val viewer = viewer(start = 1)
+        player(0).state.value = PlayerState(
+            positionMs = 42_000L,
+            durationMs = 111_000L,
+            failure = PlayerFailure.Reader(VaultError.Crypto.IntegrityFailure),
+        )
+
+        viewer.showPage(index(3)) // far enough that its page leaves the window
+        viewer.showPage(index(1)) // and back: opened again
+
+        assertEquals(listOf("speed:1.0", "play"), player(1).calls, "no seek to where it failed")
+    }
+
+    @Test
     fun a_decoder_that_declines_the_format_shows_cant_play() = runTest {
         val viewer = viewer(start = 1)
 
