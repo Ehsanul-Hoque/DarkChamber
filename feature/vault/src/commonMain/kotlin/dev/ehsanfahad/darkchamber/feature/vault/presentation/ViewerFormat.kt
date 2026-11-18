@@ -3,6 +3,7 @@ package dev.ehsanfahad.darkchamber.feature.vault.presentation
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
+import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerKind
 import dev.ehsanfahad.darkchamber.feature.vault.api.ScreenOrientation
 import dev.ehsanfahad.darkchamber.feature.vault.api.TrackNote
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerNotice
@@ -111,11 +112,17 @@ internal object ViewerFormat {
         return if (forward) "+$seconds s" else "−$seconds s"
     }
 
-    /** What the picture of a video page is, to a screen reader. */
-    fun videoArea(): String = "Video"
+    /** What a player page's picture area is, to a screen reader. */
+    fun playerArea(kind: PlayerKind): String = if (kind == PlayerKind.Video) "Video" else "Audio"
 
     /** The picture's screen-reader action: what activating it does to the controls. */
     fun controlsAction(shown: Boolean): String = if (shown) "Hide controls" else "Show controls"
+
+    /** The screen-reader actions that skip, as its actions menu lists them. */
+    fun skipAction(forward: Boolean): String {
+        val seconds = PlaybackRules.SKIP_MS / 1_000L
+        return if (forward) "Forward $seconds seconds" else "Back $seconds seconds"
+    }
 
     /** A brightness or volume level as a slide shows it: "60%". */
     fun levelFeedback(level: Float): String = "${(level * 100f).roundToInt()}%"

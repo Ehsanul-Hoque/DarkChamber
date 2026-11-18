@@ -79,6 +79,21 @@ class PlayerChromeTest {
     }
 
     @Test
+    fun a_screen_reader_can_skip_on_a_playing_page_and_show_or_hide_a_videos_controls() {
+        assertEquals(
+            listOf(ReaderAction.ToggleControls, ReaderAction.Back, ReaderAction.Forward),
+            PlayerChrome.readerActions(Video, hasPlayer = true),
+        )
+        assertEquals(listOf(ReaderAction.Back, ReaderAction.Forward), PlayerChrome.readerActions(Audio, hasPlayer = true))
+    }
+
+    @Test
+    fun with_no_player_there_is_nothing_to_skip() {
+        assertEquals(listOf(ReaderAction.ToggleControls), PlayerChrome.readerActions(Video, hasPlayer = false))
+        assertEquals(emptyList(), PlayerChrome.readerActions(Audio, hasPlayer = false))
+    }
+
+    @Test
     fun an_audio_page_shows_its_type_badge_where_a_video_would_be() {
         val page = ViewerPage.Media(Audio)
         assertEquals("AUD", ViewerFormat.pageBadge(page, GalleryItemMeta.Readable("voice.m4a", "audio/mp4")))

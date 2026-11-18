@@ -7,6 +7,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerNotice
 import dev.ehsanfahad.darkchamber.feature.vault.api.TrackNote
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerPage
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
+import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerKind
 import dev.ehsanfahad.darkchamber.feature.vault.api.ScreenOrientation
 import dev.ehsanfahad.darkchamber.feature.vault.api.label
 import kotlin.test.Test
@@ -351,9 +352,12 @@ class ViewerFormatTest {
 
     @Test
     fun a_screen_reader_can_show_and_hide_the_controls_from_the_picture() {
-        assertEquals("Video", ViewerFormat.videoArea())
+        assertEquals("Video", ViewerFormat.playerArea(PlayerKind.Video))
+        assertEquals("Audio", ViewerFormat.playerArea(PlayerKind.Audio))
         assertEquals("Show controls", ViewerFormat.controlsAction(shown = false))
         assertEquals("Hide controls", ViewerFormat.controlsAction(shown = true))
+        assertEquals("Back 10 seconds", ViewerFormat.skipAction(forward = false))
+        assertEquals("Forward 10 seconds", ViewerFormat.skipAction(forward = true))
     }
 
     @Test

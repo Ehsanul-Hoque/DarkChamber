@@ -40,7 +40,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.selected
@@ -136,19 +138,29 @@ internal fun PlayerPageView(
             seekBar = null, // the seek bar sits over the page, so its drags never reach here
         )
 
-        // A screen reader's double tap is an accessibility click on what it has focused, never a touch,
-        // so the tap gesture below cannot see it: the picture offers the same show/hide as an action.
-        // An audio page's controls never hide, so it has none.
-        val readerAction = if (kind == PlayerKind.Video) {
+        // A screen reader takes every touch for itself — its double tap is an accessibility click on what
+        // it has focused — so the gestures below never see it. The page offers the same things as
+        // actions instead: show/hide as its click, the ten-second skips in the actions menu.
+        val offered = PlayerChrome.readerActions(kind, hasPlayer = player != null)
+        val readerAction = if (offered.isEmpty()) {
+            Modifier
+        } else {
             Modifier.semantics {
-                contentDescription = ViewerFormat.videoArea()
-                onClick(label = ViewerFormat.controlsAction(controlsShown)) {
-                    onToggleBars()
-                    true
+                contentDescription = ViewerFormat.playerArea(kind)
+                if (ReaderAction.ToggleControls in offered) {
+                    onClick(label = ViewerFormat.controlsAction(controlsShown)) {
+                        onToggleBars()
+                        true
+                    }
+                }
+                customActions = offered.filter { it != ReaderAction.ToggleControls }.map { action ->
+                    val forward = action == ReaderAction.Forward
+                    CustomAccessibilityAction(ViewerFormat.skipAction(forward)) {
+                        actions.skip(forward)
+                        true
+                    }
                 }
             }
-        } else {
-            Modifier
         }
         Box(
             modifier = Modifier

@@ -34,6 +34,19 @@ internal object PlayerChrome {
     private const val COMPACT_HEIGHT_DP = 480f
 
     /**
+     * What a screen reader can do from the page itself, beyond its buttons: a screen reader takes every
+     * touch for itself, so the page's own gestures never reach it. Showing and hiding the controls
+     * belongs to a video page (an audio page's never hide); skipping ten seconds needs a player.
+     */
+    fun readerActions(kind: PlayerKind, hasPlayer: Boolean): List<ReaderAction> = buildList {
+        if (kind == PlayerKind.Video) add(ReaderAction.ToggleControls)
+        if (hasPlayer) {
+            add(ReaderAction.Back)
+            add(ReaderAction.Forward)
+        }
+    }
+
+    /**
      * Whether the controls hide by themselves after a while: only over a video that is playing, and
      * never while a [screenReader] runs — someone moving through the controls by touch would have
      * them vanish under them.
@@ -42,3 +55,6 @@ internal object PlayerChrome {
         !screenReader && kind == PlayerKind.Video && state != null &&
             PlaybackRules.status(state) == PlaybackStatus.Playing
 }
+
+/** A screen-reader action on a player page. */
+internal enum class ReaderAction { ToggleControls, Back, Forward }
