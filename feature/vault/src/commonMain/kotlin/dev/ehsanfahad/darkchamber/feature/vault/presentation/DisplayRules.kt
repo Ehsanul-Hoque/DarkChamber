@@ -17,9 +17,10 @@ internal sealed interface DisplayCommand {
  * When the viewer changes the screen and when it puts it back. Each event answers with the commands to
  * send, in order — nothing when nothing changes.
  *
- * - **Orientation** is the viewer's choice, made with the button on a video page, and **applies on video
- *   pages only**: an image or audio page — which has no button — follows the app's own orientation, so
- *   nobody is left held sideways with no way back; swiping back to a video page applies the choice again.
+ * - **Orientation** follows the phone until the button on a video page is pressed; a press holds the
+ *   shape the screen is not in. The hold **applies on video pages only**: an image or audio page — which
+ *   has no button — follows the app's own orientation, so nobody is left held sideways with no way back;
+ *   swiping back to a video page applies the hold again.
  * - **Brightness** set by the slide lasts while its video page is shown: leaving that page hands it back
  *   to the system, and so does closing the viewer or a lock.
  * - **The screen stays on** while the page shown plays — video or audio, since a screen that sleeps
@@ -42,9 +43,22 @@ internal class DisplayRules {
     /** Whether the screen is being held awake. */
     private var awake = false
 
-    /** The orientation the button would switch to now: what its label names. */
+    /** Whether the viewer was last measured wider than tall; `false` until it is measured. */
+    private var landscapeNow = false
+
+    /**
+     * The orientation the button would switch to now, which its label names: the shape the screen is
+     * **not** in. Read from the screen, never from the last press, because the phone's own auto-rotate
+     * turns the screen too — a label naming where the screen already is makes a press that changes
+     * nothing and still holds the screen there.
+     */
     val buttonTarget: ScreenOrientation
-        get() = if (choice == ScreenOrientation.Landscape) ScreenOrientation.Portrait else ScreenOrientation.Landscape
+        get() = if (landscapeNow) ScreenOrientation.Portrait else ScreenOrientation.Landscape
+
+    /** The viewer was measured: [landscape] when it is wider than it is tall. Changes nothing itself. */
+    fun screenShaped(landscape: Boolean) {
+        landscapeNow = landscape
+    }
 
     /** The page shown changed; [video] says whether it is a video page. */
     fun pageShown(video: Boolean): List<DisplayCommand> {

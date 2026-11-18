@@ -280,6 +280,9 @@ internal open class ViewerComponent<T>(
 
     fun viewportMeasured(widthPx: Int, heightPx: Int) {
         if (widthPx <= 0 || heightPx <= 0) return
+        // The phone's auto-rotate turns the screen without asking: the button names what is there now.
+        displayRules.screenShaped(landscape = widthPx > heightPx)
+        publishOrientationTarget()
         target = decodeTarget(widthPx, heightPx)
         refreshWindow()
     }

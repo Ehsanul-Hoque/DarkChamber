@@ -24,13 +24,59 @@ class DisplayRulesTest {
     @Test
     fun the_button_turns_to_landscape_then_back_to_portrait_and_names_where_it_goes() {
         val rules = onVideo()
+        rules.screenShaped(landscape = false)
         assertEquals(Landscape, rules.buttonTarget)
 
         assertEquals(listOf(Orientation(Landscape)), rules.orientationPressed())
+        rules.screenShaped(landscape = true)
         assertEquals(Portrait, rules.buttonTarget)
 
         assertEquals(listOf(Orientation(Portrait)), rules.orientationPressed())
+        rules.screenShaped(landscape = false)
         assertEquals(Landscape, rules.buttonTarget)
+    }
+
+    @Test
+    fun before_the_screen_is_measured_the_button_names_landscape() {
+        assertEquals(Landscape, onVideo().buttonTarget)
+    }
+
+    @Test
+    fun a_screen_the_phone_turned_by_itself_is_named_by_its_real_shape() {
+        val rules = onVideo()
+        rules.screenShaped(landscape = true) // auto-rotate turned it; nothing pressed
+
+        assertEquals(Portrait, rules.buttonTarget)
+        rules.screenShaped(landscape = false)
+        assertEquals(Landscape, rules.buttonTarget)
+    }
+
+    @Test
+    fun a_press_holds_what_the_button_named_and_so_always_turns_the_screen() {
+        val rules = onVideo()
+        rules.screenShaped(landscape = true) // already sideways, nothing held
+
+        assertEquals(listOf(Orientation(Portrait)), rules.orientationPressed())
+    }
+
+    @Test
+    fun turning_the_phone_holds_nothing_until_the_button_is_pressed() {
+        val rules = onVideo()
+        rules.screenShaped(landscape = true)
+        rules.screenShaped(landscape = false)
+
+        assertTrue(rules.pageShown(video = false).isEmpty(), "nothing held, so nothing to hand back")
+        assertTrue(rules.pageShown(video = true).isEmpty(), "and nothing to hold again on the way back")
+    }
+
+    @Test
+    fun a_held_screen_is_still_handed_back_on_leaving_the_video_pages() {
+        val rules = onVideo()
+        rules.screenShaped(landscape = true)
+        rules.orientationPressed() // holds portrait
+
+        assertEquals(listOf(Orientation(AppDefault)), rules.pageShown(video = false))
+        assertEquals(listOf(Orientation(Portrait)), rules.pageShown(video = true), "and held again on return")
     }
 
     @Test
@@ -62,6 +108,7 @@ class DisplayRulesTest {
     fun a_portrait_choice_also_holds_on_video_pages_only() {
         val rules = onVideo()
         rules.orientationPressed()
+        rules.screenShaped(landscape = true)
         rules.orientationPressed() // portrait, chosen
 
         assertEquals(listOf(Orientation(AppDefault)), rules.pageShown(video = false))

@@ -228,9 +228,35 @@ class ViewerControlsTest {
         assertTrue(display.calls.none { it.startsWith("orientation") }, "nothing turns until pressed")
 
         viewer.switchOrientation()
-
         assertEquals("orientation:Landscape", display.calls.last())
+
+        viewer.viewportMeasured(2_000, 1_000) // the window, turned
         assertEquals(ScreenOrientation.Portrait, viewer.state.value.orientationTarget)
+    }
+
+    @Test
+    fun a_screen_auto_rotate_turned_is_named_by_its_shape_and_a_press_turns_it_back() = runTest {
+        val viewer = viewer()
+
+        viewer.viewportMeasured(2_000, 1_000) // the phone turned it; nothing pressed
+        assertEquals(ScreenOrientation.Portrait, viewer.state.value.orientationTarget)
+        assertTrue(display.calls.none { it.startsWith("orientation") }, "turning the phone holds nothing")
+
+        viewer.viewportMeasured(1_000, 2_000)
+        assertEquals(ScreenOrientation.Landscape, viewer.state.value.orientationTarget)
+
+        viewer.viewportMeasured(2_000, 1_000)
+        viewer.switchOrientation()
+        assertEquals("orientation:Portrait", display.calls.last())
+    }
+
+    @Test
+    fun a_square_screen_is_named_as_upright() = runTest {
+        val viewer = viewer()
+        viewer.viewportMeasured(2_000, 1_000)
+
+        viewer.viewportMeasured(1_500, 1_500)
+        assertEquals(ScreenOrientation.Landscape, viewer.state.value.orientationTarget)
     }
 
     @Test
