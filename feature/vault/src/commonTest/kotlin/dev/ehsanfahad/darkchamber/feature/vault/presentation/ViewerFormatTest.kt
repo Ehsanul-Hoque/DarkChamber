@@ -350,6 +350,13 @@ class ViewerFormatTest {
     }
 
     @Test
+    fun a_screen_reader_can_show_and_hide_the_controls_from_the_picture() {
+        assertEquals("Video", ViewerFormat.videoArea())
+        assertEquals("Show controls", ViewerFormat.controlsAction(shown = false))
+        assertEquals("Hide controls", ViewerFormat.controlsAction(shown = true))
+    }
+
+    @Test
     fun a_gesture_shows_what_it_did() {
         assertEquals("+10 s", ViewerFormat.skipFeedback(forward = true))
         assertEquals("−10 s", ViewerFormat.skipFeedback(forward = false), "a true minus sign")

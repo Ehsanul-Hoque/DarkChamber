@@ -42,6 +42,7 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -108,6 +109,8 @@ internal fun PlayerPageView(
     actions: PlayerActions,
     onToggleBars: () -> Unit,
     onInteraction: () -> Unit,
+    /** Whether the bars are on screen: what the picture's screen-reader action says it will do. */
+    controlsShown: Boolean = true,
 ) {
     var feedback by remember { mutableStateOf<Feedback?>(null) }
     // A level or a skip shows briefly after the last change; a hold shows while it lasts.
@@ -133,9 +136,24 @@ internal fun PlayerPageView(
             seekBar = null, // the seek bar sits over the page, so its drags never reach here
         )
 
+        // A screen reader's double tap is an accessibility click on what it has focused, never a touch,
+        // so the tap gesture below cannot see it: the picture offers the same show/hide as an action.
+        // An audio page's controls never hide, so it has none.
+        val readerAction = if (kind == PlayerKind.Video) {
+            Modifier.semantics {
+                contentDescription = ViewerFormat.videoArea()
+                onClick(label = ViewerFormat.controlsAction(controlsShown)) {
+                    onToggleBars()
+                    true
+                }
+            }
+        } else {
+            Modifier
+        }
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                .then(readerAction)
                 .pointerInput(kind, area, player) {
                     detectTapGestures(
                         onTap = {

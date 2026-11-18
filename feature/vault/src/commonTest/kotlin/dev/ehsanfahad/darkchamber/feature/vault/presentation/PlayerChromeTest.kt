@@ -45,6 +45,16 @@ class PlayerChromeTest {
     }
 
     /**
+     * Someone moving through the controls with a screen reader takes longer than three seconds, and
+     * the controls vanishing under them strands them: they stay up while a screen reader runs.
+     */
+    @Test
+    fun a_screen_reader_keeps_a_playing_videos_controls_up() {
+        assertFalse(PlayerChrome.autoHides(Video, PlayerState(playing = true), screenReader = true))
+        assertTrue(PlayerChrome.autoHides(Video, PlayerState(playing = true), screenReader = false))
+    }
+
+    /**
      * Both are centred on the page, so unmoved the centre control covers the badge. Moved by the shift,
      * the badge's bottom edge is exactly the gap above the control's top edge. Positions are measured
      * from the page's middle, downward positive, as the layout places them.

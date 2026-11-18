@@ -77,6 +77,7 @@ import dev.ehsanfahad.darkchamber.core.designsystem.DeleteMark
 import dev.ehsanfahad.darkchamber.core.designsystem.DetailsMark
 import dev.ehsanfahad.darkchamber.core.designsystem.ExcludeFromPlatformStructures
 import dev.ehsanfahad.darkchamber.core.designsystem.prefersReducedMotion
+import dev.ehsanfahad.darkchamber.core.designsystem.screenReaderOn
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerState
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPlayer
@@ -176,7 +177,7 @@ internal fun ViewerScreen(
             // counted again from each touch of a control.
             val barsVisible = PlayerChrome.barsVisible(media?.kind, barsShown)
             var interactions by remember { mutableIntStateOf(0) }
-            val autoHides = PlayerChrome.autoHides(media?.kind, playerState)
+            val autoHides = PlayerChrome.autoHides(media?.kind, playerState, screenReader = screenReaderOn())
             LaunchedEffect(barsShown, autoHides, interactions) {
                 if (barsShown && autoHides) {
                     delay(AUTO_HIDE_MS)
@@ -213,6 +214,7 @@ internal fun ViewerScreen(
                     player = players[key],
                     playerActions = playerActions,
                     onInteraction = { interactions++ },
+                    controlsShown = barsVisible,
                 )
             }
 
@@ -290,6 +292,7 @@ private fun ViewerPageView(
     player: VaultPlayer?,
     playerActions: PlayerActions,
     onInteraction: () -> Unit,
+    controlsShown: Boolean,
 ) {
     when {
         page is ViewerPage.Media ->
@@ -301,6 +304,7 @@ private fun ViewerPageView(
                 actions = playerActions,
                 onToggleBars = onTap,
                 onInteraction = onInteraction,
+                controlsShown = controlsShown,
             )
         page == ViewerPage.Picture && picture != null ->
             ZoomablePicture(

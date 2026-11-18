@@ -111,6 +111,12 @@ internal object ViewerFormat {
         return if (forward) "+$seconds s" else "−$seconds s"
     }
 
+    /** What the picture of a video page is, to a screen reader. */
+    fun videoArea(): String = "Video"
+
+    /** The picture's screen-reader action: what activating it does to the controls. */
+    fun controlsAction(shown: Boolean): String = if (shown) "Hide controls" else "Show controls"
+
     /** A brightness or volume level as a slide shows it: "60%". */
     fun levelFeedback(level: Float): String = "${(level * 100f).roundToInt()}%"
 

@@ -33,7 +33,12 @@ internal object PlayerChrome {
 
     private const val COMPACT_HEIGHT_DP = 480f
 
-    /** Whether the controls hide by themselves after a while: only over a video that is playing. */
-    fun autoHides(kind: PlayerKind?, state: PlayerState?): Boolean =
-        kind == PlayerKind.Video && state != null && PlaybackRules.status(state) == PlaybackStatus.Playing
+    /**
+     * Whether the controls hide by themselves after a while: only over a video that is playing, and
+     * never while a [screenReader] runs — someone moving through the controls by touch would have
+     * them vanish under them.
+     */
+    fun autoHides(kind: PlayerKind?, state: PlayerState?, screenReader: Boolean = false): Boolean =
+        !screenReader && kind == PlayerKind.Video && state != null &&
+            PlaybackRules.status(state) == PlaybackStatus.Playing
 }
