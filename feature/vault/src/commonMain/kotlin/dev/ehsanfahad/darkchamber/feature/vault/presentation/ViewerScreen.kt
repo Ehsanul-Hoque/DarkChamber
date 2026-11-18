@@ -241,7 +241,7 @@ internal fun ViewerScreen(
                 onDelete = onRequestDelete,
                 modifier = Modifier.align(Alignment.BottomCenter),
                 controls = if (media != null && playerState != null) {
-                    {
+                    { trailing ->
                         PlayerControls(
                             kind = media.kind,
                             state = playerState,
@@ -249,11 +249,14 @@ internal fun ViewerScreen(
                             orientationTarget = state.orientationTarget,
                             actions = playerActions,
                             onInteraction = { interactions++ },
+                            trailing = trailing,
                         )
                     }
                 } else {
                     null
                 },
+                // A phone on its side: one row under the seek bar, clear of the centre control.
+                compact = PlayerChrome.compactBar(maxHeight.value),
             )
             if (detailsOpen) {
                 DetailsSheet(rows = ViewerFormat.details(shown, shown.album, now), onDismiss = { detailsOpen = false })
@@ -491,7 +494,10 @@ private fun ViewerBottomBar(
     onDetails: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier,
-    controls: (@Composable () -> Unit)? = null,
+    /** A player page's controls, given whatever should end their row (see [compact]). */
+    controls: (@Composable (trailing: (@Composable () -> Unit)?) -> Unit)? = null,
+    /** A short screen: Details and Delete end the controls' row rather than taking a row of their own. */
+    compact: Boolean = false,
 ) {
     val duration = barsTransition()
     AnimatedVisibility(
@@ -508,14 +514,19 @@ private fun ViewerBottomBar(
                 .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
                 .padding(vertical = DarkChamberTheme.spacing.spaceXs),
         ) {
-            controls?.invoke()
-            Row(horizontalArrangement = Arrangement.SpaceEvenly, modifier = Modifier.fillMaxWidth()) {
+            val barActions: @Composable () -> Unit = {
                 BarAction(label = ViewerFormat.detailsAction(), color = colors.textPrimary, onClick = onDetails) { tint ->
                     DetailsMark(contentDescription = null, tint = tint)
                 }
                 BarAction(label = ViewerFormat.deleteAction(1), color = colors.danger, onClick = onDelete) { tint ->
                     DeleteMark(contentDescription = null, tint = tint)
                 }
+            }
+            if (controls != null && compact) {
+                controls(barActions)
+            } else {
+                controls?.invoke(null)
+                Row(horizontalArrangement = Arrangement.SpaceEvenly, modifier = Modifier.fillMaxWidth()) { barActions() }
             }
         }
     }

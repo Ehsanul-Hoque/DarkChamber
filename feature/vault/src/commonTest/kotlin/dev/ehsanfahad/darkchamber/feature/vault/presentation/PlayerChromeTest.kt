@@ -60,6 +60,15 @@ class PlayerChromeTest {
     }
 
     @Test
+    fun a_phone_on_its_side_gets_the_one_row_bar_and_nothing_taller_does() {
+        assertTrue(PlayerChrome.compactBar(411f), "a large phone in landscape")
+        assertTrue(PlayerChrome.compactBar(479.9f))
+        assertFalse(PlayerChrome.compactBar(480f), "the compact-height boundary itself is not compact")
+        assertFalse(PlayerChrome.compactBar(891f), "the same phone upright")
+        assertFalse(PlayerChrome.compactBar(800f), "a tablet in landscape")
+    }
+
+    @Test
     fun an_audio_page_shows_its_type_badge_where_a_video_would_be() {
         val page = ViewerPage.Media(Audio)
         assertEquals("AUD", ViewerFormat.pageBadge(page, GalleryItemMeta.Readable("voice.m4a", "audio/mp4")))

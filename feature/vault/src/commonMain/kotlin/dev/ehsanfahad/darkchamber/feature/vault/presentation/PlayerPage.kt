@@ -310,6 +310,8 @@ internal fun PlayerControls(
     orientationTarget: ScreenOrientation?,
     actions: PlayerActions,
     onInteraction: () -> Unit,
+    /** More controls at the end of the row — the bar's own Details and Delete, on a short screen. */
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     val colors = DarkChamberTheme.colors
     val spacing = DarkChamberTheme.spacing
@@ -368,6 +370,7 @@ internal fun PlayerControls(
                     )
                 }
             }
+            trailing?.invoke()
         }
     }
 }

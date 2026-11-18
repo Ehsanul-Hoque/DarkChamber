@@ -24,6 +24,15 @@ internal object PlayerChrome {
     fun badgeShiftAboveCentre(badgeHeight: Int, centreSize: Int, gap: Int): Int =
         -(centreSize / 2) - gap - (badgeHeight + 1) / 2
 
+    /**
+     * Whether the page is short enough — a phone on its side — that the player's bottom bar must be one
+     * row of controls under the seek bar, Details and Delete included, to stay clear of the centre
+     * control. Material's compact height: under 480 dp.
+     */
+    fun compactBar(heightDp: Float): Boolean = heightDp < COMPACT_HEIGHT_DP
+
+    private const val COMPACT_HEIGHT_DP = 480f
+
     /** Whether the controls hide by themselves after a while: only over a video that is playing. */
     fun autoHides(kind: PlayerKind?, state: PlayerState?): Boolean =
         kind == PlayerKind.Video && state != null && PlaybackRules.status(state) == PlaybackStatus.Playing
