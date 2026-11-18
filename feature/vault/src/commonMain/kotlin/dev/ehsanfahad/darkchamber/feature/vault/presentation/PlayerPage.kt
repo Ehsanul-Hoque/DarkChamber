@@ -42,6 +42,7 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
@@ -145,7 +146,10 @@ internal fun PlayerPageView(
         val readerAction = if (offered.isEmpty()) {
             Modifier
         } else {
-            Modifier.semantics {
+            // A screen reader focuses a described node only if it can be clicked or holds nothing. The
+            // video page's node has its show/hide click; the audio page's has none and holds the badge,
+            // so it is made one unit (the badge's own text kept out) or it could never be focused.
+            Modifier.semantics(mergeDescendants = kind == PlayerKind.Audio) {
                 contentDescription = ViewerFormat.playerArea(kind)
                 if (ReaderAction.ToggleControls in offered) {
                     onClick(label = ViewerFormat.controlsAction(controlsShown)) {
@@ -236,8 +240,9 @@ internal fun PlayerPageView(
                     text = badge,
                     style = DarkChamberTheme.typography.display,
                     color = DarkChamberTheme.colors.textSecondary,
-                    // Above the centre control, which is centred too and would otherwise cover it.
-                    modifier = Modifier.align(Alignment.Center).layout { measurable, constraints ->
+                    // Above the centre control, which is centred too and would otherwise cover it. Not
+                    // spoken: the page itself is named "Audio", and the badge would be read as letters.
+                    modifier = Modifier.align(Alignment.Center).clearAndSetSemantics {}.layout { measurable, constraints ->
                         val placeable = measurable.measure(constraints)
                         val shift = PlayerChrome.badgeShiftAboveCentre(
                             badgeHeight = placeable.height,
