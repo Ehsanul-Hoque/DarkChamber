@@ -25,7 +25,7 @@ Package root: `dev.ehsanfahad.darkchamber`.
 >   over an injected driver. Opaque encrypted-BLOB + plaintext-index columns only; no `core:crypto` dep.
 > - **`:core:vault`** — `VaultObjects`: streaming `importObject`/`openObject`/`openMeta`/`shredObject`,
 >   `openRange` (any byte range of an object, decrypting only the chunks it touches, the key unwrapped
->   per chunk and never held — what a video's preview reads now, and the viewers will), albums, and
+>   per chunk and never held — what a video's preview and the video and audio players read), albums, and
 >   live listings and counts (a count reads plaintext columns and opens nothing); the one place
 >   crypto + storage + db compose. Imports no cipher primitive.
 > - **`:core:designsystem`** — `DarkChamberTheme` roles, the `Aperture` signature, the icon set as
@@ -38,7 +38,9 @@ Package root: `dev.ehsanfahad.darkchamber`.
 > - **`:app`** — the composition root: the Koin graph, the platform seams (`VaultRootResolver`, the
 >   catalog driver, `SecureKeyStore`, the pickers, and the camera — CameraX / AVFoundation capturing
 >   photos into memory and video into one `tmp/` scratch file it is handed, plus free space and the
->   video preview frames), `VaultBootstrap`'s fail-closed cold-open, the Decompose
+>   video preview frames — and the players: Media3 / AVPlayer reading an item only through its range
+>   reader, with no cache, media session or lock-screen card, and the screen's brightness, forced
+>   orientation and keep-awake, all put back on lock), `VaultBootstrap`'s fail-closed cold-open, the Decompose
 >   `Locked | Unlocked` session gate (Unlocked constructed with a live session), cryptographic per-use
 >   biometric unlock (passphrase fallback + forced-passphrase on re-enrollment), the create/recovery/
 >   unlock Compose UI, and the lock lifecycle (teardown on Lock **and** on background). Hosted by an
@@ -62,8 +64,11 @@ Package root: `dev.ehsanfahad.darkchamber`.
 >   tapped in (same filter, order and search, through the same pipeline), images decoded through the
 >   `ViewerImageDecoder` seam the app implements per platform — read whole, decoded only after the read
 >   verifies, the buffer zeroed, sized at about twice the screen, an image over 64 MiB not read —
->   decoded pictures held for the shown page ±1 and never in screen state (a Konsist rule), every other
->   kind shown as its badge, and back handing the grid the item last viewed. And **delete**, which is
+>   decoded pictures held for the shown page ±1 and never in screen state (a Konsist rule); video and
+>   audio played through the `VaultPlayer` / `PlayerDisplay` seams — one player, for the page shown,
+>   streaming through `openRange`, failures told apart by where they came from, the player kept out of
+>   screen state by the same rule (see `docs/ARCHITECTURE.md` §7); every other kind shown as its badge,
+>   and back handing the grid the item last viewed. And **delete**, which is
 >   crypto-shred: one item from the viewer, many from the grid's selection in one write, both behind a
 >   confirmation whose words promise no more than the shred does. Public surface is the factories plus
 >   the `api` package — which includes `VaultThumbnail`, one item's encrypted preview drawn through the
@@ -87,7 +92,7 @@ Package root: `dev.ehsanfahad.darkchamber`.
 > Still a stub (marker + smoke test): `:core:testing`. **In progress: Phase 1** — albums and browsing
 > are in and merged (browse refinement landed 2026-10-17), and the camera takes photos and records
 > video; reads by byte range are in, and a video's preview is taken through them from the stored
-> object; the viewer opens images, and delete is in; next are the video, audio and PDF viewers.
+> object; the viewer opens images and plays video and audio, and delete is in; next is the PDF viewer.
 > **Planned, not yet wired:** ktlint/detekt/Kover and
 > `migrationTest` — verify a Gradle task exists before assuming it runs. **Wired:** a tracked `commit-msg`
 > hook (`./gradlew installGitHooks`) runs CI's own commit check, scopes listed in

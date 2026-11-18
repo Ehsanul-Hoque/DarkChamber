@@ -5,6 +5,7 @@ import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.vault.AlbumSummary
 import dev.ehsanfahad.darkchamber.core.vault.AssignSummary
 import dev.ehsanfahad.darkchamber.core.vault.ImportPhase
+import dev.ehsanfahad.darkchamber.core.vault.RangeReader
 import dev.ehsanfahad.darkchamber.core.vault.VaultItemSummary
 import kotlinx.coroutines.flow.Flow
 import kotlinx.io.RawSink
@@ -137,6 +138,16 @@ internal interface VaultItems {
      * of a tampered or truncated object, and must be dropped, never drawn.
      */
     fun open(id: ByteArray, sink: RawSink): Outcome<Unit>
+
+    /**
+     * Open the object [id] for reads of any byte range, decrypting only the chunks a read touches — what
+     * a player streams from. Opening checks the container's prelude, header, last chunk and exact
+     * length, so a damaged or truncated object fails here. **The caller owns the reader** and closes it.
+     *
+     * Every chunk read is authenticated; the whole-plaintext digest is not, since a range read never
+     * reads the whole object. A reader also refuses once the session locks.
+     */
+    fun openRange(id: ByteArray): Outcome<RangeReader>
 
     /**
      * Crypto-shred the item [id]: its catalog row goes first — the row holds its only wrapped key, so

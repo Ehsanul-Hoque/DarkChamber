@@ -2,6 +2,10 @@ package dev.ehsanfahad.darkchamber.app.di
 
 import dev.ehsanfahad.darkchamber.app.camera.IosCameraController
 import dev.ehsanfahad.darkchamber.app.image.IosViewerImageDecoder
+import dev.ehsanfahad.darkchamber.app.media.IosPlayerDisplay
+import dev.ehsanfahad.darkchamber.app.media.IosVaultPlayerFactory
+import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerDisplay
+import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPlayerFactory
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerImageDecoder
 import dev.ehsanfahad.darkchamber.app.thumbnail.IosThumbnailEncoder
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraController
@@ -25,6 +29,18 @@ class IosPlatformModuleTest {
         val app = koinApplication { modules(platformModule()) }
         try {
             assertIs<IosViewerImageDecoder>(app.koin.getOrNull<ViewerImageDecoder>())
+        } finally {
+            app.close()
+        }
+    }
+
+    @Test
+    fun the_platform_module_binds_the_ios_player_and_display() {
+        // Both resolved optionally (a video page then shows its badge), so only this would notice.
+        val app = koinApplication { modules(platformModule()) }
+        try {
+            assertIs<IosVaultPlayerFactory>(app.koin.getOrNull<VaultPlayerFactory>())
+            assertIs<IosPlayerDisplay>(app.koin.getOrNull<PlayerDisplay>())
         } finally {
             app.close()
         }

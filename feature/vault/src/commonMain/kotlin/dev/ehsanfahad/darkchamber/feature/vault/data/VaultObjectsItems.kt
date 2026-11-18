@@ -6,6 +6,7 @@ import dev.ehsanfahad.darkchamber.core.model.VaultItemKind
 import dev.ehsanfahad.darkchamber.core.vault.AlbumSummary
 import dev.ehsanfahad.darkchamber.core.vault.AssignSummary
 import dev.ehsanfahad.darkchamber.core.vault.ImportPhase
+import dev.ehsanfahad.darkchamber.core.vault.RangeReader
 import dev.ehsanfahad.darkchamber.core.vault.VaultItemSummary
 import dev.ehsanfahad.darkchamber.core.vault.VaultObjects
 import dev.ehsanfahad.darkchamber.feature.vault.domain.VaultItems
@@ -61,6 +62,8 @@ internal class VaultObjectsItems(private val objects: VaultObjects) : VaultItems
     override fun thumbnail(id: ByteArray): Outcome<ByteArray?> = objects.openThumbnail(id)
 
     override fun open(id: ByteArray, sink: RawSink): Outcome<Unit> = objects.openObject(id, sink)
+
+    override fun openRange(id: ByteArray): Outcome<RangeReader> = objects.openRange(id)
 
     override fun shred(id: ByteArray): Outcome<Unit> = objects.shredObject(id)
 

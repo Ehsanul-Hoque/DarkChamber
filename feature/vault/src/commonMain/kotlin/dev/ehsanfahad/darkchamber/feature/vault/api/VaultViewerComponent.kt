@@ -24,6 +24,13 @@ interface VaultViewerComponent {
     val pictures: Value<Map<String, ImageBitmap>>
 
     /**
+     * The player of the page shown, keyed like [pictures] — **at most one**, and only while a video or
+     * audio page is the one on screen. Leaving that page pauses it, remembers where it was and lets it
+     * go; coming back opens a new one there. Held apart from [state] for the same reason as [pictures].
+     */
+    val players: Value<Map<String, VaultPlayer>>
+
+    /**
      * The size of the area a picture is drawn in, in pixels. Nothing is decoded until this is known,
      * because the decode is sized from it.
      */
@@ -31,6 +38,42 @@ interface VaultViewerComponent {
 
     /** The pager settled on the page at [index]. */
     fun showPage(index: Int)
+
+    /**
+     * Set the playing speed to [speed], one of the setting's choices — it applies now and to every item
+     * played after, until the viewer closes. Anything the setting does not offer is ignored.
+     */
+    fun chooseSpeed(speed: Float)
+
+    /** The centre control: pauses a playing item, plays a paused one, and starts a finished one again. */
+    fun playPause()
+
+    /** Moves the item shown to [positionMs], kept between its start and its end. */
+    fun seekTo(positionMs: Long)
+
+    /** Moves the item shown ten seconds, [forward] or back, kept between its start and its end. */
+    fun skip(forward: Boolean)
+
+    /** Plays at double speed ([faster]) or half speed until [releaseSpeed]. */
+    fun holdSpeed(faster: Boolean)
+
+    /** Back to the speed set, once a hold ends. */
+    fun releaseSpeed()
+
+    /** Sets the volume the slide controls, from 0 to 1 (see [VaultPlayer.setVolume]). */
+    fun setVolume(level: Float)
+
+    /** The volume now, where a slide starts from; `null` while nothing plays. */
+    fun volume(): Float?
+
+    /** The screen's brightness now, where a slide starts from; `null` where it cannot be changed. */
+    fun brightness(): Float?
+
+    /** Sets the screen's brightness, from 0 to 1, while the video page is shown. Ignored on any other page. */
+    fun setBrightness(level: Float)
+
+    /** Turns a video page to the orientation [ViewerState.orientationTarget] names. */
+    fun switchOrientation()
 
     /** Ask to delete the item shown: opens the confirmation. */
     fun requestDelete()

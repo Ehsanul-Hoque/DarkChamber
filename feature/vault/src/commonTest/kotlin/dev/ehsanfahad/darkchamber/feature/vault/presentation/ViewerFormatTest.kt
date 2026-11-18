@@ -4,8 +4,11 @@ import dev.ehsanfahad.darkchamber.core.model.VaultItemKind
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerNotice
+import dev.ehsanfahad.darkchamber.feature.vault.api.TrackNote
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerPage
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
+import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerKind
+import dev.ehsanfahad.darkchamber.feature.vault.api.ScreenOrientation
 import dev.ehsanfahad.darkchamber.feature.vault.api.label
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -23,7 +26,9 @@ class ViewerFormatTest {
         ViewerPage.NotViewable("PDF"),
         ViewerPage.TooLarge,
         ViewerPage.CantShow,
+        ViewerPage.CantPlay,
         ViewerPage.Unverified,
+        ViewerPage.StoppedUnverified,
         ViewerPage.NeedsUpdate,
         ViewerPage.CouldntOpen,
     )
@@ -58,7 +63,7 @@ class ViewerFormatTest {
      */
     @Test
     fun the_pages_for_a_working_file_never_sound_like_damage() {
-        for (page in listOf(ViewerPage.NotViewable("PDF"), ViewerPage.TooLarge, ViewerPage.CantShow, ViewerPage.NeedsUpdate)) {
+        for (page in listOf(ViewerPage.NotViewable("PDF"), ViewerPage.TooLarge, ViewerPage.CantShow, ViewerPage.CantPlay, ViewerPage.NeedsUpdate)) {
             assertSaysNone(message(page), "damage", "corrupt", "tamper", "verif", "integrity", "broken")
         }
     }
@@ -73,6 +78,46 @@ class ViewerFormatTest {
         assertTrue(text.contains("couldn't be verified", ignoreCase = true), text)
         assertTrue(text.contains("none of it is shown", ignoreCase = true), text)
         assertSaysNone(text, "tamper", "corrupt", "attack", "hack", "safe", "damaged")
+    }
+
+    /**
+     * A clip that failed its check partway through playing: some of it was shown — every part that
+     * played was verified — so it must not say none of it was; it says playback stopped and why it
+     * knows, and, like the page above, names no cause and never calls what played safe.
+     */
+    @Test
+    fun a_clip_stopped_partway_says_playback_stopped_not_that_none_was_shown() {
+        val text = message(ViewerPage.StoppedUnverified)
+        assertTrue(text.contains("couldn't be verified", ignoreCase = true), text)
+        assertTrue(text.contains("playback stopped", ignoreCase = true), text)
+        assertTrue(text.contains("may have changed", ignoreCase = true), text)
+        assertSaysNone(text, "none of it", "tamper", "corrupt", "attack", "hack", "safe", "damaged")
+    }
+
+    /**
+     * No decoder here plays it: the limit is the device, and the line says so. It does not blame the
+     * file or the vault, and it does not name a cause (a format, a codec) it was never told.
+     */
+    @Test
+    fun a_file_this_device_cannot_play_puts_the_limit_on_the_device() {
+        val text = message(ViewerPage.CantPlay)
+        assertTrue(text.contains("this device can't play", ignoreCase = true), text)
+        assertSaysNone(text, "vault", "DarkChamber", "format", "codec", "unsupported", "because", "safe", "intact")
+    }
+
+    /**
+     * A note on a page that plays in part says what is missing, and that the device is the limit — never
+     * that the file is damaged, and never a cause it does not know.
+     */
+    @Test
+    fun a_note_says_which_part_is_missing_and_puts_the_limit_on_the_device() {
+        val noPicture = ViewerFormat.trackNote(TrackNote.NoPicture)
+        val noSound = ViewerFormat.trackNote(TrackNote.NoSound)
+        assertEquals("Video can't be shown on this device", noPicture)
+        assertEquals("No sound — this device can't play this audio", noSound)
+        for (text in listOf(noPicture, noSound)) {
+            assertSaysNone(text, "damage", "corrupt", "tamper", "verif", "integrity", "broken", "vault", "format", "codec")
+        }
     }
 
     @Test
@@ -209,6 +254,7 @@ class ViewerFormatTest {
         assertEquals(GalleryFormat.typeBadge("image/jpeg"), ViewerFormat.pageBadge(ViewerPage.TooLarge, jpeg))
         assertEquals(GalleryFormat.typeBadge("image/jpeg"), ViewerFormat.pageBadge(ViewerPage.CantShow, jpeg))
         assertEquals("!", ViewerFormat.pageBadge(ViewerPage.Unverified, jpeg))
+        assertEquals("!", ViewerFormat.pageBadge(ViewerPage.StoppedUnverified, GalleryItemMeta.Readable("a.mp4", "video/mp4")))
         assertEquals("!", ViewerFormat.pageBadge(ViewerPage.CouldntOpen, GalleryItemMeta.Unreadable))
     }
 
@@ -240,12 +286,87 @@ class ViewerFormatTest {
         assertEquals("Delete", ViewerFormat.deleteAction(1))
     }
 
-    /** Only the integrity failure takes the warning style; styling is a claim too. */
+    /** Only an integrity failure takes the warning style — at open or mid-play; styling is a claim too. */
     @Test
-    fun only_the_unverified_page_is_a_warning() {
+    fun only_the_unverified_pages_are_warnings() {
         assertTrue(ViewerFormat.pageIsWarning(ViewerPage.Unverified))
-        for (page in everyMessagePage - ViewerPage.Unverified + ViewerPage.Picture + ViewerPage.Loading) {
+        assertTrue(ViewerFormat.pageIsWarning(ViewerPage.StoppedUnverified))
+        val integrity = setOf<ViewerPage>(ViewerPage.Unverified, ViewerPage.StoppedUnverified)
+        for (page in everyMessagePage - integrity + ViewerPage.Picture + ViewerPage.Loading) {
             assertEquals(false, ViewerFormat.pageIsWarning(page), "for $page")
         }
+    }
+
+    // ---- the player ------------------------------------------------------------------------------
+
+    @Test
+    fun a_play_time_reads_like_a_clock() {
+        assertEquals("0:00", ViewerFormat.playTime(0L))
+        assertEquals("0:00", ViewerFormat.playTime(999L), "a second not yet reached is not shown")
+        assertEquals("0:42", ViewerFormat.playTime(42_000L))
+        assertEquals("1:51", ViewerFormat.playTime(111_500L))
+        assertEquals("12:05", ViewerFormat.playTime(725_000L))
+        assertEquals("59:59", ViewerFormat.playTime(3_599_000L))
+        assertEquals("1:00:00", ViewerFormat.playTime(3_600_000L), "hours appear only when there are some")
+        assertEquals("1:02:03", ViewerFormat.playTime(3_723_000L))
+        assertEquals("0:00", ViewerFormat.playTime(-3_000L), "never a minus sign")
+    }
+
+    @Test
+    fun the_times_under_the_seek_bar_show_the_total_once_it_is_known() {
+        assertEquals("0:42 / 1:51", ViewerFormat.playTimes(42_000L, 111_000L))
+        assertEquals("0:42", ViewerFormat.playTimes(42_000L, null))
+    }
+
+    @Test
+    fun the_seek_bar_is_spoken_as_where_it_stands() {
+        assertEquals("Position", ViewerFormat.seekLabel())
+        assertEquals("0:42 of 1:51", ViewerFormat.seekState(42_000L, 111_000L))
+        assertEquals("0:42", ViewerFormat.seekState(42_000L, null))
+    }
+
+    @Test
+    fun a_speed_is_written_without_trailing_zeros() {
+        assertEquals("0.5×", ViewerFormat.speed(0.5f))
+        assertEquals("1×", ViewerFormat.speed(1f))
+        assertEquals("1.25×", ViewerFormat.speed(1.25f))
+        assertEquals("1.5×", ViewerFormat.speed(1.5f))
+        assertEquals("2×", ViewerFormat.speed(2f))
+        assertEquals("Speed, 1.25×", ViewerFormat.speedDescription(1.25f))
+    }
+
+    @Test
+    fun the_centre_control_says_what_pressing_it_does() {
+        assertEquals("Play", ViewerFormat.centreControl(CentreControl.Play))
+        assertEquals("Pause", ViewerFormat.centreControl(CentreControl.Pause))
+        assertEquals("Play again", ViewerFormat.centreControl(CentreControl.Replay))
+    }
+
+    @Test
+    fun the_orientation_button_names_where_it_turns_the_screen() {
+        assertEquals("Landscape", ViewerFormat.orientationLabel(ScreenOrientation.Landscape))
+        assertEquals("Portrait", ViewerFormat.orientationLabel(ScreenOrientation.Portrait))
+        assertEquals("Turn to landscape", ViewerFormat.orientationDescription(ScreenOrientation.Landscape))
+        assertEquals("Turn to portrait", ViewerFormat.orientationDescription(ScreenOrientation.Portrait))
+    }
+
+    @Test
+    fun a_screen_reader_can_show_and_hide_the_controls_from_the_picture() {
+        assertEquals("Video", ViewerFormat.playerArea(PlayerKind.Video))
+        assertEquals("Audio", ViewerFormat.playerArea(PlayerKind.Audio))
+        assertEquals("Show controls", ViewerFormat.controlsAction(shown = false))
+        assertEquals("Hide controls", ViewerFormat.controlsAction(shown = true))
+        assertEquals("Back 10 seconds", ViewerFormat.skipAction(forward = false))
+        assertEquals("Forward 10 seconds", ViewerFormat.skipAction(forward = true))
+    }
+
+    @Test
+    fun a_gesture_shows_what_it_did() {
+        assertEquals("+10 s", ViewerFormat.skipFeedback(forward = true))
+        assertEquals("−10 s", ViewerFormat.skipFeedback(forward = false), "a true minus sign")
+        assertEquals("60%", ViewerFormat.levelFeedback(0.6f))
+        assertEquals("0%", ViewerFormat.levelFeedback(0f))
+        assertEquals("100%", ViewerFormat.levelFeedback(1f))
+        assertEquals("33%", ViewerFormat.levelFeedback(0.334f), "rounded")
     }
 }

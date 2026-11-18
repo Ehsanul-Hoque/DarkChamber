@@ -3,9 +3,13 @@ package dev.ehsanfahad.darkchamber.feature.vault.presentation
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
+import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerKind
+import dev.ehsanfahad.darkchamber.feature.vault.api.ScreenOrientation
+import dev.ehsanfahad.darkchamber.feature.vault.api.TrackNote
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerNotice
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerPage
 import dev.ehsanfahad.darkchamber.feature.vault.api.label
+import kotlin.math.roundToInt
 
 /** The viewer's words. Every line is written from the failure path (hard rule 6). */
 internal object ViewerFormat {
@@ -19,19 +23,109 @@ internal object ViewerFormat {
      * - **Unverified.** A failed integrity check is all that is known. It cannot tell decay from
      *   interference, so it names neither — it says the file may have changed, which both would be —
      *   and that none of it is shown, which is the rule: never render part of an unverified file.
+     * - **Stopped unverified.** A clip refused partway through playing: every part that played was a
+     *   verified chunk, and playback stopped at the first that was not. So it says playback stopped —
+     *   never that none of it was shown, which would be false — and, as above, names no cause.
      * - **Couldn't open.** Why is not known, so no why.
      */
     fun pageMessage(page: ViewerPage): String? =
         when (page) {
-            ViewerPage.Loading, ViewerPage.Picture -> null
+            ViewerPage.Loading, ViewerPage.Picture, is ViewerPage.Media -> null
             is ViewerPage.NotViewable -> "This file can't be opened here."
             ViewerPage.TooLarge -> "This file is too large to open here."
             ViewerPage.CantShow -> "This file can't be shown on this device."
+            ViewerPage.CantPlay -> "This device can't play this file."
             ViewerPage.Unverified ->
                 "This file couldn't be verified, so none of it is shown. It may have changed since it was saved."
+            ViewerPage.StoppedUnverified ->
+                "This file couldn't be verified from here on, so playback stopped. It may have changed since it was saved."
             ViewerPage.NeedsUpdate -> "This file was saved by a newer version of DarkChamber. Update the app to open it."
             ViewerPage.CouldntOpen -> "This file couldn't be opened."
         }
+
+    /**
+     * The note on a page that plays in part. The device is the limit, as on [ViewerPage.CantPlay]: it
+     * says what is missing and where the limit is, and nothing about the file's state.
+     */
+    fun trackNote(note: TrackNote): String =
+        when (note) {
+            TrackNote.NoPicture -> "Video can't be shown on this device"
+            TrackNote.NoSound -> "No sound — this device can't play this audio"
+        }
+
+    // ---- the player ------------------------------------------------------------------------------
+
+    /** A time on the clock a player shows: "0:42", "12:05", "1:02:03". */
+    fun playTime(ms: Long): String {
+        val seconds = ms.coerceAtLeast(0L) / 1_000L
+        val hours = seconds / 3_600L
+        val minutes = seconds / 60L % 60L
+        val secs = (seconds % 60L).toString().padStart(2, '0')
+        return if (hours > 0L) "$hours:${minutes.toString().padStart(2, '0')}:$secs" else "$minutes:$secs"
+    }
+
+    /** Elapsed and total under the seek bar, "0:42 / 1:51"; the elapsed time alone until the total is known. */
+    fun playTimes(positionMs: Long, durationMs: Long?): String =
+        if (durationMs == null) playTime(positionMs) else "${playTime(positionMs)} / ${playTime(durationMs)}"
+
+    /** What the seek bar says it stands at, to a screen reader: "0:42 of 1:51". */
+    fun seekState(positionMs: Long, durationMs: Long?): String =
+        if (durationMs == null) playTime(positionMs) else "${playTime(positionMs)} of ${playTime(durationMs)}"
+
+    fun seekLabel(): String = "Position"
+
+    /** A speed as the setting and the hold show it: "0.5×", "1×", "1.25×". */
+    fun speed(speed: Float): String {
+        val hundredths = (speed * 100f).roundToInt()
+        val whole = hundredths / 100
+        val part = hundredths % 100
+        val written = when {
+            part == 0 -> "$whole"
+            part % 10 == 0 -> "$whole.${part / 10}"
+            else -> "$whole.${part.toString().padStart(2, '0')}"
+        }
+        return "$written×"
+    }
+
+    /** The speed setting, to a screen reader. */
+    fun speedDescription(speed: Float): String = "Speed, ${speed(speed)}"
+
+    /** The centre control's words: what pressing it does. */
+    fun centreControl(control: CentreControl): String =
+        when (control) {
+            CentreControl.Play -> "Play"
+            CentreControl.Pause -> "Pause"
+            CentreControl.Replay -> "Play again"
+        }
+
+    /** The orientation button's label: where it turns the screen. */
+    fun orientationLabel(target: ScreenOrientation): String =
+        if (target == ScreenOrientation.Landscape) "Landscape" else "Portrait"
+
+    /** The orientation button, to a screen reader. */
+    fun orientationDescription(target: ScreenOrientation): String =
+        "Turn to ${orientationLabel(target).lowercase()}"
+
+    /** What a double tap shows as it moves: "+10 s", "−10 s". */
+    fun skipFeedback(forward: Boolean): String {
+        val seconds = PlaybackRules.SKIP_MS / 1_000L
+        return if (forward) "+$seconds s" else "−$seconds s"
+    }
+
+    /** What a player page's picture area is, to a screen reader. */
+    fun playerArea(kind: PlayerKind): String = if (kind == PlayerKind.Video) "Video" else "Audio"
+
+    /** The picture's screen-reader action: what activating it does to the controls. */
+    fun controlsAction(shown: Boolean): String = if (shown) "Hide controls" else "Show controls"
+
+    /** The screen-reader actions that skip, as its actions menu lists them. */
+    fun skipAction(forward: Boolean): String {
+        val seconds = PlaybackRules.SKIP_MS / 1_000L
+        return if (forward) "Forward $seconds seconds" else "Back $seconds seconds"
+    }
+
+    /** A brightness or volume level as a slide shows it: "60%". */
+    fun levelFeedback(level: Float): String = "${(level * 100f).roundToInt()}%"
 
     /** The bar's title: the item's name, or the grid's own words for one that will not open. */
     fun title(meta: GalleryItemMeta): String = meta.label()
@@ -104,7 +198,7 @@ internal object ViewerFormat {
     fun pageBadge(page: ViewerPage, meta: GalleryItemMeta): String =
         when {
             page is ViewerPage.NotViewable -> page.badge
-            page == ViewerPage.Unverified -> WARNING_BADGE
+            page == ViewerPage.Unverified || page == ViewerPage.StoppedUnverified -> WARNING_BADGE
             meta is GalleryItemMeta.Readable -> GalleryFormat.typeBadge(meta.mime)
             else -> WARNING_BADGE
         }
@@ -137,5 +231,5 @@ internal object ViewerFormat {
     }
 
     /** Only a failed integrity check takes the warning style (DESIGN: danger is for integrity failures). */
-    fun pageIsWarning(page: ViewerPage): Boolean = page == ViewerPage.Unverified
+    fun pageIsWarning(page: ViewerPage): Boolean = page == ViewerPage.Unverified || page == ViewerPage.StoppedUnverified
 }

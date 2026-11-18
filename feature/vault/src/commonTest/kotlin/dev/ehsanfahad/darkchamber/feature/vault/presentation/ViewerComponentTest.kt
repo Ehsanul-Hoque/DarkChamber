@@ -76,6 +76,8 @@ class ViewerComponentTest {
         controls = controls,
         startId = id(start),
         onBack = { backs += it.toList() },
+        openRange = items::openRange,
+        playerFactory = null,
         mainContext = UnconfinedTestDispatcher(testScheduler),
     )
 

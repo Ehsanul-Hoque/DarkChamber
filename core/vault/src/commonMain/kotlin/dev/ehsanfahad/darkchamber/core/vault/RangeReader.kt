@@ -27,6 +27,13 @@ interface RangeReader : AutoCloseable {
      */
     fun readAt(position: Long, into: ByteArray, offset: Int, size: Int): Outcome<Int>
 
+    /**
+     * How many chunks this reader has decrypted since it opened — a number for measuring how often a
+     * player makes it decrypt the same chunk again, never anything of the content. `0` for a reader that
+     * does not count.
+     */
+    val chunksDecrypted: Long get() = 0L
+
     override fun close()
 
     companion object {
@@ -58,6 +65,9 @@ internal class ChunkRangeReader private constructor(
 
     override val length: Long = layout.plaintextSize
 
+    override var chunksDecrypted: Long = 0L
+        private set
+
     override fun readAt(position: Long, into: ByteArray, offset: Int, size: Int): Outcome<Int> {
         if (closed) return Outcome.Err(VaultError.Io(IllegalStateException("reader is closed")))
         // Checked before the held chunks are looked at: after a lock, plaintext already in memory must
@@ -74,7 +84,7 @@ internal class ChunkRangeReader private constructor(
         val index = position / layout.chunkSize
         val chunk = held.remove(index) ?: when (val decrypted = decrypt(index)) {
             is Outcome.Err -> return decrypted
-            is Outcome.Ok -> decrypted.value
+            is Outcome.Ok -> decrypted.value.also { chunksDecrypted++ }
         }
         held[index] = chunk // re-inserted, so it is now the most recently used
         while (held.size > MAX_HELD) {

@@ -8,6 +8,7 @@ import dev.ehsanfahad.darkchamber.core.vault.AlbumSummary
 import dev.ehsanfahad.darkchamber.core.vault.AssignSummary
 import dev.ehsanfahad.darkchamber.core.vault.ImportPhase
 import dev.ehsanfahad.darkchamber.core.vault.ObjectMeta
+import dev.ehsanfahad.darkchamber.core.vault.RangeReader
 import dev.ehsanfahad.darkchamber.core.vault.VaultItemSummary
 import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportState
@@ -395,6 +396,10 @@ internal class FakeVaultItems(
     private val onOpen: (id: ByteArray, sink: RawSink) -> Outcome<Unit> = { _, _ ->
         Outcome.Err(VaultError.Io(NoSuchElementException("no such object")))
     },
+    /** What a range open answers. The default is the vault's answer for an id it does not hold. */
+    private val onOpenRange: (id: ByteArray) -> Outcome<RangeReader> = {
+        Outcome.Err(VaultError.Io(NoSuchElementException("no such object")))
+    },
     /** What a shred answers. The default succeeds; the listing is the test's to change, as the catalog's would. */
     private val onShred: (id: ByteArray) -> Outcome<Unit> = { Outcome.Ok(Unit) },
     /** What a batch delete answers. The default deletes them all. */
@@ -552,6 +557,14 @@ internal class FakeVaultItems(
         return onOpen(id, sink)
     }
 
+    /** Every id a range open was asked for, as content. */
+    val rangeOpens = mutableListOf<List<Byte>>()
+
+    override fun openRange(id: ByteArray): Outcome<RangeReader> {
+        rangeOpens += id.toList()
+        return onOpenRange(id)
+    }
+
     /** Every id a shred was asked for, in order, as content (a list compares by value). */
     val shredded = mutableListOf<List<Byte>>()
 
@@ -617,6 +630,9 @@ internal class ExplodingVaultItems : VaultItems {
     override fun open(id: ByteArray, sink: RawSink): Outcome<Unit> =
         Outcome.Err(VaultError.Io(IllegalStateException("catalog unreadable")))
 
+    override fun openRange(id: ByteArray): Outcome<RangeReader> =
+        Outcome.Err(VaultError.Io(IllegalStateException("catalog unreadable")))
+
     override fun shred(id: ByteArray): Outcome<Unit> =
         Outcome.Err(VaultError.Io(IllegalStateException("catalog unreadable")))
 
@@ -654,6 +670,8 @@ internal class ThrowingVaultItems : VaultItems {
 
     override fun open(id: ByteArray, sink: RawSink): Outcome<Unit> = throw IllegalStateException("open exploded")
 
+    override fun openRange(id: ByteArray): Outcome<RangeReader> = throw IllegalStateException("open exploded")
+
     override fun shred(id: ByteArray): Outcome<Unit> = throw IllegalStateException("shred exploded")
 
     override fun shredMany(ids: List<ByteArray>): Outcome<Long> = throw IllegalStateException("shred exploded")
@@ -690,6 +708,9 @@ internal class CancellingVaultItems : VaultItems {
     override fun thumbnail(id: ByteArray): Outcome<ByteArray?> = NO_THUMBNAIL
 
     override fun open(id: ByteArray, sink: RawSink): Outcome<Unit> =
+        throw CancellationException("the session was torn down mid-open")
+
+    override fun openRange(id: ByteArray): Outcome<RangeReader> =
         throw CancellationException("the session was torn down mid-open")
 
     override fun shred(id: ByteArray): Outcome<Unit> =

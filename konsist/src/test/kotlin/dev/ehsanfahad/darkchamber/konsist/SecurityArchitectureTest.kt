@@ -228,13 +228,13 @@ class SecurityArchitectureTest {
     }
 
     @Test
-    fun `screen state in a feature holds no picture`() {
+    fun `screen state in a feature holds no picture and no player`() {
         // The session-gate rule: screen state holds ids and descriptions, never decrypted content.
-        // A decoded picture is the content itself, and state is what gets copied, compared, kept
-        // across recompositions and handed around — so a viewer keeps its pictures in a separate,
-        // windowed holder it drops on destroy. Read file-wide, like the not-saved rule, so a field
-        // whose type is inferred cannot slip past; a state type therefore lives in a file that
-        // mentions no picture type at all.
+        // A decoded picture is the content itself, and a player holds decoded video and sound, and
+        // state is what gets copied, compared, kept across recompositions and handed around — so a
+        // viewer keeps its pictures and its one player in separate holders it drops on destroy. Read
+        // file-wide, like the not-saved rule, so a field whose type is inferred cannot slip past; a
+        // state type therefore lives in a file that mentions no picture or player type at all.
         val files = productionFiles.filter {
             it.projectPath.contains("/feature/") && DECLARES_A_STATE_TYPE.containsMatchIn(codeOf(it))
         }
@@ -246,8 +246,9 @@ class SecurityArchitectureTest {
             violations.isEmpty(),
             buildString {
                 appendLine(
-                    "A file declaring a feature's state type mentions a picture type. State holds ids " +
-                        "and descriptions only; keep decoded pictures in their own holder, in another file.",
+                    "A file declaring a feature's state type mentions a picture, player or surface type. " +
+                        "State holds ids and descriptions only; keep decoded pictures and players in their " +
+                        "own holders, in another file.",
                 )
                 violations.forEach { appendLine("  ${it.projectPath}") }
             },
@@ -354,9 +355,16 @@ class SecurityArchitectureTest {
         /** A class whose name ends `State` — a screen's state, or a stage of one. */
         val DECLARES_A_STATE_TYPE = Regex("""class\s+[A-Za-z0-9_]*State(?![A-Za-z0-9_])""")
 
-        /** The types a decoded picture travels as, on either platform or in Compose. */
+        /**
+         * The types a decoded picture travels as, on either platform or in Compose — and the players
+         * and surfaces that hold decoded video and sound, which are content just the same.
+         */
         val HOLDS_A_PICTURE =
-            Regex("""(?<![A-Za-z0-9_])(ImageBitmap|Bitmap|Painter|UIImage|CGImage)(?![A-Za-z0-9_])""")
+            Regex(
+                """(?<![A-Za-z0-9_])(ImageBitmap|Bitmap|Painter|UIImage|CGImage|""" +
+                    """VaultPlayer|Player|ExoPlayer|MediaPlayer|AVPlayer|AVPlayerItem|AVPlayerLayer|""" +
+                    """Surface|SurfaceView|TextureView)(?![A-Za-z0-9_])""",
+            )
 
         /** The helper that excludes the window it is composed in. */
         const val EXCLUDES_FROM_STRUCTURES = "ExcludeFromPlatformStructures"

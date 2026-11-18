@@ -50,8 +50,9 @@ A Kotlin Multiplatform app for **Android** and **iOS** that encrypts, stores, an
 >   measured sending a vault text field to another process, which is why a password manager cannot
 >   fill the passphrase here.
 >
-> What's left before the vault is usable: viewers for **video, audio and PDF** (they show a "can't be
-> opened here" page for now), then export with metadata scrubbing and the settings screen. The
+> Video and audio play inside the viewer, streamed from the encrypted file in memory. What's left
+> before the vault is usable: a viewer for **PDF** (it shows a "can't be opened here" page for now),
+> then export with metadata scrubbing and the settings screen. The
 > documents under [`docs/`](./docs) describe the target design.
 
 ---
