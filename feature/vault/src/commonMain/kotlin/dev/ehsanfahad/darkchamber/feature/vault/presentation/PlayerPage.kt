@@ -38,6 +38,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -205,7 +206,20 @@ internal fun PlayerPageView(
                     text = badge,
                     style = DarkChamberTheme.typography.display,
                     color = DarkChamberTheme.colors.textSecondary,
-                    modifier = Modifier.align(Alignment.Center),
+                    // Above the centre control, which is centred too and would otherwise cover it.
+                    modifier = Modifier.align(Alignment.Center).layout { measurable, constraints ->
+                        val placeable = measurable.measure(constraints)
+                        val shift = PlayerChrome.badgeShiftAboveCentre(
+                            badgeHeight = placeable.height,
+                            centreSize = CENTRE_SIZE.roundToPx(),
+                            gap = BADGE_GAP.roundToPx(),
+                        )
+                        layout(placeable.width, placeable.height) {
+                            // The box centres this layout, so moving the badge by the shift moves it
+                            // from the centred position.
+                            placeable.place(0, shift)
+                        }
+                    },
                 )
             }
             note?.let { TrackNoteLine(it, Modifier.align(Alignment.TopCenter)) }
@@ -418,4 +432,7 @@ private val BAND_MARGIN = 48.dp
 private val NOTE_TOP = 64.dp
 private val CENTRE_SIZE = 72.dp
 private val CENTRE_MARK = 40.dp
+
+/** Between the audio page's badge and the centre control below it. */
+private val BADGE_GAP = 16.dp
 private const val FEEDBACK_MS = 700L

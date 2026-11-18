@@ -44,6 +44,21 @@ class PlayerChromeTest {
         assertFalse(PlayerChrome.autoHides(null, PlayerState(playing = true)))
     }
 
+    /**
+     * Both are centred on the page, so unmoved the centre control covers the badge. Moved by the shift,
+     * the badge's bottom edge is exactly the gap above the control's top edge. Positions are measured
+     * from the page's middle, downward positive, as the layout places them.
+     */
+    @Test
+    fun the_audio_badge_sits_a_gap_above_the_centre_control() {
+        for ((badge, centre, gap) in listOf(Triple(100, 252, 40), Triple(73, 126, 21), Triple(260, 252, 56))) {
+            val shift = PlayerChrome.badgeShiftAboveCentre(badge, centre, gap)
+            val badgeBottom = shift + badge / 2 + badge % 2 // centred: top at -badge/2, so bottom at +ceil
+            val centreTop = -centre / 2
+            assertEquals(centreTop - gap, badgeBottom, "badge $badge, centre $centre, gap $gap")
+        }
+    }
+
     @Test
     fun an_audio_page_shows_its_type_badge_where_a_video_would_be() {
         val page = ViewerPage.Media(Audio)
