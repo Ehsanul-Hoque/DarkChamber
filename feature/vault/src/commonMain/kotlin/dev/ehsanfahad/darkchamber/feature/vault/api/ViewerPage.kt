@@ -34,6 +34,18 @@ sealed interface ViewerPage {
      */
     data object CantPlay : ViewerPage
 
+    /**
+     * A PDF that read and verified but is locked with a password, which cannot be entered here. Not
+     * damage: it is the file that was added.
+     */
+    data object PasswordProtected : ViewerPage
+
+    /**
+     * A PDF that read and verified but that this device's renderer will not read — malformed, or using
+     * something the renderer refuses. Not damage: the vault checked it is the file that was added.
+     */
+    data object Unreadable : ViewerPage
+
     /** Failed its integrity check, or is not a container at all. Nothing of it is shown. */
     data object Unverified : ViewerPage
 
