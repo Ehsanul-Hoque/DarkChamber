@@ -46,6 +46,16 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerDeleteStage
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerNotice
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerPage
 import kotlin.coroutines.CoroutineContext
+import dev.ehsanfahad.darkchamber.feature.vault.api.PdfOpened
+import dev.ehsanfahad.darkchamber.feature.vault.api.PdfPlace
+import dev.ehsanfahad.darkchamber.feature.vault.api.PdfRefusal
+import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPdfBuffer
+import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPdfDocument
+import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPdfRenderer
+import dev.ehsanfahad.darkchamber.core.logging.logMeasurement
+import kotlin.coroutines.cancellation.CancellationException
+import kotlin.time.TimeSource
+import kotlinx.io.RawSink
 
 /**
  * The viewer's state holder, generic in the picture type so its rules are tested without a platform
@@ -84,6 +94,17 @@ internal open class ViewerComponent<T>(
     private val ioContext: CoroutineContext = Dispatchers.Default,
     /** Where a player is let go: never the main thread, so a decoder that blocks cannot hold up a lock. */
     private val releaseContext: CoroutineContext = Dispatchers.Default,
+    /** Streams a whole object into a sink, verified; blocking, so it runs on [ioContext]. */
+    private val openObject: (id: ByteArray, sink: RawSink) -> Outcome<Unit> = { _, _ ->
+        Outcome.Err(VaultError.Unexpected(IllegalStateException("no object reads here")))
+    },
+    /** The platform's PDF renderer, or `null` where there is none: a PDF page then shows its badge. */
+    private val pdfs: VaultPdfRenderer? = null,
+    /**
+     * Where every call to a PDF buffer or document runs — opening, drawing, closing — **one at a time**:
+     * the renderer is not safe from two threads at once. Never the main thread.
+     */
+    private val pdfContext: CoroutineContext = Dispatchers.Default.limitedParallelism(1),
 ) : ComponentContext by componentContext {
     // SupervisorJob parented to the caller's Job, as the gallery's: the app scopes feature work to the
     // vault session, and cancelling that must cancel this before the session it reads through dies.
@@ -97,6 +118,170 @@ internal open class ViewerComponent<T>(
 
     private val _players = MutableValue<Map<String, VaultPlayer>>(emptyMap())
     val players: Value<Map<String, VaultPlayer>> = _players
+
+    private val _pdfPages = MutableValue<Map<Int, ImageBitmap?>>(emptyMap())
+    val pdfPages: Value<Map<Int, ImageBitmap?>> = _pdfPages
+
+    /**
+     * Draw the PDF shown's pages near the screen ([PdfReading.renderWindow]) at the width they are shown,
+     * sharpened by zoom ([PdfReading.renderWidth]); let the rest go. A page already drawn at that width
+     * is kept; one drawn at another keeps its picture until the new one arrives. Every render runs on
+     * [pdfContext], one at a time.
+     */
+    fun pdfViewport(visible: IntRange, shownWidthPx: Int, zoom: Float, screenWidthPx: Int) {
+        val shown = pdf ?: return
+        val window = PdfReading.renderWindow(visible, shown.pageCount)
+        val width = PdfReading.renderWidth(shownWidthPx, zoom, screenWidthPx)
+        (shown.renders.keys - window.toSet()).forEach { shown.renders.remove(it)?.job?.cancel() }
+        _pdfPages.value = _pdfPages.value.filterKeys { it in window }
+        for (index in window) {
+            val current = shown.renders[index]
+            if (current != null && current.width == width) continue
+            current?.job?.cancel()
+            val job = scope.launch(start = CoroutineStart.LAZY) {
+                val picture = withContext(pdfContext) {
+                    try {
+                        shown.document.render(index, width)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        null // the seam promises not to throw; one that does could not draw this page
+                    }
+                }
+                // Only into the PDF still shown: a render under way when it was left cannot be stopped.
+                if (pdf === shown) _pdfPages.value = _pdfPages.value + (index to picture)
+            }
+            shown.renders[index] = Render(width, job)
+            job.start()
+        }
+    }
+
+    fun pdfScrolled(page: Int, offsetPx: Int) {
+        val shown = pdf ?: return
+        pdfPlaces[shown.key] = PdfPlace(page, offsetPx)
+    }
+
+    /** The PDF shown, open: one at a time, for the page shown and no other. */
+    private var pdf: ShownPdf? = null
+
+    /** The PDF shown being read and opened, before it is [pdf]. */
+    private var pdfOpening: Opening? = null
+
+    /** Where each PDF was left, for the viewer's life only; a lock or a close forgets them. */
+    private val pdfPlaces = mutableMapOf<String, PdfPlace>()
+
+    private class ShownPdf(val key: String, val document: VaultPdfDocument, val pageCount: Int) {
+        /** The render asked for each page near the screen: its width, and the job drawing it. */
+        val renders = mutableMapOf<Int, Render>()
+    }
+
+    private class Render(val width: Int, val job: Job)
+
+    /** Whether this item is shown as a PDF here: a PDF by its stored type, on a platform with a renderer. */
+    private fun pdfKind(item: GalleryItem): Boolean = pdfs != null && isPdf(item.meta)
+
+    /**
+     * One open PDF, for the page shown and no other: a PDF no longer shown is closed, a read for one is
+     * abandoned, and the page shown — a PDF not already answered — is read and opened if it is not.
+     */
+    private fun refreshPdf(shown: GalleryItem) {
+        val key = shown.id.toListKey()
+        if (pdf?.key != key) closePdf()
+        if (pdfOpening?.key != key) {
+            pdfOpening?.job?.cancel()
+            pdfOpening = null
+        }
+        val renderer = pdfs ?: return
+        if (closed || pdf != null || pdfOpening != null || !pdfKind(shown)) return
+        if (_state.value.pages[key] != ViewerPage.Loading) return
+        when (val plan = pdfPlan(shown.size, renderer.supported)) {
+            is OpenPlan.Show -> {
+                setPage(key, plan.page)
+                return
+            }
+            OpenPlan.Decode -> Unit
+        }
+        val job = scope.launch(start = CoroutineStart.LAZY) { openPdf(key, shown, renderer) }
+        pdfOpening = Opening(key, job)
+        job.start()
+    }
+
+    /**
+     * Read [item] whole into a buffer from the platform, and open it **only once the vault has verified
+     * the whole file** — the buffer may hold the start of a tampered file until then. The buffer is
+     * released here on every path that does not end in a document; a document opened for a page that
+     * was left, or a lock, while it opened is closed again — which is why both are taken inside their hops.
+     */
+    private suspend fun openPdf(key: String, item: GalleryItem, renderer: VaultPdfRenderer) {
+        var buffer: VaultPdfBuffer? = null
+        var document: VaultPdfDocument? = null
+        val started = TimeSource.Monotonic.markNow()
+        try {
+            val read = withContext(ioContext) {
+                val into = renderer.newBuffer(item.size).also { buffer = it }
+                try {
+                    openObject(item.id, into.sink)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // The vault answers with outcomes; a throw is a session closed under the read.
+                    Outcome.Err(VaultError.Unexpected(e))
+                }
+            }
+            if (read is Outcome.Err) {
+                setPage(key, pageForOpenFailure(read.error))
+                return
+            }
+            val filled = started.elapsedNow()
+            val opened = withContext(pdfContext) {
+                val answer = buffer!!.open()
+                buffer = null // a refusal released it; a document owns it
+                when (answer) {
+                    is PdfOpened.Refused -> null to answer.reason
+                    is PdfOpened.Document -> {
+                        document = answer.document
+                        val sizes = List(answer.document.pageCount) { answer.document.pageSize(it) }
+                        sizes to null
+                    }
+                }
+            }
+            val (sizes, refusal) = opened
+            // Timings only: never the name, the page count or anything else read from the file.
+            logMeasurement(
+                PDF_OPEN_EVENT,
+                "fill_ms" to filled.inWholeMilliseconds,
+                "open_ms" to (started.elapsedNow() - filled).inWholeMilliseconds,
+            )
+            val open = document
+            if (refusal != null || sizes == null || open == null) {
+                setPage(key, pageForPdfRefusal(refusal ?: PdfRefusal.Unreadable))
+                return
+            }
+            document = null // shown now; closed when it is left
+            pdf = ShownPdf(key, open, sizes.size)
+            setPage(key, ViewerPage.Pdf(open.pageCount, sizes, pdfPlaces[key] ?: PdfPlace()))
+        } finally {
+            buffer?.close()
+            document?.let { left -> releaseScope.launch(pdfContext) { left.close() } }
+            // Only this read's own slot: an abandoned read can finish after the next one has started.
+            if (pdfOpening?.job === currentCoroutineContext()[Job]) pdfOpening = null
+        }
+    }
+
+    /**
+     * Let the PDF shown go: its drawn pages dropped at once, its page back to waiting, and its document
+     * closed on [pdfContext] — after a render in progress, which cannot be interrupted — never waited for here.
+     */
+    private fun closePdf() {
+        val shown = pdf ?: return
+        pdf = null
+        // A render still queued never runs; one under way finishes before the close below, and its
+        // picture is not taken (the PDF is no longer shown).
+        shown.renders.values.forEach { it.job.cancel() }
+        _pdfPages.value = emptyMap()
+        if (_state.value.pages[shown.key] is ViewerPage.Pdf) setPage(shown.key, ViewerPage.Loading)
+        releaseScope.launch(pdfContext) { shown.document.close() }
+    }
 
     /** Positions and the set speed, for the viewer's life only; a lock or a close forgets them. */
     private val memory = PlaybackMemory()
@@ -229,8 +414,11 @@ internal open class ViewerComponent<T>(
     init {
         publishOrientationTarget()
         doOnDestroy {
-            // Before the scope goes: silences the player and hands its release to its own thread.
+            // Before the scope goes: silences the player and hands its release to its own thread, and
+            // hands the PDF shown to its own to close (after a render in progress); a read still under
+            // way is cancelled with the scope and releases its buffer itself.
             stopPlaying(remember = false)
+            closePdf()
             // A lock: the screen goes back as it was, the phone-wide brightness on iOS above all.
             send(displayRules.closed())
             scope.cancel()
@@ -312,20 +500,23 @@ internal open class ViewerComponent<T>(
         val pages = _state.value.pages.filterKeys { it in window }.toMutableMap()
         _pictures.value = _pictures.value.filterKeys { it in window }
 
-        // A video or audio page needs no viewport and is never loaded as a picture.
+        // A video or audio page needs no viewport and is never loaded as a picture; nor is a PDF,
+        // which waits until it is the page shown and is then read whole (refreshPdf).
         for ((key, item) in window) {
-            val kind = playerKind(item) ?: continue
-            if (key !in pages) pages[key] = ViewerPage.Media(kind)
+            val kind = playerKind(item)
+            if (kind != null && key !in pages) pages[key] = ViewerPage.Media(kind)
+            if (pdfKind(item) && key !in pages) pages[key] = ViewerPage.Loading
         }
         val target = target
         val starting = if (target == null) {
             emptyMap()
         } else {
-            window.filterValues { playerKind(it) == null }.filterKeys { it !in loads }
+            window.filterValues { playerKind(it) == null && !pdfKind(it) }.filterKeys { it !in loads }
         }
         starting.keys.forEach { key -> pages[key] = ViewerPage.Loading }
         _state.value = _state.value.copy(pages = pages)
         refreshPlayer(items[shown.index])
+        refreshPdf(items[shown.index])
         syncDisplay()
         if (target == null) return
 
@@ -500,6 +691,8 @@ internal open class ViewerComponent<T>(
         closed = true
         stopPlaying()
         opening?.job?.cancel()
+        closePdf()
+        pdfOpening?.job?.cancel()
         send(displayRules.closed())
         onBack(lastViewedId)
     }
@@ -509,6 +702,7 @@ internal open class ViewerComponent<T>(
 
     private companion object {
         const val LISTING_STAGE = "viewer.listing"
+        const val PDF_OPEN_EVENT = "viewer.pdf.open"
     }
 }
 
@@ -529,7 +723,10 @@ internal class DefaultVaultViewerComponent(
     mainContext: CoroutineContext = Dispatchers.Main,
     ioContext: CoroutineContext = Dispatchers.Default,
     releaseContext: CoroutineContext = Dispatchers.Default,
+    openObject: (id: ByteArray, sink: RawSink) -> Outcome<Unit>,
+    pdfs: VaultPdfRenderer?,
+    pdfContext: CoroutineContext,
 ) : ViewerComponent<ImageBitmap>(
     componentContext, observeGallery, observeAlbum, load, shred, filter, controls, startId, onBack,
-    openRange, playerFactory, display, mainContext, ioContext, releaseContext,
+    openRange, playerFactory, display, mainContext, ioContext, releaseContext, openObject, pdfs, pdfContext,
 ), VaultViewerComponent

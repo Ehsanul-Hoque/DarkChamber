@@ -34,7 +34,7 @@ internal object ViewerFormat {
      */
     fun pageMessage(page: ViewerPage): String? =
         when (page) {
-            ViewerPage.Loading, ViewerPage.Picture, is ViewerPage.Media -> null
+            ViewerPage.Loading, ViewerPage.Picture, is ViewerPage.Media, is ViewerPage.Pdf -> null
             is ViewerPage.NotViewable -> "This file can't be opened here."
             ViewerPage.TooLarge -> "This file is too large to open here."
             ViewerPage.CantShow -> "This file can't be shown on this device."

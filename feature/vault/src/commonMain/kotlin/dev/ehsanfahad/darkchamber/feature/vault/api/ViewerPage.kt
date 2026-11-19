@@ -19,7 +19,14 @@ sealed interface ViewerPage {
      */
     data class Media(val kind: PlayerKind, val note: TrackNote? = null) : ViewerPage
 
-    /** A kind with no viewer yet — video, audio, PDF, anything else — shown as its [badge]. Nothing was read. */
+    /**
+     * A PDF that read, verified and opened: [pageCount] pages, each of the size in [pageSizes]. Its
+     * drawn pages are in [VaultViewerComponent.pdfPages] while it is the page shown; [start] is where
+     * reading resumes — the top, or where it was left earlier in this viewer.
+     */
+    data class Pdf(val pageCount: Int, val pageSizes: List<PdfPageSize>, val start: PdfPlace = PdfPlace()) : ViewerPage
+
+    /** A kind with no viewer here — anything but an image, video, audio or PDF — shown as its [badge]. Nothing was read. */
     data class NotViewable(val badge: String) : ViewerPage
 
     /** Larger than the viewer reads into memory. Nothing was read. */

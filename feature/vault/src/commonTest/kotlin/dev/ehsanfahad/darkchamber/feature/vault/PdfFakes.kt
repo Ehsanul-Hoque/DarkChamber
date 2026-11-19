@@ -51,6 +51,8 @@ internal class FakePdfRenderer(
     var pages: List<PdfPageSize> = listOf(PdfPageSize(595, 842), PdfPageSize(595, 842), PdfPageSize(842, 595)),
     var unrenderable: Set<Int> = emptySet(),
     var onRender: (index: Int) -> Unit = {},
+    /** Runs inside `open()` once the document exists, before it is returned — where a swipe or a lock can land. */
+    var onOpen: () -> Unit = {},
 ) : VaultPdfRenderer {
     val log = mutableListOf<String>()
 
@@ -92,7 +94,9 @@ internal class FakePdfBuffer(private val renderer: FakePdfRenderer) : VaultPdfBu
             close()
             return PdfOpened.Refused(refusal)
         }
-        return PdfOpened.Document(FakePdfDocument(renderer, this))
+        val document = FakePdfDocument(renderer, this)
+        renderer.onOpen()
+        return PdfOpened.Document(document)
     }
 
     override fun close() {

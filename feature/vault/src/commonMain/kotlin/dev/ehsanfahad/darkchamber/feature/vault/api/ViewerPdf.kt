@@ -80,6 +80,9 @@ interface VaultPdfDocument {
 /** A page's size in points. */
 data class PdfPageSize(val widthPt: Int, val heightPt: Int)
 
+/** Where a reader is in a PDF: a page (from 0) and how far down it, in pixels as last laid out. */
+data class PdfPlace(val page: Int = 0, val offsetPx: Int = 0)
+
 /**
  * Why the platform will not show a PDF that read and verified. Told apart by what the platform reports
  * — its exception type or its document state — never by the words of a message, which change from one
