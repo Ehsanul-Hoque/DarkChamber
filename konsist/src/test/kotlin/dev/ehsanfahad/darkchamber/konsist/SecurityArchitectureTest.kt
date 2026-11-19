@@ -356,14 +356,17 @@ class SecurityArchitectureTest {
         val DECLARES_A_STATE_TYPE = Regex("""class\s+[A-Za-z0-9_]*State(?![A-Za-z0-9_])""")
 
         /**
-         * The types a decoded picture travels as, on either platform or in Compose — and the players
-         * and surfaces that hold decoded video and sound, which are content just the same.
+         * The types a decoded picture travels as, on either platform or in Compose — the players and
+         * surfaces that hold decoded video and sound, and the PDF buffer, document and renderers that
+         * hold a whole decrypted PDF — all content just the same.
          */
         val HOLDS_A_PICTURE =
             Regex(
                 """(?<![A-Za-z0-9_])(ImageBitmap|Bitmap|Painter|UIImage|CGImage|""" +
                     """VaultPlayer|Player|ExoPlayer|MediaPlayer|AVPlayer|AVPlayerItem|AVPlayerLayer|""" +
-                    """Surface|SurfaceView|TextureView)(?![A-Za-z0-9_])""",
+                    """Surface|SurfaceView|TextureView|""" +
+                    """VaultPdfRenderer|VaultPdfBuffer|VaultPdfDocument|PdfOpened|PdfRenderer|""" +
+                    """PDFDocument|PDFPage)(?![A-Za-z0-9_])""",
             )
 
         /** The helper that excludes the window it is composed in. */
