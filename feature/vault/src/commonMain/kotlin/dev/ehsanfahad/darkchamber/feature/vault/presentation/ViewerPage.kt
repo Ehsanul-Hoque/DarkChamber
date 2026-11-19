@@ -2,6 +2,7 @@ package dev.ehsanfahad.darkchamber.feature.vault.presentation
 
 import dev.ehsanfahad.darkchamber.core.model.VaultError
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
+import dev.ehsanfahad.darkchamber.feature.vault.api.PdfRefusal
 import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerFailure
 import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerKind
 import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerTracks
@@ -36,6 +37,44 @@ internal fun openPlan(meta: GalleryItemMeta, size: Long, cap: Long): OpenPlan {
         else -> OpenPlan.Decode
     }
 }
+
+/** The largest PDF the viewer reads: its whole plaintext is held in memory while it is shown. */
+internal const val PDF_CAP: Long = 128L * 1024 * 1024
+
+/** Whether an item is a PDF, from its stored type alone, before anything is read. */
+internal fun isPdf(meta: GalleryItemMeta): Boolean =
+    meta is GalleryItemMeta.Readable && meta.mime == PDF_MIME
+
+private const val PDF_MIME = "application/pdf"
+
+/**
+ * Before a PDF is read: read it, or show a page that needs no read at all.
+ *
+ * - A platform that cannot show PDFs says so before anything is decrypted, whatever the size: the
+ *   device is the limit, not the file.
+ * - Anything larger than [cap] is not read: its whole plaintext would sit in memory while shown, and
+ *   the size is a plaintext column, so refusing costs no decrypt.
+ * - A negative size is a row nothing here wrote: nothing is read, and the page names no cause.
+ */
+internal fun pdfPlan(size: Long, supported: Boolean, cap: Long = PDF_CAP): OpenPlan =
+    when {
+        !supported -> OpenPlan.Show(ViewerPage.CantShow)
+        size < 0 -> OpenPlan.Show(ViewerPage.CouldntOpen)
+        size > cap -> OpenPlan.Show(ViewerPage.TooLarge)
+        else -> OpenPlan.Decode
+    }
+
+/**
+ * The page for a PDF that read and verified but that the platform will not show. The vault checked
+ * every byte, so none of these is damage: a password is the document's own lock, a renderer's refusal
+ * is the renderer's limit, and a platform without PDFs is the device's.
+ */
+internal fun pageForPdfRefusal(refusal: PdfRefusal): ViewerPage =
+    when (refusal) {
+        PdfRefusal.NeedsPassword -> ViewerPage.PasswordProtected
+        PdfRefusal.Unreadable -> ViewerPage.Unreadable
+        PdfRefusal.Unsupported -> ViewerPage.CantShow
+    }
 
 /**
  * Which player an item gets: a stored video or audio type plays; anything else, and an item whose

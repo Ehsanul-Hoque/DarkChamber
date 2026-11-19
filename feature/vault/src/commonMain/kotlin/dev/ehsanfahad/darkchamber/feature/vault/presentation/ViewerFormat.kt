@@ -26,6 +26,10 @@ internal object ViewerFormat {
      * - **Stopped unverified.** A clip refused partway through playing: every part that played was a
      *   verified chunk, and playback stopped at the first that was not. So it says playback stopped —
      *   never that none of it was shown, which would be false — and, as above, names no cause.
+     * - **A PDF's password / unreadable.** Both were read and verified, so neither may sound like
+     *   damage. A password is the document's own lock, and there is nowhere here to type it. A renderer
+     *   that will not read a verified file is the renderer's limit: the line says the file is unchanged
+     *   since it was saved — the vault checked exactly that — and names no cause it was not told.
      * - **Couldn't open.** Why is not known, so no why.
      */
     fun pageMessage(page: ViewerPage): String? =
@@ -35,6 +39,8 @@ internal object ViewerFormat {
             ViewerPage.TooLarge -> "This file is too large to open here."
             ViewerPage.CantShow -> "This file can't be shown on this device."
             ViewerPage.CantPlay -> "This device can't play this file."
+            ViewerPage.PasswordProtected -> "This PDF is locked with a password, which can't be entered here."
+            ViewerPage.Unreadable -> "This PDF can't be read here. It is unchanged since it was saved."
             ViewerPage.Unverified ->
                 "This file couldn't be verified, so none of it is shown. It may have changed since it was saved."
             ViewerPage.StoppedUnverified ->

@@ -27,13 +27,18 @@ class ViewerFormatTest {
         ViewerPage.TooLarge,
         ViewerPage.CantShow,
         ViewerPage.CantPlay,
+        ViewerPage.PasswordProtected,
+        ViewerPage.Unreadable,
         ViewerPage.Unverified,
         ViewerPage.StoppedUnverified,
         ViewerPage.NeedsUpdate,
         ViewerPage.CouldntOpen,
     )
 
-    private fun message(page: ViewerPage): String = assertNotNull(ViewerFormat.pageMessage(page), "a message for $page")
+    private fun message(page: ViewerPage): String =
+        assertNotNull(ViewerFormat.pageMessage(page), "a message for $page").also {
+            assertTrue(it.isNotBlank(), "the message for $page says something")
+        }
 
     private fun assertSaysNone(text: String, vararg words: String) {
         for (word in words) assertFalse(text.contains(word, ignoreCase = true), "\"$text\" must not say \"$word\"")
@@ -63,9 +68,39 @@ class ViewerFormatTest {
      */
     @Test
     fun the_pages_for_a_working_file_never_sound_like_damage() {
-        for (page in listOf(ViewerPage.NotViewable("PDF"), ViewerPage.TooLarge, ViewerPage.CantShow, ViewerPage.CantPlay, ViewerPage.NeedsUpdate)) {
+        for (
+            page in listOf(
+                ViewerPage.NotViewable("PDF"), ViewerPage.TooLarge, ViewerPage.CantShow, ViewerPage.CantPlay,
+                ViewerPage.PasswordProtected, ViewerPage.Unreadable, ViewerPage.NeedsUpdate,
+            )
+        ) {
             assertSaysNone(message(page), "damage", "corrupt", "tamper", "verif", "integrity", "broken")
         }
+    }
+
+    /**
+     * A PDF locked with a password: the lock is the reason, and it is one this app cannot open — there
+     * is nowhere to type it. Nothing about the file's state, and no promise that it can be opened later.
+     */
+    @Test
+    fun a_password_protected_pdf_says_the_password_cannot_be_entered_here() {
+        val text = message(ViewerPage.PasswordProtected)
+        assertTrue(text.contains("password", ignoreCase = true), text)
+        assertTrue(text.contains("can't be entered here", ignoreCase = true), text)
+        assertSaysNone(text, "wrong", "incorrect", "safe", "secure", "encrypted", "soon", "later", "update")
+    }
+
+    /**
+     * A PDF the renderer will not read was still verified by the vault: it is exactly the file that was
+     * added. So the line may say it is unchanged — that much is known — and puts the limit on reading
+     * it here, naming no cause (malformed? a feature the renderer refuses?) it was never told.
+     */
+    @Test
+    fun an_unreadable_pdf_says_it_is_unchanged_and_names_no_cause() {
+        val text = message(ViewerPage.Unreadable)
+        assertTrue(text.contains("can't be read here", ignoreCase = true), text)
+        assertTrue(text.contains("unchanged", ignoreCase = true), text)
+        assertSaysNone(text, "because", "format", "malformed", "invalid", "unsupported", "safe", "intact", "this device")
     }
 
     /**
