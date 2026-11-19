@@ -7,6 +7,8 @@ import dev.ehsanfahad.darkchamber.app.image.AndroidViewerImageDecoder
 import dev.ehsanfahad.darkchamber.app.player.AndroidPlayerDisplay
 import dev.ehsanfahad.darkchamber.app.player.AndroidVaultPlayerFactory
 import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerDisplay
+import dev.ehsanfahad.darkchamber.app.pdf.AndroidPdfRenderer
+import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPdfRenderer
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPlayerFactory
 import dev.ehsanfahad.darkchamber.app.thumbnail.AndroidThumbnailEncoder
 import dev.ehsanfahad.darkchamber.core.vault.ThumbnailEncoder
@@ -77,6 +79,17 @@ class AndroidPlatformModuleTest {
         try {
             assertIs<AndroidVaultPlayerFactory>(app.koin.getOrNull<VaultPlayerFactory>())
             assertIs<AndroidPlayerDisplay>(app.koin.getOrNull<PlayerDisplay>())
+        } finally {
+            app.close()
+        }
+    }
+
+    /** Resolved optionally too — without it a PDF shows its badge — so a deleted binding would pass unnoticed. */
+    @Test
+    fun the_platform_module_binds_the_android_pdf_renderer() {
+        val app = koinApplication { modules(platformModule()) }
+        try {
+            assertIs<AndroidPdfRenderer>(app.koin.getOrNull<VaultPdfRenderer>())
         } finally {
             app.close()
         }
