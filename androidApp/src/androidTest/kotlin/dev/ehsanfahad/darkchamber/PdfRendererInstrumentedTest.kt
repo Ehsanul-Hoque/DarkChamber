@@ -30,7 +30,7 @@ import java.io.File
  * The PDF renderer against the platform's own `PdfRenderer`, which only a device has. The PDFs are
  * written by Apple's CoreGraphics (`assets/pdf/`, see `fixtures/make-pdf-fixtures.swift`), never by
  * this app: three full-bleed pages — red and green portrait A4, blue landscape A4 — the same with a
- * password, and the plain one cut in half.
+ * password, the plain one cut in half, and one page red over blue.
  *
  * Every case also reads the process's own descriptor table: the decrypted file must live in a memory
  * file that no path names, and nothing of it may be left open once the document is closed or refused.
@@ -126,6 +126,19 @@ class PdfRendererInstrumentedTest {
         assertEquals("closing the document releases its memory file", before, memoryFilesOpen())
         document.close() // twice is fine
         assertNull("nothing drawn after close", document.render(0, 400))
+    }
+
+    /** Red over blue: a page drawn upside down, or not scaled to the width, shows blue at the top. */
+    @Test
+    fun a_page_is_drawn_upright_and_whole() {
+        assumeAndroid11()
+        val document = (filled("halves.pdf").open() as PdfOpened.Document).document
+
+        val page = document.render(0, 300)!!.asAndroidBitmap()
+        assertEquals(400, page.height) // 300 × 800 / 600
+        assertDominant("red", page.getPixel(150, 20))
+        assertDominant("blue", page.getPixel(150, 380))
+        document.close()
     }
 
     @Test

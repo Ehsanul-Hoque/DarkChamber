@@ -7,6 +7,7 @@ import dev.ehsanfahad.darkchamber.app.auth.IosBiometricAuthenticator
 import dev.ehsanfahad.darkchamber.app.camera.IosCameraController
 import dev.ehsanfahad.darkchamber.app.camera.IosFreeSpace
 import dev.ehsanfahad.darkchamber.app.image.IosViewerImageDecoder
+import dev.ehsanfahad.darkchamber.app.pdf.IosPdfRenderer
 import dev.ehsanfahad.darkchamber.app.media.IosPlayerDisplay
 import dev.ehsanfahad.darkchamber.app.media.IosVaultPlayerFactory
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraController
@@ -29,6 +30,7 @@ import dev.ehsanfahad.darkchamber.core.vault.ThumbnailEncoder
 import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
 import dev.ehsanfahad.darkchamber.feature.vault.api.PhotoPicker
 import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerDisplay
+import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPdfRenderer
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPlayerFactory
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerImageDecoder
 import kotlinx.io.files.Path
@@ -71,6 +73,8 @@ actual fun platformModule(): Module = module {
     single<VaultPlayerFactory> { IosVaultPlayerFactory() }
     // The phone's brightness (put back exactly), the forced orientation and the sleep timer.
     single<PlayerDisplay> { IosPlayerDisplay() }
+    // Shows a PDF from memory through CoreGraphics. Stateless: each PDF gets its own buffer.
+    single<VaultPdfRenderer> { IosPdfRenderer() }
     // Local-only and self-expiring; see the implementation for what a plain pasteboard write costs.
     single<SecretClipboard> { IosSecretClipboard() }
     single<CatalogProvider> { CatalogProvider { root -> openCatalog(root) } }

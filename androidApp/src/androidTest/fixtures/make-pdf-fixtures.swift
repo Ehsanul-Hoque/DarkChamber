@@ -36,6 +36,20 @@ func write(_ name: String, password: String? = nil) {
 write("plain.pdf")
 write("locked.pdf", password: "fixture")
 
+// One 600×800 page, red over blue: a page drawn upside down, mirrored or at the wrong scale shows the
+// wrong colour at the top or the bottom, which a single-colour page cannot.
+do {
+    var page = CGRect(x: 0, y: 0, width: 600, height: 800)
+    let ctx = CGContext(dir.appendingPathComponent("halves.pdf") as CFURL, mediaBox: &page, nil)!
+    ctx.beginPDFPage(nil)
+    ctx.setFillColor(CGColor(red: 0, green: 0, blue: 1, alpha: 1))
+    ctx.fill(CGRect(x: 0, y: 0, width: 600, height: 400)) // PDF space: y grows upward, so this is the bottom
+    ctx.setFillColor(CGColor(red: 1, green: 0, blue: 0, alpha: 1))
+    ctx.fill(CGRect(x: 0, y: 400, width: 600, height: 400)) // and this the top
+    ctx.endPDFPage()
+    ctx.closePDF()
+}
+
 // The plain file cut short: a PDF's cross-reference table is at its end, so without it nothing opens.
 let plain = try Data(contentsOf: dir.appendingPathComponent("plain.pdf"))
 try plain.prefix(plain.count / 2).write(to: dir.appendingPathComponent("truncated.pdf"))
