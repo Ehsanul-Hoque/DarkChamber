@@ -199,6 +199,9 @@ fun vaultViewerComponent(
     // Where a player is let go. Never the main thread: a decoder can block for seconds as it shuts
     // down, and a lock must not wait for it.
     releaseContext: CoroutineContext = Dispatchers.Default,
+    // Where every call to an open PDF runs — open, page sizes, drawing, close — one at a time: the
+    // renderer is not safe from two at once. One for this viewer; injected so a test can hold it.
+    pdfContext: CoroutineContext = Dispatchers.Default.limitedParallelism(1),
 ): VaultViewerComponent {
     val items = VaultObjectsItems(vaultObjects)
     val loader = LoadViewerImage(items = items, decode = decoder::decode, io = ioContext)
@@ -221,8 +224,7 @@ fun vaultViewerComponent(
         releaseContext = releaseContext,
         openObject = items::open,
         pdfs = pdfs,
-        // One thread's worth, for this viewer's PDF calls: the renderer is not safe from two at once.
-        pdfContext = Dispatchers.Default.limitedParallelism(1),
+        pdfContext = pdfContext,
     )
 }
 
