@@ -217,12 +217,40 @@ internal object ViewerFormat {
      * PDF is the item shown — so Details and Delete do not move aside when it opens — with dashes and
      * no action until the pages are known; [reading] is the page most on screen once they are. A PDF
      * that will not open has no indicator: its page says why, and dashes would promise pages.
+     *
+     * At a large font it wraps, and only as "Page N" over "of M": the spaces inside each half do not
+     * break. What a screen reader hears has plain spaces.
      */
     fun pdfIndicator(page: ViewerPage, meta: GalleryItemMeta, reading: Int): PageIndicator? =
         when {
-            page is ViewerPage.Pdf -> pdfPage(reading, page.pageCount).let { PageIndicator(it, it, ready = true) }
-            page == ViewerPage.Loading && isPdf(meta) -> PageIndicator("Page – of –", "Pages loading", ready = false)
+            page is ViewerPage.Pdf ->
+                PageIndicator(
+                    text = "Page$NBSP${reading + 1} of$NBSP${page.pageCount}",
+                    spoken = "${pdfPage(reading, page.pageCount)}, jump to a page",
+                    ready = true,
+                )
+            page == ViewerPage.Loading && isPdf(meta) -> PageIndicator("Page$NBSP– of$NBSP–", "Pages loading", ready = false)
             else -> null
+        }
+
+    /** The jump-to-page dialog's title, and its confirm button. */
+    fun jumpTitle(): String = "Go to page"
+
+    fun jumpGo(): String = "Go"
+
+    /** The jump field's label: which numbers it takes. */
+    fun jumpFieldLabel(count: Int): String = "Page, 1 to $count"
+
+    /**
+     * Why a jump did not go, shown in the dialog — `null` when it goes. A number no page has is said
+     * to be out of the document's range, never moved to the nearest page.
+     */
+    fun jumpProblem(jump: PageJump, count: Int): String? =
+        when (jump) {
+            is PageJump.Go -> null
+            PageJump.Empty -> "Type a page number."
+            PageJump.NotANumber -> "Use digits only."
+            PageJump.OutOfRange -> "This PDF has pages 1 to $count."
         }
 
     /** In place of one page of a PDF that would not draw; the others still show. Names no cause. */
@@ -235,6 +263,9 @@ internal object ViewerFormat {
 
     /** The grid's mark for something that could not be verified. */
     private const val WARNING_BADGE = "!"
+
+    /** A space a line never breaks at (U+00A0), written as its code so no editor shows it as a space. */
+    private val NBSP = Char(0x00A0)
 
     fun back(): String = "Back"
 

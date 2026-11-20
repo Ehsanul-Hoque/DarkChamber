@@ -429,14 +429,44 @@ class ViewerFormatTest {
     // ---- the page indicator -------------------------------------------------------------------------
 
     private val pdfMeta = GalleryItemMeta.Readable("report.pdf", "application/pdf")
+    /** A space a line never breaks at (U+00A0), written as its code so no editor shows it as a space. */
+    private val NBSP = Char(0x00A0)
     private val openPdf = ViewerPage.Pdf(pageCount = 12, pageSizes = List(12) { PdfPageSize(595, 842) })
 
     @Test
     fun an_open_pdf_names_the_page_being_read() {
         val indicator = assertNotNull(ViewerFormat.pdfIndicator(openPdf, pdfMeta, reading = 2))
-        assertEquals("Page 3 of 12", indicator.text)
-        assertEquals("Page 3 of 12", indicator.spoken)
+        assertEquals("Page 3 of 12", indicator.text.replace(NBSP, ' '))
         assertTrue(indicator.ready)
+    }
+
+    /**
+     * At a large font the indicator wraps, and only between "Page N" and "of M": its one breakable
+     * space is the one before "of". The same for the dashes while loading.
+     */
+    @Test
+    fun the_indicator_wraps_only_before_of() {
+        val open = assertNotNull(ViewerFormat.pdfIndicator(openPdf, pdfMeta, reading = 399)).text
+        assertEquals(listOf("Page${NBSP}400", "of${NBSP}12"), open.split(' '))
+        val loading = assertNotNull(ViewerFormat.pdfIndicator(ViewerPage.Loading, pdfMeta, reading = 0)).text
+        assertEquals(listOf("Page$NBSP–", "of$NBSP–"), loading.split(' '))
+    }
+
+    /** What a screen reader hears has plain spaces. */
+    @Test
+    fun the_spoken_indicator_has_no_unbreakable_spaces() {
+        for (page in listOf(openPdf, ViewerPage.Loading)) {
+            val spoken = assertNotNull(ViewerFormat.pdfIndicator(page, pdfMeta, reading = 2)).spoken
+            assertFalse(spoken.contains(NBSP), "\"$spoken\"")
+        }
+    }
+
+    /** A screen reader hears what the indicator does, not only what it says. */
+    @Test
+    fun an_open_pdf_indicator_is_spoken_as_the_way_to_jump() {
+        val spoken = assertNotNull(ViewerFormat.pdfIndicator(openPdf, pdfMeta, reading = 2)).spoken
+        assertTrue(spoken.startsWith("Page 3 of 12"), "\"$spoken\" names the page first")
+        assertTrue(spoken.contains("jump to a page"), "\"$spoken\" says what a tap does")
     }
 
     /**
@@ -463,5 +493,46 @@ class ViewerFormatTest {
     @Test
     fun a_pdf_that_will_not_open_has_no_indicator() {
         for (page in everyMessagePage) assertNull(ViewerFormat.pdfIndicator(page, pdfMeta, 0), "$page")
+    }
+
+    // ---- jump to a page ------------------------------------------------------------------------------
+
+    @Test
+    fun the_jump_dialog_says_what_it_does() {
+        assertTrue(ViewerFormat.jumpTitle().contains("page", ignoreCase = true), ViewerFormat.jumpTitle())
+        assertTrue(ViewerFormat.jumpGo().isNotBlank())
+    }
+
+    /** The field says which numbers it takes before anyone types a wrong one. */
+    @Test
+    fun the_jump_field_names_the_range() {
+        val label = ViewerFormat.jumpFieldLabel(427)
+        assertTrue(label.contains("1") && label.contains("427"), "\"$label\" names 1 and 427")
+    }
+
+    @Test
+    fun a_jump_that_goes_says_nothing() {
+        assertNull(ViewerFormat.jumpProblem(PageJump.Go(399), 427))
+    }
+
+    /**
+     * A number no page has is told the range — and nothing suggesting the reader was taken anywhere,
+     * because they were not.
+     */
+    @Test
+    fun a_number_out_of_range_is_told_the_range() {
+        val text = assertNotNull(ViewerFormat.jumpProblem(PageJump.OutOfRange, 427))
+        assertTrue(text.contains("1") && text.contains("427"), "\"$text\" names the range")
+        assertSaysNone(text, "nearest", "last page", "first page", "instead", "moved", "went")
+    }
+
+    /** Empty and not-a-number each say something, and not the same thing: one needs a number, one digits. */
+    @Test
+    fun empty_and_not_a_number_are_told_apart() {
+        val empty = assertNotNull(ViewerFormat.jumpProblem(PageJump.Empty, 427))
+        val notANumber = assertNotNull(ViewerFormat.jumpProblem(PageJump.NotANumber, 427))
+        assertTrue(empty.isNotBlank() && notANumber.isNotBlank())
+        assertTrue(empty != notANumber, "\"$empty\" and \"$notANumber\" differ")
+        assertTrue(notANumber.contains("digit", ignoreCase = true), "\"$notANumber\" says what to type instead")
     }
 }

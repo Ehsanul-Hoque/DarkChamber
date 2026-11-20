@@ -187,6 +187,9 @@ internal fun ViewerScreen(
             val pdf = state.pages[shownKey] as? ViewerPage.Pdf
             // The page of the PDF shown that the indicator names: where it opens, then what is most on screen.
             var pdfReading by remember(shownKey, pdf?.start) { mutableIntStateOf(pdf?.start?.page ?: 0) }
+            // Jump to a page: the dialog, and the jump it asked for — both for this item only.
+            var jumpOpen by rememberSaveable(shownKey) { mutableStateOf(false) }
+            var jumpRequest by remember(shownKey) { mutableStateOf<PdfJumpRequest?>(null) }
             val shownPlayer = players[shownKey]
             val playerState: PlayerState? = key(shownPlayer) { shownPlayer?.state?.collectAsState()?.value }
             // An audio page's controls stay on screen; a video page's hide after a while of playing,
@@ -238,6 +241,7 @@ internal fun ViewerScreen(
                         onReading = { if (isShown) pdfReading = it },
                         topPaddingPx = topBarPx,
                         bottomPaddingPx = bottomBarPx,
+                        jump = if (isShown) jumpRequest else null,
                     ),
                 )
             }
@@ -269,7 +273,7 @@ internal fun ViewerScreen(
                     if (it.height > 0 && media == null) bottomBarPx = it.height
                 },
                 leading = ViewerFormat.pdfIndicator(state.pages[shownKey] ?: ViewerPage.Loading, shown.meta, pdfReading)?.let { indicator ->
-                    { PdfIndicator(indicator) }
+                    { PdfIndicator(indicator, onClick = if (indicator.ready) ({ jumpOpen = true }) else null) }
                 },
                 controls = if (media != null && playerState != null) {
                     { trailing ->
@@ -289,6 +293,16 @@ internal fun ViewerScreen(
                 // A phone on its side: one row under the seek bar, clear of the centre control.
                 compact = PlayerChrome.compactBar(maxHeight.value),
             )
+            if (jumpOpen && pdf != null) {
+                PdfJumpDialog(
+                    pageCount = pdf.pageCount,
+                    onGo = { index ->
+                        jumpRequest = PdfJumpRequest(index)
+                        jumpOpen = false
+                    },
+                    onCancel = { jumpOpen = false },
+                )
+            }
             if (detailsOpen) {
                 DetailsSheet(rows = ViewerFormat.details(shown, shown.album, now), onDismiss = { detailsOpen = false })
             }
@@ -337,6 +351,7 @@ private fun ViewerPageView(
                 onReading = pdf.onReading,
                 topPaddingPx = pdf.topPaddingPx,
                 bottomPaddingPx = pdf.bottomPaddingPx,
+                jump = pdf.jump,
             )
         page is ViewerPage.Media ->
             PlayerPageView(
@@ -609,19 +624,34 @@ private class PdfHooks(
     val onReading: (Int) -> Unit,
     val topPaddingPx: Int,
     val bottomPaddingPx: Int,
+    /** A jump to a page asked for in the dialog, while this page is the one shown. */
+    val jump: PdfJumpRequest?,
 )
 
-/** "Page N of M", as tall as the actions beside it, spoken as [PageIndicator.spoken]. */
+/**
+ * "Page N of M", as tall as the actions beside it, spoken as [PageIndicator.spoken]. A button that
+ * opens the jump dialog once the pages are known ([onClick]); plain text before.
+ */
 @Composable
-private fun PdfIndicator(indicator: PageIndicator) {
+private fun PdfIndicator(indicator: PageIndicator, onClick: (() -> Unit)?) {
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
             .heightIn(min = 48.dp)
-            .clearAndSetSemantics { contentDescription = indicator.spoken }
+            .widthIn(min = 72.dp)
+            .then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier)
+            .semantics(mergeDescendants = true) { contentDescription = indicator.spoken }
             .padding(DarkChamberTheme.spacing.spaceXs),
     ) {
-        Text(text = indicator.text, style = DarkChamberTheme.typography.label, color = DarkChamberTheme.colors.textPrimary)
+        Text(
+            text = indicator.text,
+            style = DarkChamberTheme.typography.label,
+            color = DarkChamberTheme.colors.textPrimary,
+            // Two lines at a large font ("Page N" over "of M"), each centred under the other.
+            textAlign = TextAlign.Center,
+            // Spoken once, as the box's description, not again as its text.
+            modifier = Modifier.clearAndSetSemantics {},
+        )
     }
 }
 

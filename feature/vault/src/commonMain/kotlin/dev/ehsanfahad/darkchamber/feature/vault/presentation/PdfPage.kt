@@ -73,6 +73,8 @@ internal fun PdfPageView(
     /** Room above the first page and below the last, so neither ends under a bar. */
     topPaddingPx: Int = 0,
     bottomPaddingPx: Int = 0,
+    /** A jump to a page from the dialog: the page lands at the top, at fit. */
+    jump: PdfJumpRequest? = null,
 ) {
     var zoom by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
@@ -89,6 +91,14 @@ internal fun PdfPageView(
         }
     }
     LaunchedEffect(zoom) { onZoomedIn(!ViewerZoom.pagerMaySwipe(zoom)) }
+    LaunchedEffect(jump) {
+        if (jump == null) return@LaunchedEffect
+        // Back to fit first: a page landing under a zoom would show some corner of it.
+        zoom = 1f
+        offset = Offset.Zero
+        drawZoom = 1f
+        list.scrollToItem(jump.index)
+    }
     LaunchedEffect(list) {
         snapshotFlow { list.firstVisibleItemIndex to list.firstVisibleItemScrollOffset }
             .collect { (index, offsetPx) -> if (shown) onScrolled(index, offsetPx) }
