@@ -54,7 +54,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
@@ -491,7 +490,7 @@ private fun PageMessage(page: ViewerPage, badge: String, onTap: () -> Unit) {
 @Composable
 private fun barsTransition(): Int = if (prefersReducedMotion()) 0 else DarkChamberTheme.motion.motionBase
 
-/** Back, the item's name, and where it stands in the listing — over a scrim fading down into the picture. */
+/** Back, the item's name, and where it stands in the listing — on the bars' flat scrim. */
 @Composable
 private fun ViewerTopBar(visible: Boolean, title: String, position: String, onBack: () -> Unit, modifier: Modifier) {
     val duration = barsTransition()
@@ -507,7 +506,7 @@ private fun ViewerTopBar(visible: Boolean, title: String, position: String, onBa
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Brush.verticalGradient(listOf(ScrimDark, Color.Transparent)))
+                .background(ViewerBars.scrim)
                 .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
                 .padding(horizontal = spacing.spaceXs, vertical = spacing.spaceXs),
         ) {
@@ -533,7 +532,7 @@ private fun ViewerTopBar(visible: Boolean, title: String, position: String, onBa
 }
 
 /**
- * Details and Delete, labelled, Delete in the danger role — over a scrim rising from the bottom edge.
+ * Details and Delete, labelled, Delete in the danger role — on the bars' flat scrim.
  * A player page puts its [controls] above them.
  */
 @Composable
@@ -560,7 +559,7 @@ private fun ViewerBottomBar(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Brush.verticalGradient(listOf(Color.Transparent, ScrimDark)))
+                .background(ViewerBars.scrim)
                 .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
                 .padding(vertical = DarkChamberTheme.spacing.spaceXs),
         ) {
@@ -748,8 +747,8 @@ private fun NoticeBanner(text: String, warning: Boolean, onDismiss: () -> Unit, 
 }
 
 /**
- * The bars' scrim, and the player's controls over a picture: black, like the camera's bands — a media
- * surface, so a raw colour.
+ * The player's controls over a picture (the bubbles and the centre control): black, like the camera's
+ * bands — a media surface, so a raw colour. The bars use [ViewerBars.scrim], darker.
  */
 internal val ScrimDark = Color.Black.copy(alpha = 0.6f)
 
