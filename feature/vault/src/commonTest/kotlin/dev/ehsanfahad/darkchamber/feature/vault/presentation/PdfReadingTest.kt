@@ -155,4 +155,81 @@ class PdfReadingTest {
         assertEquals(PageJump.Go(2), PdfReading.parseJump("٣", 12), "Arabic-Indic")
         assertEquals(PageJump.OutOfRange, PdfReading.parseJump("১৩", 12), "and still never clamped")
     }
+
+    // ---- what the screen shows of a zoomed column ----------------------------------------------------
+
+    @Test
+    fun at_fit_the_screen_shows_the_whole_viewport() {
+        assertEquals(ColumnBand(0, 2000), PdfReading.seenBand(heightPx = 2000, zoom = 1f, offsetY = 0f))
+    }
+
+    /** Twice the size about the centre: the middle half of the viewport fills the screen. */
+    @Test
+    fun zoomed_the_screen_shows_the_middle_of_the_viewport() {
+        assertEquals(ColumnBand(500, 1500), PdfReading.seenBand(2000, zoom = 2f, offsetY = 0f))
+    }
+
+    /** Moved down by the whole overhang, the top of the viewport is at the top of the screen. */
+    @Test
+    fun moving_the_zoomed_column_moves_the_band_the_other_way() {
+        assertEquals(ColumnBand(0, 1000), PdfReading.seenBand(2000, zoom = 2f, offsetY = 1000f))
+        assertEquals(ColumnBand(900, 1400), PdfReading.seenBand(2000, zoom = 4f, offsetY = -600f), "moved up, deeper")
+    }
+
+    /** A band that ends between pixels takes the pixel in: a sliver of a page on screen is on screen. */
+    @Test
+    fun a_band_is_rounded_outwards() {
+        // 1000 ∓ 1000/3 = 666.7 and 1333.3
+        assertEquals(ColumnBand(666, 1334), PdfReading.seenBand(2000, zoom = 3f, offsetY = 0f))
+    }
+
+    private val threePages = listOf(
+        LaidOutPage(0, top = 0, height = 1000),
+        LaidOutPage(1, top = 1010, height = 1000),
+        LaidOutPage(2, top = 2020, height = 1000),
+    )
+
+    @Test
+    fun the_pages_seen_are_those_the_band_crosses() {
+        assertEquals(0..1, PdfReading.pagesSeen(threePages, top = 500, bottom = 1500))
+        assertEquals(0..2, PdfReading.pagesSeen(threePages, top = 0, bottom = 3020))
+        assertEquals(2..2, PdfReading.pagesSeen(threePages, top = 2100, bottom = 2500))
+    }
+
+    /** A page that ends exactly where the band starts shows nothing of itself. */
+    @Test
+    fun a_page_touching_the_band_is_not_seen() {
+        assertEquals(2..2, PdfReading.pagesSeen(threePages, top = 2010, bottom = 2500))
+        assertEquals(0..0, PdfReading.pagesSeen(threePages, top = 0, bottom = 1010), "and at the bottom")
+    }
+
+    @Test
+    fun a_band_in_the_gap_between_pages_sees_none() {
+        assertEquals(IntRange.EMPTY, PdfReading.pagesSeen(threePages, top = 1001, bottom = 1009))
+        assertEquals(IntRange.EMPTY, PdfReading.pagesSeen(emptyList(), top = 0, bottom = 2000), "nothing laid out")
+    }
+
+    @Test
+    fun the_pages_seen_do_not_depend_on_the_order_listed() {
+        assertEquals(1..2, PdfReading.pagesSeen(threePages.reversed(), top = 1500, bottom = 2500))
+    }
+
+    // ---- a drag on a zoomed column ------------------------------------------------------------------
+
+    @Test
+    fun within_the_overhang_a_drag_only_moves_the_zoomed_column() {
+        assertEquals(PanSplit(offsetY = 300f, scrollBy = 0f), PdfReading.panThenScroll(0f, dy = 300f, limitY = 500f, zoom = 2f))
+        assertEquals(PanSplit(350f, 0f), PdfReading.panThenScroll(450f, dy = -100f, limitY = 500f, zoom = 2f))
+    }
+
+    /**
+     * Past the overhang the rest scrolls the column, in its own pixels: a finger moving down 200 screen
+     * pixels at 2x is 100 of the column's, back towards the start.
+     */
+    @Test
+    fun past_the_overhang_the_rest_of_a_drag_scrolls_the_column() {
+        assertEquals(PanSplit(500f, scrollBy = -100f), PdfReading.panThenScroll(400f, dy = 300f, limitY = 500f, zoom = 2f))
+        assertEquals(PanSplit(-500f, scrollBy = 150f), PdfReading.panThenScroll(-500f, dy = -300f, limitY = 500f, zoom = 2f), "on, up the column")
+        assertEquals(PanSplit(-500f, scrollBy = 75f), PdfReading.panThenScroll(-500f, dy = -300f, limitY = 500f, zoom = 4f), "slower, deeper in")
+    }
 }

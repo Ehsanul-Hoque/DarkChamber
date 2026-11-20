@@ -62,7 +62,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
@@ -100,6 +102,7 @@ fun VaultViewerContent(component: VaultViewerComponent, modifier: Modifier = Mod
     val state by component.state.subscribeAsState()
     val pictures by component.pictures.subscribeAsState()
     val players by component.players.subscribeAsState()
+    val pdfPages by component.pdfPages.subscribeAsState()
     // Ages in Details are coarse (minutes at finest); "now" once per composition is enough.
     val now = remember { Clock.System.now().toEpochMilliseconds() }
     val actions = remember(component) {
@@ -122,8 +125,11 @@ fun VaultViewerContent(component: VaultViewerComponent, modifier: Modifier = Mod
         state = state,
         pictures = pictures,
         players = players,
+        pdfPages = pdfPages,
         playerActions = actions,
         now = now,
+        onPdfViewport = component::pdfViewport,
+        onPdfScrolled = component::pdfScrolled,
         onViewport = component::viewportMeasured,
         onShowPage = component::showPage,
         onBack = component::back,
@@ -144,8 +150,11 @@ internal fun ViewerScreen(
     state: ViewerState,
     pictures: Map<String, ImageBitmap>,
     players: Map<String, VaultPlayer>,
+    pdfPages: Map<Int, ImageBitmap?>,
     playerActions: PlayerActions,
     now: Long,
+    onPdfViewport: (visible: IntRange, shownWidthPx: Int, zoom: Float, screenWidthPx: Int) -> Unit,
+    onPdfScrolled: (page: Int, offsetPx: Int) -> Unit,
     onViewport: (widthPx: Int, heightPx: Int) -> Unit,
     onShowPage: (Int) -> Unit,
     onBack: () -> Unit,
@@ -160,6 +169,11 @@ internal fun ViewerScreen(
     // Whether the page shown is zoomed in. While it is, a drag pans the picture rather than turning
     // the page.
     var zoomedIn by remember { mutableStateOf(false) }
+    // The bars' heights as last measured on screen, so a PDF's first page can start below the top bar
+    // and its last end above the bottom one. The bottom bar is measured only where it is one row of
+    // actions, as on a PDF page — a player page's is taller.
+    var topBarPx by remember { mutableIntStateOf(0) }
+    var bottomBarPx by remember { mutableIntStateOf(0) }
 
     // Pure black whatever the theme: a media surface (docs/DESIGN.md §2), where a raw colour is the token.
     BoxWithConstraints(modifier = modifier.fillMaxSize().background(Color.Black)) {
@@ -171,6 +185,9 @@ internal fun ViewerScreen(
         if (!state.loading && shown != null) {
             val shownKey = shown.id.toListKey()
             val media = state.pages[shownKey] as? ViewerPage.Media
+            val pdf = state.pages[shownKey] as? ViewerPage.Pdf
+            // The page of the PDF shown that the indicator names: where it opens, then what is most on screen.
+            var pdfReading by remember(shownKey, pdf?.start) { mutableIntStateOf(pdf?.start?.page ?: 0) }
             val shownPlayer = players[shownKey]
             val playerState: PlayerState? = key(shownPlayer) { shownPlayer?.state?.collectAsState()?.value }
             // An audio page's controls stay on screen; a video page's hide after a while of playing,
@@ -215,6 +232,14 @@ internal fun ViewerScreen(
                     playerActions = playerActions,
                     onInteraction = { interactions++ },
                     controlsShown = barsVisible,
+                    pdf = PdfHooks(
+                        drawn = if (isShown) pdfPages else emptyMap(),
+                        onViewport = onPdfViewport,
+                        onScrolled = onPdfScrolled,
+                        onReading = { if (isShown) pdfReading = it },
+                        topPaddingPx = topBarPx,
+                        bottomPaddingPx = bottomBarPx,
+                    ),
                 )
             }
 
@@ -235,13 +260,18 @@ internal fun ViewerScreen(
                 title = ViewerFormat.title(shown.meta),
                 position = ViewerFormat.position(state.index, state.items.size),
                 onBack = onBack,
-                modifier = Modifier.align(Alignment.TopCenter),
+                modifier = Modifier.align(Alignment.TopCenter).onSizeChanged { if (it.height > 0) topBarPx = it.height },
             )
             ViewerBottomBar(
                 visible = barsVisible,
                 onDetails = { detailsOpen = true },
                 onDelete = onRequestDelete,
-                modifier = Modifier.align(Alignment.BottomCenter),
+                modifier = Modifier.align(Alignment.BottomCenter).onSizeChanged {
+                    if (it.height > 0 && media == null) bottomBarPx = it.height
+                },
+                leading = ViewerFormat.pdfIndicator(state.pages[shownKey] ?: ViewerPage.Loading, shown.meta, pdfReading)?.let { indicator ->
+                    { PdfIndicator(indicator) }
+                },
                 controls = if (media != null && playerState != null) {
                     { trailing ->
                         PlayerControls(
@@ -293,8 +323,22 @@ private fun ViewerPageView(
     playerActions: PlayerActions,
     onInteraction: () -> Unit,
     controlsShown: Boolean,
+    pdf: PdfHooks,
 ) {
     when {
+        page is ViewerPage.Pdf ->
+            PdfPageView(
+                page = page,
+                drawn = pdf.drawn,
+                isShown = isShown,
+                onTap = onTap,
+                onZoomedIn = onZoomedIn,
+                onViewport = pdf.onViewport,
+                onScrolled = pdf.onScrolled,
+                onReading = pdf.onReading,
+                topPaddingPx = pdf.topPaddingPx,
+                bottomPaddingPx = pdf.bottomPaddingPx,
+            )
         page is ViewerPage.Media ->
             PlayerPageView(
                 kind = page.kind,
@@ -502,6 +546,8 @@ private fun ViewerBottomBar(
     controls: (@Composable (trailing: (@Composable () -> Unit)?) -> Unit)? = null,
     /** A short screen: Details and Delete end the controls' row rather than taking a row of their own. */
     compact: Boolean = false,
+    /** What starts the row of Details and Delete: a PDF's page indicator. */
+    leading: (@Composable () -> Unit)? = null,
 ) {
     val duration = barsTransition()
     AnimatedVisibility(
@@ -518,21 +564,65 @@ private fun ViewerBottomBar(
                 .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
                 .padding(vertical = DarkChamberTheme.spacing.spaceXs),
         ) {
-            val barActions: @Composable () -> Unit = {
+            val details: @Composable () -> Unit = {
                 BarAction(label = ViewerFormat.detailsAction(), color = colors.textPrimary, onClick = onDetails) { tint ->
                     DetailsMark(contentDescription = null, tint = tint)
                 }
+            }
+            val delete: @Composable () -> Unit = {
                 BarAction(label = ViewerFormat.deleteAction(1), color = colors.danger, onClick = onDelete) { tint ->
                     DeleteMark(contentDescription = null, tint = tint)
                 }
+            }
+            val barActions: @Composable () -> Unit = {
+                details()
+                delete()
             }
             if (controls != null && compact) {
                 controls(barActions)
             } else {
                 controls?.invoke(null)
-                Row(horizontalArrangement = Arrangement.SpaceEvenly, modifier = Modifier.fillMaxWidth()) { barActions() }
+                Row(
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    if (leading == null) {
+                        barActions()
+                    } else {
+                        // Three equal slots: whatever the indicator says ("Page – of –", "Page 9",
+                        // "Page 100"), Details and Delete stay where they are.
+                        for (slot in listOf(leading, details, delete)) {
+                            Box(contentAlignment = Alignment.Center, modifier = Modifier.weight(1f)) { slot() }
+                        }
+                    }
+                }
             }
         }
+    }
+}
+
+/** What a PDF page needs from the screen: its drawn pages, and where to say what it shows. */
+private class PdfHooks(
+    val drawn: Map<Int, ImageBitmap?>,
+    val onViewport: (visible: IntRange, shownWidthPx: Int, zoom: Float, screenWidthPx: Int) -> Unit,
+    val onScrolled: (page: Int, offsetPx: Int) -> Unit,
+    val onReading: (Int) -> Unit,
+    val topPaddingPx: Int,
+    val bottomPaddingPx: Int,
+)
+
+/** "Page N of M", as tall as the actions beside it, spoken as [PageIndicator.spoken]. */
+@Composable
+private fun PdfIndicator(indicator: PageIndicator) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .heightIn(min = 48.dp)
+            .clearAndSetSemantics { contentDescription = indicator.spoken }
+            .padding(DarkChamberTheme.spacing.spaceXs),
+    ) {
+        Text(text = indicator.text, style = DarkChamberTheme.typography.label, color = DarkChamberTheme.colors.textPrimary)
     }
 }
 

@@ -209,6 +209,25 @@ internal object ViewerFormat {
             else -> WARNING_BADGE
         }
 
+    /** A PDF's page, counted from 1: the indicator's words and each page's spoken name. */
+    fun pdfPage(index: Int, count: Int): String = "Page ${index + 1} of $count"
+
+    /**
+     * The page indicator in the bottom bar, or `null` for no indicator. It is there from the moment a
+     * PDF is the item shown — so Details and Delete do not move aside when it opens — with dashes and
+     * no action until the pages are known; [reading] is the page most on screen once they are. A PDF
+     * that will not open has no indicator: its page says why, and dashes would promise pages.
+     */
+    fun pdfIndicator(page: ViewerPage, meta: GalleryItemMeta, reading: Int): PageIndicator? =
+        when {
+            page is ViewerPage.Pdf -> pdfPage(reading, page.pageCount).let { PageIndicator(it, it, ready = true) }
+            page == ViewerPage.Loading && isPdf(meta) -> PageIndicator("Page – of –", "Pages loading", ready = false)
+            else -> null
+        }
+
+    /** In place of one page of a PDF that would not draw; the others still show. Names no cause. */
+    fun pdfPageNotShown(): String = "This page couldn't be shown."
+
     fun cancel(): String = "Cancel"
 
     /** The confirm button once pressed: the only thing saying why the buttons stopped responding. */
@@ -239,3 +258,6 @@ internal object ViewerFormat {
     /** Only a failed integrity check takes the warning style (DESIGN: danger is for integrity failures). */
     fun pageIsWarning(page: ViewerPage): Boolean = page == ViewerPage.Unverified || page == ViewerPage.StoppedUnverified
 }
+
+/** The PDF page indicator: what it shows, what a screen reader says, and whether it is ready to jump. */
+internal data class PageIndicator(val text: String, val spoken: String, val ready: Boolean)

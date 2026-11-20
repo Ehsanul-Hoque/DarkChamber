@@ -7,6 +7,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerNotice
 import dev.ehsanfahad.darkchamber.feature.vault.api.TrackNote
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerPage
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
+import dev.ehsanfahad.darkchamber.feature.vault.api.PdfPageSize
 import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerKind
 import dev.ehsanfahad.darkchamber.feature.vault.api.ScreenOrientation
 import dev.ehsanfahad.darkchamber.feature.vault.api.label
@@ -403,5 +404,64 @@ class ViewerFormatTest {
         assertEquals("0%", ViewerFormat.levelFeedback(0f))
         assertEquals("100%", ViewerFormat.levelFeedback(1f))
         assertEquals("33%", ViewerFormat.levelFeedback(0.334f), "rounded")
+    }
+
+    // ---- a PDF's pages ------------------------------------------------------------------------------
+
+    /** Pages are counted from 1 on screen, from 0 in code. */
+    @Test
+    fun a_pdf_page_is_named_from_one_with_the_count() {
+        assertEquals("Page 1 of 12", ViewerFormat.pdfPage(index = 0, count = 12))
+        assertEquals("Page 12 of 12", ViewerFormat.pdfPage(index = 11, count = 12))
+    }
+
+    /**
+     * One page not drawing says only that: the renderer gives no reason, and the file verified, so no
+     * damage, no password and nothing about the rest of the file.
+     */
+    @Test
+    fun a_page_that_would_not_draw_names_no_cause() {
+        val text = ViewerFormat.pdfPageNotShown()
+        assertTrue(text.contains("page", ignoreCase = true), "\"$text\" says it is this page")
+        assertSaysNone(text, "damage", "corrupt", "broken", "password", "file", "PDF", "try", "later")
+    }
+
+    // ---- the page indicator -------------------------------------------------------------------------
+
+    private val pdfMeta = GalleryItemMeta.Readable("report.pdf", "application/pdf")
+    private val openPdf = ViewerPage.Pdf(pageCount = 12, pageSizes = List(12) { PdfPageSize(595, 842) })
+
+    @Test
+    fun an_open_pdf_names_the_page_being_read() {
+        val indicator = assertNotNull(ViewerFormat.pdfIndicator(openPdf, pdfMeta, reading = 2))
+        assertEquals("Page 3 of 12", indicator.text)
+        assertEquals("Page 3 of 12", indicator.spoken)
+        assertTrue(indicator.ready)
+    }
+
+    /**
+     * Still opening: the indicator is already there, so nothing beside it moves when the pages come —
+     * but it knows no numbers, says so in words a screen reader can speak, and does not jump.
+     */
+    @Test
+    fun a_pdf_still_opening_holds_the_place_without_numbers() {
+        val indicator = assertNotNull(ViewerFormat.pdfIndicator(ViewerPage.Loading, pdfMeta, reading = 0))
+        assertFalse(indicator.text.any { it.isDigit() }, "\"${indicator.text}\" names no page")
+        assertTrue(indicator.text.startsWith("Page"), "\"${indicator.text}\" has the same shape as the open one")
+        assertFalse(indicator.spoken.any { it.isDigit() } || indicator.spoken.contains('–') || indicator.spoken.contains('-'))
+        assertTrue(indicator.spoken.isNotBlank())
+        assertFalse(indicator.ready)
+    }
+
+    @Test
+    fun only_a_pdf_has_an_indicator() {
+        assertNull(ViewerFormat.pdfIndicator(ViewerPage.Loading, GalleryItemMeta.Readable("a.jpg", "image/jpeg"), 0), "an image loading")
+        assertNull(ViewerFormat.pdfIndicator(ViewerPage.Picture, GalleryItemMeta.Readable("a.jpg", "image/jpeg"), 0), "an image")
+    }
+
+    /** A PDF that will not open says why on its page; dashes in the bar would promise pages to come. */
+    @Test
+    fun a_pdf_that_will_not_open_has_no_indicator() {
+        for (page in everyMessagePage) assertNull(ViewerFormat.pdfIndicator(page, pdfMeta, 0), "$page")
     }
 }

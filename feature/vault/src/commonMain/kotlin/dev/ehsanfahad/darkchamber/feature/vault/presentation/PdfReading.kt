@@ -1,9 +1,20 @@
 package dev.ehsanfahad.darkchamber.feature.vault.presentation
 
+import kotlin.math.ceil
+import kotlin.math.floor
 import kotlin.math.roundToInt
 
 /** A page of a PDF as laid out on screen: its index, its top edge and its height, in pixels. */
 internal data class LaidOutPage(val index: Int, val top: Int, val height: Int)
+
+/** A band of the column, top to bottom, in the column's own (unzoomed) pixels. */
+internal data class ColumnBand(val top: Int, val bottom: Int)
+
+/**
+ * A drag while zoomed, split: what moves the zoomed column on screen ([offsetY], its new vertical
+ * offset), and what is left to scroll it ([scrollBy], in the column's own pixels).
+ */
+internal data class PanSplit(val offsetY: Float, val scrollBy: Float)
 
 /** What the jump-to-page field holds, read. */
 internal sealed interface PageJump {
@@ -80,5 +91,36 @@ internal object PdfReading {
     fun pageHeight(widthPx: Int, pageWidthPt: Int, pageHeightPt: Int): Int {
         if (pageWidthPt <= 0) return 0
         return (widthPx.toLong() * pageHeightPt / pageWidthPt.toDouble()).roundToInt()
+    }
+
+    /**
+     * The band of the column the screen shows, [heightPx] tall, zoomed by [zoom] about its centre and
+     * moved by [offsetY] (the [ViewerZoom] model). At fit it is the whole viewport; zoomed, the part
+     * under the screen — so the indicator names the page being read, and the pages drawn are those seen.
+     */
+    fun seenBand(heightPx: Int, zoom: Float, offsetY: Float): ColumnBand {
+        // A screen point s shows the column's point (s - centre - offset) / zoom + centre.
+        val centre = heightPx / 2f
+        val top = centre - (centre + offsetY) / zoom
+        val bottom = centre + (centre - offsetY) / zoom
+        return ColumnBand(floor(top).toInt(), ceil(bottom).toInt())
+    }
+
+    /** The pages showing any of the band from [top] to [bottom], lowest to highest; empty if none. */
+    fun pagesSeen(pages: List<LaidOutPage>, top: Int, bottom: Int): IntRange {
+        val seen = pages.filter { it.top < bottom && it.top + it.height > top }.map { it.index }
+        return if (seen.isEmpty()) IntRange.EMPTY else seen.min()..seen.max()
+    }
+
+    /**
+     * A vertical drag of [dy] screen pixels on the column zoomed by [zoom]: it first moves the zoomed
+     * column as far as [limitY] allows (so the page under the finger follows it to the screen's edge),
+     * and whatever is left scrolls the column on — through the pages, at the zoomed speed.
+     */
+    fun panThenScroll(offsetY: Float, dy: Float, limitY: Float, zoom: Float): PanSplit {
+        val moved = (offsetY + dy).coerceIn(-limitY, limitY)
+        // What the move could not take, the other way round: a finger moving down past the overhang
+        // shows what is above, so the column scrolls back. (Written so no drag gives -0.)
+        return PanSplit(moved, (moved - offsetY - dy) / zoom)
     }
 }
