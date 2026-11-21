@@ -16,6 +16,7 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.interpretCPointer
 import kotlinx.cinterop.reinterpret
+import kotlinx.cinterop.toLong
 import kotlinx.cinterop.useContents
 import kotlinx.cinterop.usePinned
 import kotlinx.io.Buffer
@@ -54,6 +55,7 @@ import platform.Foundation.CFBridgingRetain
 import platform.Foundation.NSMakeRange
 import platform.Foundation.NSMutableData
 import platform.Foundation.appendBytes
+import platform.Foundation.create
 import platform.Foundation.resetBytesInRange
 
 /**
@@ -62,25 +64,33 @@ import platform.Foundation.resetBytesInRange
  * included, or to a cache, and pages are drawn as pictures: nothing interactive (no links, no text)
  * exists here.
  *
- * **Our copy is wiped.** When the buffer is released — refused, closed, or with its document — its
- * bytes are zeroed and its length set to nothing. CoreGraphics' own parse of the file is its own and is
+ * **Our copy is wiped.** The buffer is made at the file's size, so it holds the file in one place from
+ * first byte to last; when it is released — refused, closed, or with its document — those bytes are
+ * zeroed and its length set to nothing. CoreGraphics' own parse of the file is its own and is
  * freed, not wiped, when the document is released.
  */
 @OptIn(ExperimentalForeignApi::class)
 internal class IosPdfRenderer : VaultPdfRenderer {
     override val supported: Boolean = true
 
-    override fun newBuffer(sizeHint: Long): VaultPdfBuffer = IosPdfBuffer()
+    override fun newBuffer(sizeHint: Long): VaultPdfBuffer = IosPdfBuffer(sizeHint)
 }
 
 @OptIn(ExperimentalForeignApi::class)
-internal class IosPdfBuffer : VaultPdfBuffer {
-    // Grows as the file is appended; the size hint is not needed to size it.
-    private var data: NSMutableData? = NSMutableData()
+internal class IosPdfBuffer(sizeHint: Long) : VaultPdfBuffer {
+    // Made at the file's size, so filling it never moves it: a buffer that grew as it filled would leave
+    // each earlier home in freed memory, holding plaintext, and only the last one is wiped on close.
+    // The hint is the item's plaintext size column, written at import from the bytes encrypted; only a
+    // catalog altered behind the vault's back could make the file larger than it, and then the buffer
+    // would grow, and move, as it used to.
+    private var data: NSMutableData? = NSMutableData.create(capacity = sizeHint.coerceAtLeast(0).toULong())
     private val chunk = ByteArray(CHUNK_BYTES)
 
     /** Bytes of the file this buffer holds now. */
     internal val held: Long get() = data?.length?.toLong() ?: 0L
+
+    /** Where the bytes are now — a test sees from it whether filling ever moved them. */
+    internal val address: Long? get() = data?.bytes?.toLong()
 
     override val sink: RawSink = object : RawSink {
         override fun write(source: Buffer, byteCount: Long) {

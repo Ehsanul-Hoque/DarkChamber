@@ -120,6 +120,27 @@ class IosPdfRendererTest {
         document.close()
     }
 
+    /**
+     * Only the buffer's last home is wiped on close, so it must never have had another: a buffer made
+     * at the item's size takes the whole file — 4 MiB here, in the vault's pieces — without moving. A
+     * buffer that grew as it filled would have left earlier, unwiped copies in freed memory.
+     */
+    @Test
+    fun a_buffer_filled_to_its_size_never_moves() {
+        val size = 4 * 1024 * 1024
+        val buffer = renderer.newBuffer(size.toLong()) as IosPdfBuffer
+        val homes = mutableSetOf<Long?>()
+        val piece = ByteArray(64 * 1024) { 7 }
+        repeat(size / piece.size) {
+            buffer.sink.write(Buffer().apply { write(piece) }, piece.size.toLong())
+            homes += buffer.address
+        }
+
+        assertEquals(size.toLong(), buffer.held)
+        assertEquals(1, homes.size, "the bytes moved ${homes.size - 1} times while filling")
+        buffer.close()
+    }
+
     @Test
     fun a_closed_document_draws_nothing_and_closes_twice() {
         val document = assertIs<PdfOpened.Document>(filled(PdfFixtures.plain).open()).document
