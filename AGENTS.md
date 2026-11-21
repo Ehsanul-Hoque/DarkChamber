@@ -102,7 +102,8 @@ Package root: `dev.ehsanfahad.darkchamber`.
 > **Planned, not yet wired:** ktlint/detekt/Kover and
 > `migrationTest` — verify a Gradle task exists before assuming it runs. **Wired:** a tracked `commit-msg`
 > hook (`./gradlew installGitHooks`) runs CI's own commit check, scopes listed in
-> `config/commit-scopes.txt`. CI:
+> `config/commit-scopes.txt`, and a tracked `pre-commit` hook refuses a doc comment cut off its
+> declaration (`scripts/check-doc-comments.sh`, also run by CI). CI:
 > `pr.yml` is enabled (build + commit-message check + a gated macOS job that runs the **iOS unit
 > tests** and compiles the device architecture); its `quality` job stays
 > commented out until those plugins land, and `nightly`/`release`/`test-build` stay committed

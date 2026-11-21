@@ -27,10 +27,19 @@ A rule of your own can run beside it: make an executable `hooks/commit-msg.local
 (`.git/hooks/commit-msg.local` in a plain clone). The shared hook runs it after the shared check, with the
 same message file. It lives inside `.git/`, so it is never committed and applies to your clone alone.
 
-The checker has its own fixtures, which CI runs before using it:
+**`pre-commit`** refuses a commit that leaves a doc comment cut off its declaration — one doc comment
+directly followed by another, which is what an insertion between a function and its comment leaves
+behind: the comment then describes the wrong function. It runs
+[`scripts/check-doc-comments.sh`](../../scripts/check-doc-comments.sh) on the Kotlin files the commit
+stages, as staged. The one stacked pair allowed is a file's leading comment — the first doc comment at the
+top level, before any declaration, which describes the file — followed by the first declaration's own.
+Put a stray comment back on the declaration it describes, or delete it if it is a stale copy.
+
+Each checker has its own fixtures, which CI runs before using it:
 
 ```bash
 bash scripts/test-check-commits.sh
+bash scripts/test-check-doc-comments.sh
 ```
 
 Hooks are convenience, not the gate — CI re-checks every commit on the PR, so a skipped hook
