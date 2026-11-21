@@ -242,6 +242,7 @@ internal fun ViewerScreen(
                         topPaddingPx = topBarPx,
                         bottomPaddingPx = bottomBarPx,
                         jump = if (isShown) jumpRequest else null,
+                        barsShown = barsVisible,
                     ),
                 )
             }
@@ -352,6 +353,7 @@ private fun ViewerPageView(
                 topPaddingPx = pdf.topPaddingPx,
                 bottomPaddingPx = pdf.bottomPaddingPx,
                 jump = pdf.jump,
+                barsShown = pdf.barsShown,
             )
         page is ViewerPage.Media ->
             PlayerPageView(
@@ -626,6 +628,8 @@ private class PdfHooks(
     val bottomPaddingPx: Int,
     /** A jump to a page asked for in the dialog, while this page is the one shown. */
     val jump: PdfJumpRequest?,
+    /** Whether the bars are on screen: the fast-scroll thumb shows with them. */
+    val barsShown: Boolean,
 )
 
 /**

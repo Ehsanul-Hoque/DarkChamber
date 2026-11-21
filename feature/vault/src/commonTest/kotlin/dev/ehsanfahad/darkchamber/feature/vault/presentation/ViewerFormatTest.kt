@@ -495,6 +495,15 @@ class ViewerFormatTest {
         for (page in everyMessagePage) assertNull(ViewerFormat.pdfIndicator(page, pdfMeta, 0), "$page")
     }
 
+    // ---- fast scroll ---------------------------------------------------------------------------------
+
+    /** The bubble is short — the bar already says "of M" — and counts from 1. */
+    @Test
+    fun the_fast_scroll_bubble_names_the_page_from_one() {
+        assertEquals("Page 1", ViewerFormat.fastScrollPage(0))
+        assertEquals("Page 400", ViewerFormat.fastScrollPage(399))
+    }
+
     // ---- jump to a page ------------------------------------------------------------------------------
 
     @Test

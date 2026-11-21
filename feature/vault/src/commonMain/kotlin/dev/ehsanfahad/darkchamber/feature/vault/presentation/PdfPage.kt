@@ -1,7 +1,10 @@
 package dev.ehsanfahad.darkchamber.feature.vault.presentation
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateCentroid
@@ -12,7 +15,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.BoxWithConstraintsScope
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -23,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -40,15 +47,22 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import dev.ehsanfahad.darkchamber.core.designsystem.DarkChamberTheme
+import dev.ehsanfahad.darkchamber.core.designsystem.prefersReducedMotion
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerPage
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlin.math.roundToInt
 
 /**
  * A PDF's pages, stacked and fitted to the width, scrolling up and down — left and right still turn
@@ -75,6 +89,8 @@ internal fun PdfPageView(
     bottomPaddingPx: Int = 0,
     /** A jump to a page from the dialog: the page lands at the top, at fit. */
     jump: PdfJumpRequest? = null,
+    /** Whether the viewer's bars are on screen: the fast-scroll thumb shows with them. */
+    barsShown: Boolean = false,
 ) {
     var zoom by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
@@ -103,6 +119,21 @@ internal fun PdfPageView(
         snapshotFlow { list.firstVisibleItemIndex to list.firstVisibleItemScrollOffset }
             .collect { (index, offsetPx) -> if (shown) onScrolled(index, offsetPx) }
     }
+    // The fast-scroll thumb: shown for a while after the column last moved, and while it is dragged.
+    var scrolledLately by remember { mutableStateOf(false) }
+    var dragging by remember { mutableStateOf(false) }
+    var dragFraction by remember { mutableFloatStateOf(0f) }
+    // The page most on screen, for the bubble beside the thumb.
+    var reading by remember { mutableIntStateOf(page.start.page) }
+    LaunchedEffect(list) {
+        snapshotFlow { list.firstVisibleItemIndex to list.firstVisibleItemScrollOffset }
+            .drop(1)
+            .collectLatest {
+                scrolledLately = true
+                delay(THUMB_LINGER_MS)
+                scrolledLately = false
+            }
+    }
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize().clipToBounds()) {
         val widthPx = constraints.maxWidth
@@ -111,9 +142,37 @@ internal fun PdfPageView(
         val box = Size(widthPx.toFloat(), heightPx.toFloat())
         val center = Offset(box.width / 2f, box.height / 2f)
         val density = LocalDensity.current
-        val heights = remember(page.pageSizes, widthPx) {
-            page.pageSizes.map { PdfReading.pageHeight(widthPx, it.widthPt, it.heightPt) }
+        // Each slot's height as laid out: through dp and back, once, so the thumb's arithmetic and the
+        // column agree to the pixel — over hundreds of pages a pixel each would put the thumb off.
+        val heights = remember(page.pageSizes, widthPx, density) {
+            page.pageSizes.map { with(density) { PdfReading.pageHeight(widthPx, it.widthPt, it.heightPt).toDp().roundToPx() } }
         }
+        val gapPx = with(density) { PAGE_GAP.roundToPx() }
+        val tops = remember(heights, gapPx) { PdfFastScroll.tops(heights, gapPx) }
+        val contentHeight = remember(heights, gapPx) { PdfFastScroll.contentHeight(heights, gapPx) }
+        val maxScroll = PdfFastScroll.maxScroll(contentHeight, topPaddingPx, bottomPaddingPx, heightPx)
+        val thumbHeightPx = with(density) { THUMB_HEIGHT.roundToPx() }
+        val stripPx = with(density) { THUMB_STRIP.roundToPx() }
+        val slopPx = with(density) { THUMB_SLOP.roundToPx() }
+        val trackTop = topPaddingPx
+        val trackBottom = heightPx - bottomPaddingPx
+        val fraction = if (dragging) {
+            dragFraction
+        } else {
+            PdfFastScroll.fraction(tops, list.firstVisibleItemIndex, list.firstVisibleItemScrollOffset, maxScroll)
+        }
+        val thumbTop = PdfFastScroll.thumbTop(fraction, trackTop, trackBottom, thumbHeightPx)
+        val thumbShown = PdfFastScroll.visible(
+            worthIt = PdfFastScroll.worthIt(contentHeight, heightPx),
+            zoomedIn = !ViewerZoom.pagerMaySwipe(zoom),
+            barsShown = barsShown,
+            scrolledLately = scrolledLately,
+            dragging = dragging,
+        )
+        // Read by the gesture handler, which outlives a composition.
+        val grab by rememberUpdatedState(Triple(thumbShown, thumbTop, fraction))
+        val track by rememberUpdatedState(Triple(trackTop, trackBottom, maxScroll))
+        val pageTops by rememberUpdatedState(tops)
 
         LaunchedEffect(list, widthPx, heightPx, isShown) {
             if (!isShown) return@LaunchedEffect
@@ -122,14 +181,19 @@ internal fun PdfPageView(
                 // The list counts from the end of its top padding; the band counts from the box's top.
                 val before = -list.layoutInfo.viewportStartOffset
                 val laidOut = list.layoutInfo.visibleItemsInfo.map { LaidOutPage(it.index, it.offset + before, it.size) }
-                Triple(
-                    PdfReading.pagesSeen(laidOut, band.top, band.bottom),
-                    PdfReading.mostOnScreen(laidOut, band.top, band.bottom),
-                    drawZoom,
+                Seen(
+                    pages = PdfReading.pagesSeen(laidOut, band.top, band.bottom),
+                    most = PdfReading.mostOnScreen(laidOut, band.top, band.bottom),
+                    zoom = drawZoom,
+                    dragging = dragging,
                 )
-            }.distinctUntilChanged().collect { (seen, most, atZoom) ->
-                onViewport(seen, widthPx, atZoom, widthPx)
-                most?.let(onReading)
+            }.distinctUntilChanged().collect { seen ->
+                // A fast-scroll drag sweeps past pages it would be a waste to draw: only where it ends.
+                if (!seen.dragging) onViewport(seen.pages, widthPx, seen.zoom, widthPx)
+                seen.most?.let {
+                    reading = it
+                    onReading(it)
+                }
             }
         }
 
@@ -141,6 +205,37 @@ internal fun PdfPageView(
             userScrollEnabled = ViewerZoom.pagerMaySwipe(zoom),
             modifier = Modifier
                 .fillMaxSize()
+                .pointerInput(box, stripPx, thumbHeightPx, slopPx) {
+                    // First, before anything else sees it: a press on the fast-scroll thumb is the
+                    // thumb's whole gesture. Any other press is left alone for the column and the pager.
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                        val (shownNow, topNow, fractionNow) = grab
+                        val grabbed = shownNow &&
+                            PdfFastScroll.grabs(down.position.x, down.position.y, widthPx, stripPx, topNow, thumbHeightPx, slopPx)
+                        if (!grabbed) return@awaitEachGesture
+                        down.consume()
+                        // Where on the thumb the finger is, so the thumb does not jump to put its top there.
+                        val hold = down.position.y - topNow
+                        dragFraction = fractionNow
+                        dragging = true
+                        try {
+                            while (true) {
+                                val event = awaitPointerEvent(PointerEventPass.Initial)
+                                val finger = event.changes.firstOrNull { it.id == down.id } ?: break
+                                if (!finger.pressed) break
+                                val (top, bottom, scrollable) = track
+                                val next = PdfFastScroll.fractionAt((finger.position.y - hold).roundToInt(), top, bottom, thumbHeightPx)
+                                dragFraction = next
+                                val place = PdfFastScroll.placeAt(next, pageTops, scrollable)
+                                list.requestScrollToItem(place.page, place.offsetPx)
+                                event.changes.forEach { it.consume() }
+                            }
+                        } finally {
+                            dragging = false
+                        }
+                    }
+                }
                 .pointerInput(box) {
                     detectTapGestures(
                         onTap = { onTap() },
@@ -202,8 +297,62 @@ internal fun PdfPageView(
                 )
             }
         }
+
+        FastScrollThumb(
+            shown = thumbShown,
+            topPx = thumbTop,
+            dragging = dragging,
+            bubble = ViewerFormat.fastScrollPage(reading),
+        )
     }
 }
+
+/**
+ * The fast-scroll thumb at [topPx] on the right edge, and while it is [dragging] the page it has
+ * reached beside it. Drawing only — the column's gesture handler takes the touches — and nothing a
+ * screen reader lands on: the column's own scroll and the jump button do the same work there.
+ */
+@Composable
+private fun BoxWithConstraintsScope.FastScrollThumb(shown: Boolean, topPx: Int, dragging: Boolean, bubble: String) {
+    val colors = DarkChamberTheme.colors
+    val density = LocalDensity.current
+    val duration = if (prefersReducedMotion()) 0 else DarkChamberTheme.motion.motionBase
+    val alpha by animateFloatAsState(if (shown) 1f else 0f, tween(duration), label = "thumb")
+    if (alpha == 0f) return
+    val marginPx = with(density) { THUMB_MARGIN.roundToPx() }
+    val thumbWidthPx = with(density) { THUMB_WIDTH.roundToPx() }
+    val thumbHeightPx = with(density) { THUMB_HEIGHT.roundToPx() }
+
+    Box(
+        modifier = Modifier
+            .align(Alignment.TopEnd)
+            .offset { IntOffset(-marginPx, topPx) }
+            .size(THUMB_WIDTH, THUMB_HEIGHT)
+            .graphicsLayer { this.alpha = alpha }
+            // Dark with a light edge: it shows over a white page and over the black between pages.
+            .background(ViewerBars.scrim, DarkChamberTheme.shapes.small)
+            .border(1.dp, colors.textSecondary, DarkChamberTheme.shapes.small)
+            .clearAndSetSemantics {},
+    )
+    if (dragging) {
+        var bubbleHeight by remember { mutableIntStateOf(0) }
+        Text(
+            text = bubble,
+            style = DarkChamberTheme.typography.label,
+            color = colors.textPrimary,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .offset { IntOffset(-(marginPx + thumbWidthPx + marginPx), topPx + thumbHeightPx / 2 - bubbleHeight / 2) }
+                .onSizeChanged { bubbleHeight = it.height }
+                .background(ViewerBars.scrim, DarkChamberTheme.shapes.medium)
+                .padding(horizontal = DarkChamberTheme.spacing.spaceMd, vertical = DarkChamberTheme.spacing.spaceXs)
+                .clearAndSetSemantics {},
+        )
+    }
+}
+
+/** What the column shows, as the viewer is told it. */
+private data class Seen(val pages: IntRange, val most: Int?, val zoom: Float, val dragging: Boolean)
 
 /** One page's place in the column: blank at the page's shape until drawn, then the page. */
 @Composable
@@ -240,3 +389,13 @@ private fun PdfPageSlot(heightDp: Dp, picture: ImageBitmap?, failed: Boolean, la
 
 /** The black between two pages. */
 private val PAGE_GAP = 8.dp
+
+/** The fast-scroll thumb: what is drawn, how far in from the edge, and what a finger can take. */
+private val THUMB_WIDTH = 8.dp
+private val THUMB_HEIGHT = 56.dp
+private val THUMB_MARGIN = 8.dp
+private val THUMB_STRIP = 48.dp
+private val THUMB_SLOP = 8.dp
+
+/** How long the thumb stays after the column last moved. */
+private const val THUMB_LINGER_MS = 1_500L

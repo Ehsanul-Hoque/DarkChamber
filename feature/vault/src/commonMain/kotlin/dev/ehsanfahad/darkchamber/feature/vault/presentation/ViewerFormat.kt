@@ -233,6 +233,9 @@ internal object ViewerFormat {
             else -> null
         }
 
+    /** Beside the fast-scroll thumb while it is dragged: the page the drag has reached, counted from 1. */
+    fun fastScrollPage(index: Int): String = "Page ${index + 1}"
+
     /** The jump-to-page dialog's title, and its confirm button. */
     fun jumpTitle(): String = "Go to page"
 
