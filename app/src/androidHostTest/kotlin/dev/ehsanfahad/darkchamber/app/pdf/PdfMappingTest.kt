@@ -5,6 +5,7 @@ import java.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -31,6 +32,23 @@ class PdfMappingTest {
     }
 
     /** `IOException` for one it cannot read; anything else is no better known. */
+    /**
+     * A file too big for the renderer to parse in the memory left is one this device will not read:
+     * declined like any other, not a crash — and its descriptor closed, which a crash would leave to
+     * the finaliser.
+     */
+    @Test
+    fun running_out_of_memory_while_opening_means_unreadable() {
+        assertEquals(PdfRefusal.Unreadable, PdfMapping.refusalFor(OutOfMemoryError()))
+    }
+
+    /** Any other `Error` is not a refusal of this file but something wrong with the process: let it go. */
+    @Test
+    fun any_other_error_is_not_a_refusal() {
+        assertNull(PdfMapping.refusalFor(StackOverflowError()))
+        assertNull(PdfMapping.refusalFor(AssertionError("x")))
+    }
+
     @Test
     fun anything_else_means_unreadable_whatever_it_says() {
         assertEquals(PdfRefusal.Unreadable, PdfMapping.refusalFor(IOException("file not in PDF format or corrupted")))

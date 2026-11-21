@@ -15,9 +15,17 @@ internal object PdfMapping {
 
     /**
      * Why `PdfRenderer` refused a verified file, by its exception's **type** as documented: a
-     * `SecurityException` is a document that needs a password; anything else is one it will not read.
+     * `SecurityException` is a document that needs a password; any other exception, or running out of
+     * memory while parsing, is one it will not read; any other `Error` is no refusal (`null`) — the
+     * process is in trouble, and it is rethrown once the descriptors are closed.
      * The words are never read — they differ from one Android version to the next.
      */
-    fun refusalFor(failure: Exception): PdfRefusal =
-        if (failure is SecurityException) PdfRefusal.NeedsPassword else PdfRefusal.Unreadable
+    fun refusalFor(failure: Throwable): PdfRefusal? =
+        when (failure) {
+            is SecurityException -> PdfRefusal.NeedsPassword
+            is Exception -> PdfRefusal.Unreadable
+            // Too big to parse in the memory left: this device will not read it.
+            is OutOfMemoryError -> PdfRefusal.Unreadable
+            else -> null
+        }
 }

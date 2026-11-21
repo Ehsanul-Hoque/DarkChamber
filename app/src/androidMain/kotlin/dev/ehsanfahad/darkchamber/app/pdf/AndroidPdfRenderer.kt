@@ -95,11 +95,12 @@ private class MemoryFileBuffer : VaultPdfBuffer {
             theirs = null
             close() // ours: the renderer's own descriptor keeps the memory
             PdfOpened.Document(AndroidPdfDocument(renderer))
-        } catch (e: Exception) {
-            // A refused file must not linger: the renderer took nothing, so close its copy too.
+        } catch (e: Throwable) {
+            // A refused file must not linger: the renderer took nothing, so close its copy too — and
+            // ours, whatever went wrong, before deciding whether this was a refusal at all.
             runCatching { theirs?.close() }
             close()
-            PdfOpened.Refused(PdfMapping.refusalFor(e))
+            PdfOpened.Refused(PdfMapping.refusalFor(e) ?: throw e)
         }
     }
 
