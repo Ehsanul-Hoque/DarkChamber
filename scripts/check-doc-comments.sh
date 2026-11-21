@@ -4,9 +4,9 @@
 #
 # A doc comment directly followed by another (blank lines between or not) means one of them has lost
 # the declaration it was written for — usually because something was inserted between a function and
-# its comment, which then describes the wrong function. The one legitimate case is a file's leading
-# comment: the first doc comment at the top level, before any declaration, describes the file rather
-# than what follows it, so the first declaration's own comment may come straight after it.
+# its comment, which then describes the wrong function. There is no exception: a comment about the
+# file as a whole sits above the `package` line, where the package and imports stand between it and the
+# first declaration's own comment.
 #
 # The tracked pre-commit hook (.githooks/pre-commit) runs this on the staged Kotlin files; CI runs it
 # over every tracked one, so a skipped hook changes nothing.
@@ -23,13 +23,7 @@ fi
 [ "$#" -gt 0 ] || exit 0
 
 awk '
-  FNR == 1 {
-    declared = 0      # a declaration (anything but package, import, @file: and comments) seen yet
-    docs = 0          # doc comments seen so far in this file
-    inDoc = 0; inBlock = 0
-    pending = 0       # a doc comment just ended, and nothing but blank lines has followed it
-    pendingLeading = 0
-  }
+  FNR == 1 { inDoc = 0; inBlock = 0; pending = 0 }
   {
     t = $0
     sub(/^[ \t]+/, "", t)
@@ -44,30 +38,25 @@ awk '
     }
     if (t == "") next
 
+    # A doc comment: report it when the one before it ended with nothing but blank lines since.
     if (substr(t, 1, 3) == "/**" && substr(t, 1, 4) != "/**/") {
-      if (pending && !pendingLeading) {
+      if (pending) {
         printf "%s:%d: a doc comment directly followed by another (line %d) — one of them has lost its declaration\n", FILENAME, startLine, FNR
         bad = 1
       }
-      docs++
       startLine = FNR
-      pendingLeading = (!declared && docs == 1)
       if (index(substr(t, 4), "*/")) pending = 1; else { inDoc = 1; pending = 0 }
       next
     }
 
+    # Anything else — code, a package or import line, a line or block comment — ends the run.
     pending = 0
-    if (substr(t, 1, 2) == "/*") {
-      if (!index(substr(t, 3), "*/")) inBlock = 1
-      next
-    }
-    if (t ~ /^(package|import)[ \t]/ || t ~ /^@file:/ || substr(t, 1, 2) == "//") next
-    declared = 1
+    if (substr(t, 1, 2) == "/*" && !index(substr(t, 3), "*/")) inBlock = 1
   }
   END { exit bad }
 ' "$@" || {
   echo "" >&2
   echo "Put each doc comment back on the declaration it describes, or delete it if it is a stale copy." >&2
-  echo "Only a file's leading comment (top level, before any declaration) may be followed by another." >&2
+  echo "A comment about the whole file goes above its package line." >&2
   exit 1
 }

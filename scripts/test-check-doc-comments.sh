@@ -2,8 +2,8 @@
 #
 # test-check-doc-comments.sh — fixtures for check-doc-comments.sh. Each case writes a small Kotlin
 # file, runs the checker on it, and compares the exit status with what the rule says it must be: a
-# doc comment followed directly by another means one of them has lost its declaration — unless the
-# first is the file's leading comment, which describes the file rather than what follows it.
+# doc comment followed directly by another means one of them has lost its declaration, with no
+# exception — a comment about the whole file sits above the package line.
 #
 # Usage: test-check-doc-comments.sh        (exits non-zero if any case disagrees)
 #
@@ -45,24 +45,29 @@ class A {
     fun c() = Unit
 }'
 
-expect pass "a file leading comment, then the first declaration own" '
+expect pass "a file comment above package, then the first declaration own" '
+/**
+ * What this file is for.
+ */
 package a
 
 import b.C
 
-/**
- * What this file is for.
- */
+/** The first function. */
+fun f() = Unit'
+
+expect pass "a file comment above package with no imports" '
+/** What this file is for. */
+package a
 
 /** The first function. */
 fun f() = Unit'
 
-expect pass "a leading comment after a licence block" '
+expect pass "a file comment after a licence block, above package" '
 /* Licence text,
  * over two lines. */
-package a
-
 /** What this file is for. */
+package a
 
 /** The first function. */
 fun f() = Unit'
@@ -129,16 +134,28 @@ fun f() = Unit
 /** For h. */
 fun h() = Unit'
 
-expect fail "a second leading comment is not leading" '
+expect fail "a file comment after the imports belongs above package" '
 package a
 
-/** What this file is for. */
-/** More about it. */
+import b.C
+
+/**
+ * What this file is for.
+ */
+
 /** The first function. */
 fun f() = Unit'
 
-expect fail "stacked after a leading comment and a declaration" '
+expect fail "two comments stacked above package" '
 /** What this file is for. */
+/** More about it. */
+package a
+
+fun f() = Unit'
+
+expect fail "stacked after a file comment and a declaration" '
+/** What this file is for. */
+package a
 
 fun f() = Unit
 

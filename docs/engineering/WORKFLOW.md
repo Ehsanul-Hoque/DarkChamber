@@ -31,9 +31,9 @@ same message file. It lives inside `.git/`, so it is never committed and applies
 directly followed by another, which is what an insertion between a function and its comment leaves
 behind: the comment then describes the wrong function. It runs
 [`scripts/check-doc-comments.sh`](../../scripts/check-doc-comments.sh) on the Kotlin files the commit
-stages, as staged. The one stacked pair allowed is a file's leading comment — the first doc comment at the
-top level, before any declaration, which describes the file — followed by the first declaration's own.
-Put a stray comment back on the declaration it describes, or delete it if it is a stale copy.
+stages, as staged. There is no exception: a comment about the whole file goes **above its `package`
+line**, where the package and imports stand between it and the first declaration's own comment. Put a
+stray comment back on the declaration it describes, or delete it if it is a stale copy.
 
 Each checker has its own fixtures, which CI runs before using it:
 
