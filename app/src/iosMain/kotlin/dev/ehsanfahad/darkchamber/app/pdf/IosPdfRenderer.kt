@@ -27,15 +27,15 @@ import org.jetbrains.skia.ColorAlphaType
 import org.jetbrains.skia.ColorType
 import org.jetbrains.skia.ImageInfo
 import platform.CoreFoundation.CFRelease
+import platform.CoreGraphics.CGAffineTransformMake
 import platform.CoreGraphics.CGBitmapContextCreate
 import platform.CoreGraphics.CGColorSpaceCreateDeviceRGB
 import platform.CoreGraphics.CGColorSpaceRelease
+import platform.CoreGraphics.CGContextConcatCTM
 import platform.CoreGraphics.CGContextDrawPDFPage
 import platform.CoreGraphics.CGContextFillRect
 import platform.CoreGraphics.CGContextRelease
-import platform.CoreGraphics.CGContextScaleCTM
 import platform.CoreGraphics.CGContextSetRGBFillColor
-import platform.CoreGraphics.CGContextTranslateCTM
 import platform.CoreGraphics.CGDataProviderCreateWithCFData
 import platform.CoreGraphics.CGDataProviderRelease
 import platform.CoreGraphics.CGImageAlphaInfo
@@ -45,9 +45,11 @@ import platform.CoreGraphics.CGPDFDocumentGetPage
 import platform.CoreGraphics.CGPDFDocumentIsUnlocked
 import platform.CoreGraphics.CGPDFDocumentRelease
 import platform.CoreGraphics.CGPDFPageGetBoxRect
+import platform.CoreGraphics.CGPDFPageGetRotationAngle
+import platform.CoreGraphics.CGPDFPageRef
 import platform.CoreGraphics.CGRectMake
 import platform.CoreGraphics.kCGBitmapByteOrder32Big
-import platform.CoreGraphics.kCGPDFMediaBox
+import platform.CoreGraphics.kCGPDFCropBox
 import platform.Foundation.CFBridgingRetain
 import platform.Foundation.NSMakeRange
 import platform.Foundation.NSMutableData
@@ -160,21 +162,34 @@ private class IosPdfDocument(
 ) : VaultPdfDocument {
     override val pageCount: Int = document?.let { CGPDFDocumentGetNumberOfPages(it).toInt() } ?: 0
 
+    /**
+     * A page as a reader sees it: its crop box (not the media box, which can carry bleed), turned by its
+     * `/Rotate` — as Android's renderer shows it. CoreGraphics' draw applies neither by itself.
+     */
+    private class Shape(val x: Double, val y: Double, val width: Double, val height: Double, val rotation: Int) {
+        val shown: Pair<Double, Double> get() = PdfPageGeometry.shownSize(width, height, rotation)
+    }
+
+    private fun shapeOf(page: CGPDFPageRef): Shape =
+        CGPDFPageGetBoxRect(page, kCGPDFCropBox).useContents {
+            Shape(origin.x, origin.y, size.width, size.height, PdfPageGeometry.rotation(CGPDFPageGetRotationAngle(page)))
+        }
+
     override fun pageSize(index: Int): PdfPageSize {
         val page = document?.let { CGPDFDocumentGetPage(it, (index + 1).toULong()) } ?: return PdfPageSize(0, 0)
-        return CGPDFPageGetBoxRect(page, kCGPDFMediaBox).useContents {
-            PdfPageSize(size.width.toInt(), size.height.toInt())
-        }
+        val (width, height) = shapeOf(page).shown
+        return PdfPageSize(width.toInt(), height.toInt())
     }
 
     override fun render(index: Int, widthPx: Int): ImageBitmap? {
         val open = document ?: return null
         if (widthPx <= 0) return null
         val page = CGPDFDocumentGetPage(open, (index + 1).toULong()) ?: return null
-        val box = CGPDFPageGetBoxRect(page, kCGPDFMediaBox)
-        val (x, y, pageWidth, pageHeight) = box.useContents { listOf(origin.x, origin.y, size.width, size.height) }
-        if (pageWidth <= 0.0 || pageHeight <= 0.0) return null
-        val heightPx = (widthPx.toLong() * pageHeight.toLong() / pageWidth.toLong()).toInt().coerceAtLeast(1)
+        val shape = shapeOf(page)
+        if (shape.width <= 0.0 || shape.height <= 0.0) return null
+        val (shownWidth, shownHeight) = shape.shown
+        // In floating point: a page narrower than a point is a tiny page, not a division by zero.
+        val heightPx = (widthPx * shownHeight / shownWidth).toInt().coerceAtLeast(1)
 
         val bitmap = Bitmap()
         if (!bitmap.allocPixels(ImageInfo(widthPx, heightPx, ColorType.RGBA_8888, ColorAlphaType.PREMUL))) {
@@ -204,8 +219,9 @@ private class IosPdfDocument(
             // A page with no background of its own is paper, not transparent black.
             CGContextSetRGBFillColor(context, 1.0, 1.0, 1.0, 1.0)
             CGContextFillRect(context, CGRectMake(0.0, 0.0, widthPx.toDouble(), heightPx.toDouble()))
-            CGContextScaleCTM(context, widthPx / pageWidth, heightPx / pageHeight)
-            CGContextTranslateCTM(context, -x, -y)
+            // The crop box, turned, laid exactly over the bitmap: what lies outside it falls off the edges.
+            val t = PdfPageGeometry.transform(shape.x, shape.y, shape.width, shape.height, shape.rotation, widthPx, heightPx)
+            CGContextConcatCTM(context, CGAffineTransformMake(t.a, t.b, t.c, t.d, t.tx, t.ty))
             CGContextDrawPDFPage(context, page)
         } finally {
             CGContextRelease(context)

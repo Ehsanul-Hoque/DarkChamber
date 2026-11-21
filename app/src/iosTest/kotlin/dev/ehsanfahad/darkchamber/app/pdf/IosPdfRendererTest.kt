@@ -89,6 +89,37 @@ class IosPdfRendererTest {
         document.close()
     }
 
+    /**
+     * A 600×800 page, red over blue, with `/Rotate 90`: shown 800×600, turned clockwise, so the page's
+     * top — red — runs down the right-hand side. Drawn unturned it would be portrait, red at the top.
+     */
+    @Test
+    fun a_page_turned_a_quarter_is_shown_turned() {
+        val document = assertIs<PdfOpened.Document>(filled(PdfFixtures.turned).open()).document
+
+        assertEquals(PdfPageSize(800, 600), document.pageSize(0))
+        val page = document.render(0, 400)!!
+        assertEquals(300, page.height) // 400 × 600 / 800
+        assertDominant("red", page, 380, 150)
+        assertDominant("blue", page, 20, 150)
+        document.close()
+    }
+
+    /**
+     * A 600×800 page painted red with a green 400×600 rectangle, cropped to that rectangle: shown 400×600
+     * and green to every edge. Drawn by its media box it would be the wrong shape with red bleed around.
+     */
+    @Test
+    fun a_cropped_page_is_shown_as_its_crop_box() {
+        val document = assertIs<PdfOpened.Document>(filled(PdfFixtures.turned).open()).document
+
+        assertEquals(PdfPageSize(400, 600), document.pageSize(1))
+        val page = document.render(1, 200)!!
+        assertEquals(300, page.height) // 200 × 600 / 400
+        for ((x, y) in listOf(3 to 3, 196 to 3, 3 to 296, 196 to 296, 100 to 150)) assertDominant("green", page, x, y)
+        document.close()
+    }
+
     @Test
     fun a_closed_document_draws_nothing_and_closes_twice() {
         val document = assertIs<PdfOpened.Document>(filled(PdfFixtures.plain).open()).document

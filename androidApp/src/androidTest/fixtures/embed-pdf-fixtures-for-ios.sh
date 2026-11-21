@@ -8,7 +8,7 @@ set -euo pipefail
 IN="$1"
 OUT="$2"
 # file : Kotlin property : constant
-FILES="plain:plain:PLAIN locked:locked:LOCKED truncated:truncated:TRUNCATED halves:halves:HALVES"
+FILES="plain:plain:PLAIN locked:locked:LOCKED truncated:truncated:TRUNCATED halves:halves:HALVES turned:turned:TURNED"
 mkdir -p "$(dirname "$OUT")"
 {
   echo "package dev.ehsanfahad.darkchamber.app.pdf"

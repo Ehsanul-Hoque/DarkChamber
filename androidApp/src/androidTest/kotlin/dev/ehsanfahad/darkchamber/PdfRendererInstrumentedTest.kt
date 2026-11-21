@@ -141,6 +141,36 @@ class PdfRendererInstrumentedTest {
         document.close()
     }
 
+    /**
+     * A 600×800 page, red over blue, with `/Rotate 90`: shown 800×600, turned clockwise — the page's top
+     * (red) down the right-hand side. iOS is made to match what this pins.
+     */
+    @Test
+    fun a_page_turned_a_quarter_is_shown_turned() {
+        assumeAndroid11()
+        val document = (filled("turned.pdf").open() as PdfOpened.Document).document
+
+        assertEquals(PdfPageSize(800, 600), document.pageSize(0))
+        val page = document.render(0, 400)!!.asAndroidBitmap()
+        assertEquals(300, page.height) // 400 × 600 / 800
+        assertDominant("red", page.getPixel(380, 150))
+        assertDominant("blue", page.getPixel(20, 150))
+        document.close()
+    }
+
+    /** A red page cropped to a green 400×600 rectangle: shown 400×600 and green to every edge. */
+    @Test
+    fun a_cropped_page_is_shown_as_its_crop_box() {
+        assumeAndroid11()
+        val document = (filled("turned.pdf").open() as PdfOpened.Document).document
+
+        assertEquals(PdfPageSize(400, 600), document.pageSize(1))
+        val page = document.render(1, 200)!!.asAndroidBitmap()
+        assertEquals(300, page.height) // 200 × 600 / 400
+        for ((x, y) in listOf(3 to 3, 196 to 3, 3 to 296, 196 to 296, 100 to 150)) assertDominant("green", page.getPixel(x, y))
+        document.close()
+    }
+
     @Test
     fun a_password_protected_pdf_is_refused_as_needing_a_password_and_released() {
         assumeAndroid11()
