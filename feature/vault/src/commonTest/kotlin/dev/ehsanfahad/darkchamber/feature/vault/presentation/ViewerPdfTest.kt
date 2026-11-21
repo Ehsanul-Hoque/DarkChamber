@@ -265,6 +265,22 @@ class ViewerPdfTest {
         assertTrue("close document" in renderer.log)
     }
 
+    /**
+     * A buffer whose read failed is released on the PDF context too, like every other call to it — on
+     * iOS the release wipes up to 128 MiB, which is not work for the thread drawing the screen.
+     */
+    @Test
+    fun a_buffer_whose_read_failed_is_released_on_the_pdf_context() = runTest {
+        readAnswer = Outcome.Err(VaultError.Crypto.IntegrityFailure)
+        val pdfThread = ManualDispatcher()
+        val viewer = viewer(start = 3, pdfContext = pdfThread)
+
+        assertEquals(ViewerPage.Unverified, viewer.page(3), "the page says why at once")
+        assertFalse("close buffer" in renderer.log, "queued, not done on the caller's thread")
+        pdfThread.drain()
+        assertTrue("close buffer" in renderer.log)
+    }
+
     // The hooks below are set once the viewer exists (it opens on the photo), then the PDF is swiped to:
     // a hook firing during construction would throw on the not-yet-assigned viewer and pass by accident.
 

@@ -271,7 +271,8 @@ internal open class ViewerComponent<T>(
             pdf = ShownPdf(key, open, sizes)
             setPage(key, ViewerPage.Pdf(open.pageCount, sizes, pdfPlaces[key] ?: PdfPlace()))
         } finally {
-            buffer?.close()
+            // Both on the PDF context, like every other call to them — never on this thread.
+            buffer?.let { unopened -> releaseScope.launch(pdfContext) { unopened.close() } }
             document?.let { left -> releaseScope.launch(pdfContext) { left.close() } }
             // Only this read's own slot: an abandoned read can finish after the next one has started.
             if (pdfOpening?.job === currentCoroutineContext()[Job]) pdfOpening = null

@@ -16,7 +16,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -40,8 +39,10 @@ import dev.ehsanfahad.darkchamber.core.designsystem.ExcludeFromPlatformStructure
 internal fun PdfJumpDialog(pageCount: Int, onGo: (Int) -> Unit, onCancel: () -> Unit) {
     val colors = DarkChamberTheme.colors
     val spacing = DarkChamberTheme.spacing
-    var text by rememberSaveable { mutableStateOf("") }
-    var problem by rememberSaveable { mutableStateOf<String?>(null) }
+    // Plain memory, not saved state: what was typed and the PDF's page count in the problem line would
+    // otherwise be handed to the system's saved-state store, outside the vault.
+    var text by remember { mutableStateOf("") }
+    var problem by remember { mutableStateOf<String?>(null) }
 
     fun go() {
         when (val jump = PdfReading.parseJump(text, pageCount)) {
