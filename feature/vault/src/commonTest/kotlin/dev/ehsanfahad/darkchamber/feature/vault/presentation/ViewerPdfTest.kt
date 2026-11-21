@@ -276,6 +276,7 @@ class ViewerPdfTest {
         viewer.showPage(0) // b.pdf
 
         assertEquals(1, items.openCalls, "the read did start")
+        assertEquals(size / 2, renderer.buffers.single().filled, "the decrypt stopped where the swipe found it")
         assertEquals(listOf("buffer $size", "close buffer"), renderer.log)
         assertFalse(viewer.page(3) is ViewerPage.Pdf)
     }
@@ -288,6 +289,7 @@ class ViewerPdfTest {
         viewer.showPage(0)
 
         assertEquals(1, items.openCalls, "the read did start")
+        assertEquals(size / 2, renderer.buffers.single().filled, "nothing was decrypted after the lock")
         assertEquals(listOf("buffer $size", "close buffer"), renderer.log)
     }
 

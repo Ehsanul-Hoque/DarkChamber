@@ -41,6 +41,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
 import dev.ehsanfahad.darkchamber.feature.vault.domain.AlbumPresence
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.job
 import kotlinx.coroutines.withContext
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerDeleteStage
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerNotice
@@ -226,7 +227,8 @@ internal open class ViewerComponent<T>(
             val read = withContext(ioContext) {
                 val into = renderer.newBuffer(item.size).also { buffer = it }
                 try {
-                    openObject(item.id, into.sink)
+                    // A lock or a swipe stops the decrypt within a chunk, not at the end of the file.
+                    openObject(item.id, StopsWhenCancelled(coroutineContext.job, into.sink))
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {

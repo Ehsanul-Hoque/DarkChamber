@@ -181,20 +181,64 @@ class ViewerPdfWiringTest {
         assertEquals(1, document.closes, "and the document is closed, once")
     }
 
+    /**
+     * With the real vault and codec: a lock once the first 1 MiB chunk has reached the renderer's buffer
+     * stops the decrypt there — the rest of the file is never decrypted, the buffer never opened.
+     */
+    @Test
+    fun a_lock_during_the_read_stops_the_real_decrypt_within_a_chunk() = runTest {
+        val open = openVault()
+        val big = ByteArray(3 * MIB + 100) { (it * 31).toByte() }
+        val imported = vaultObjects(open).importObject(
+            kind = VaultItemKind.FILE.code,
+            name = "scan.pdf",
+            mime = "application/pdf",
+            openSource = { Buffer().apply { write(big) } },
+        )
+        val component = component(open)
+        var lockedAt = -1L
+        pdfs.onWrite = { total ->
+            if (lockedAt < 0 && total >= MIB) {
+                lockedAt = total
+                component.lockAsTheGateDoes()
+            }
+        }
+
+        component.gallery.tapItem((imported as Outcome.Ok).value.copyOf())
+
+        val buffer = pdfs.buffers.single()
+        assertTrue(lockedAt >= MIB, "the lock came after the first chunk")
+        assertTrue(buffer.bytes.size < 2L * MIB, "stopped within the next chunk: ${buffer.bytes.size} of ${big.size} bytes")
+        assertFalse(buffer.opened, "never opened")
+        assertFalse(openedVault.session.isOpen)
+    }
+
     // ---- fakes -----------------------------------------------------------------------------------
 
     private class RecordingPdfs : VaultPdfRenderer {
         val buffers = mutableListOf<RecordingBuffer>()
         override val supported = true
 
-        override fun newBuffer(sizeHint: Long): VaultPdfBuffer = RecordingBuffer(sizeHint).also { buffers += it }
+        /** Called after every write into a buffer, with how many bytes it holds. */
+        var onWrite: (total: Long) -> Unit = {}
+
+        override fun newBuffer(sizeHint: Long): VaultPdfBuffer = RecordingBuffer(sizeHint) { onWrite(it) }.also { buffers += it }
     }
 
-    private class RecordingBuffer(val sizeHint: Long) : VaultPdfBuffer {
+    private class RecordingBuffer(val sizeHint: Long, private val onWrite: (Long) -> Unit = {}) : VaultPdfBuffer {
         val bytes = Buffer()
         var opened = false
         var document: RecordingDocument? = null
-        override val sink: RawSink = bytes
+        override val sink: RawSink = object : RawSink {
+            override fun write(source: Buffer, byteCount: Long) {
+                bytes.write(source, byteCount)
+                onWrite(bytes.size)
+            }
+
+            override fun flush() = Unit
+
+            override fun close() = Unit
+        }
 
         override fun open(): PdfOpened {
             opened = true
@@ -218,6 +262,10 @@ class ViewerPdfWiringTest {
     }
 
     // ---- the vault -------------------------------------------------------------------------------
+
+    private companion object {
+        const val MIB = 1024 * 1024
+    }
 
     /** The vault the last [openVault] made, so a test can see its session close. */
     private lateinit var openedVault: VaultBootstrap.OpenVault
