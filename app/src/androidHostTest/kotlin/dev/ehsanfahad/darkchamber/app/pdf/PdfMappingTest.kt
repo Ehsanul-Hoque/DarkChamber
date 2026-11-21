@@ -31,7 +31,6 @@ class PdfMappingTest {
         assertEquals(PdfRefusal.NeedsPassword, PdfMapping.refusalFor(SecurityException("password required")))
     }
 
-    /** `IOException` for one it cannot read; anything else is no better known. */
     /**
      * A file too big for the renderer to parse in the memory left is one this device will not read:
      * declined like any other, not a crash — and its descriptor closed, which a crash would leave to
@@ -49,6 +48,7 @@ class PdfMappingTest {
         assertNull(PdfMapping.refusalFor(AssertionError("x")))
     }
 
+    /** `IOException` for one it cannot read; anything else is no better known. */
     @Test
     fun anything_else_means_unreadable_whatever_it_says() {
         assertEquals(PdfRefusal.Unreadable, PdfMapping.refusalFor(IOException("file not in PDF format or corrupted")))
