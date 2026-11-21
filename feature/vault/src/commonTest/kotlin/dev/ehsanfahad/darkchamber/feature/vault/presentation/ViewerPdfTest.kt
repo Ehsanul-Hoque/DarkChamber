@@ -149,6 +149,19 @@ class ViewerPdfTest {
         assertEquals(ViewerPage.Unreadable, viewer(start = 1).page(1))
     }
 
+    /**
+     * A document that opens with no pages has nothing to show: the renderer's limit, said as for a
+     * refusal — never an empty column under "Page 1 of 0" — and the document is let go at once.
+     */
+    @Test
+    fun a_verified_pdf_with_no_pages_is_unreadable_and_closed() = runTest {
+        renderer.pages = emptyList()
+        val viewer = viewer(start = 3)
+
+        assertEquals(ViewerPage.Unreadable, viewer.page(3))
+        assertEquals(listOf("buffer $size", "open $size", "close document", "close buffer"), renderer.log)
+    }
+
     @Test
     fun a_platform_that_cannot_show_pdfs_reads_nothing() = runTest {
         renderer.supported = false

@@ -259,7 +259,9 @@ internal open class ViewerComponent<T>(
                 "open_ms" to (started.elapsedNow() - filled).inWholeMilliseconds,
             )
             val open = document
-            if (refusal != null || sizes == null || open == null) {
+            // A document with no pages has nothing to show: the renderer's limit, as a refusal is, and
+            // the finally below lets it go.
+            if (refusal != null || sizes.isNullOrEmpty() || open == null) {
                 setPage(key, pageForPdfRefusal(refusal ?: PdfRefusal.Unreadable))
                 return
             }

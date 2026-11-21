@@ -9,7 +9,7 @@ import kotlin.test.assertTrue
 
 /**
  * What `PdfRenderer`'s refusals mean — by exception type, as its documentation names them, never by
- * message (the spike saw the messages change between Android 12, 13 and 17).
+ * message (the messages were seen to differ between Android 12, 13 and 17).
  */
 class PdfMappingTest {
     @Test
