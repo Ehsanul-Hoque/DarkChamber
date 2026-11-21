@@ -47,6 +47,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerNotice
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerPage
 import kotlin.coroutines.CoroutineContext
 import dev.ehsanfahad.darkchamber.feature.vault.api.PdfOpened
+import dev.ehsanfahad.darkchamber.feature.vault.api.PdfPageSize
 import dev.ehsanfahad.darkchamber.feature.vault.api.PdfPlace
 import dev.ehsanfahad.darkchamber.feature.vault.api.PdfRefusal
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPdfBuffer
@@ -124,17 +125,20 @@ internal open class ViewerComponent<T>(
 
     /**
      * Draw the PDF shown's pages near the screen ([PdfReading.renderWindow]) at the width they are shown,
-     * sharpened by zoom ([PdfReading.renderWidth]); let the rest go. A page already drawn at that width
+     * sharpened by zoom, within what one page may be by its own shape ([PdfReading.renderWidth]); let the
+     * rest go. A page already drawn at that width
      * is kept; one drawn at another keeps its picture until the new one arrives. Every render runs on
      * [pdfContext], one at a time.
      */
     fun pdfViewport(visible: IntRange, shownWidthPx: Int, zoom: Float, screenWidthPx: Int) {
         val shown = pdf ?: return
         val window = PdfReading.renderWindow(visible, shown.pageCount)
-        val width = PdfReading.renderWidth(shownWidthPx, zoom, screenWidthPx)
         (shown.renders.keys - window.toSet()).forEach { shown.renders.remove(it)?.job?.cancel() }
         _pdfPages.value = _pdfPages.value.filterKeys { it in window }
         for (index in window) {
+            // Each page by its own shape: a tall page reaches the pixel limit at a narrower width.
+            val size = shown.sizes[index]
+            val width = PdfReading.renderWidth(shownWidthPx, zoom, screenWidthPx, size.widthPt, size.heightPt)
             val current = shown.renders[index]
             if (current != null && current.width == width) continue
             current?.job?.cancel()
@@ -170,7 +174,9 @@ internal open class ViewerComponent<T>(
     /** Where each PDF was left, for the viewer's life only; a lock or a close forgets them. */
     private val pdfPlaces = mutableMapOf<String, PdfPlace>()
 
-    private class ShownPdf(val key: String, val document: VaultPdfDocument, val pageCount: Int) {
+    private class ShownPdf(val key: String, val document: VaultPdfDocument, val sizes: List<PdfPageSize>) {
+        val pageCount: Int get() = sizes.size
+
         /** The render asked for each page near the screen: its width, and the job drawing it. */
         val renders = mutableMapOf<Int, Render>()
     }
@@ -258,7 +264,7 @@ internal open class ViewerComponent<T>(
                 return
             }
             document = null // shown now; closed when it is left
-            pdf = ShownPdf(key, open, sizes.size)
+            pdf = ShownPdf(key, open, sizes)
             setPage(key, ViewerPage.Pdf(open.pageCount, sizes, pdfPlaces[key] ?: PdfPlace()))
         } finally {
             buffer?.close()

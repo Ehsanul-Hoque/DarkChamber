@@ -343,6 +343,20 @@ class ViewerPdfTest {
         assertEquals(1, renderer.log.count { it == "render 1@1000" }, "page 1 was kept, not drawn again")
     }
 
+    /**
+     * Each page is drawn by its own shape: an A4 page at the width shown, a long receipt beside it
+     * narrower, where its pixels run out — and only that one page, not the whole window, pays for it.
+     */
+    @Test
+    fun each_page_is_drawn_within_the_limit_by_its_own_shape() = runTest {
+        renderer.pages = listOf(PdfPageSize(595, 842), PdfPageSize(595, 5000), PdfPageSize(595, 842))
+        val viewer = viewer(start = 3)
+
+        viewer.pdfViewport(0..1, 1440, 1f, 1440)
+
+        assertEquals(mapOf(0 to 1440, 1 to 1412, 2 to 1440), viewer.drawnWidths())
+    }
+
     @Test
     fun zooming_draws_the_page_again_sharper_up_to_the_cap() = runTest {
         val viewer = viewer(start = 3)

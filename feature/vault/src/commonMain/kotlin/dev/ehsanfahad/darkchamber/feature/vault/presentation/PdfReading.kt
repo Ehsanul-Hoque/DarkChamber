@@ -3,6 +3,7 @@ package dev.ehsanfahad.darkchamber.feature.vault.presentation
 import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.roundToInt
+import kotlin.math.sqrt
 
 /** A page of a PDF as laid out on screen: its index, its top edge and its height, in pixels. */
 internal data class LaidOutPage(val index: Int, val top: Int, val height: Int)
@@ -33,6 +34,9 @@ internal sealed interface PageJump {
 internal object PdfReading {
     /** How much wider than the screen one page is ever drawn, however far it is zoomed. */
     const val MAX_RENDER_SCREENS = 2
+
+    /** The most pixels one drawn page may have: 64 MiB at 4 bytes a pixel. */
+    const val MAX_RENDER_PIXELS = 16 * 1024 * 1024
 
     /**
      * The page the indicator names: the one showing the most pixels between [viewportTop] and
@@ -79,13 +83,25 @@ internal object PdfReading {
 
     /**
      * The width to draw a page at: the width it is shown, sharpened by [zoom], never past
-     * [MAX_RENDER_SCREENS] screens wide — beyond that one page's bitmap would outgrow the memory the
-     * rest of the window needs. At least one pixel.
+     * [MAX_RENDER_SCREENS] screens wide, and never so wide that the page, at its own shape, would have
+     * more than [MAX_RENDER_PIXELS] — screen widths alone let a phone on its side (3120 px) draw an A4
+     * page at 6240 × 8830, 210 MiB, which Android refuses to draw; a tall page reaches the limit even at
+     * fit. At least one pixel.
      */
-    fun renderWidth(shownWidthPx: Int, zoom: Float, screenWidthPx: Int): Int =
-        (shownWidthPx * zoom).roundToInt()
-            .coerceAtMost(screenWidthPx * MAX_RENDER_SCREENS)
-            .coerceAtLeast(1)
+    fun renderWidth(shownWidthPx: Int, zoom: Float, screenWidthPx: Int, pageWidthPt: Int, pageHeightPt: Int): Int {
+        val wanted = (shownWidthPx * zoom).roundToInt().coerceAtMost(screenWidthPx * MAX_RENDER_SCREENS)
+        return wanted.coerceAtMost(widestWithinPixels(pageWidthPt, pageHeightPt)).coerceAtLeast(1)
+    }
+
+    /** The widest a page of this shape can be drawn with no more than [MAX_RENDER_PIXELS]. */
+    private fun widestWithinPixels(pageWidthPt: Int, pageHeightPt: Int): Int {
+        if (pageWidthPt <= 0 || pageHeightPt <= 0) return Int.MAX_VALUE // no shape to measure
+        // The page's height is rounded, so the exact answer can sit a pixel either side of the square
+        // root: start just above it and step down to the first width within the limit.
+        var width = sqrt(MAX_RENDER_PIXELS.toDouble() * pageWidthPt / pageHeightPt).toInt() + 2
+        while (width > 1 && width.toLong() * pageHeight(width, pageWidthPt, pageHeightPt) > MAX_RENDER_PIXELS) width--
+        return width
+    }
 
     /** A page's height when shown [widthPx] wide, keeping its own shape; 0 for a page with no width. */
     fun pageHeight(widthPx: Int, pageWidthPt: Int, pageHeightPt: Int): Int {
