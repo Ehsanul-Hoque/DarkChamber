@@ -32,6 +32,13 @@ import kotlin.test.assertTrue
 class ImportCoordinatorTest {
 
     /**
+     * Unfiled, which is what an import from the whole-vault listing asks for and what every test here
+     * but the destination ones wants. Named rather than a bare `null` at thirty call sites, so the
+     * reader is not left wondering which argument the null is.
+     */
+    private val unfiled: ByteArray? = null
+
+    /**
      * Always built from the test's **own** scheduler: a dispatcher carrying a scheduler of its own
      * is never advanced by `runTest`, and the batch would simply never run.
      *
@@ -40,13 +47,6 @@ class ImportCoordinatorTest {
      * dispatcher instead, because the state is a `StateFlow`: run inline, every intermediate value
      * is conflated away before anything can collect it.
      */
-    /**
-     * Unfiled, which is what an import from the whole-vault listing asks for and what every test here
-     * but the destination ones wants. Named rather than a bare `null` at thirty call sites, so the
-     * reader is not left wondering which argument the null is.
-     */
-    private val unfiled: ByteArray? = null
-
     private fun TestScope.coordinator(
         vault: FakeVaultItems,
         photos: FakePhotoPicker = FakePhotoPicker(),
@@ -312,10 +312,6 @@ class ImportCoordinatorTest {
     }
 
     /**
-     * A user cancel is not a lock: the session stays open, what was already imported is kept, and
-     * the file that was interrupted is **not** listed as having failed — nothing was wrong with it.
-     */
-    /**
      * Tapping Stop has to show up in the state *at once*, not whenever the batch next gets a word in.
      *
      * The flag alone is not enough. A stop takes effect on the next read of the payload, and the
@@ -359,6 +355,10 @@ class ImportCoordinatorTest {
         )
     }
 
+    /**
+     * A user cancel is not a lock: the session stays open, what was already imported is kept, and
+     * the file that was interrupted is **not** listed as having failed — nothing was wrong with it.
+     */
     @Test
     fun cancelling_stops_the_batch_and_reports_what_was_imported() = runTest {
         lateinit var subject: ImportCoordinator
