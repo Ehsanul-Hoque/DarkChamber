@@ -1,5 +1,7 @@
 package dev.ehsanfahad.darkchamber.feature.vault.presentation
 
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -303,5 +305,99 @@ class PdfReadingTest {
         assertEquals(PanSplit(500f, scrollBy = -100f), PdfReading.panThenScroll(400f, dy = 300f, limitY = 500f, zoom = 2f))
         assertEquals(PanSplit(-500f, scrollBy = 150f), PdfReading.panThenScroll(-500f, dy = -300f, limitY = 500f, zoom = 2f), "on, up the column")
         assertEquals(PanSplit(-500f, scrollBy = 75f), PdfReading.panThenScroll(-500f, dy = -300f, limitY = 500f, zoom = 4f), "slower, deeper in")
+    }
+
+    // ---- a move of the zoomed column, by drag or by fling ---------------------------------------
+
+    /** A 1000 × 2000 box at 2x overhangs 500 px each side across and 1000 px each way down. */
+    private val box = Size(1000f, 2000f)
+
+    @Test
+    fun within_the_overhang_a_zoomed_move_follows_the_finger_both_ways() {
+        assertEquals(ZoomedStep(Offset(300f, 400f), 0f), PdfReading.zoomedStep(Offset.Zero, Offset(300f, 400f), zoom = 2f, box = box))
+    }
+
+    /** Across there is no column to scroll: the page's edge is as far as it goes, and the rest is lost. */
+    @Test
+    fun across_a_zoomed_move_stops_at_the_page_edge() {
+        assertEquals(ZoomedStep(Offset(500f, 0f), 0f), PdfReading.zoomedStep(Offset(400f, 0f), Offset(300f, 0f), 2f, box))
+        assertEquals(ZoomedStep(Offset(-500f, 0f), 0f), PdfReading.zoomedStep(Offset(-400f, 0f), Offset(-300f, 0f), 2f, box))
+    }
+
+    /** Down, past the overhang the rest scrolls the column — in its own pixels, as a drag does. */
+    @Test
+    fun down_a_zoomed_move_pans_then_scrolls_the_column() {
+        assertEquals(ZoomedStep(Offset(0f, 1000f), -100f), PdfReading.zoomedStep(Offset(0f, 900f), Offset(0f, 300f), 2f, box))
+        assertEquals(
+            ZoomedStep(Offset(-500f, -1000f), 75f),
+            PdfReading.zoomedStep(Offset(-450f, -950f), Offset(-100f, -200f), 2f, box),
+            "both edges at once",
+        )
+        assertEquals(ZoomedStep(Offset(0f, -2000f), 50f), PdfReading.zoomedStep(Offset(0f, -1850f), Offset(0f, -300f), 3f, box), "3x overhangs 2000")
+    }
+
+    // ---- letting go of a zoomed drag: a fling, or none -------------------------------------------
+
+    private fun fling(x: Float, y: Float, pinched: Boolean = false) =
+        PdfReading.flingVelocity(Offset(x, y), minPxPerSecond = 100f, maxPxPerSecond = 8000f, pinched = pinched)
+
+    @Test
+    fun a_drag_let_go_at_speed_flings_at_that_speed_and_direction() {
+        assertEquals(Offset(300f, -2000f), fling(300f, -2000f))
+        assertEquals(Offset(0f, 100f), fling(0f, 100f), "the slowest fling")
+        assertEquals(Offset(80f, -80f), fling(80f, -80f), "113 px/s diagonally, though each axis alone is under 100")
+    }
+
+    /** Slower than the platform's slowest fling, the page stays where the finger left it. */
+    @Test
+    fun a_drag_let_go_slowly_does_not_fling() {
+        assertNull(fling(0f, 99f))
+        assertNull(fling(60f, 50f), "78 px/s")
+        assertNull(fling(-70f, 70f), "99 px/s diagonally")
+    }
+
+    @Test
+    fun letting_go_of_a_pinch_does_not_fling() {
+        assertNull(fling(3000f, 0f, pinched = true))
+    }
+
+    /** Faster than the platform allows, the fling is capped — in the same direction, not per axis. */
+    @Test
+    fun a_fling_is_never_faster_than_the_platform_allows() {
+        assertEquals(Offset(0f, -8000f), fling(0f, -10000f))
+        assertEquals(Offset(4800f, 6400f), fling(6000f, 8000f), "10000 px/s diagonally, scaled down whole")
+    }
+
+    // ---- when a fling stops ---------------------------------------------------------------------
+
+    private val up = Offset(0f, -30f)
+    private val atBottom = Offset(0f, -1000f)
+
+    @Test
+    fun a_fling_goes_on_while_a_step_moves_anything() {
+        assertTrue(PdfReading.flingGoesOn(2f, up, before = Offset(0f, -990f), after = atBottom, scrolled = 10f), "panned and scrolled")
+        assertTrue(PdfReading.flingGoesOn(2f, up, before = atBottom, after = atBottom, scrolled = 15f), "only scrolled: the column goes on")
+        assertTrue(
+            PdfReading.flingGoesOn(2f, Offset(20f, -30f), before = Offset(100f, -1000f), after = Offset(120f, -1000f), scrolled = 0f),
+            "only across: the column's end, but the page still slides sideways",
+        )
+    }
+
+    /** At the column's end with the page's edge reached, a step moves nothing and the fling is over. */
+    @Test
+    fun a_fling_stops_once_a_step_moves_nothing() {
+        assertEquals(false, PdfReading.flingGoesOn(2f, up, before = atBottom, after = atBottom, scrolled = 0f))
+    }
+
+    /** A frame that asked for no movement has not reached an end: the fling's first frame often asks none. */
+    @Test
+    fun a_step_that_asked_for_nothing_does_not_stop_a_fling() {
+        assertTrue(PdfReading.flingGoesOn(2f, Offset.Zero, before = atBottom, after = atBottom, scrolled = 0f))
+    }
+
+    /** Back at fit (a double-tap, a jump, the page swiped away), the column's own scrolling takes over. */
+    @Test
+    fun a_fling_stops_once_the_column_is_back_at_fit() {
+        assertEquals(false, PdfReading.flingGoesOn(1f, up, before = Offset(0f, -990f), after = atBottom, scrolled = 10f))
     }
 }

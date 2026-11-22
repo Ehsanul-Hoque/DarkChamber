@@ -1,5 +1,7 @@
 package dev.ehsanfahad.darkchamber.feature.vault.presentation
 
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.roundToInt
@@ -139,4 +141,41 @@ internal object PdfReading {
         // shows what is above, so the column scrolls back. (Written so no drag gives -0.)
         return PanSplit(moved, (moved - offsetY - dy) / zoom)
     }
+
+    /**
+     * A move of [delta] screen pixels on the column zoomed by [zoom] in a [box]: across, the page's
+     * overhang is as far as it goes; down, [panThenScroll]. A drag and a fling move by the same rule.
+     */
+    fun zoomedStep(offset: Offset, delta: Offset, zoom: Float, box: Size): ZoomedStep {
+        val across = ViewerZoom.clampOffset(Offset(offset.x + delta.x, 0f), zoom, box, box).x
+        val limitY = (box.height * zoom - box.height) / 2f
+        val down = panThenScroll(offset.y, delta.y, limitY, zoom)
+        return ZoomedStep(Offset(across, down.offsetY), down.scrollBy)
+    }
+
+    /**
+     * The speed a zoomed drag lets go at, as a fling: none after a pinch (letting go of two fingers is not
+     * a throw), none slower than [minPxPerSecond], and never faster than [maxPxPerSecond], in the same
+     * direction.
+     */
+    fun flingVelocity(velocity: Offset, minPxPerSecond: Float, maxPxPerSecond: Float, pinched: Boolean): Offset? {
+        if (pinched) return null
+        val speed = velocity.getDistance()
+        if (speed < minPxPerSecond) return null
+        return if (speed > maxPxPerSecond) velocity * (maxPxPerSecond / speed) else velocity
+    }
+
+    /**
+     * Whether a fling goes on after a step that asked for [delta] and moved the column from [before] to
+     * [after] and scrolled it by [scrolled]: not once the column is back at fit, and not once a step that
+     * asked to move moved nothing — the column has reached its end both ways.
+     */
+    fun flingGoesOn(zoom: Float, delta: Offset, before: Offset, after: Offset, scrolled: Float): Boolean {
+        if (ViewerZoom.pagerMaySwipe(zoom)) return false
+        if (delta == Offset.Zero) return true
+        return after != before || scrolled != 0f
+    }
 }
+
+/** One move of the zoomed column: where it now sits on screen, and what is left to scroll it by. */
+internal data class ZoomedStep(val offset: Offset, val scrollBy: Float)

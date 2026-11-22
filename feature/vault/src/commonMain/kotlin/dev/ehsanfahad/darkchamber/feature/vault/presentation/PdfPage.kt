@@ -1,7 +1,11 @@
 package dev.ehsanfahad.darkchamber.feature.vault.presentation
 
+import androidx.compose.animation.core.AnimationState
+import androidx.compose.animation.core.VectorConverter
+import androidx.compose.animation.core.animateDecay
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.rememberSplineBasedDecay
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -32,6 +36,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -46,6 +51,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.input.pointer.util.addPointerInputChange
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -58,17 +65,20 @@ import androidx.compose.ui.unit.dp
 import dev.ehsanfahad.darkchamber.core.designsystem.DarkChamberTheme
 import dev.ehsanfahad.darkchamber.core.designsystem.prefersReducedMotion
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerPage
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 /**
  * A PDF's pages, stacked and fitted to the width, scrolling up and down — left and right still turn
  * the viewer's page. Each page has its slot at its own shape before it is drawn, so the column never
  * jumps as pictures arrive. Pinch and double-tap zoom the whole column ([ViewerZoom]'s rules); zoomed
- * in, a drag moves across the page and, past its edge, on through the pages ([PdfReading.panThenScroll]).
+ * in, a drag moves across the page and, past its edge, on through the pages ([PdfReading.zoomedStep]),
+ * and a drag let go at speed flings on by the same rule until it slows, reaches an end or is touched.
  *
  * It tells the viewer what it shows — the pages seen, at what width and zoom — and the viewer draws the
  * pages near them into [drawn]: absent until drawn, `null` for a page that would not draw.
@@ -98,9 +108,14 @@ internal fun PdfPageView(
     var drawZoom by remember { mutableFloatStateOf(1f) }
     val list = rememberLazyListState(page.start.page, page.start.offsetPx)
     val shown by rememberUpdatedState(isShown)
+    // A fling of the zoomed column, while it runs; the decay is the one a scroll uses.
+    val flingScope = rememberCoroutineScope()
+    val decay = rememberSplineBasedDecay<Offset>()
+    var fling by remember { mutableStateOf<Job?>(null) }
 
     LaunchedEffect(isShown) {
         if (!isShown) {
+            fling?.cancel()
             zoom = 1f
             offset = Offset.Zero
             drawZoom = 1f
@@ -110,6 +125,7 @@ internal fun PdfPageView(
     LaunchedEffect(jump) {
         if (jump == null) return@LaunchedEffect
         // Back to fit first: a page landing under a zoom would show some corner of it.
+        fling?.cancel()
         zoom = 1f
         offset = Offset.Zero
         drawZoom = 1f
@@ -252,10 +268,17 @@ internal fun PdfPageView(
                     // Before the column sees it (the Initial pass): two fingers, or any drag while zoomed,
                     // are this handler's, so the column does not scroll under a pinch.
                     awaitEachGesture {
-                        awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                        val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                        // A touch stops a fling: the page stays under the finger.
+                        fling?.cancel()
+                        val tracker = VelocityTracker()
+                        tracker.addPointerInputChange(down)
+                        var pinched = false
+                        var draggedZoomed = false
                         do {
                             val event = awaitPointerEvent(PointerEventPass.Initial)
                             val fingers = event.changes.count { it.pressed }
+                            if (fingers > 1) pinched = true
                             if (fingers > 1 || !ViewerZoom.pagerMaySwipe(zoom)) {
                                 val next = ViewerZoom.afterPinch(zoom, event.calculateZoom())
                                 val centroid = event.calculateCentroid(useCurrent = true)
@@ -264,18 +287,45 @@ internal fun PdfPageView(
                                 if (next <= 1f) {
                                     offset = Offset.Zero
                                 } else {
-                                    val pinched = ViewerZoom.offsetAfterPinch(offset, zoom, next, centroid, center, Offset.Zero)
-                                    val across = ViewerZoom.clampOffset(Offset(pinched.x + pan.x, 0f), next, box, box).x
-                                    val limitY = (box.height * next - box.height) / 2f
-                                    val split = PdfReading.panThenScroll(pinched.y, pan.y, limitY, next)
-                                    offset = Offset(across, split.offsetY)
-                                    if (split.scrollBy != 0f) list.dispatchRawDelta(split.scrollBy)
+                                    val pinchedTo = ViewerZoom.offsetAfterPinch(offset, zoom, next, centroid, center, Offset.Zero)
+                                    val step = PdfReading.zoomedStep(pinchedTo, pan, next, box)
+                                    offset = step.offset
+                                    if (step.scrollBy != 0f) list.dispatchRawDelta(step.scrollBy)
+                                    draggedZoomed = true
                                 }
                                 zoom = next
                                 event.changes.forEach { if (it.positionChanged()) it.consume() }
                             }
+                            event.changes.firstOrNull { it.id == down.id }?.let { tracker.addPointerInputChange(it) }
                         } while (event.changes.any { it.pressed })
                         drawZoom = zoom
+                        val thrown = if (draggedZoomed && !ViewerZoom.pagerMaySwipe(zoom)) {
+                            val velocity = tracker.calculateVelocity()
+                            PdfReading.flingVelocity(
+                                Offset(velocity.x, velocity.y),
+                                minPxPerSecond = MIN_FLING_VELOCITY.toPx(),
+                                maxPxPerSecond = viewConfiguration.maximumFlingVelocity,
+                                pinched = pinched,
+                            )
+                        } else {
+                            null
+                        }
+                        if (thrown != null) {
+                            fling = flingScope.launch {
+                                // The column moves on as the finger left it, slowing as a scroll does, by
+                                // the same rule as the drag; it stops at its ends, at fit, or at a touch.
+                                var last = Offset.Zero
+                                AnimationState(Offset.VectorConverter, Offset.Zero, thrown).animateDecay(decay) {
+                                    val delta = value - last
+                                    last = value
+                                    val before = offset
+                                    val step = PdfReading.zoomedStep(before, delta, zoom, box)
+                                    offset = step.offset
+                                    val scrolled = if (step.scrollBy != 0f) list.dispatchRawDelta(step.scrollBy) else 0f
+                                    if (!PdfReading.flingGoesOn(zoom, delta, before, step.offset, scrolled)) cancelAnimation()
+                                }
+                            }
+                        }
                     }
                 }
                 .graphicsLayer {
@@ -399,3 +449,6 @@ private val THUMB_SLOP = 8.dp
 
 /** How long the thumb stays after the column last moved. */
 private const val THUMB_LINGER_MS = 1_500L
+
+/** The slowest a zoomed drag can be let go at and still fling: Android's own minimum fling speed. */
+private val MIN_FLING_VELOCITY = 50.dp
