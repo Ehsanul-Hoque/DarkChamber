@@ -22,6 +22,7 @@ import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -271,6 +272,48 @@ class LoadViewerImageTest {
         assertNull(loaded, "no page published")
         assertEquals(0, decoder.calls, "nothing decoded")
         assertAllZero(buffers.single(), "after a cancelled read")
+    }
+
+    /**
+     * The read is a blocking decrypt that a cancel cannot interrupt — but every chunk it decrypts is
+     * written to our sink, and after a lock that write is refused, so the decrypt stops there (the
+     * codec turns the refusal into an error and lets the key go) instead of running to the end.
+     */
+    @Test
+    fun a_lock_during_the_read_stops_the_decrypt_at_the_next_write() = runTest {
+        lateinit var job: Job
+        var secondWriteRefused = false
+        val items = FakeVaultItems(onOpen = { _, sink ->
+            sink.writeBytes(picture.copyOfRange(0, 3))
+            job.cancel() // the lock arrives between two chunks
+            secondWriteRefused = runCatching { sink.writeBytes(picture.copyOfRange(3, 6)) }.isFailure
+            // As the codec does: a sink that throws ends the decrypt with an error.
+            if (secondWriteRefused) Outcome.Err(VaultError.Unexpected(IllegalStateException())) else Outcome.Ok(Unit)
+        })
+        val decoder = RecordingDecoder()
+
+        job = launch { loader(items, decoder).load(item(), targetLongEdge = 4_800) }
+        advanceUntilIdle()
+
+        assertTrue(secondWriteRefused, "the next chunk was refused")
+        assertEquals(0, decoder.calls, "nothing decoded")
+        assertAllZero(buffers.single(), "after a stopped read")
+    }
+
+    /** Without a lock the same read runs to the end: the guard refuses nothing it should not. */
+    @Test
+    fun a_read_nobody_cancelled_is_not_refused() = runTest {
+        var refused = false
+        val items = FakeVaultItems(onOpen = { _, sink ->
+            sink.writeBytes(picture.copyOfRange(0, 3))
+            refused = runCatching { sink.writeBytes(picture.copyOfRange(3, 6)) }.isFailure
+            Outcome.Ok(Unit)
+        })
+
+        val loaded = loader(items, RecordingDecoder()).load(item(), targetLongEdge = 4_800)
+
+        assertFalse(refused)
+        assertIs<LoadedPage.Shown<String>>(loaded)
     }
 
     /** A cancellation surfacing from inside the read is a cancellation, not a page saying the file failed. */

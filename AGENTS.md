@@ -40,7 +40,9 @@ Package root: `dev.ehsanfahad.darkchamber`.
 >   photos into memory and video into one `tmp/` scratch file it is handed, plus free space and the
 >   video preview frames — and the players: Media3 / AVPlayer reading an item only through its range
 >   reader, with no cache, media session or lock-screen card, and the screen's brightness, forced
->   orientation and keep-awake, all put back on lock), `VaultBootstrap`'s fail-closed cold-open, the Decompose
+>   orientation and keep-awake, all put back on lock — and the PDF renderers: `PdfRenderer` over an
+>   anonymous memory file on Android 11+, CoreGraphics over in-memory data on iOS, never a file),
+>   `VaultBootstrap`'s fail-closed cold-open, the Decompose
 >   `Locked | Unlocked` session gate (Unlocked constructed with a live session), cryptographic per-use
 >   biometric unlock (passphrase fallback + forced-passphrase on re-enrollment), the create/recovery/
 >   unlock Compose UI, and the lock lifecycle (teardown on Lock **and** on background). Hosted by an
@@ -67,8 +69,11 @@ Package root: `dev.ehsanfahad.darkchamber`.
 >   decoded pictures held for the shown page ±1 and never in screen state (a Konsist rule); video and
 >   audio played through the `VaultPlayer` / `PlayerDisplay` seams — one player, for the page shown,
 >   streaming through `openRange`, failures told apart by where they came from, the player kept out of
->   screen state by the same rule (see `docs/ARCHITECTURE.md` §7); every other kind shown as its badge,
->   and back handing the grid the item last viewed. And **delete**, which is
+>   screen state by the same rule (see `docs/ARCHITECTURE.md` §7); PDFs through the `VaultPdfRenderer`
+>   seam — read whole into the platform's memory buffer, opened only after the read verifies, one
+>   document at a time behind one single-call context, pages drawn for the screen ±1 within 16 Mi pixels
+>   each and kept out of screen state, with zoom, a page indicator, jump-to-page and fast scroll; every
+>   other kind shown as its badge, and back handing the grid the item last viewed. And **delete**, which is
 >   crypto-shred: one item from the viewer, many from the grid's selection in one write, both behind a
 >   confirmation whose words promise no more than the shred does. Public surface is the factories plus
 >   the `api` package — which includes `VaultThumbnail`, one item's encrypted preview drawn through the
@@ -92,11 +97,13 @@ Package root: `dev.ehsanfahad.darkchamber`.
 > Still a stub (marker + smoke test): `:core:testing`. **In progress: Phase 1** — albums and browsing
 > are in and merged (browse refinement landed 2026-10-17), and the camera takes photos and records
 > video; reads by byte range are in, and a video's preview is taken through them from the stored
-> object; the viewer opens images and plays video and audio, and delete is in; next is the PDF viewer.
+> object; the viewer opens images, plays video and audio and shows PDFs, and delete is in; next is
+> export and the metadata scrubber.
 > **Planned, not yet wired:** ktlint/detekt/Kover and
 > `migrationTest` — verify a Gradle task exists before assuming it runs. **Wired:** a tracked `commit-msg`
 > hook (`./gradlew installGitHooks`) runs CI's own commit check, scopes listed in
-> `config/commit-scopes.txt`. CI:
+> `config/commit-scopes.txt`, and a tracked `pre-commit` hook refuses a doc comment cut off its
+> declaration (`scripts/check-doc-comments.sh`, also run by CI). CI:
 > `pr.yml` is enabled (build + commit-message check + a gated macOS job that runs the **iOS unit
 > tests** and compiles the device architecture); its `quality` job stays
 > commented out until those plugins land, and `nightly`/`release`/`test-build` stay committed
@@ -167,7 +174,7 @@ Versions are centralized in `gradle/libs.versions.toml`; never hardcode versions
 
 **The session gate is structural, not per-screen.** The Decompose root has exactly two children: `LockedComponent` and `UnlockedComponent`; the latter is *constructed with* a non-null `VaultSession`. Locking replaces the whole Unlocked subtree — screens cannot exist without a session by construction. Never add a decrypted-content screen outside that subtree, and keep MVI `State` classes holding item **ids**, not decrypted bytes.
 
-**Viewers decrypt to memory.** Images: decode from decrypted byte arrays (Coil custom Fetcher, memory-cache only). Video/audio: Media3 custom `DataSource` / `AVAssetResourceLoaderDelegate` mapping byte ranges to chunks. PDFs: iOS in-memory `PDFDocument(data:)`; Android v1 uses a private-`tmp/` file deleted on close (documented tradeoff — don't "improve" it into shared cache). Other types: explicit "decrypt & open in…" with a leaves-the-vault warning + cleanup.
+**Viewers decrypt to memory.** Images: decode from decrypted byte arrays (Coil custom Fetcher, memory-cache only). Video/audio: Media3 custom `DataSource` / `AVAssetResourceLoaderDelegate` mapping byte ranges to chunks. PDFs: decrypted whole into memory and rendered only after the read verifies — Android an anonymous memory file (`memfd`, 11+; older versions don't show PDFs rather than write a file), iOS in-memory data through CoreGraphics; never a `tmp/` file or a cache. Other types: explicit "decrypt & open in…" with a leaves-the-vault warning + cleanup.
 
 **Two honest shredder modes.** Vault items → crypto-shred (destroy DEK; instant, irreversible). External files → single-pass best-effort overwrite **with a non-dismissable disclosure** about flash wear-leveling. Do not add multi-pass "DoD" modes — the project explicitly rejects wipe theater.
 

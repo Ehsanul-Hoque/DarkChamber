@@ -31,6 +31,22 @@ interface VaultViewerComponent {
     val players: Value<Map<String, VaultPlayer>>
 
     /**
+     * The drawn pages of the PDF shown, by page index (from 0) — **only while a PDF is the page shown,
+     * and only the pages near the screen** (see [pdfViewport]). `null` for a page that could not be
+     * drawn; a page not drawn yet is absent. Held apart from [state] for the same reason as [pictures].
+     */
+    val pdfPages: Value<Map<Int, ImageBitmap?>>
+
+    /**
+     * What the PDF shown has on screen: the pages [visible], shown [shownWidthPx] wide at [zoom], on a
+     * screen [screenWidthPx] wide. The pages near them are drawn to fit; the rest are let go.
+     */
+    fun pdfViewport(visible: IntRange, shownWidthPx: Int, zoom: Float, screenWidthPx: Int)
+
+    /** The PDF shown was scrolled to [page], [offsetPx] down it — where reading resumes if it is left and come back to. */
+    fun pdfScrolled(page: Int, offsetPx: Int)
+
+    /**
      * The size of the area a picture is drawn in, in pixels. Nothing is decoded until this is known,
      * because the decode is sized from it.
      */

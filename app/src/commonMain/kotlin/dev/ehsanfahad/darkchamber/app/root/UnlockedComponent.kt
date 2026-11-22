@@ -34,6 +34,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.VaultImports
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryOrder
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultViewerComponent
 import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerDisplay
+import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPdfRenderer
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPlayerFactory
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerImageDecoder
 import dev.ehsanfahad.darkchamber.feature.vault.vaultViewerComponent
@@ -175,6 +176,9 @@ class DefaultUnlockedComponent(
     // Where the viewer lets a player go. Off the main thread, so a lock is not held up by a decoder
     // that blocks as it shuts down; injected so a test can hold the release and see the lock finish.
     private val releaseContext: CoroutineContext = Dispatchers.Default,
+    // Where each viewer runs its calls to an open PDF, one at a time — a new one per viewer, as the
+    // viewer's own default makes; injected so a test can hold a close and see the lock finish first.
+    private val pdfContext: () -> CoroutineContext = { Dispatchers.Default.limitedParallelism(1) },
     // How long the offer to leave stands after a back press at the grid.
     private val leaveWindow: Duration = LEAVE_WINDOW,
     // **Monotonic, and injected.** Monotonic because the app's own `nowEpochMillis()` is a wall
@@ -585,6 +589,10 @@ class DefaultUnlockedComponent(
                         // each says so.
                         players = koin.getOrNull<VaultPlayerFactory>(),
                         display = koin.getOrNull<PlayerDisplay>(),
+                        // Optional for the same reason: without it a PDF page shows its badge. Both
+                        // platform modules bind one (Android's says it cannot show PDFs before 11).
+                        pdfs = koin.getOrNull<VaultPdfRenderer>(),
+                        pdfContext = pdfContext(),
                         mainContext = mainContext + featureWork,
                         // Reading, decrypting and decoding a page, and shredding: all blocking.
                         ioContext = ioContext,

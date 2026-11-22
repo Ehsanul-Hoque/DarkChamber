@@ -140,13 +140,10 @@ class UnlockedNavigationTest {
     }
 
     /**
-     * The album id survives the round trip through a config. This is the test the hex decision exists
-     * for: the id goes in as bytes, is carried as a string, and has to come back out as the same
-     * bytes for the filtered listing to show the right album.
-     */
-    /**
-     * The album id survives the round trip through a config, asserted **on what the pushed screen
-     * lists** rather than on the catalog.
+     * The album id survives the round trip through a config — the test the hex decision exists for:
+     * the id goes in as bytes, is carried as a string, and has to come back out as the same bytes for
+     * the filtered listing to show the right album. Asserted **on what the pushed screen lists** rather
+     * than on the catalog.
      *
      * An earlier version of this test read the catalog directly, which proved the album had one item
      * in it and nothing at all about the filter reaching the component — the mutation that hardcoded

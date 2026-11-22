@@ -836,12 +836,6 @@ class GalleryFormatTest {
     }
 
     /**
-     * Spoken, the order control has to say what it is. On screen it reads "Newest" beside a
-     * chevron, which is a control, a current value and an invitation all at once; announced as
-     * "Newest" it is none of them. The chevron itself stays silent for exactly this reason — this
-     * description is where that information lives.
-     */
-    /**
      * The album overflow is a drawing with no label beside it, so its description is the only thing
      * a screen reader has to go on. It has to name the **subject** — three dots are nothing, and
      * "more" alone does not say more of what.
@@ -857,6 +851,12 @@ class GalleryFormatTest {
         assertEquals("More actions for this album", spoken)
     }
 
+    /**
+     * Spoken, the order control has to say what it is. On screen it reads "Newest" beside a
+     * chevron, which is a control, a current value and an invitation all at once; announced as
+     * "Newest" it is none of them. The chevron itself stays silent for exactly this reason — this
+     * description is where that information lives.
+     */
     @Test
     fun the_order_control_is_named_as_well_as_shown() {
         for (order in GalleryOrder.entries) {

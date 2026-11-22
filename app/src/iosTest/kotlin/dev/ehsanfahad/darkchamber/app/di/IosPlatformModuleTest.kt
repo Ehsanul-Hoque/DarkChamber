@@ -4,7 +4,9 @@ import dev.ehsanfahad.darkchamber.app.camera.IosCameraController
 import dev.ehsanfahad.darkchamber.app.image.IosViewerImageDecoder
 import dev.ehsanfahad.darkchamber.app.media.IosPlayerDisplay
 import dev.ehsanfahad.darkchamber.app.media.IosVaultPlayerFactory
+import dev.ehsanfahad.darkchamber.app.pdf.IosPdfRenderer
 import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerDisplay
+import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPdfRenderer
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPlayerFactory
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerImageDecoder
 import dev.ehsanfahad.darkchamber.app.thumbnail.IosThumbnailEncoder
@@ -41,6 +43,17 @@ class IosPlatformModuleTest {
         try {
             assertIs<IosVaultPlayerFactory>(app.koin.getOrNull<VaultPlayerFactory>())
             assertIs<IosPlayerDisplay>(app.koin.getOrNull<PlayerDisplay>())
+        } finally {
+            app.close()
+        }
+    }
+
+    @Test
+    fun the_platform_module_binds_the_ios_pdf_renderer() {
+        // Resolved optionally (a PDF then shows its badge), so only this would notice it missing.
+        val app = koinApplication { modules(platformModule()) }
+        try {
+            assertIs<IosPdfRenderer>(app.koin.getOrNull<VaultPdfRenderer>())
         } finally {
             app.close()
         }

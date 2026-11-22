@@ -1,12 +1,3 @@
-package dev.ehsanfahad.darkchamber.core.logging
-
-import co.touchlab.kermit.Logger
-import co.touchlab.kermit.LoggerConfig
-import co.touchlab.kermit.Severity
-import co.touchlab.kermit.StaticConfig
-import co.touchlab.kermit.platformLogWriter
-import dev.ehsanfahad.darkchamber.core.model.VaultError
-
 /**
  * `:core:logging` — the app's only logging surface.
  *
@@ -15,6 +6,14 @@ import dev.ehsanfahad.darkchamber.core.model.VaultError
  * vault item ever reaches a log line. Hard rule #3: no Crashlytics, no remote sink, ever —
  * Kermit's platform writer (Logcat / NSLog) is the only destination.
  */
+package dev.ehsanfahad.darkchamber.core.logging
+
+import co.touchlab.kermit.Logger
+import co.touchlab.kermit.LoggerConfig
+import co.touchlab.kermit.Severity
+import co.touchlab.kermit.StaticConfig
+import co.touchlab.kermit.platformLogWriter
+import dev.ehsanfahad.darkchamber.core.model.VaultError
 
 /**
  * Configure the process-wide Kermit logger. Called once from the app launcher's bootstrap.

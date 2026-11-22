@@ -1,0 +1,249 @@
+package dev.ehsanfahad.darkchamber.app.pdf
+
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asComposeImageBitmap
+import cnames.structs.CGPDFDocument
+import cnames.structs.__CFData
+import dev.ehsanfahad.darkchamber.feature.vault.api.PdfOpened
+import dev.ehsanfahad.darkchamber.feature.vault.api.PdfPageSize
+import dev.ehsanfahad.darkchamber.feature.vault.api.PdfRefusal
+import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPdfBuffer
+import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPdfDocument
+import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPdfRenderer
+import kotlinx.cinterop.ByteVar
+import kotlinx.cinterop.CPointer
+import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.addressOf
+import kotlinx.cinterop.interpretCPointer
+import kotlinx.cinterop.reinterpret
+import kotlinx.cinterop.toLong
+import kotlinx.cinterop.useContents
+import kotlinx.cinterop.usePinned
+import kotlinx.io.Buffer
+import kotlinx.io.IOException
+import kotlinx.io.RawSink
+import kotlinx.io.readTo
+import org.jetbrains.skia.Bitmap
+import org.jetbrains.skia.ColorAlphaType
+import org.jetbrains.skia.ColorType
+import org.jetbrains.skia.ImageInfo
+import platform.CoreFoundation.CFRelease
+import platform.CoreGraphics.CGAffineTransformMake
+import platform.CoreGraphics.CGBitmapContextCreate
+import platform.CoreGraphics.CGColorSpaceCreateDeviceRGB
+import platform.CoreGraphics.CGColorSpaceRelease
+import platform.CoreGraphics.CGContextConcatCTM
+import platform.CoreGraphics.CGContextDrawPDFPage
+import platform.CoreGraphics.CGContextFillRect
+import platform.CoreGraphics.CGContextRelease
+import platform.CoreGraphics.CGContextSetRGBFillColor
+import platform.CoreGraphics.CGDataProviderCreateWithCFData
+import platform.CoreGraphics.CGDataProviderRelease
+import platform.CoreGraphics.CGImageAlphaInfo
+import platform.CoreGraphics.CGPDFDocumentCreateWithProvider
+import platform.CoreGraphics.CGPDFDocumentGetNumberOfPages
+import platform.CoreGraphics.CGPDFDocumentGetPage
+import platform.CoreGraphics.CGPDFDocumentIsUnlocked
+import platform.CoreGraphics.CGPDFDocumentRelease
+import platform.CoreGraphics.CGPDFPageGetBoxRect
+import platform.CoreGraphics.CGPDFPageGetRotationAngle
+import platform.CoreGraphics.CGPDFPageRef
+import platform.CoreGraphics.CGRectMake
+import platform.CoreGraphics.kCGBitmapByteOrder32Big
+import platform.CoreGraphics.kCGPDFCropBox
+import platform.Foundation.CFBridgingRetain
+import platform.Foundation.NSMakeRange
+import platform.Foundation.NSMutableData
+import platform.Foundation.appendBytes
+import platform.Foundation.create
+import platform.Foundation.resetBytesInRange
+
+/**
+ * PDFs on iOS, from memory only: the decrypted file is gathered into an `NSMutableData`, and
+ * CoreGraphics — the engine under PDFKit — reads it from there. Nothing is written to a file, `tmp/`
+ * included, or to a cache, and pages are drawn as pictures: nothing interactive (no links, no text)
+ * exists here.
+ *
+ * **Our copy is wiped.** The buffer is made at the file's size, so it holds the file in one place from
+ * first byte to last; when it is released — refused, closed, or with its document — those bytes are
+ * zeroed and its length set to nothing. CoreGraphics' own parse of the file is its own and is
+ * freed, not wiped, when the document is released.
+ */
+@OptIn(ExperimentalForeignApi::class)
+internal class IosPdfRenderer : VaultPdfRenderer {
+    override val supported: Boolean = true
+
+    override fun newBuffer(sizeHint: Long): VaultPdfBuffer = IosPdfBuffer(sizeHint)
+}
+
+@OptIn(ExperimentalForeignApi::class)
+internal class IosPdfBuffer(sizeHint: Long) : VaultPdfBuffer {
+    // Made at the file's size, so filling it never moves it: a buffer that grew as it filled would leave
+    // each earlier home in freed memory, holding plaintext, and only the last one is wiped on close.
+    // The hint is the item's plaintext size column, written at import from the bytes encrypted; only a
+    // catalog altered behind the vault's back could make the file larger than it, and then the buffer
+    // would grow, and move, as it used to.
+    private var data: NSMutableData? = NSMutableData.create(capacity = sizeHint.coerceAtLeast(0).toULong())
+    private val chunk = ByteArray(CHUNK_BYTES)
+
+    /** Bytes of the file this buffer holds now. */
+    internal val held: Long get() = data?.length?.toLong() ?: 0L
+
+    /** Where the bytes are now — a test sees from it whether filling ever moved them. */
+    internal val address: Long? get() = data?.bytes?.toLong()
+
+    override val sink: RawSink = object : RawSink {
+        override fun write(source: Buffer, byteCount: Long) {
+            val into = data ?: throw IOException("the buffer is closed")
+            var left = byteCount
+            try {
+                while (left > 0) {
+                    val count = minOf(left, CHUNK_BYTES.toLong()).toInt()
+                    source.readTo(chunk, 0, count)
+                    chunk.usePinned { into.appendBytes(it.addressOf(0), count.toULong()) }
+                    left -= count
+                }
+            } finally {
+                chunk.fill(0)
+            }
+        }
+
+        override fun flush() = Unit
+
+        override fun close() = Unit
+    }
+
+    override fun open(): PdfOpened {
+        val bytes = data ?: return PdfOpened.Refused(PdfRefusal.Unreadable)
+        val document = openDocument(bytes)
+        if (document == null) {
+            close()
+            return PdfOpened.Refused(PdfRefusal.Unreadable)
+        }
+        val refusal = when {
+            !CGPDFDocumentIsUnlocked(document) -> PdfRefusal.NeedsPassword
+            CGPDFDocumentGetNumberOfPages(document) == 0uL -> PdfRefusal.Unreadable
+            else -> null
+        }
+        if (refusal != null) {
+            CGPDFDocumentRelease(document)
+            close()
+            return PdfOpened.Refused(refusal)
+        }
+        return PdfOpened.Document(IosPdfDocument(document, this))
+    }
+
+    /** CoreGraphics' document over [bytes], or `null` where it will not read them as a PDF at all. */
+    private fun openDocument(bytes: NSMutableData): CPointer<CGPDFDocument>? {
+        val cfData = CFBridgingRetain(bytes)?.reinterpret<__CFData>() ?: return null
+        try {
+            val provider = CGDataProviderCreateWithCFData(cfData) ?: return null
+            try {
+                return CGPDFDocumentCreateWithProvider(provider)
+            } finally {
+                CGDataProviderRelease(provider) // the document keeps its own hold on the provider
+            }
+        } finally {
+            CFRelease(cfData)
+        }
+    }
+
+    override fun close() {
+        val bytes = data ?: return
+        data = null
+        bytes.resetBytesInRange(NSMakeRange(0u, bytes.length)) // zeroed, then let go
+        bytes.setLength(0u)
+        chunk.fill(0)
+    }
+
+    private companion object {
+        const val CHUNK_BYTES = 64 * 1024
+    }
+}
+
+/**
+ * One open PDF. Not safe from two threads at once — the viewer makes its calls one at a time — and
+ * closing releases CoreGraphics' document before the buffer under it is wiped.
+ */
+@OptIn(ExperimentalForeignApi::class)
+private class IosPdfDocument(
+    private var document: CPointer<CGPDFDocument>?,
+    private val buffer: IosPdfBuffer,
+) : VaultPdfDocument {
+    override val pageCount: Int = document?.let { CGPDFDocumentGetNumberOfPages(it).toInt() } ?: 0
+
+    /**
+     * A page as a reader sees it: its crop box (not the media box, which can carry bleed), turned by its
+     * `/Rotate` — as Android's renderer shows it. CoreGraphics' draw applies neither by itself.
+     */
+    private class Shape(val x: Double, val y: Double, val width: Double, val height: Double, val rotation: Int) {
+        val shown: Pair<Double, Double> get() = PdfPageGeometry.shownSize(width, height, rotation)
+    }
+
+    private fun shapeOf(page: CGPDFPageRef): Shape =
+        CGPDFPageGetBoxRect(page, kCGPDFCropBox).useContents {
+            Shape(origin.x, origin.y, size.width, size.height, PdfPageGeometry.rotation(CGPDFPageGetRotationAngle(page)))
+        }
+
+    override fun pageSize(index: Int): PdfPageSize {
+        val page = document?.let { CGPDFDocumentGetPage(it, (index + 1).toULong()) } ?: return PdfPageSize(0, 0)
+        val (width, height) = shapeOf(page).shown
+        return PdfPageSize(width.toInt(), height.toInt())
+    }
+
+    override fun render(index: Int, widthPx: Int): ImageBitmap? {
+        val open = document ?: return null
+        if (widthPx <= 0) return null
+        val page = CGPDFDocumentGetPage(open, (index + 1).toULong()) ?: return null
+        val shape = shapeOf(page)
+        if (shape.width <= 0.0 || shape.height <= 0.0) return null
+        val (shownWidth, shownHeight) = shape.shown
+        // In floating point: a page narrower than a point is a tiny page, not a division by zero.
+        val heightPx = (widthPx * shownHeight / shownWidth).toInt().coerceAtLeast(1)
+
+        val bitmap = Bitmap()
+        if (!bitmap.allocPixels(ImageInfo(widthPx, heightPx, ColorType.RGBA_8888, ColorAlphaType.PREMUL))) {
+            bitmap.close()
+            return null
+        }
+        val pixels = bitmap.peekPixels() ?: run {
+            bitmap.close()
+            return null
+        }
+        val colorSpace = CGColorSpaceCreateDeviceRGB()
+        val context = CGBitmapContextCreate(
+            data = interpretCPointer<ByteVar>(pixels.addr),
+            width = widthPx.toULong(),
+            height = heightPx.toULong(),
+            bitsPerComponent = 8u,
+            bytesPerRow = pixels.rowBytes.toULong(),
+            space = colorSpace,
+            bitmapInfo = CGImageAlphaInfo.kCGImageAlphaPremultipliedLast.value or kCGBitmapByteOrder32Big,
+        )
+        CGColorSpaceRelease(colorSpace)
+        if (context == null) {
+            bitmap.close()
+            return null
+        }
+        try {
+            // A page with no background of its own is paper, not transparent black.
+            CGContextSetRGBFillColor(context, 1.0, 1.0, 1.0, 1.0)
+            CGContextFillRect(context, CGRectMake(0.0, 0.0, widthPx.toDouble(), heightPx.toDouble()))
+            // The crop box, turned, laid exactly over the bitmap: what lies outside it falls off the edges.
+            val t = PdfPageGeometry.transform(shape.x, shape.y, shape.width, shape.height, shape.rotation, widthPx, heightPx)
+            CGContextConcatCTM(context, CGAffineTransformMake(t.a, t.b, t.c, t.d, t.tx, t.ty))
+            CGContextDrawPDFPage(context, page)
+        } finally {
+            CGContextRelease(context)
+        }
+        bitmap.setImmutable()
+        return bitmap.asComposeImageBitmap()
+    }
+
+    override fun close() {
+        val open = document ?: return
+        document = null
+        CGPDFDocumentRelease(open)
+        buffer.close()
+    }
+}

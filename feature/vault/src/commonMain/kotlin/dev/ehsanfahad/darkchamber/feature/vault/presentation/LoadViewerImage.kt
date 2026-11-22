@@ -8,6 +8,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.domain.VaultItems
 import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.job
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -92,7 +93,8 @@ internal class LoadViewerImage<T>(
         try {
             val sink = ArraySink(buffer)
             val read = try {
-                items.open(item.id, sink)
+                // A lock stops the decrypt within a chunk, not at the end of the file.
+                items.open(item.id, StopsWhenCancelled(coroutineContext.job, sink))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

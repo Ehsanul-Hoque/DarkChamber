@@ -45,6 +45,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -54,7 +55,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
@@ -62,7 +62,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
@@ -100,6 +102,7 @@ fun VaultViewerContent(component: VaultViewerComponent, modifier: Modifier = Mod
     val state by component.state.subscribeAsState()
     val pictures by component.pictures.subscribeAsState()
     val players by component.players.subscribeAsState()
+    val pdfPages by component.pdfPages.subscribeAsState()
     // Ages in Details are coarse (minutes at finest); "now" once per composition is enough.
     val now = remember { Clock.System.now().toEpochMilliseconds() }
     val actions = remember(component) {
@@ -122,8 +125,11 @@ fun VaultViewerContent(component: VaultViewerComponent, modifier: Modifier = Mod
         state = state,
         pictures = pictures,
         players = players,
+        pdfPages = pdfPages,
         playerActions = actions,
         now = now,
+        onPdfViewport = component::pdfViewport,
+        onPdfScrolled = component::pdfScrolled,
         onViewport = component::viewportMeasured,
         onShowPage = component::showPage,
         onBack = component::back,
@@ -144,8 +150,11 @@ internal fun ViewerScreen(
     state: ViewerState,
     pictures: Map<String, ImageBitmap>,
     players: Map<String, VaultPlayer>,
+    pdfPages: Map<Int, ImageBitmap?>,
     playerActions: PlayerActions,
     now: Long,
+    onPdfViewport: (visible: IntRange, shownWidthPx: Int, zoom: Float, screenWidthPx: Int) -> Unit,
+    onPdfScrolled: (page: Int, offsetPx: Int) -> Unit,
     onViewport: (widthPx: Int, heightPx: Int) -> Unit,
     onShowPage: (Int) -> Unit,
     onBack: () -> Unit,
@@ -160,6 +169,11 @@ internal fun ViewerScreen(
     // Whether the page shown is zoomed in. While it is, a drag pans the picture rather than turning
     // the page.
     var zoomedIn by remember { mutableStateOf(false) }
+    // The bars' heights as last measured on screen, so a PDF's first page can start below the top bar
+    // and its last end above the bottom one. The bottom bar is measured only where it is one row of
+    // actions, as on a PDF page — a player page's is taller.
+    var topBarPx by remember { mutableIntStateOf(0) }
+    var bottomBarPx by remember { mutableIntStateOf(0) }
 
     // Pure black whatever the theme: a media surface (docs/DESIGN.md §2), where a raw colour is the token.
     BoxWithConstraints(modifier = modifier.fillMaxSize().background(Color.Black)) {
@@ -171,6 +185,22 @@ internal fun ViewerScreen(
         if (!state.loading && shown != null) {
             val shownKey = shown.id.toListKey()
             val media = state.pages[shownKey] as? ViewerPage.Media
+            val pdf = state.pages[shownKey] as? ViewerPage.Pdf
+            // The page of the PDF shown that the indicator names: where it opens, then what is most on screen.
+            var pdfReading by remember(shownKey, pdf?.start) { mutableIntStateOf(pdf?.start?.page ?: 0) }
+            // How long the page shown has been loading, as far as the indicator cares: reset in the same
+            // frame a new page is shown (so it never inherits the last one's wait), and moved on once.
+            val pageLoading = state.pages[shownKey] == ViewerPage.Loading
+            var loadingMs by remember(shownKey, pageLoading) { mutableLongStateOf(0L) }
+            LaunchedEffect(shownKey, pageLoading) {
+                if (pageLoading) {
+                    delay(ViewerFormat.PDF_DASHES_AFTER_MS)
+                    loadingMs = ViewerFormat.PDF_DASHES_AFTER_MS
+                }
+            }
+            // Jump to a page: the dialog, and the jump it asked for — both for this item only.
+            var jumpOpen by rememberSaveable(shownKey) { mutableStateOf(false) }
+            var jumpRequest by remember(shownKey) { mutableStateOf<PdfJumpRequest?>(null) }
             val shownPlayer = players[shownKey]
             val playerState: PlayerState? = key(shownPlayer) { shownPlayer?.state?.collectAsState()?.value }
             // An audio page's controls stay on screen; a video page's hide after a while of playing,
@@ -215,6 +245,16 @@ internal fun ViewerScreen(
                     playerActions = playerActions,
                     onInteraction = { interactions++ },
                     controlsShown = barsVisible,
+                    pdf = PdfHooks(
+                        drawn = if (isShown) pdfPages else emptyMap(),
+                        onViewport = onPdfViewport,
+                        onScrolled = onPdfScrolled,
+                        onReading = { if (isShown) pdfReading = it },
+                        topPaddingPx = topBarPx,
+                        bottomPaddingPx = bottomBarPx,
+                        jump = if (isShown) jumpRequest else null,
+                        barsShown = barsVisible,
+                    ),
                 )
             }
 
@@ -235,13 +275,29 @@ internal fun ViewerScreen(
                 title = ViewerFormat.title(shown.meta),
                 position = ViewerFormat.position(state.index, state.items.size),
                 onBack = onBack,
-                modifier = Modifier.align(Alignment.TopCenter),
+                modifier = Modifier.align(Alignment.TopCenter).onSizeChanged { if (it.height > 0) topBarPx = it.height },
             )
             ViewerBottomBar(
                 visible = barsVisible,
                 onDetails = { detailsOpen = true },
                 onDelete = onRequestDelete,
-                modifier = Modifier.align(Alignment.BottomCenter),
+                modifier = Modifier.align(Alignment.BottomCenter).onSizeChanged {
+                    if (it.height > 0 && media == null) bottomBarPx = it.height
+                },
+                leading = ViewerFormat.pdfIndicator(
+                    page = state.pages[shownKey] ?: ViewerPage.Loading,
+                    meta = shown.meta,
+                    reading = pdfReading,
+                    loadingMs = loadingMs,
+                )?.let { slot ->
+                    when (slot) {
+                        // Nothing drawn and nothing to land on: the place alone keeps Details and Delete still.
+                        IndicatorSlot.Held -> { {} }
+                        is IndicatorSlot.Shown -> {
+                            { PdfIndicator(slot.indicator, onClick = if (slot.indicator.ready) ({ jumpOpen = true }) else null) }
+                        }
+                    }
+                },
                 controls = if (media != null && playerState != null) {
                     { trailing ->
                         PlayerControls(
@@ -260,6 +316,16 @@ internal fun ViewerScreen(
                 // A phone on its side: one row under the seek bar, clear of the centre control.
                 compact = PlayerChrome.compactBar(maxHeight.value),
             )
+            if (jumpOpen && pdf != null) {
+                PdfJumpDialog(
+                    pageCount = pdf.pageCount,
+                    onGo = { index ->
+                        jumpRequest = PdfJumpRequest(index)
+                        jumpOpen = false
+                    },
+                    onCancel = { jumpOpen = false },
+                )
+            }
             if (detailsOpen) {
                 DetailsSheet(rows = ViewerFormat.details(shown, shown.album, now), onDismiss = { detailsOpen = false })
             }
@@ -293,8 +359,24 @@ private fun ViewerPageView(
     playerActions: PlayerActions,
     onInteraction: () -> Unit,
     controlsShown: Boolean,
+    pdf: PdfHooks,
 ) {
     when {
+        page is ViewerPage.Pdf ->
+            PdfPageView(
+                page = page,
+                drawn = pdf.drawn,
+                isShown = isShown,
+                onTap = onTap,
+                onZoomedIn = onZoomedIn,
+                onViewport = pdf.onViewport,
+                onScrolled = pdf.onScrolled,
+                onReading = pdf.onReading,
+                topPaddingPx = pdf.topPaddingPx,
+                bottomPaddingPx = pdf.bottomPaddingPx,
+                jump = pdf.jump,
+                barsShown = pdf.barsShown,
+            )
         page is ViewerPage.Media ->
             PlayerPageView(
                 kind = page.kind,
@@ -447,7 +529,7 @@ private fun PageMessage(page: ViewerPage, badge: String, onTap: () -> Unit) {
 @Composable
 private fun barsTransition(): Int = if (prefersReducedMotion()) 0 else DarkChamberTheme.motion.motionBase
 
-/** Back, the item's name, and where it stands in the listing — over a scrim fading down into the picture. */
+/** Back, the item's name, and where it stands in the listing — on the bars' flat scrim. */
 @Composable
 private fun ViewerTopBar(visible: Boolean, title: String, position: String, onBack: () -> Unit, modifier: Modifier) {
     val duration = barsTransition()
@@ -463,7 +545,7 @@ private fun ViewerTopBar(visible: Boolean, title: String, position: String, onBa
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Brush.verticalGradient(listOf(ScrimDark, Color.Transparent)))
+                .background(ViewerBars.scrim)
                 .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
                 .padding(horizontal = spacing.spaceXs, vertical = spacing.spaceXs),
         ) {
@@ -489,7 +571,7 @@ private fun ViewerTopBar(visible: Boolean, title: String, position: String, onBa
 }
 
 /**
- * Details and Delete, labelled, Delete in the danger role — over a scrim rising from the bottom edge.
+ * Details and Delete, labelled, Delete in the danger role — on the bars' flat scrim.
  * A player page puts its [controls] above them.
  */
 @Composable
@@ -502,6 +584,8 @@ private fun ViewerBottomBar(
     controls: (@Composable (trailing: (@Composable () -> Unit)?) -> Unit)? = null,
     /** A short screen: Details and Delete end the controls' row rather than taking a row of their own. */
     compact: Boolean = false,
+    /** What starts the row of Details and Delete: a PDF's page indicator. */
+    leading: (@Composable () -> Unit)? = null,
 ) {
     val duration = barsTransition()
     AnimatedVisibility(
@@ -514,25 +598,86 @@ private fun ViewerBottomBar(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Brush.verticalGradient(listOf(Color.Transparent, ScrimDark)))
+                .background(ViewerBars.scrim)
                 .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
                 .padding(vertical = DarkChamberTheme.spacing.spaceXs),
         ) {
-            val barActions: @Composable () -> Unit = {
+            val details: @Composable () -> Unit = {
                 BarAction(label = ViewerFormat.detailsAction(), color = colors.textPrimary, onClick = onDetails) { tint ->
                     DetailsMark(contentDescription = null, tint = tint)
                 }
+            }
+            val delete: @Composable () -> Unit = {
                 BarAction(label = ViewerFormat.deleteAction(1), color = colors.danger, onClick = onDelete) { tint ->
                     DeleteMark(contentDescription = null, tint = tint)
                 }
+            }
+            val barActions: @Composable () -> Unit = {
+                details()
+                delete()
             }
             if (controls != null && compact) {
                 controls(barActions)
             } else {
                 controls?.invoke(null)
-                Row(horizontalArrangement = Arrangement.SpaceEvenly, modifier = Modifier.fillMaxWidth()) { barActions() }
+                Row(
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    if (leading == null) {
+                        barActions()
+                    } else {
+                        // Three equal slots: whatever the indicator says ("Page – of –", "Page 9",
+                        // "Page 100"), Details and Delete stay where they are.
+                        for (slot in listOf(leading, details, delete)) {
+                            Box(contentAlignment = Alignment.Center, modifier = Modifier.weight(1f)) { slot() }
+                        }
+                    }
+                }
             }
         }
+    }
+}
+
+/** What a PDF page needs from the screen: its drawn pages, and where to say what it shows. */
+private class PdfHooks(
+    val drawn: Map<Int, ImageBitmap?>,
+    val onViewport: (visible: IntRange, shownWidthPx: Int, zoom: Float, screenWidthPx: Int) -> Unit,
+    val onScrolled: (page: Int, offsetPx: Int) -> Unit,
+    val onReading: (Int) -> Unit,
+    val topPaddingPx: Int,
+    val bottomPaddingPx: Int,
+    /** A jump to a page asked for in the dialog, while this page is the one shown. */
+    val jump: PdfJumpRequest?,
+    /** Whether the bars are on screen: the fast-scroll thumb shows with them. */
+    val barsShown: Boolean,
+)
+
+/**
+ * "Page N of M", as tall as the actions beside it, spoken as [PageIndicator.spoken]. A button that
+ * opens the jump dialog once the pages are known ([onClick]); plain text before.
+ */
+@Composable
+private fun PdfIndicator(indicator: PageIndicator, onClick: (() -> Unit)?) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .heightIn(min = 48.dp)
+            .widthIn(min = 72.dp)
+            .then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier)
+            .semantics(mergeDescendants = true) { contentDescription = indicator.spoken }
+            .padding(DarkChamberTheme.spacing.spaceXs),
+    ) {
+        Text(
+            text = indicator.text,
+            style = DarkChamberTheme.typography.label,
+            color = DarkChamberTheme.colors.textPrimary,
+            // Two lines at a large font ("Page N" over "of M"), each centred under the other.
+            textAlign = TextAlign.Center,
+            // Spoken once, as the box's description, not again as its text.
+            modifier = Modifier.clearAndSetSemantics {},
+        )
     }
 }
 
@@ -658,8 +803,8 @@ private fun NoticeBanner(text: String, warning: Boolean, onDismiss: () -> Unit, 
 }
 
 /**
- * The bars' scrim, and the player's controls over a picture: black, like the camera's bands — a media
- * surface, so a raw colour.
+ * The player's controls over a picture (the bubbles and the centre control): black, like the camera's
+ * bands — a media surface, so a raw colour. The bars use [ViewerBars.scrim], darker.
  */
 internal val ScrimDark = Color.Black.copy(alpha = 0.6f)
 

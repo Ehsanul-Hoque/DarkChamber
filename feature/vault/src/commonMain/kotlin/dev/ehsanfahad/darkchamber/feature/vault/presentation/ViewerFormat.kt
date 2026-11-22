@@ -26,15 +26,21 @@ internal object ViewerFormat {
      * - **Stopped unverified.** A clip refused partway through playing: every part that played was a
      *   verified chunk, and playback stopped at the first that was not. So it says playback stopped —
      *   never that none of it was shown, which would be false — and, as above, names no cause.
+     * - **A PDF's password / unreadable.** Both were read and verified, so neither may sound like
+     *   damage. A password is the document's own lock, and there is nowhere here to type it. A renderer
+     *   that will not read a verified file is the renderer's limit: the line says the file is unchanged
+     *   since it was saved — the vault checked exactly that — and names no cause it was not told.
      * - **Couldn't open.** Why is not known, so no why.
      */
     fun pageMessage(page: ViewerPage): String? =
         when (page) {
-            ViewerPage.Loading, ViewerPage.Picture, is ViewerPage.Media -> null
+            ViewerPage.Loading, ViewerPage.Picture, is ViewerPage.Media, is ViewerPage.Pdf -> null
             is ViewerPage.NotViewable -> "This file can't be opened here."
             ViewerPage.TooLarge -> "This file is too large to open here."
             ViewerPage.CantShow -> "This file can't be shown on this device."
             ViewerPage.CantPlay -> "This device can't play this file."
+            ViewerPage.PasswordProtected -> "This PDF is locked with a password, which can't be entered here."
+            ViewerPage.Unreadable -> "This PDF can't be read here. It is unchanged since it was saved."
             ViewerPage.Unverified ->
                 "This file couldn't be verified, so none of it is shown. It may have changed since it was saved."
             ViewerPage.StoppedUnverified ->
@@ -203,6 +209,68 @@ internal object ViewerFormat {
             else -> WARNING_BADGE
         }
 
+    /** A PDF's page, counted from 1: the indicator's words and each page's spoken name. */
+    fun pdfPage(index: Int, count: Int): String = "Page ${index + 1} of $count"
+
+    /**
+     * The page indicator's place in the bottom bar for [page], or `null` for no place — anything but a
+     * PDF, where Details and Delete share the bar. Every PDF has the place, so Details and Delete sit in
+     * the same spot on all of them, open or not:
+     *
+     * - Open, it names [reading], the page most on screen, and a tap jumps.
+     * - Reading, the place is held empty for the first [PDF_DASHES_AFTER_MS] of [loadingMs] — a small
+     *   PDF opens, and a locked one is refused, before dashes would show, so nothing flashes — then
+     *   shows dashes, with no numbers and no jump.
+     * - Refused, before its read or after it, the place stays empty; the page says why.
+     *
+     * At a large font it wraps, and only as "Page N" over "of M": the spaces inside each half do not
+     * break. What a screen reader hears has plain spaces.
+     */
+    fun pdfIndicator(page: ViewerPage, meta: GalleryItemMeta, reading: Int, loadingMs: Long): IndicatorSlot? =
+        when {
+            !isPdf(meta) -> null
+            page is ViewerPage.Pdf ->
+                IndicatorSlot.Shown(
+                    PageIndicator(
+                        text = "Page$NBSP${reading + 1} of$NBSP${page.pageCount}",
+                        spoken = "${pdfPage(reading, page.pageCount)}, jump to a page",
+                        ready = true,
+                    ),
+                )
+            page != ViewerPage.Loading -> IndicatorSlot.Held
+            loadingMs < PDF_DASHES_AFTER_MS -> IndicatorSlot.Held
+            else -> IndicatorSlot.Shown(PageIndicator("Page$NBSP– of$NBSP–", "Pages loading", ready = false))
+        }
+
+    /** How long a PDF reads before its indicator shows dashes; a quicker one goes straight to its pages. */
+    const val PDF_DASHES_AFTER_MS = 300L
+
+    /** Beside the fast-scroll thumb while it is dragged: the page the drag has reached, counted from 1. */
+    fun fastScrollPage(index: Int): String = "Page ${index + 1}"
+
+    /** The jump-to-page dialog's title, and its confirm button. */
+    fun jumpTitle(): String = "Go to page"
+
+    fun jumpGo(): String = "Go"
+
+    /** The jump field's label: which numbers it takes. */
+    fun jumpFieldLabel(count: Int): String = "Page, 1 to $count"
+
+    /**
+     * Why a jump did not go, shown in the dialog — `null` when it goes. A number no page has is said
+     * to be out of the document's range, never moved to the nearest page.
+     */
+    fun jumpProblem(jump: PageJump, count: Int): String? =
+        when (jump) {
+            is PageJump.Go -> null
+            PageJump.Empty -> "Type a page number."
+            PageJump.NotANumber -> "Use digits only."
+            PageJump.OutOfRange -> "This PDF has pages 1 to $count."
+        }
+
+    /** In place of one page of a PDF that would not draw; the others still show. Names no cause. */
+    fun pdfPageNotShown(): String = "This page couldn't be shown."
+
     fun cancel(): String = "Cancel"
 
     /** The confirm button once pressed: the only thing saying why the buttons stopped responding. */
@@ -210,6 +278,9 @@ internal object ViewerFormat {
 
     /** The grid's mark for something that could not be verified. */
     private const val WARNING_BADGE = "!"
+
+    /** A space a line never breaks at (U+00A0), written as its code so no editor shows it as a space. */
+    private val NBSP = Char(0x00A0)
 
     fun back(): String = "Back"
 
@@ -232,4 +303,15 @@ internal object ViewerFormat {
 
     /** Only a failed integrity check takes the warning style (DESIGN: danger is for integrity failures). */
     fun pageIsWarning(page: ViewerPage): Boolean = page == ViewerPage.Unverified || page == ViewerPage.StoppedUnverified
+}
+
+/** The PDF page indicator: what it shows, what a screen reader says, and whether it is ready to jump. */
+internal data class PageIndicator(val text: String, val spoken: String, val ready: Boolean)
+
+/** The indicator's place in the bottom bar: kept empty, or showing an indicator. */
+internal sealed interface IndicatorSlot {
+    /** The place is kept, with nothing in it and nothing a screen reader lands on: Details and Delete stay put. */
+    data object Held : IndicatorSlot
+
+    data class Shown(val indicator: PageIndicator) : IndicatorSlot
 }

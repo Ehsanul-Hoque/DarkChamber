@@ -6,6 +6,7 @@ import dev.ehsanfahad.darkchamber.core.vault.VaultObjects
 import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
 import dev.ehsanfahad.darkchamber.feature.vault.api.PhotoPicker
 import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerDisplay
+import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPdfRenderer
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPlayerFactory
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultAlbumsComponent
@@ -189,6 +190,8 @@ fun vaultViewerComponent(
     // The screen's brightness, orientation and sleep for a player page. Without it a video page has
     // no orientation button and no brightness slide.
     display: PlayerDisplay? = null,
+    // The platform's PDF renderer. Without one, a PDF page shows its badge, as before PDFs.
+    pdfs: VaultPdfRenderer? = null,
     mainContext: CoroutineContext = Dispatchers.Main,
     // Where a page is read, decrypted and decoded, and where a delete runs: all blocking, all large
     // or slow, none of it for the thread drawing the pager.
@@ -196,6 +199,9 @@ fun vaultViewerComponent(
     // Where a player is let go. Never the main thread: a decoder can block for seconds as it shuts
     // down, and a lock must not wait for it.
     releaseContext: CoroutineContext = Dispatchers.Default,
+    // Where every call to an open PDF runs — open, page sizes, drawing, close — one at a time: the
+    // renderer is not safe from two at once. One for this viewer; injected so a test can hold it.
+    pdfContext: CoroutineContext = Dispatchers.Default.limitedParallelism(1),
 ): VaultViewerComponent {
     val items = VaultObjectsItems(vaultObjects)
     val loader = LoadViewerImage(items = items, decode = decoder::decode, io = ioContext)
@@ -216,6 +222,9 @@ fun vaultViewerComponent(
         mainContext = mainContext,
         ioContext = ioContext,
         releaseContext = releaseContext,
+        openObject = items::open,
+        pdfs = pdfs,
+        pdfContext = pdfContext,
     )
 }
 

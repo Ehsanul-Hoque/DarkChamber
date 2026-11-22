@@ -61,6 +61,9 @@ dependencies {
     androidTestImplementation(project(":core:vault"))
     // The storage layer's write path, checked where the JVM's mkdirs() can really fail.
     androidTestImplementation(project(":core:storage"))
+    // The PDF renderer's seam, so its test can name the type the platform module binds; the renderer
+    // itself stays internal to :app.
+    androidTestImplementation(project(":feature:vault"))
     androidTestImplementation(libs.androidx.testExt.junit)
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.junit)

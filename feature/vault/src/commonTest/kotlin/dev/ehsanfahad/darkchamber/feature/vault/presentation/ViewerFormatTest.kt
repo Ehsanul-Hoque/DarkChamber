@@ -7,12 +7,14 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerNotice
 import dev.ehsanfahad.darkchamber.feature.vault.api.TrackNote
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerPage
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
+import dev.ehsanfahad.darkchamber.feature.vault.api.PdfPageSize
 import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerKind
 import dev.ehsanfahad.darkchamber.feature.vault.api.ScreenOrientation
 import dev.ehsanfahad.darkchamber.feature.vault.api.label
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -27,13 +29,18 @@ class ViewerFormatTest {
         ViewerPage.TooLarge,
         ViewerPage.CantShow,
         ViewerPage.CantPlay,
+        ViewerPage.PasswordProtected,
+        ViewerPage.Unreadable,
         ViewerPage.Unverified,
         ViewerPage.StoppedUnverified,
         ViewerPage.NeedsUpdate,
         ViewerPage.CouldntOpen,
     )
 
-    private fun message(page: ViewerPage): String = assertNotNull(ViewerFormat.pageMessage(page), "a message for $page")
+    private fun message(page: ViewerPage): String =
+        assertNotNull(ViewerFormat.pageMessage(page), "a message for $page").also {
+            assertTrue(it.isNotBlank(), "the message for $page says something")
+        }
 
     private fun assertSaysNone(text: String, vararg words: String) {
         for (word in words) assertFalse(text.contains(word, ignoreCase = true), "\"$text\" must not say \"$word\"")
@@ -63,9 +70,39 @@ class ViewerFormatTest {
      */
     @Test
     fun the_pages_for_a_working_file_never_sound_like_damage() {
-        for (page in listOf(ViewerPage.NotViewable("PDF"), ViewerPage.TooLarge, ViewerPage.CantShow, ViewerPage.CantPlay, ViewerPage.NeedsUpdate)) {
+        for (
+            page in listOf(
+                ViewerPage.NotViewable("PDF"), ViewerPage.TooLarge, ViewerPage.CantShow, ViewerPage.CantPlay,
+                ViewerPage.PasswordProtected, ViewerPage.Unreadable, ViewerPage.NeedsUpdate,
+            )
+        ) {
             assertSaysNone(message(page), "damage", "corrupt", "tamper", "verif", "integrity", "broken")
         }
+    }
+
+    /**
+     * A PDF locked with a password: the lock is the reason, and it is one this app cannot open — there
+     * is nowhere to type it. Nothing about the file's state, and no promise that it can be opened later.
+     */
+    @Test
+    fun a_password_protected_pdf_says_the_password_cannot_be_entered_here() {
+        val text = message(ViewerPage.PasswordProtected)
+        assertTrue(text.contains("password", ignoreCase = true), text)
+        assertTrue(text.contains("can't be entered here", ignoreCase = true), text)
+        assertSaysNone(text, "wrong", "incorrect", "safe", "secure", "encrypted", "soon", "later", "update")
+    }
+
+    /**
+     * A PDF the renderer will not read was still verified by the vault: it is exactly the file that was
+     * added. So the line may say it is unchanged — that much is known — and puts the limit on reading
+     * it here, naming no cause (malformed? a feature the renderer refuses?) it was never told.
+     */
+    @Test
+    fun an_unreadable_pdf_says_it_is_unchanged_and_names_no_cause() {
+        val text = message(ViewerPage.Unreadable)
+        assertTrue(text.contains("can't be read here", ignoreCase = true), text)
+        assertTrue(text.contains("unchanged", ignoreCase = true), text)
+        assertSaysNone(text, "because", "format", "malformed", "invalid", "unsupported", "safe", "intact", "this device")
     }
 
     /**
@@ -368,5 +405,196 @@ class ViewerFormatTest {
         assertEquals("0%", ViewerFormat.levelFeedback(0f))
         assertEquals("100%", ViewerFormat.levelFeedback(1f))
         assertEquals("33%", ViewerFormat.levelFeedback(0.334f), "rounded")
+    }
+
+    // ---- a PDF's pages ------------------------------------------------------------------------------
+
+    /** Pages are counted from 1 on screen, from 0 in code. */
+    @Test
+    fun a_pdf_page_is_named_from_one_with_the_count() {
+        assertEquals("Page 1 of 12", ViewerFormat.pdfPage(index = 0, count = 12))
+        assertEquals("Page 12 of 12", ViewerFormat.pdfPage(index = 11, count = 12))
+    }
+
+    /**
+     * One page not drawing says only that: the renderer gives no reason, and the file verified, so no
+     * damage, no password and nothing about the rest of the file.
+     */
+    @Test
+    fun a_page_that_would_not_draw_names_no_cause() {
+        val text = ViewerFormat.pdfPageNotShown()
+        assertTrue(text.contains("page", ignoreCase = true), "\"$text\" says it is this page")
+        assertSaysNone(text, "damage", "corrupt", "broken", "password", "file", "PDF", "try", "later")
+    }
+
+    // ---- the page indicator -------------------------------------------------------------------------
+
+    private val pdfMeta = GalleryItemMeta.Readable("report.pdf", "application/pdf")
+    /** A space a line never breaks at (U+00A0), written as its code so no editor shows it as a space. */
+    private val NBSP = Char(0x00A0)
+    private val openPdf = ViewerPage.Pdf(pageCount = 12, pageSizes = List(12) { PdfPageSize(595, 842) })
+
+    private val waited = ViewerFormat.PDF_DASHES_AFTER_MS
+
+    private fun slot(page: ViewerPage, reading: Int = 0, loadingMs: Long = 0L, meta: GalleryItemMeta = pdfMeta) =
+        ViewerFormat.pdfIndicator(page, meta, reading, loadingMs)
+
+    /** The indicator in the slot, failing if the slot is empty or missing. */
+    private fun shown(page: ViewerPage, reading: Int = 0, loadingMs: Long = waited): PageIndicator =
+        assertIs<IndicatorSlot.Shown>(slot(page, reading = reading, loadingMs = loadingMs), "$page").indicator
+
+    @Test
+    fun an_open_pdf_names_the_page_being_read() {
+        val indicator = shown(openPdf, reading = 2)
+        assertEquals("Page 3 of 12", indicator.text.replace(NBSP, ' '))
+        assertTrue(indicator.ready)
+    }
+
+    /** An open PDF names its page at once — even when its read was quick and never showed dashes. */
+    @Test
+    fun an_open_pdf_shows_its_page_whatever_the_wait() {
+        assertEquals(shown(openPdf, reading = 2, loadingMs = waited), shown(openPdf, reading = 2, loadingMs = 0L))
+    }
+
+    /**
+     * The first moments of a read keep the place empty: a small PDF opens, or a locked one is refused,
+     * before dashes would have shown, so nothing flashes. Dashes come only once the read has taken
+     * [ViewerFormat.PDF_DASHES_AFTER_MS].
+     */
+    @Test
+    fun a_pdf_in_its_first_moments_of_reading_holds_an_empty_place() {
+        assertEquals(IndicatorSlot.Held, slot(ViewerPage.Loading, loadingMs = 0L))
+        assertEquals(IndicatorSlot.Held, slot(ViewerPage.Loading, loadingMs = waited - 1))
+        assertFalse(shown(ViewerPage.Loading, loadingMs = waited).ready, "dashes once the read has taken a while")
+    }
+
+    /**
+     * Every PDF that will not open keeps the indicator's place, empty — refused before any read (too large,
+     * a device that shows no PDFs) or after it (locked, unreadable, damaged): to the reader they are all
+     * the same, a message where pages would be, so Details and Delete sit where they do on every PDF.
+     */
+    @Test
+    fun every_pdf_that_will_not_open_keeps_its_empty_place() {
+        val refused = listOf(
+            ViewerPage.TooLarge, ViewerPage.CantShow, ViewerPage.CouldntOpen,
+            ViewerPage.PasswordProtected, ViewerPage.Unreadable, ViewerPage.Unverified,
+        )
+        for (page in refused) {
+            assertEquals(IndicatorSlot.Held, slot(page), "$page")
+            assertEquals(IndicatorSlot.Held, slot(page, loadingMs = waited), "$page after a long wait")
+        }
+    }
+
+    /**
+     * At a large font the indicator wraps, and only between "Page N" and "of M": its one breakable
+     * space is the one before "of". The same for the dashes while loading.
+     */
+    @Test
+    fun the_indicator_wraps_only_before_of() {
+        val open = shown(openPdf, reading = 399).text
+        assertEquals(listOf("Page${NBSP}400", "of${NBSP}12"), open.split(' '))
+        val loading = shown(ViewerPage.Loading).text
+        assertEquals(listOf("Page$NBSP–", "of$NBSP–"), loading.split(' '))
+    }
+
+    /** What a screen reader hears has plain spaces. */
+    @Test
+    fun the_spoken_indicator_has_no_unbreakable_spaces() {
+        for (page in listOf(openPdf, ViewerPage.Loading)) {
+            val spoken = shown(page, reading = 2).spoken
+            assertFalse(spoken.contains(NBSP), "\"$spoken\"")
+        }
+    }
+
+    /** A screen reader hears what the indicator does, not only what it says. */
+    @Test
+    fun an_open_pdf_indicator_is_spoken_as_the_way_to_jump() {
+        val spoken = shown(openPdf, reading = 2).spoken
+        assertTrue(spoken.startsWith("Page 3 of 12"), "\"$spoken\" names the page first")
+        assertTrue(spoken.contains("jump to a page"), "\"$spoken\" says what a tap does")
+    }
+
+    /**
+     * Still opening after a while: the dashes say the pages are coming, without numbers, in words a
+     * screen reader can speak, and do not jump.
+     */
+    @Test
+    fun a_pdf_still_opening_after_a_while_shows_dashes_without_numbers() {
+        val indicator = shown(ViewerPage.Loading)
+        assertFalse(indicator.text.any { it.isDigit() }, "\"${indicator.text}\" names no page")
+        assertTrue(indicator.text.startsWith("Page"), "\"${indicator.text}\" has the same shape as the open one")
+        assertFalse(indicator.spoken.any { it.isDigit() } || indicator.spoken.contains('–') || indicator.spoken.contains('-'))
+        assertTrue(indicator.spoken.isNotBlank())
+        assertFalse(indicator.ready)
+    }
+
+    @Test
+    fun only_a_pdf_has_a_place_for_an_indicator() {
+        val image = GalleryItemMeta.Readable("a.jpg", "image/jpeg")
+        for (wait in listOf(0L, waited)) {
+            assertNull(slot(ViewerPage.Loading, meta = image, loadingMs = wait), "an image loading, $wait ms")
+            assertNull(slot(ViewerPage.Picture, meta = image, loadingMs = wait), "an image, $wait ms")
+            assertNull(slot(ViewerPage.Unverified, meta = image, loadingMs = wait), "a damaged image, $wait ms")
+        }
+    }
+
+    /** A PDF that will not open says why on its page: never dashes, which would promise pages to come. */
+    @Test
+    fun a_pdf_that_will_not_open_never_shows_an_indicator() {
+        for (page in everyMessagePage) {
+            for (wait in listOf(0L, waited)) {
+                assertFalse(slot(page, loadingMs = wait) is IndicatorSlot.Shown, "$page, $wait ms")
+            }
+        }
+    }
+
+    // ---- fast scroll ---------------------------------------------------------------------------------
+
+    /** The bubble is short — the bar already says "of M" — and counts from 1. */
+    @Test
+    fun the_fast_scroll_bubble_names_the_page_from_one() {
+        assertEquals("Page 1", ViewerFormat.fastScrollPage(0))
+        assertEquals("Page 400", ViewerFormat.fastScrollPage(399))
+    }
+
+    // ---- jump to a page ------------------------------------------------------------------------------
+
+    @Test
+    fun the_jump_dialog_says_what_it_does() {
+        assertTrue(ViewerFormat.jumpTitle().contains("page", ignoreCase = true), ViewerFormat.jumpTitle())
+        assertTrue(ViewerFormat.jumpGo().isNotBlank())
+    }
+
+    /** The field says which numbers it takes before anyone types a wrong one. */
+    @Test
+    fun the_jump_field_names_the_range() {
+        val label = ViewerFormat.jumpFieldLabel(427)
+        assertTrue(label.contains("1") && label.contains("427"), "\"$label\" names 1 and 427")
+    }
+
+    @Test
+    fun a_jump_that_goes_says_nothing() {
+        assertNull(ViewerFormat.jumpProblem(PageJump.Go(399), 427))
+    }
+
+    /**
+     * A number no page has is told the range — and nothing suggesting the reader was taken anywhere,
+     * because they were not.
+     */
+    @Test
+    fun a_number_out_of_range_is_told_the_range() {
+        val text = assertNotNull(ViewerFormat.jumpProblem(PageJump.OutOfRange, 427))
+        assertTrue(text.contains("1") && text.contains("427"), "\"$text\" names the range")
+        assertSaysNone(text, "nearest", "last page", "first page", "instead", "moved", "went")
+    }
+
+    /** Empty and not-a-number each say something, and not the same thing: one needs a number, one digits. */
+    @Test
+    fun empty_and_not_a_number_are_told_apart() {
+        val empty = assertNotNull(ViewerFormat.jumpProblem(PageJump.Empty, 427))
+        val notANumber = assertNotNull(ViewerFormat.jumpProblem(PageJump.NotANumber, 427))
+        assertTrue(empty.isNotBlank() && notANumber.isNotBlank())
+        assertTrue(empty != notANumber, "\"$empty\" and \"$notANumber\" differ")
+        assertTrue(notANumber.contains("digit", ignoreCase = true), "\"$notANumber\" says what to type instead")
     }
 }

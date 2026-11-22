@@ -1,3 +1,9 @@
+/**
+ * Test fixtures for the bounded-RAM streaming round-trip: a deterministic generating
+ * source and a counting/hashing discard sink. Together they push an arbitrary volume through
+ * import + open while only ever holding O(chunkSize) bytes — the plaintext is never materialised
+ * whole, so the same code path proves out at 16 MiB in CI and at 2 GiB opt-in on a device.
+ */
 package dev.ehsanfahad.darkchamber.core.vault
 
 import dev.ehsanfahad.darkchamber.core.crypto.IncrementalHash
@@ -5,13 +11,6 @@ import kotlinx.io.Buffer
 import kotlinx.io.RawSink
 import kotlinx.io.RawSource
 import kotlinx.io.readByteArray
-
-/**
- * Test fixtures for the bounded-RAM streaming round-trip: a deterministic generating
- * source and a counting/hashing discard sink. Together they push an arbitrary volume through
- * import + open while only ever holding O(chunkSize) bytes — the plaintext is never materialised
- * whole, so the same code path proves out at 16 MiB in CI and at 2 GiB opt-in on a device.
- */
 
 /** The plaintext byte at absolute position [pos] — a cheap deterministic keystream (position-based,
  *  so a re-opened source reproduces identical bytes for the codec's two-pass read). */

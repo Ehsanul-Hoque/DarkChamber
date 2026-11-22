@@ -9,13 +9,14 @@ plugins {
     alias(libs.plugins.kotlinJvm) apply false
 }
 
-// Points git at the tracked hooks in .githooks/, so a commit message is checked against the same
-// rule CI applies before the commit exists (docs/engineering/WORKFLOW.md §1). Idempotent; run once
-// per clone. CI does not need it — the PR check runs the same script over the PR's range.
+// Points git at the tracked hooks in .githooks/, so a commit message and the commit's Kotlin doc
+// comments are checked against the same rules CI applies before the commit exists
+// (docs/engineering/WORKFLOW.md §1). Idempotent; run once per clone. CI does not need it — the PR
+// check runs the same scripts.
 tasks.register<Exec>("installGitHooks") {
     group = "setup"
     description = "Use the repository's tracked git hooks (.githooks/)."
     workingDir = rootDir
     commandLine("git", "config", "core.hooksPath", ".githooks")
-    doLast { println("git hooks: core.hooksPath = .githooks (commit-msg checks each message)") }
+    doLast { println("git hooks: core.hooksPath = .githooks (commit-msg checks each message, pre-commit each doc comment)") }
 }

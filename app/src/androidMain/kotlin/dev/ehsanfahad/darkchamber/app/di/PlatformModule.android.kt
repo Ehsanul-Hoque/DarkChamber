@@ -10,6 +10,7 @@ import dev.ehsanfahad.darkchamber.app.camera.AndroidCameraController
 import dev.ehsanfahad.darkchamber.app.camera.AndroidFreeSpace
 import dev.ehsanfahad.darkchamber.app.image.AndroidViewerImageDecoder
 import dev.ehsanfahad.darkchamber.app.player.AndroidPlayerDisplay
+import dev.ehsanfahad.darkchamber.app.pdf.AndroidPdfRenderer
 import dev.ehsanfahad.darkchamber.app.player.AndroidVaultPlayerFactory
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraController
 import dev.ehsanfahad.darkchamber.feature.camera.api.FreeSpace
@@ -29,6 +30,7 @@ import dev.ehsanfahad.darkchamber.core.vault.ThumbnailEncoder
 import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
 import dev.ehsanfahad.darkchamber.feature.vault.api.PhotoPicker
 import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerDisplay
+import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPdfRenderer
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPlayerFactory
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerImageDecoder
 import kotlinx.io.files.Path
@@ -84,6 +86,8 @@ actual fun platformModule(): Module = module {
     single<VaultPlayerFactory> { AndroidVaultPlayerFactory(androidContext()) }
     // The window's brightness, orientation and sleep, on whichever activity is in front.
     single<PlayerDisplay> { AndroidPlayerDisplay(get()) }
+    // Shows a PDF from a memory-only file (Android 11+). Stateless: each PDF gets its own buffer.
+    single<VaultPdfRenderer> { AndroidPdfRenderer() }
     // The application context, not an activity: the scheduled clear outlives the screen that copied.
     single<SecretClipboard> { AndroidSecretClipboard(androidContext()) }
     single<CatalogProvider> {

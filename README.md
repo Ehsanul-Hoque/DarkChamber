@@ -50,9 +50,10 @@ A Kotlin Multiplatform app for **Android** and **iOS** that encrypts, stores, an
 >   measured sending a vault text field to another process, which is why a password manager cannot
 >   fill the passphrase here.
 >
-> Video and audio play inside the viewer, streamed from the encrypted file in memory. What's left
-> before the vault is usable: a viewer for **PDF** (it shows a "can't be opened here" page for now),
-> then export with metadata scrubbing and the settings screen. The
+> Video and audio play inside the viewer, streamed from the encrypted file in memory, and PDFs are
+> shown from memory too, with zoom, jump-to-page and fast scroll (Android 11 or newer; older Android
+> versions say they can't show PDFs rather than write one to a file). What's left before the vault is
+> usable: export with metadata scrubbing, and the settings screen. The
 > documents under [`docs/`](./docs) describe the target design.
 
 ---
@@ -84,7 +85,7 @@ DarkChamber's premise is that a privacy app should be **checkable**, not just be
 
 ## 🏗️ Architecture at a glance
 
-**Local-first, app-private only.** Vault content lives in encrypted `.dchm` containers inside app-private storage — never in shared MediaStore. Plaintext exists only in memory (or briefly in private `tmp/`, wiped on lock).
+**Local-first, app-private only.** Vault content lives in encrypted `.dchm` containers inside app-private storage — never in shared MediaStore. Plaintext exists only in memory (or briefly in private `tmp/`, wiped on lock). The app writes no other plaintext anywhere — but the phone's own memory management may write app memory to storage, which no app can prevent; [the threat model](./docs/THREAT_MODEL.md) says what that means and what you can do about it.
 
 **Envelope encryption.** A random 256-bit master key is wrapped by (a) a hardware-keystore key gated on a per-use biometric prompt (Face/Touch ID bound cryptographically to the key), (b) an Argon2id-derived key from your passphrase, and (c) your recovery key. The master key wraps per-file keys; files are chunked AES-256-GCM — enabling streaming, video seeking, resumable backup, and instant crypto-shredding. Full spec: [`docs/FORMAT.md`](./docs/FORMAT.md).
 

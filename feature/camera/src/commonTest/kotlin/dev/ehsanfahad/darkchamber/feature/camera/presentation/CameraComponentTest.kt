@@ -229,7 +229,6 @@ class CameraComponentTest {
         h.sessionJob.cancel()
     }
 
-    /** Zoom stays inside the range the camera reports; a focus point stays inside the viewfinder. */
     /**
      * The platform's camera outlives the screen — one for the app — so what a previous visit set is
      * still set there. A new screen starts at the back lens with the flash off and says so; the
@@ -257,6 +256,7 @@ class CameraComponentTest {
         h.sessionJob.cancel()
     }
 
+    /** Zoom stays inside the range the camera reports; a focus point stays inside the viewfinder. */
     @Test
     fun zoom_and_focus_are_kept_in_range() = runTest {
         val h = Harness(this)
