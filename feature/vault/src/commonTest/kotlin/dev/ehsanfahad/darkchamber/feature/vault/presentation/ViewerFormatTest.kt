@@ -14,6 +14,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.label
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -433,11 +434,55 @@ class ViewerFormatTest {
     private val NBSP = Char(0x00A0)
     private val openPdf = ViewerPage.Pdf(pageCount = 12, pageSizes = List(12) { PdfPageSize(595, 842) })
 
+    private val waited = ViewerFormat.PDF_DASHES_AFTER_MS
+
+    private fun slot(page: ViewerPage, reading: Int = 0, loadingMs: Long = 0L, meta: GalleryItemMeta = pdfMeta) =
+        ViewerFormat.pdfIndicator(page, meta, reading, loadingMs)
+
+    /** The indicator in the slot, failing if the slot is empty or missing. */
+    private fun shown(page: ViewerPage, reading: Int = 0, loadingMs: Long = waited): PageIndicator =
+        assertIs<IndicatorSlot.Shown>(slot(page, reading = reading, loadingMs = loadingMs), "$page").indicator
+
     @Test
     fun an_open_pdf_names_the_page_being_read() {
-        val indicator = assertNotNull(ViewerFormat.pdfIndicator(openPdf, pdfMeta, reading = 2))
+        val indicator = shown(openPdf, reading = 2)
         assertEquals("Page 3 of 12", indicator.text.replace(NBSP, ' '))
         assertTrue(indicator.ready)
+    }
+
+    /** An open PDF names its page at once — even when its read was quick and never showed dashes. */
+    @Test
+    fun an_open_pdf_shows_its_page_whatever_the_wait() {
+        assertEquals(shown(openPdf, reading = 2, loadingMs = waited), shown(openPdf, reading = 2, loadingMs = 0L))
+    }
+
+    /**
+     * The first moments of a read keep the place empty: a small PDF opens, or a locked one is refused,
+     * before dashes would have shown, so nothing flashes. Dashes come only once the read has taken
+     * [ViewerFormat.PDF_DASHES_AFTER_MS].
+     */
+    @Test
+    fun a_pdf_in_its_first_moments_of_reading_holds_an_empty_place() {
+        assertEquals(IndicatorSlot.Held, slot(ViewerPage.Loading, loadingMs = 0L))
+        assertEquals(IndicatorSlot.Held, slot(ViewerPage.Loading, loadingMs = waited - 1))
+        assertFalse(shown(ViewerPage.Loading, loadingMs = waited).ready, "dashes once the read has taken a while")
+    }
+
+    /**
+     * Every PDF that will not open keeps the indicator's place, empty — refused before any read (too large,
+     * a device that shows no PDFs) or after it (locked, unreadable, damaged): to the reader they are all
+     * the same, a message where pages would be, so Details and Delete sit where they do on every PDF.
+     */
+    @Test
+    fun every_pdf_that_will_not_open_keeps_its_empty_place() {
+        val refused = listOf(
+            ViewerPage.TooLarge, ViewerPage.CantShow, ViewerPage.CouldntOpen,
+            ViewerPage.PasswordProtected, ViewerPage.Unreadable, ViewerPage.Unverified,
+        )
+        for (page in refused) {
+            assertEquals(IndicatorSlot.Held, slot(page), "$page")
+            assertEquals(IndicatorSlot.Held, slot(page, loadingMs = waited), "$page after a long wait")
+        }
     }
 
     /**
@@ -446,9 +491,9 @@ class ViewerFormatTest {
      */
     @Test
     fun the_indicator_wraps_only_before_of() {
-        val open = assertNotNull(ViewerFormat.pdfIndicator(openPdf, pdfMeta, reading = 399)).text
+        val open = shown(openPdf, reading = 399).text
         assertEquals(listOf("Page${NBSP}400", "of${NBSP}12"), open.split(' '))
-        val loading = assertNotNull(ViewerFormat.pdfIndicator(ViewerPage.Loading, pdfMeta, reading = 0)).text
+        val loading = shown(ViewerPage.Loading).text
         assertEquals(listOf("Page$NBSP–", "of$NBSP–"), loading.split(' '))
     }
 
@@ -456,7 +501,7 @@ class ViewerFormatTest {
     @Test
     fun the_spoken_indicator_has_no_unbreakable_spaces() {
         for (page in listOf(openPdf, ViewerPage.Loading)) {
-            val spoken = assertNotNull(ViewerFormat.pdfIndicator(page, pdfMeta, reading = 2)).spoken
+            val spoken = shown(page, reading = 2).spoken
             assertFalse(spoken.contains(NBSP), "\"$spoken\"")
         }
     }
@@ -464,18 +509,18 @@ class ViewerFormatTest {
     /** A screen reader hears what the indicator does, not only what it says. */
     @Test
     fun an_open_pdf_indicator_is_spoken_as_the_way_to_jump() {
-        val spoken = assertNotNull(ViewerFormat.pdfIndicator(openPdf, pdfMeta, reading = 2)).spoken
+        val spoken = shown(openPdf, reading = 2).spoken
         assertTrue(spoken.startsWith("Page 3 of 12"), "\"$spoken\" names the page first")
         assertTrue(spoken.contains("jump to a page"), "\"$spoken\" says what a tap does")
     }
 
     /**
-     * Still opening: the indicator is already there, so nothing beside it moves when the pages come —
-     * but it knows no numbers, says so in words a screen reader can speak, and does not jump.
+     * Still opening after a while: the dashes say the pages are coming, without numbers, in words a
+     * screen reader can speak, and do not jump.
      */
     @Test
-    fun a_pdf_still_opening_holds_the_place_without_numbers() {
-        val indicator = assertNotNull(ViewerFormat.pdfIndicator(ViewerPage.Loading, pdfMeta, reading = 0))
+    fun a_pdf_still_opening_after_a_while_shows_dashes_without_numbers() {
+        val indicator = shown(ViewerPage.Loading)
         assertFalse(indicator.text.any { it.isDigit() }, "\"${indicator.text}\" names no page")
         assertTrue(indicator.text.startsWith("Page"), "\"${indicator.text}\" has the same shape as the open one")
         assertFalse(indicator.spoken.any { it.isDigit() } || indicator.spoken.contains('–') || indicator.spoken.contains('-'))
@@ -484,15 +529,23 @@ class ViewerFormatTest {
     }
 
     @Test
-    fun only_a_pdf_has_an_indicator() {
-        assertNull(ViewerFormat.pdfIndicator(ViewerPage.Loading, GalleryItemMeta.Readable("a.jpg", "image/jpeg"), 0), "an image loading")
-        assertNull(ViewerFormat.pdfIndicator(ViewerPage.Picture, GalleryItemMeta.Readable("a.jpg", "image/jpeg"), 0), "an image")
+    fun only_a_pdf_has_a_place_for_an_indicator() {
+        val image = GalleryItemMeta.Readable("a.jpg", "image/jpeg")
+        for (wait in listOf(0L, waited)) {
+            assertNull(slot(ViewerPage.Loading, meta = image, loadingMs = wait), "an image loading, $wait ms")
+            assertNull(slot(ViewerPage.Picture, meta = image, loadingMs = wait), "an image, $wait ms")
+            assertNull(slot(ViewerPage.Unverified, meta = image, loadingMs = wait), "a damaged image, $wait ms")
+        }
     }
 
-    /** A PDF that will not open says why on its page; dashes in the bar would promise pages to come. */
+    /** A PDF that will not open says why on its page: never dashes, which would promise pages to come. */
     @Test
-    fun a_pdf_that_will_not_open_has_no_indicator() {
-        for (page in everyMessagePage) assertNull(ViewerFormat.pdfIndicator(page, pdfMeta, 0), "$page")
+    fun a_pdf_that_will_not_open_never_shows_an_indicator() {
+        for (page in everyMessagePage) {
+            for (wait in listOf(0L, waited)) {
+                assertFalse(slot(page, loadingMs = wait) is IndicatorSlot.Shown, "$page, $wait ms")
+            }
+        }
     }
 
     // ---- fast scroll ---------------------------------------------------------------------------------

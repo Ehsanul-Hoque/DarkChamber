@@ -45,6 +45,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -187,6 +188,16 @@ internal fun ViewerScreen(
             val pdf = state.pages[shownKey] as? ViewerPage.Pdf
             // The page of the PDF shown that the indicator names: where it opens, then what is most on screen.
             var pdfReading by remember(shownKey, pdf?.start) { mutableIntStateOf(pdf?.start?.page ?: 0) }
+            // How long the page shown has been loading, as far as the indicator cares: reset in the same
+            // frame a new page is shown (so it never inherits the last one's wait), and moved on once.
+            val pageLoading = state.pages[shownKey] == ViewerPage.Loading
+            var loadingMs by remember(shownKey, pageLoading) { mutableLongStateOf(0L) }
+            LaunchedEffect(shownKey, pageLoading) {
+                if (pageLoading) {
+                    delay(ViewerFormat.PDF_DASHES_AFTER_MS)
+                    loadingMs = ViewerFormat.PDF_DASHES_AFTER_MS
+                }
+            }
             // Jump to a page: the dialog, and the jump it asked for — both for this item only.
             var jumpOpen by rememberSaveable(shownKey) { mutableStateOf(false) }
             var jumpRequest by remember(shownKey) { mutableStateOf<PdfJumpRequest?>(null) }
@@ -273,8 +284,19 @@ internal fun ViewerScreen(
                 modifier = Modifier.align(Alignment.BottomCenter).onSizeChanged {
                     if (it.height > 0 && media == null) bottomBarPx = it.height
                 },
-                leading = ViewerFormat.pdfIndicator(state.pages[shownKey] ?: ViewerPage.Loading, shown.meta, pdfReading)?.let { indicator ->
-                    { PdfIndicator(indicator, onClick = if (indicator.ready) ({ jumpOpen = true }) else null) }
+                leading = ViewerFormat.pdfIndicator(
+                    page = state.pages[shownKey] ?: ViewerPage.Loading,
+                    meta = shown.meta,
+                    reading = pdfReading,
+                    loadingMs = loadingMs,
+                )?.let { slot ->
+                    when (slot) {
+                        // Nothing drawn and nothing to land on: the place alone keeps Details and Delete still.
+                        IndicatorSlot.Held -> { {} }
+                        is IndicatorSlot.Shown -> {
+                            { PdfIndicator(slot.indicator, onClick = if (slot.indicator.ready) ({ jumpOpen = true }) else null) }
+                        }
+                    }
                 },
                 controls = if (media != null && playerState != null) {
                     { trailing ->

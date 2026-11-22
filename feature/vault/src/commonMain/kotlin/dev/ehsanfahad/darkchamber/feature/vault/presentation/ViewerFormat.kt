@@ -213,25 +213,37 @@ internal object ViewerFormat {
     fun pdfPage(index: Int, count: Int): String = "Page ${index + 1} of $count"
 
     /**
-     * The page indicator in the bottom bar, or `null` for no indicator. It is there from the moment a
-     * PDF is the item shown — so Details and Delete do not move aside when it opens — with dashes and
-     * no action until the pages are known; [reading] is the page most on screen once they are. A PDF
-     * that will not open has no indicator: its page says why, and dashes would promise pages.
+     * The page indicator's place in the bottom bar for [page], or `null` for no place — anything but a
+     * PDF, where Details and Delete share the bar. Every PDF has the place, so Details and Delete sit in
+     * the same spot on all of them, open or not:
+     *
+     * - Open, it names [reading], the page most on screen, and a tap jumps.
+     * - Reading, the place is held empty for the first [PDF_DASHES_AFTER_MS] of [loadingMs] — a small
+     *   PDF opens, and a locked one is refused, before dashes would show, so nothing flashes — then
+     *   shows dashes, with no numbers and no jump.
+     * - Refused, before its read or after it, the place stays empty; the page says why.
      *
      * At a large font it wraps, and only as "Page N" over "of M": the spaces inside each half do not
      * break. What a screen reader hears has plain spaces.
      */
-    fun pdfIndicator(page: ViewerPage, meta: GalleryItemMeta, reading: Int): PageIndicator? =
+    fun pdfIndicator(page: ViewerPage, meta: GalleryItemMeta, reading: Int, loadingMs: Long): IndicatorSlot? =
         when {
+            !isPdf(meta) -> null
             page is ViewerPage.Pdf ->
-                PageIndicator(
-                    text = "Page$NBSP${reading + 1} of$NBSP${page.pageCount}",
-                    spoken = "${pdfPage(reading, page.pageCount)}, jump to a page",
-                    ready = true,
+                IndicatorSlot.Shown(
+                    PageIndicator(
+                        text = "Page$NBSP${reading + 1} of$NBSP${page.pageCount}",
+                        spoken = "${pdfPage(reading, page.pageCount)}, jump to a page",
+                        ready = true,
+                    ),
                 )
-            page == ViewerPage.Loading && isPdf(meta) -> PageIndicator("Page$NBSP– of$NBSP–", "Pages loading", ready = false)
-            else -> null
+            page != ViewerPage.Loading -> IndicatorSlot.Held
+            loadingMs < PDF_DASHES_AFTER_MS -> IndicatorSlot.Held
+            else -> IndicatorSlot.Shown(PageIndicator("Page$NBSP– of$NBSP–", "Pages loading", ready = false))
         }
+
+    /** How long a PDF reads before its indicator shows dashes; a quicker one goes straight to its pages. */
+    const val PDF_DASHES_AFTER_MS = 300L
 
     /** Beside the fast-scroll thumb while it is dragged: the page the drag has reached, counted from 1. */
     fun fastScrollPage(index: Int): String = "Page ${index + 1}"
@@ -295,3 +307,11 @@ internal object ViewerFormat {
 
 /** The PDF page indicator: what it shows, what a screen reader says, and whether it is ready to jump. */
 internal data class PageIndicator(val text: String, val spoken: String, val ready: Boolean)
+
+/** The indicator's place in the bottom bar: kept empty, or showing an indicator. */
+internal sealed interface IndicatorSlot {
+    /** The place is kept, with nothing in it and nothing a screen reader lands on: Details and Delete stay put. */
+    data object Held : IndicatorSlot
+
+    data class Shown(val indicator: PageIndicator) : IndicatorSlot
+}
