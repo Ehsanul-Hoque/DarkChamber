@@ -273,6 +273,29 @@ internal object ViewerFormat {
 
     fun cancel(): String = "Cancel"
 
+    /*
+     * The confirmation before a web link leaves the vault. It shows the address exactly as the file
+     * gives it — never the link's words, which can say anything — and the site it reaches on a line of
+     * its own, since a user part (`google.com@…`) can make an address read as another. Every line is
+     * true on the failure path: the browser and the site are not ours, so they "may" and "can"; the
+     * vault locks only once the browser has taken the address.
+     */
+
+    fun linkTitle(): String = "Open this link in your browser?"
+
+    fun linkSite(host: String): String = "Site: $host"
+
+    fun linkLeaves(): String =
+        "The address leaves the vault. Your browser may keep it in its history and sync it to your other devices, " +
+            "and the site can learn that it was opened."
+
+    fun linkLocks(): String = "Opening it locks the vault."
+
+    fun linkOpen(): String = "Open"
+
+    /** No app took the address: nothing left the vault and nothing locked, so it names only what failed. */
+    fun noBrowser(): String = "No app on this device can open web links."
+
     /** The confirm button once pressed: the only thing saying why the buttons stopped responding. */
     fun deleting(): String = "Deleting…"
 
