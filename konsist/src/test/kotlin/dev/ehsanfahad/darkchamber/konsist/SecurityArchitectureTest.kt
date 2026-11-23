@@ -242,7 +242,7 @@ class SecurityArchitectureTest {
         }
         assertTrue(files.size >= 5, "the rule found too few feature state types to check — has it moved?")
 
-        val violations = files.filter { HOLDS_A_PICTURE.containsMatchIn(codeOf(it)) }
+        val violations = files.filter { HOLDS_DECRYPTED_CONTENT.containsMatchIn(codeOf(it)) }
 
         assertTrue(
             violations.isEmpty(),
@@ -358,12 +358,12 @@ class SecurityArchitectureTest {
         val DECLARES_A_STATE_TYPE = Regex("""class\s+[A-Za-z0-9_]*State(?![A-Za-z0-9_])""")
 
         /**
-         * The types a decoded picture travels as, on either platform or in Compose — the players and
-         * surfaces that hold decoded video and sound, the PDF buffer, document and renderers that hold
-         * a whole decrypted PDF, and the viewer's text types and Compose's styled text that hold a
-         * decrypted file's words — all content just the same.
+         * Every type that carries decrypted vault content, on either platform or in Compose: decoded
+         * pictures; the players and surfaces that hold decoded video and sound; the PDF buffer, document
+         * and renderers that hold a whole decrypted PDF; the viewer's text types and Compose's styled text
+         * that hold a decrypted file's words — and what makes those.
          */
-        val HOLDS_A_PICTURE =
+        val HOLDS_DECRYPTED_CONTENT =
             Regex(
                 """(?<![A-Za-z0-9_])(ImageBitmap|Bitmap|Painter|UIImage|CGImage|""" +
                     """VaultPlayer|Player|ExoPlayer|MediaPlayer|AVPlayer|AVPlayerItem|AVPlayerLayer|""" +
