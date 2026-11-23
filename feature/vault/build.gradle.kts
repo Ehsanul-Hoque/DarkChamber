@@ -15,6 +15,10 @@ kotlin {
             // The gallery's image loading: it draws the encrypted thumbnails. The loader is built
             // here, with its disk cache off — see VaultImageLoader for why that is not a preference.
             implementation(libs.coil.compose)
+            // The text viewer's Markdown parser: text to a syntax tree, nothing more. The viewer
+            // draws the tree itself, so links open only through its own confirmation and images are
+            // never fetched.
+            implementation(libs.jetbrains.markdown)
         }
     }
 }
