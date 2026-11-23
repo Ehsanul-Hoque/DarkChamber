@@ -30,11 +30,14 @@ internal object ViewerFormat {
      *   damage. A password is the document's own lock, and there is nowhere here to type it. A renderer
      *   that will not read a verified file is the renderer's limit: the line says the file is unchanged
      *   since it was saved — the vault checked exactly that — and names no cause it was not told.
+     * - **Not text.** Read and verified, so not damage: the file is unchanged. Why it is not text — another
+     *   encoding, or not text at all — is not known, so it names neither.
      * - **Couldn't open.** Why is not known, so no why.
      */
     fun pageMessage(page: ViewerPage): String? =
         when (page) {
-            ViewerPage.Loading, ViewerPage.Picture, is ViewerPage.Media, is ViewerPage.Pdf -> null
+            ViewerPage.Loading, ViewerPage.Picture, is ViewerPage.Media, is ViewerPage.Pdf, is ViewerPage.Text -> null
+            ViewerPage.NotText -> "This file can't be shown as text here. It is unchanged since it was saved."
             is ViewerPage.NotViewable -> "This file can't be opened here."
             ViewerPage.TooLarge -> "This file is too large to open here."
             ViewerPage.CantShow -> "This file can't be shown on this device."

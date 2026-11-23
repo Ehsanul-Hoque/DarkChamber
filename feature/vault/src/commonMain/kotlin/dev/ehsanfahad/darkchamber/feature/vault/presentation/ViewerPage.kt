@@ -6,6 +6,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.PdfRefusal
 import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerFailure
 import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerKind
 import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerTracks
+import dev.ehsanfahad.darkchamber.feature.vault.api.TextKind
 import dev.ehsanfahad.darkchamber.feature.vault.api.TrackNote
 import dev.ehsanfahad.darkchamber.feature.vault.api.TrackSupport
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerPage
@@ -76,21 +77,6 @@ internal fun pageForPdfRefusal(refusal: PdfRefusal): ViewerPage =
         PdfRefusal.Unsupported -> ViewerPage.CantShow
     }
 
-/** How a text item is shown: the kind decides the font, and which items have a formatted view. */
-internal enum class TextKind {
-    /** Prose: the reading font. */
-    Plain,
-
-    /** Rendered, with a plain view beside it. */
-    Markdown,
-
-    /** Re-indented, with a plain view beside it; monospace. */
-    Json,
-
-    /** Markup, data, logs and source: monospace, shown as written. */
-    Code,
-}
-
 /**
  * Whether the viewer reads an item as text, and of which kind — from its stored details alone,
  * before anything is read. `null` when it is not text.
@@ -151,6 +137,9 @@ private val TEXT_EXTENSIONS: Map<String, TextKind> =
 
 /** The largest text file the viewer reads: its bytes, then its decoded text, are held while shown. */
 internal const val TEXT_CAP: Long = 8L * 1024 * 1024
+
+/** The largest Markdown file the viewer formats; a larger one is shown as written, with a note. */
+internal const val MARKDOWN_FORMAT_CAP: Long = 1L * 1024 * 1024
 
 /**
  * Before a text item is read: read it, or show a page that needs no read at all.

@@ -43,6 +43,16 @@ interface VaultViewerComponent {
      */
     fun pdfViewport(visible: IntRange, shownWidthPx: Int, zoom: Float, screenWidthPx: Int)
 
+    /**
+     * The text of the text file shown, keyed like [pictures] — **at most one, and only while a text
+     * page is the one on screen**: a text file is read when it is shown and let go when it is left.
+     * Held apart from [state] for the same reason as [pictures].
+     */
+    val texts: Value<Map<String, TextDocument>>
+
+    /** Switch Markdown and JSON files between formatted and as written ([ViewerState.formatted]). */
+    fun toggleFormatted()
+
     /** The PDF shown was scrolled to [page], [offsetPx] down it — where reading resumes if it is left and come back to. */
     fun pdfScrolled(page: Int, offsetPx: Int)
 

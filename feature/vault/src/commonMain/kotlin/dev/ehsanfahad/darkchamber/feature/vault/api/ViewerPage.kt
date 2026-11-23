@@ -26,7 +26,21 @@ sealed interface ViewerPage {
      */
     data class Pdf(val pageCount: Int, val pageSizes: List<PdfPageSize>, val start: PdfPlace = PdfPlace()) : ViewerPage
 
-    /** A kind with no viewer here — anything but an image, video, audio or PDF — shown as its [badge]. Nothing was read. */
+    /**
+     * A text file that read and verified and is shown as text, of [kind]. The text itself is in
+     * [VaultViewerComponent.texts] under the item's key while it is the page shown. [note] says why a
+     * Markdown or JSON file is shown only as written — `null` when its formatted view is there too (and
+     * always for the kinds that have none).
+     */
+    data class Text(val kind: TextKind, val note: FormatNote? = null) : ViewerPage
+
+    /**
+     * Read and verified, but not text this viewer reads: bytes that are not valid UTF-8 or UTF-16 with
+     * a byte-order mark, or that hold a NUL. Not damage: the vault checked it is the file that was added.
+     */
+    data object NotText : ViewerPage
+
+    /** A kind with no viewer here — anything but an image, video, audio, PDF or text — shown as its [badge]. Nothing was read. */
     data class NotViewable(val badge: String) : ViewerPage
 
     /** Larger than the viewer reads into memory. Nothing was read. */
@@ -68,6 +82,33 @@ sealed interface ViewerPage {
 
     /** Would not open, for a reason that names no cause. */
     data object CouldntOpen : ViewerPage
+}
+
+/** How a text item is shown: the kind decides the font, and which items have a formatted view. */
+enum class TextKind {
+    /** Prose: the reading font. */
+    Plain,
+
+    /** Rendered, with a plain view beside it. */
+    Markdown,
+
+    /** Re-indented, with a plain view beside it; monospace. */
+    Json,
+
+    /** Markup, data, logs and source: monospace, shown as written. */
+    Code,
+}
+
+/** Why a Markdown or JSON file is shown only as written. */
+enum class FormatNote {
+    /** Larger than this viewer formats. */
+    TooLarge,
+
+    /** Nested too deeply, or too slow, to format here. */
+    TooComplex,
+
+    /** A JSON file that is not valid JSON. */
+    NotJson,
 }
 
 /** What a player page plays: a picture with its sound, or sound alone. */

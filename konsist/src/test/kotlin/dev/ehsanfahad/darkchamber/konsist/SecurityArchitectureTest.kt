@@ -228,13 +228,15 @@ class SecurityArchitectureTest {
     }
 
     @Test
-    fun `screen state in a feature holds no picture and no player`() {
+    fun `screen state in a feature holds no picture, no player and no text`() {
         // The session-gate rule: screen state holds ids and descriptions, never decrypted content.
-        // A decoded picture is the content itself, and a player holds decoded video and sound, and
-        // state is what gets copied, compared, kept across recompositions and handed around — so a
-        // viewer keeps its pictures and its one player in separate holders it drops on destroy. Read
-        // file-wide, like the not-saved rule, so a field whose type is inferred cannot slip past; a
-        // state type therefore lives in a file that mentions no picture or player type at all.
+        // A decoded picture is the content itself, a player holds decoded video and sound, and a text
+        // document holds a decrypted file's words; state is what gets copied, compared, kept across
+        // recompositions and handed around — so a viewer keeps its pictures, its one player and its
+        // one text in separate holders it drops on destroy. Read file-wide, like the not-saved rule,
+        // so a field whose type is inferred cannot slip past; a state type therefore lives in a file
+        // that mentions none of those types at all. A `String` cannot be named here — every state has
+        // them — which is why decoded text always travels as one of the viewer's own text types.
         val files = productionFiles.filter {
             it.projectPath.contains("/feature/") && DECLARES_A_STATE_TYPE.containsMatchIn(codeOf(it))
         }
@@ -246,9 +248,9 @@ class SecurityArchitectureTest {
             violations.isEmpty(),
             buildString {
                 appendLine(
-                    "A file declaring a feature's state type mentions a picture, player or surface type. " +
-                        "State holds ids and descriptions only; keep decoded pictures and players in their " +
-                        "own holders, in another file.",
+                    "A file declaring a feature's state type mentions a picture, player, surface or text " +
+                        "document type. State holds ids and descriptions only; keep decoded pictures, " +
+                        "players and texts in their own holders, in another file.",
                 )
                 violations.forEach { appendLine("  ${it.projectPath}") }
             },
@@ -357,8 +359,9 @@ class SecurityArchitectureTest {
 
         /**
          * The types a decoded picture travels as, on either platform or in Compose — the players and
-         * surfaces that hold decoded video and sound, and the PDF buffer, document and renderers that
-         * hold a whole decrypted PDF — all content just the same.
+         * surfaces that hold decoded video and sound, the PDF buffer, document and renderers that hold
+         * a whole decrypted PDF, and the viewer's text types and Compose's styled text that hold a
+         * decrypted file's words — all content just the same.
          */
         val HOLDS_A_PICTURE =
             Regex(
@@ -366,7 +369,12 @@ class SecurityArchitectureTest {
                     """VaultPlayer|Player|ExoPlayer|MediaPlayer|AVPlayer|AVPlayerItem|AVPlayerLayer|""" +
                     """Surface|SurfaceView|TextureView|""" +
                     """VaultPdfRenderer|VaultPdfBuffer|VaultPdfDocument|PdfOpened|PdfRenderer|""" +
-                    """PDFDocument|PDFPage)(?![A-Za-z0-9_])""",
+                    """PDFDocument|PDFPage|""" +
+                    """TextDocument|DecodedText|FormattedText|MarkdownDocument|MdBlock|MdSpan|MdListItem|""" +
+                    """AnnotatedString|""" +
+                    // What makes them, so a value whose type is inferred (`val x = TextDecoding.decode(…)`)
+                    // is caught by the call that made it.
+                    """TextDecoding|MarkdownModel|JsonIndent)(?![A-Za-z0-9_])""",
             )
 
         /** The helper that excludes the window it is composed in. */

@@ -10,6 +10,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
 import dev.ehsanfahad.darkchamber.feature.vault.api.PdfPageSize
 import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerKind
 import dev.ehsanfahad.darkchamber.feature.vault.api.ScreenOrientation
+import dev.ehsanfahad.darkchamber.feature.vault.api.TextKind
 import dev.ehsanfahad.darkchamber.feature.vault.api.label
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -31,6 +32,7 @@ class ViewerFormatTest {
         ViewerPage.CantPlay,
         ViewerPage.PasswordProtected,
         ViewerPage.Unreadable,
+        ViewerPage.NotText,
         ViewerPage.Unverified,
         ViewerPage.StoppedUnverified,
         ViewerPage.NeedsUpdate,
@@ -51,6 +53,18 @@ class ViewerFormatTest {
         everyMessagePage.forEach { message(it) }
         assertNull(ViewerFormat.pageMessage(ViewerPage.Picture))
         assertNull(ViewerFormat.pageMessage(ViewerPage.Loading))
+        assertNull(ViewerFormat.pageMessage(ViewerPage.Text(TextKind.Plain)), "the text itself is the page")
+    }
+
+    /**
+     * Bytes that are not text this viewer reads: the vault checked every one, so it is the file that was
+     * added — unchanged — and why it is not text (another encoding? not text at all?) is not known.
+     */
+    @Test
+    fun a_file_that_is_not_text_says_it_is_unchanged_and_names_no_cause() {
+        val text = message(ViewerPage.NotText)
+        assertEquals("This file can't be shown as text here. It is unchanged since it was saved.", text)
+        assertSaysNone(text, "binary", "encoding", "utf", "because", "damage", "corrupt", "safe", "intact")
     }
 
     /**
@@ -73,7 +87,7 @@ class ViewerFormatTest {
         for (
             page in listOf(
                 ViewerPage.NotViewable("PDF"), ViewerPage.TooLarge, ViewerPage.CantShow, ViewerPage.CantPlay,
-                ViewerPage.PasswordProtected, ViewerPage.Unreadable, ViewerPage.NeedsUpdate,
+                ViewerPage.PasswordProtected, ViewerPage.Unreadable, ViewerPage.NotText, ViewerPage.NeedsUpdate,
             )
         ) {
             assertSaysNone(message(page), "damage", "corrupt", "tamper", "verif", "integrity", "broken")

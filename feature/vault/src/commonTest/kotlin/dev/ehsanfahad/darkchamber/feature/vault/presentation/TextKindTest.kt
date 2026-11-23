@@ -1,6 +1,7 @@
 package dev.ehsanfahad.darkchamber.feature.vault.presentation
 
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
+import dev.ehsanfahad.darkchamber.feature.vault.api.TextKind
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerPage
 import kotlin.test.Test
 import kotlin.test.assertEquals

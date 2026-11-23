@@ -13,6 +13,9 @@ internal sealed interface DecodedText {
     class Text internal constructor(private val text: String, private val bounds: IntArray) : DecodedText {
         val lineCount: Int get() = bounds.size / 2
 
+        /** The whole text, line endings and all — what a formatter reads. */
+        val whole: String get() = text
+
         fun line(index: Int): String = text.substring(bounds[2 * index], bounds[2 * index + 1])
 
         /** Counts only: the text is vault content. */
@@ -42,6 +45,9 @@ internal object TextDecoding {
         if (text.indexOf(NUL) >= 0) return DecodedText.NotText
         return DecodedText.Text(text, lineBounds(text))
     }
+
+    /** [text] — already a string, such as re-indented JSON — split into lines as a decoded file is. */
+    fun lines(text: String): DecodedText.Text = DecodedText.Text(text, lineBounds(text))
 
     /**
      * Where each line starts and ends, endings excluded: LF, CRLF and a lone CR each end a line, so

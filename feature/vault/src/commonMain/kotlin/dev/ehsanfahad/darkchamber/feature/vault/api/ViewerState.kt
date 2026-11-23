@@ -23,6 +23,12 @@ data class ViewerState(
      * where the screen cannot be turned, and there is no button.
      */
     val orientationTarget: ScreenOrientation? = null,
+    /**
+     * Whether a Markdown or JSON file is shown formatted (or as written). One choice for every such
+     * file, kept from file to file for the viewer's life; a new viewer — after a lock, say — starts
+     * formatted.
+     */
+    val formatted: Boolean = true,
 )
 
 /** Where a delete from the viewer stands. */

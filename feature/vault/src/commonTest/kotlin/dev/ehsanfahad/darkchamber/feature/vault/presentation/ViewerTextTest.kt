@@ -1,0 +1,414 @@
+package dev.ehsanfahad.darkchamber.feature.vault.presentation
+
+import com.arkivanov.decompose.DefaultComponentContext
+import com.arkivanov.essenty.lifecycle.LifecycleRegistry
+import com.arkivanov.essenty.lifecycle.destroy
+import com.arkivanov.essenty.lifecycle.resume
+import dev.ehsanfahad.darkchamber.core.model.ItemFilter
+import dev.ehsanfahad.darkchamber.core.model.Outcome
+import dev.ehsanfahad.darkchamber.core.model.VaultError
+import dev.ehsanfahad.darkchamber.core.vault.VaultItemSummary
+import dev.ehsanfahad.darkchamber.feature.vault.FakeVaultItems
+import dev.ehsanfahad.darkchamber.feature.vault.ManualDispatcher
+import dev.ehsanfahad.darkchamber.feature.vault.api.FormatNote
+import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
+import dev.ehsanfahad.darkchamber.feature.vault.api.TextDocument
+import dev.ehsanfahad.darkchamber.feature.vault.api.TextKind
+import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerPage
+import dev.ehsanfahad.darkchamber.feature.vault.domain.GalleryControls
+import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveAlbum
+import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveGallery
+import dev.ehsanfahad.darkchamber.feature.vault.readableMeta
+import dev.ehsanfahad.darkchamber.feature.vault.summary
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.runTest
+import kotlinx.io.Buffer
+import kotlinx.io.RawSink
+import kotlin.coroutines.CoroutineContext
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertIs
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
+
+/**
+ * The viewer showing text files over a fake vault, every dispatcher injected. The listing, newest
+ * first: 4 (a.txt), 3 (b.md, stored as an unknown type), 2 (photo), 1 (c.json) — so a.txt is page 0,
+ * b.md page 1, the photo page 2 and c.json page 3.
+ */
+class ViewerTextTest {
+    private val lifecycle = LifecycleRegistry().apply { resume() }
+
+    private fun id(n: Int) = byteArrayOf(n.toByte(), 0x7A)
+
+    private fun key(n: Int) = id(n).toListKey()
+
+    /** Each item's plaintext, as the vault would write it; an item's stored size is its length unless set. */
+    private val contents = mutableMapOf(
+        4 to "first line\nsecond line\n".encodeToByteArray(),
+        3 to "# Title\n\nSome *text*.\n".encodeToByteArray(),
+        2 to ByteArray(10),
+        1 to "{\"a\":[1,2]}".encodeToByteArray(),
+    )
+
+    private val storedSize = mutableMapOf<Int, Long>()
+
+    private fun entry(n: Int, name: String, mime: String): VaultItemSummary =
+        summary(id(n), readableMeta(name, mime), size = storedSize[n] ?: contents.getValue(n).size.toLong(), createdAt = n * 10L)
+
+    private fun listing() = listOf(
+        entry(1, "c.json", "application/json"),
+        entry(2, "photo.jpg", "image/jpeg"),
+        entry(3, "b.md", "application/octet-stream"),
+        entry(4, "a.txt", "text/plain"),
+    )
+
+    /** Runs inside the vault read, after half the file is written — where a swipe or a lock can land mid-read. */
+    private var duringRead: () -> Unit = {}
+
+    /** What the vault read answers once it has written the whole file. */
+    private var readAnswer: Outcome<Unit> = Outcome.Ok(Unit)
+
+    /** Every buffer the viewer read a text file into, so a test can see it was zeroed. */
+    private val buffers = mutableListOf<ByteArray>()
+
+    /** The items whose second write the sink took — a decrypt that was not stopped partway. */
+    private val wroteAll = mutableListOf<Int>()
+
+    private fun ByteArray.zeroed() = all { it == 0.toByte() }
+
+    private fun items() = FakeVaultItems(
+        onOpen = { id: ByteArray, sink: RawSink ->
+            val bytes = contents.getValue(id[0].toInt())
+            val half = bytes.size / 2
+            sink.write(Buffer().apply { write(bytes, 0, half) }, half.toLong())
+            duringRead()
+            sink.write(Buffer().apply { write(bytes, half, bytes.size) }, (bytes.size - half).toLong())
+            wroteAll += id[0].toInt()
+            readAnswer
+        },
+    ).apply { summaries.value = listing() }
+
+    private fun TestScope.viewer(
+        start: Int,
+        items: FakeVaultItems = items(),
+        io: CoroutineContext = UnconfinedTestDispatcher(testScheduler),
+    ) = ViewerComponent(
+        componentContext = DefaultComponentContext(lifecycle),
+        observeGallery = ObserveGallery(items),
+        observeAlbum = ObserveAlbum(items),
+        load = { _: GalleryItem, _: Int -> LoadedPage.Page(ViewerPage.CantShow) },
+        shred = { Outcome.Ok(Unit) },
+        filter = ItemFilter.All,
+        controls = GalleryControls(),
+        startId = id(start),
+        onBack = {},
+        openRange = items::openRange,
+        playerFactory = null,
+        mainContext = UnconfinedTestDispatcher(testScheduler),
+        ioContext = io,
+        releaseContext = UnconfinedTestDispatcher(testScheduler),
+        openObject = items::open,
+        textBuffer = { size -> ByteArray(size).also { buffers += it } },
+    ).also { it.viewportMeasured(1_000, 2_000) }
+
+    private fun ViewerComponent<*>.page(n: Int) = state.value.pages[key(n)]
+
+    private fun ViewerComponent<*>.text(n: Int): TextDocument? = texts.value[key(n)]
+
+    private fun TextDocument.lines() = List(plain.lineCount) { plain.line(it) }
+
+    // ---- reading ---------------------------------------------------------------------------------
+
+    @Test
+    fun a_text_file_shown_is_read_whole_and_shown_by_its_kind() = runTest {
+        val items = items()
+        val viewer = viewer(start = 4, items = items)
+
+        assertEquals(1, items.openCalls)
+        assertEquals(ViewerPage.Text(TextKind.Plain), viewer.page(4))
+        assertEquals(listOf("first line", "second line"), viewer.text(4)!!.lines())
+        assertEquals(setOf(key(4)), viewer.texts.value.keys, "only the page shown")
+    }
+
+    /** Text is read for the page shown only: a neighbour waits, unread, until it is swiped to. */
+    @Test
+    fun a_neighbouring_text_file_is_not_read_until_shown() = runTest {
+        val items = items()
+        val viewer = viewer(start = 2, items = items) // the photo, between b.md and c.json
+
+        assertEquals(0, items.openCalls)
+        assertEquals(ViewerPage.Loading, viewer.page(3))
+        assertEquals(ViewerPage.Loading, viewer.page(1))
+        assertTrue(viewer.texts.value.isEmpty())
+    }
+
+    /** The kind comes from the stored details: an `.md` stored as an unknown type is Markdown. */
+    @Test
+    fun each_kind_is_read_as_its_kind() = runTest {
+        val viewer = viewer(start = 3)
+        assertEquals(ViewerPage.Text(TextKind.Markdown), viewer.page(3))
+        viewer.showPage(3)
+        assertEquals(ViewerPage.Text(TextKind.Json), viewer.page(1))
+    }
+
+    @Test
+    fun a_read_the_vault_refused_shows_none_of_it_and_says_why() = runTest {
+        readAnswer = Outcome.Err(VaultError.Crypto.IntegrityFailure)
+        val viewer = viewer(start = 4)
+        assertEquals(ViewerPage.Unverified, viewer.page(4))
+        assertTrue(viewer.texts.value.isEmpty(), "nothing of a file that failed its check")
+    }
+
+    @Test
+    fun a_newer_format_asks_for_an_update_and_anything_else_names_no_cause() = runTest {
+        readAnswer = Outcome.Err(VaultError.Crypto.UnsupportedFormatVersion)
+        assertEquals(ViewerPage.NeedsUpdate, viewer(start = 4).page(4))
+        readAnswer = Outcome.Err(VaultError.Io(IllegalStateException("x")))
+        assertEquals(ViewerPage.CouldntOpen, viewer(start = 3).page(3))
+    }
+
+    @Test
+    fun a_text_file_over_the_cap_reads_nothing() = runTest {
+        storedSize[4] = TEXT_CAP + 1
+        val items = items()
+        val viewer = viewer(start = 4, items = items)
+        assertEquals(ViewerPage.TooLarge, viewer.page(4))
+        assertEquals(0, items.openCalls)
+    }
+
+    @Test
+    fun a_negative_stored_size_reads_nothing() = runTest {
+        storedSize[4] = -1
+        val items = items()
+        val viewer = viewer(start = 4, items = items)
+        assertEquals(ViewerPage.CouldntOpen, viewer.page(4))
+        assertEquals(0, items.openCalls)
+    }
+
+    /** The file is read into exactly its stored size: more or fewer bytes than that is not the file it says. */
+    @Test
+    fun a_file_not_its_stored_size_couldnt_open() = runTest {
+        storedSize[4] = contents.getValue(4).size - 1L
+        assertEquals(ViewerPage.CouldntOpen, viewer(start = 4).page(4), "longer than stored")
+        storedSize[4] = contents.getValue(4).size + 1L
+        assertEquals(ViewerPage.CouldntOpen, viewer(start = 4).page(4), "shorter than stored")
+    }
+
+    @Test
+    fun an_empty_text_file_is_shown_with_no_lines() = runTest {
+        contents[4] = ByteArray(0)
+        val viewer = viewer(start = 4)
+        assertEquals(ViewerPage.Text(TextKind.Plain), viewer.page(4))
+        assertEquals(0, viewer.text(4)!!.plain.lineCount)
+    }
+
+    @Test
+    fun bytes_that_are_not_text_are_said_to_be_so() = runTest {
+        contents[4] = byteArrayOf(0x61, 0x00, 0x62)
+        val viewer = viewer(start = 4)
+        assertEquals(ViewerPage.NotText, viewer.page(4))
+        assertTrue(viewer.texts.value.isEmpty())
+    }
+
+    /** Reading and decoding happen on the background context: nothing is decoded until it runs. */
+    @Test
+    fun reading_and_decoding_run_on_the_background_context() = runTest {
+        val io = ManualDispatcher()
+        val viewer = viewer(start = 4, io = io)
+        assertEquals(ViewerPage.Loading, viewer.page(4))
+        assertTrue(viewer.texts.value.isEmpty())
+
+        io.drain()
+        assertEquals(ViewerPage.Text(TextKind.Plain), viewer.page(4))
+    }
+
+    // ---- the bytes are zeroed, whatever happens ----------------------------------------------------
+
+    @Test
+    fun the_buffer_is_zeroed_once_the_text_is_decoded() = runTest {
+        viewer(start = 4)
+        assertTrue(buffers.single().zeroed())
+        assertEquals(contents.getValue(4).size, buffers.single().size, "sized from the stored size")
+    }
+
+    @Test
+    fun the_buffer_is_zeroed_when_the_vault_refused_the_read() = runTest {
+        readAnswer = Outcome.Err(VaultError.Crypto.IntegrityFailure)
+        viewer(start = 4)
+        assertTrue(buffers.single().zeroed())
+    }
+
+    @Test
+    fun the_buffer_is_zeroed_when_the_bytes_are_not_text() = runTest {
+        contents[4] = byteArrayOf(0x61, 0x00, 0x62)
+        viewer(start = 4)
+        assertTrue(buffers.single().zeroed())
+    }
+
+    @Test
+    fun the_buffer_is_zeroed_when_the_file_is_longer_than_stored() = runTest {
+        storedSize[4] = contents.getValue(4).size - 1L
+        viewer(start = 4)
+        assertTrue(buffers.single().zeroed())
+    }
+
+    // ---- leaving, coming back, a lock --------------------------------------------------------------
+
+    // The hooks below are set once the viewer exists (it opens on the photo), then a text file is swiped
+    // to: a hook firing during construction would throw on the not-yet-assigned viewer and pass by accident.
+
+    @Test
+    fun swiping_away_mid_read_stops_the_decrypt_and_shows_nothing() = runTest {
+        val items = items()
+        val viewer = viewer(start = 2, items = items)
+        duringRead = { viewer.showPage(2) } // back to the photo
+        viewer.showPage(1) // b.md
+
+        assertEquals(1, items.openCalls, "the read did start")
+        assertTrue(3 !in wroteAll, "the decrypt stopped at the next write")
+        assertTrue(viewer.texts.value.isEmpty())
+        assertEquals(ViewerPage.Loading, viewer.page(3), "beside the photo, waiting to be read when shown")
+        assertTrue(buffers.single().zeroed())
+    }
+
+    @Test
+    fun a_lock_mid_read_stops_the_decrypt_and_shows_nothing() = runTest {
+        val viewer = viewer(start = 2)
+        duringRead = { lifecycle.destroy() }
+        viewer.showPage(1) // b.md
+
+        assertTrue(3 !in wroteAll, "the decrypt stopped at the next write")
+        assertTrue(viewer.texts.value.isEmpty())
+        assertTrue(buffers.single().zeroed())
+    }
+
+    @Test
+    fun leaving_a_text_file_drops_its_text_and_coming_back_reads_it_again() = runTest {
+        val items = items()
+        val viewer = viewer(start = 4, items = items)
+
+        viewer.showPage(1) // b.md, a.txt beside it
+        assertEquals(setOf(key(3)), viewer.texts.value.keys, "a.txt's text let go")
+        assertEquals(ViewerPage.Loading, viewer.page(4), "waiting to be read again")
+
+        viewer.showPage(0)
+        assertEquals(3, items.openCalls, "a.txt, b.md, then a.txt again: nothing kept while not shown")
+        assertEquals(setOf(key(4)), viewer.texts.value.keys)
+    }
+
+    @Test
+    fun a_lock_drops_the_text_shown() = runTest {
+        val viewer = viewer(start = 4)
+        lifecycle.destroy()
+        assertTrue(viewer.texts.value.isEmpty())
+    }
+
+    // ---- formatted views -----------------------------------------------------------------------------
+
+    @Test
+    fun a_markdown_file_has_its_formatted_view_beside_its_lines() = runTest {
+        val viewer = viewer(start = 3)
+        assertEquals(ViewerPage.Text(TextKind.Markdown), viewer.page(3))
+        val document = viewer.text(3)!!
+        assertEquals(listOf("# Title", "", "Some *text*."), document.lines(), "as stored")
+        val blocks = assertIs<FormattedText.Markdown>(document.formatted).document.blocks
+        assertEquals(
+            listOf(
+                MdBlock.Heading(1, listOf(MdSpan("Title")), "title"),
+                MdBlock.Paragraph(listOf(MdSpan("Some "), MdSpan("text", emphasis = true), MdSpan("."))),
+            ),
+            blocks,
+        )
+    }
+
+    /** Markdown is formatted up to 1 MiB; one byte more is shown as written, and says so. */
+    @Test
+    fun markdown_over_a_mebibyte_is_shown_as_written_with_a_note() = runTest {
+        assertEquals(1L * 1024 * 1024, MARKDOWN_FORMAT_CAP)
+        contents[3] = "a".repeat(MARKDOWN_FORMAT_CAP.toInt()).encodeToByteArray()
+        val atCap = viewer(start = 3)
+        assertEquals(ViewerPage.Text(TextKind.Markdown), atCap.page(3))
+        assertIs<FormattedText.Markdown>(atCap.text(3)!!.formatted)
+
+        contents[3] = "a".repeat(MARKDOWN_FORMAT_CAP.toInt() + 1).encodeToByteArray()
+        val over = viewer(start = 3)
+        assertEquals(ViewerPage.Text(TextKind.Markdown, FormatNote.TooLarge), over.page(3))
+        assertNull(over.text(3)!!.formatted)
+        assertEquals(1, over.text(3)!!.plain.lineCount, "its lines are there")
+    }
+
+    @Test
+    fun markdown_the_reader_cannot_format_is_shown_as_written_with_a_note() = runTest {
+        contents[3] = ("> ".repeat(MARKDOWN_MAX_NESTING + 1) + "x\n").encodeToByteArray()
+        val viewer = viewer(start = 3)
+        assertEquals(ViewerPage.Text(TextKind.Markdown, FormatNote.TooComplex), viewer.page(3))
+        assertNull(viewer.text(3)!!.formatted)
+    }
+
+    @Test
+    fun a_json_file_has_its_indented_view_beside_its_lines() = runTest {
+        val viewer = viewer(start = 1)
+        assertEquals(ViewerPage.Text(TextKind.Json), viewer.page(1))
+        val formatted = assertIs<FormattedText.Json>(viewer.text(1)!!.formatted)
+        assertEquals(
+            listOf("{", "  \"a\": [", "    1,", "    2", "  ]", "}"),
+            List(formatted.lines.lineCount) { formatted.lines.line(it) },
+        )
+    }
+
+    @Test
+    fun json_that_is_not_valid_is_shown_as_written_with_a_note() = runTest {
+        contents[1] = "{\"a\":".encodeToByteArray()
+        val viewer = viewer(start = 1)
+        assertEquals(ViewerPage.Text(TextKind.Json, FormatNote.NotJson), viewer.page(1))
+        assertNull(viewer.text(1)!!.formatted)
+    }
+
+    @Test
+    fun json_too_large_to_indent_is_shown_as_written_with_a_note() = runTest {
+        contents[1] = ("[".repeat(20_000) + "1" + "]".repeat(20_000)).encodeToByteArray()
+        val viewer = viewer(start = 1)
+        assertEquals(ViewerPage.Text(TextKind.Json, FormatNote.TooLarge), viewer.page(1))
+        assertNull(viewer.text(1)!!.formatted)
+    }
+
+    @Test
+    fun plain_text_has_no_formatted_view_and_no_note() = runTest {
+        val viewer = viewer(start = 4)
+        assertEquals(ViewerPage.Text(TextKind.Plain), viewer.page(4))
+        assertNull(viewer.text(4)!!.formatted)
+    }
+
+    /** One choice for every formatted file, kept from file to file; a new viewer starts formatted. */
+    @Test
+    fun the_formatted_choice_lasts_for_the_viewers_life() = runTest {
+        val viewer = viewer(start = 3)
+        assertTrue(viewer.state.value.formatted, "formatted at first")
+
+        viewer.toggleFormatted()
+        assertFalse(viewer.state.value.formatted)
+        viewer.showPage(3) // c.json
+        assertFalse(viewer.state.value.formatted, "kept for the next file")
+        viewer.toggleFormatted()
+        assertTrue(viewer.state.value.formatted, "and switched back")
+        viewer.toggleFormatted()
+
+        lifecycle.destroy()
+        assertTrue(viewer(start = 3).state.value.formatted, "a new viewer, after a lock, starts formatted")
+    }
+
+    /** A refused page stays refused while it is in the window; it is not read again on each swipe. */
+    @Test
+    fun a_refused_text_page_is_not_read_again_while_in_view() = runTest {
+        contents[4] = byteArrayOf(0x00)
+        val items = items()
+        val viewer = viewer(start = 4, items = items)
+        viewer.showPage(1)
+        viewer.showPage(0)
+        assertEquals(ViewerPage.NotText, viewer.page(4))
+        assertEquals(2, items.openCalls, "a.txt once, b.md once")
+    }
+}

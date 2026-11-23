@@ -12,6 +12,9 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
 import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerDisplay
 import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerKind
 import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerState
+import dev.ehsanfahad.darkchamber.feature.vault.api.FormatNote
+import dev.ehsanfahad.darkchamber.feature.vault.api.TextDocument
+import dev.ehsanfahad.darkchamber.feature.vault.api.TextKind
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPlayer
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPlayerFactory
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultViewerComponent
@@ -107,6 +110,8 @@ internal open class ViewerComponent<T>(
      * the renderer is not safe from two threads at once. Never the main thread.
      */
     private val pdfContext: CoroutineContext = Dispatchers.Default.limitedParallelism(1),
+    /** The array a text file is read into, sized from its stored size; a test keeps it to see it zeroed. */
+    private val textBuffer: (size: Int) -> ByteArray = { ByteArray(it) },
 ) : ComponentContext by componentContext {
     // SupervisorJob parented to the caller's Job, as the gallery's: the app scopes feature work to the
     // vault session, and cancelling that must cancel this before the session it reads through dies.
@@ -123,6 +128,135 @@ internal open class ViewerComponent<T>(
 
     private val _pdfPages = MutableValue<Map<Int, ImageBitmap?>>(emptyMap())
     val pdfPages: Value<Map<Int, ImageBitmap?>> = _pdfPages
+
+    private val _texts = MutableValue<Map<String, TextDocument>>(emptyMap())
+    val texts: Value<Map<String, TextDocument>> = _texts
+
+    fun toggleFormatted() {
+        _state.value = _state.value.copy(formatted = !_state.value.formatted)
+    }
+
+    /** The key of the text file whose document is in [texts]; one at a time, for the page shown. */
+    private var textShown: String? = null
+
+    /** The text file shown being read, before it is [textShown]. */
+    private var textOpening: Opening? = null
+
+    /** Whether this item is shown as text here: decided from its stored details, before anything is read. */
+    private fun textItem(item: GalleryItem): Boolean = textKind(item.meta) != null
+
+    /**
+     * One text file read, for the page shown and no other: a text file no longer shown is let go, a
+     * read for one is abandoned, and the page shown — a text file not already answered — is read.
+     */
+    private fun refreshText(shown: GalleryItem) {
+        val key = shown.id.toListKey()
+        if (textShown != null && textShown != key) dropText()
+        if (textOpening?.key != key) {
+            textOpening?.job?.cancel()
+            textOpening = null
+        }
+        val kind = textKind(shown.meta) ?: return
+        if (closed || textOpening != null) return
+        // Answered already — shown (a text page) or refused — so not read again while in view.
+        if (_state.value.pages[key] != ViewerPage.Loading) return
+        when (val plan = textPlan(shown.size)) {
+            is OpenPlan.Show -> {
+                setPage(key, plan.page)
+                return
+            }
+            OpenPlan.Decode -> Unit
+        }
+        val job = scope.launch(start = CoroutineStart.LAZY) { readText(key, shown, kind) }
+        textOpening = Opening(key, job)
+        job.start()
+    }
+
+    /**
+     * Read [item] whole into an array of exactly its stored size and decode it **only once the vault has
+     * verified the whole file**; the array is zeroed on every path, the decoded text being what is kept.
+     * A lock or a swipe stops the decrypt within a chunk, and a read that was abandoned publishes nothing:
+     * its hop throws on the way out.
+     */
+    private suspend fun readText(key: String, item: GalleryItem, kind: TextKind) {
+        try {
+            val result = withContext(ioContext) {
+                val into = textBuffer(item.size.toInt())
+                try {
+                    val sink = ExactArraySink(into)
+                    val read = try {
+                        openObject(item.id, StopsWhenCancelled(coroutineContext.job, sink))
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        // The vault answers with outcomes; a throw is a session closed under the read, or
+                        // more bytes than the item's stored size.
+                        Outcome.Err(VaultError.Unexpected(e))
+                    }
+                    when {
+                        read is Outcome.Err -> TextRead.Refused(pageForOpenFailure(read.error))
+                        !sink.full -> TextRead.Refused(ViewerPage.CouldntOpen) // fewer bytes than stored
+                        else -> when (val decoded = TextDecoding.decode(into)) {
+                            DecodedText.NotText -> TextRead.Refused(ViewerPage.NotText)
+                            is DecodedText.Text -> {
+                                val reading = coroutineContext.job
+                                val (formatted, note) = formatted(kind, decoded, item.size) { !reading.isActive }
+                                TextRead.Shown(ViewerPage.Text(kind, note), TextDocument(decoded, formatted))
+                            }
+                        }
+                    }
+                } finally {
+                    into.fill(0)
+                }
+            }
+            when (result) {
+                is TextRead.Refused -> setPage(key, result.page)
+                is TextRead.Shown -> {
+                    textShown = key
+                    _texts.value = mapOf(key to result.document)
+                    setPage(key, result.page)
+                }
+            }
+        } finally {
+            // Only this read's own slot: an abandoned read can finish after the next one has started.
+            if (textOpening?.job === currentCoroutineContext()[Job]) textOpening = null
+        }
+    }
+
+    /**
+     * A Markdown or JSON file's formatted view, or the note saying why it is shown only as written;
+     * neither for the other kinds. Markdown is formatted up to [MARKDOWN_FORMAT_CAP], within the
+     * reader's nesting and time limits, and its parse stops as soon as [cancelled] — a lock or a swipe.
+     */
+    private fun formatted(kind: TextKind, text: DecodedText.Text, size: Long, cancelled: () -> Boolean): Pair<FormattedText?, FormatNote?> =
+        when (kind) {
+            TextKind.Markdown -> when {
+                size > MARKDOWN_FORMAT_CAP -> null to FormatNote.TooLarge
+                else -> MarkdownModel.from(text.whole, cancelled = cancelled)
+                    ?.let { FormattedText.Markdown(it) to null }
+                    ?: (null to FormatNote.TooComplex)
+            }
+            TextKind.Json -> when (val indented = JsonIndent.indent(text.whole)) {
+                is JsonIndent.Result.Indented -> FormattedText.Json(TextDecoding.lines(indented.text)) to null
+                JsonIndent.Result.Invalid -> null to FormatNote.NotJson
+                JsonIndent.Result.TooLarge -> null to FormatNote.TooLarge
+            }
+            TextKind.Plain, TextKind.Code -> null to null
+        }
+
+    private sealed interface TextRead {
+        class Refused(val page: ViewerPage) : TextRead
+
+        class Shown(val page: ViewerPage.Text, val document: TextDocument) : TextRead
+    }
+
+    /** Let the text shown go: its document dropped at once, its page back to waiting to be read again. */
+    private fun dropText() {
+        val key = textShown ?: return
+        textShown = null
+        _texts.value = emptyMap()
+        if (_state.value.pages[key] is ViewerPage.Text) setPage(key, ViewerPage.Loading)
+    }
 
     /**
      * Draw the PDF shown's pages near the screen ([PdfReading.renderWindow]) at the width they are shown,
@@ -430,6 +564,7 @@ internal open class ViewerComponent<T>(
             // way is cancelled with the scope and releases its buffer itself.
             stopPlaying(remember = false)
             closePdf()
+            dropText()
             // A lock: the screen goes back as it was, the phone-wide brightness on iOS above all.
             send(displayRules.closed())
             scope.cancel()
@@ -516,18 +651,19 @@ internal open class ViewerComponent<T>(
         for ((key, item) in window) {
             val kind = playerKind(item)
             if (kind != null && key !in pages) pages[key] = ViewerPage.Media(kind)
-            if (pdfKind(item) && key !in pages) pages[key] = ViewerPage.Loading
+            if ((pdfKind(item) || textItem(item)) && key !in pages) pages[key] = ViewerPage.Loading
         }
         val target = target
         val starting = if (target == null) {
             emptyMap()
         } else {
-            window.filterValues { playerKind(it) == null && !pdfKind(it) }.filterKeys { it !in loads }
+            window.filterValues { playerKind(it) == null && !pdfKind(it) && !textItem(it) }.filterKeys { it !in loads }
         }
         starting.keys.forEach { key -> pages[key] = ViewerPage.Loading }
         _state.value = _state.value.copy(pages = pages)
         refreshPlayer(items[shown.index])
         refreshPdf(items[shown.index])
+        refreshText(items[shown.index])
         syncDisplay()
         if (target == null) return
 
@@ -704,6 +840,8 @@ internal open class ViewerComponent<T>(
         opening?.job?.cancel()
         closePdf()
         pdfOpening?.job?.cancel()
+        dropText()
+        textOpening?.job?.cancel()
         send(displayRules.closed())
         onBack(lastViewedId)
     }
