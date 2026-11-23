@@ -288,8 +288,10 @@ class ViewerFormatTest {
     fun a_page_without_a_picture_carries_the_grids_badge() {
         val jpeg = GalleryItemMeta.Readable("a.jpg", "image/jpeg")
         assertEquals("VID", ViewerFormat.pageBadge(ViewerPage.NotViewable("VID"), GalleryItemMeta.Readable("a.mp4", "video/mp4")))
-        assertEquals(GalleryFormat.typeBadge("image/jpeg"), ViewerFormat.pageBadge(ViewerPage.TooLarge, jpeg))
-        assertEquals(GalleryFormat.typeBadge("image/jpeg"), ViewerFormat.pageBadge(ViewerPage.CantShow, jpeg))
+        assertEquals(GalleryFormat.typeBadge(jpeg), ViewerFormat.pageBadge(ViewerPage.TooLarge, jpeg))
+        assertEquals(GalleryFormat.typeBadge(jpeg), ViewerFormat.pageBadge(ViewerPage.CantShow, jpeg))
+        val markdown = GalleryItemMeta.Readable("notes.md", "application/octet-stream")
+        assertEquals("TXT", ViewerFormat.pageBadge(ViewerPage.TooLarge, markdown), "the badge follows the text rule")
         assertEquals("!", ViewerFormat.pageBadge(ViewerPage.Unverified, jpeg))
         assertEquals("!", ViewerFormat.pageBadge(ViewerPage.StoppedUnverified, GalleryItemMeta.Readable("a.mp4", "video/mp4")))
         assertEquals("!", ViewerFormat.pageBadge(ViewerPage.CouldntOpen, GalleryItemMeta.Unreadable))

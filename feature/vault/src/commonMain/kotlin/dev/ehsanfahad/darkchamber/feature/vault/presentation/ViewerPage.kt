@@ -29,7 +29,7 @@ internal sealed interface OpenPlan {
  */
 internal fun openPlan(meta: GalleryItemMeta, size: Long, cap: Long): OpenPlan {
     if (meta is GalleryItemMeta.Readable && !meta.mime.startsWith("image/")) {
-        return OpenPlan.Show(ViewerPage.NotViewable(GalleryFormat.typeBadge(meta.mime)))
+        return OpenPlan.Show(ViewerPage.NotViewable(GalleryFormat.typeBadge(meta)))
     }
     return when {
         size < 0 -> OpenPlan.Show(ViewerPage.CouldntOpen)
@@ -74,6 +74,96 @@ internal fun pageForPdfRefusal(refusal: PdfRefusal): ViewerPage =
         PdfRefusal.NeedsPassword -> ViewerPage.PasswordProtected
         PdfRefusal.Unreadable -> ViewerPage.Unreadable
         PdfRefusal.Unsupported -> ViewerPage.CantShow
+    }
+
+/** How a text item is shown: the kind decides the font, and which items have a formatted view. */
+internal enum class TextKind {
+    /** Prose: the reading font. */
+    Plain,
+
+    /** Rendered, with a plain view beside it. */
+    Markdown,
+
+    /** Re-indented, with a plain view beside it; monospace. */
+    Json,
+
+    /** Markup, data, logs and source: monospace, shown as written. */
+    Code,
+}
+
+/**
+ * Whether the viewer reads an item as text, and of which kind — from its stored details alone,
+ * before anything is read. `null` when it is not text.
+ *
+ * The stored type depends on where the file came from (a provider may record a Markdown file as
+ * `text/markdown`, `text/plain` or `application/octet-stream`), so a known extension in the stored
+ * name counts too, and when both are there the extension names the kind: a `.json` saved as plain
+ * text is JSON. A kind with its own viewer — a picture, a video, a sound, a PDF — keeps it whatever
+ * the name says. This only decides what to try: the bytes still decide whether it is text at all.
+ */
+internal fun textKind(meta: GalleryItemMeta): TextKind? {
+    if (meta !is GalleryItemMeta.Readable) return null
+    val type = meta.mime.substringBefore(';').trim().lowercase()
+    if (OWN_VIEWER_FAMILIES.any { type.startsWith(it) } || type == PDF_MIME) return null
+    return kindByExtension(meta.name) ?: kindByType(type)
+}
+
+private val OWN_VIEWER_FAMILIES = listOf("image/", "video/", "audio/")
+
+private fun kindByExtension(name: String): TextKind? {
+    val dot = name.lastIndexOf('.')
+    if (dot < 0) return null
+    return TEXT_EXTENSIONS[name.substring(dot + 1).lowercase()]
+}
+
+private fun kindByType(type: String): TextKind? =
+    when {
+        type == "text/plain" -> TextKind.Plain
+        type == "text/markdown" || type == "text/x-markdown" -> TextKind.Markdown
+        type == "application/json" || type.endsWith("+json") -> TextKind.Json
+        type.startsWith("text/") -> TextKind.Code
+        type in CODE_TYPES || type.endsWith("+xml") -> TextKind.Code
+        else -> null
+    }
+
+private val CODE_TYPES = setOf(
+    "application/xml",
+    "application/yaml",
+    "application/x-yaml",
+    "application/toml",
+    "application/javascript",
+    "application/x-sh",
+    "application/sql",
+)
+
+private val TEXT_EXTENSIONS: Map<String, TextKind> =
+    listOf("txt", "text").associateWith { TextKind.Plain } +
+        listOf("md", "markdown", "mdown", "mkd").associateWith { TextKind.Markdown } +
+        listOf("json").associateWith { TextKind.Json } +
+        listOf(
+            // Markup and data.
+            "html", "htm", "xhtml", "xml", "csv", "tsv", "yaml", "yml", "toml", "ini", "cfg", "conf",
+            "properties", "log", "srt", "vtt",
+            // Source.
+            "kt", "kts", "java", "swift", "py", "js", "ts", "c", "h", "cpp", "hpp", "cs", "go", "rs",
+            "rb", "php", "sh", "sql", "css", "gradle",
+        ).associateWith { TextKind.Code }
+
+/** The largest text file the viewer reads: its bytes, then its decoded text, are held while shown. */
+internal const val TEXT_CAP: Long = 8L * 1024 * 1024
+
+/**
+ * Before a text item is read: read it, or show a page that needs no read at all.
+ *
+ * - Anything larger than [cap] is not read: the size is a plaintext column, so refusing costs no
+ *   decrypt. An empty file is read — it is text with nothing in it.
+ * - A negative size is a row nothing here wrote: nothing is read, and the page names no cause.
+ */
+internal fun textPlan(size: Long, cap: Long = TEXT_CAP): OpenPlan =
+    when {
+        size < 0 -> OpenPlan.Show(ViewerPage.CouldntOpen)
+        size > cap -> OpenPlan.Show(ViewerPage.TooLarge)
+        else -> OpenPlan.Decode
     }
 
 /**

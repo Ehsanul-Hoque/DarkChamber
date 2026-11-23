@@ -205,7 +205,7 @@ internal object ViewerFormat {
         when {
             page is ViewerPage.NotViewable -> page.badge
             page == ViewerPage.Unverified || page == ViewerPage.StoppedUnverified -> WARNING_BADGE
-            meta is GalleryItemMeta.Readable -> GalleryFormat.typeBadge(meta.mime)
+            meta is GalleryItemMeta.Readable -> GalleryFormat.typeBadge(meta)
             else -> WARNING_BADGE
         }
 
