@@ -196,11 +196,12 @@ internal object ViewerFormat {
     /** The catalog deletes all or nothing, so this is true; why it failed is not known, so no why. */
     fun deleteFailed(): String = "Couldn't delete. Nothing was deleted."
 
-    /** What the viewer says after a delete from it — always one file. */
+    /** What the viewer says after a delete from it — always one file — or a link no app took. */
     fun notice(notice: ViewerNotice): String =
         when (notice) {
             ViewerNotice.Deleted -> deleted(1)
             ViewerNotice.DeleteFailed -> deleteFailed()
+            ViewerNotice.LinkNotOpened -> linkNotOpened()
         }
 
     /** The mark drawn above a page's message. */
@@ -296,8 +297,11 @@ internal object ViewerFormat {
 
     fun linkOpen(): String = "Open"
 
-    /** No app took the address: nothing left the vault and nothing locked, so it names only what failed. */
-    fun noBrowser(): String = "No app on this device can open web links."
+    /**
+     * No app took the address: nothing left the vault and nothing locked. Why is not known — no app
+     * for web links, or the platform refusing this address — so it names only what happened.
+     */
+    fun linkNotOpened(): String = "No app opened this link."
 
     /** The confirm button once pressed: the only thing saying why the buttons stopped responding. */
     fun deleting(): String = "Deleting…"

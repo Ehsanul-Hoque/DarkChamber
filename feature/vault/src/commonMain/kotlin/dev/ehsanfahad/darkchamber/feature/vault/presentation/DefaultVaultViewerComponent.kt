@@ -9,6 +9,8 @@ import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.vault.RangeReader
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
+import dev.ehsanfahad.darkchamber.feature.vault.api.LinkOpened
+import dev.ehsanfahad.darkchamber.feature.vault.api.LinkOpener
 import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerDisplay
 import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerKind
 import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerState
@@ -112,6 +114,13 @@ internal open class ViewerComponent<T>(
     private val pdfContext: CoroutineContext = Dispatchers.Default.limitedParallelism(1),
     /** The array a text file is read into, sized from its stored size; a test keeps it to see it zeroed. */
     private val textBuffer: (size: Int) -> ByteArray = { ByteArray(it) },
+    /** The platform's browser hand-off, or `null` where there is none: then no link opens. */
+    private val links: LinkOpener? = null,
+    /**
+     * The unlocked subtree's own lock — the Lock button's. Called once a browser has taken an address,
+     * because the browser can open beside the app and nothing else would lock. Without one, no link opens.
+     */
+    private val lockVault: (() -> Unit)? = null,
 ) : ComponentContext by componentContext {
     // SupervisorJob parented to the caller's Job, as the gallery's: the app scopes feature work to the
     // vault session, and cancelling that must cancel this before the session it reads through dies.
@@ -135,6 +144,16 @@ internal open class ViewerComponent<T>(
     fun toggleFormatted() {
         _state.value = _state.value.copy(formatted = !_state.value.formatted)
     }
+
+    /**
+     * Where a link waits for the platform's answer: the session's, not this screen's. An address the
+     * browser took has left even if the viewer closed meanwhile, so the lock must still come; only the
+     * session ending — a lock already — cancels it.
+     */
+    private val linkWork = CoroutineScope(mainContext + SupervisorJob(mainContext[Job]))
+
+    /** A link is with the platform; another tap waits for its answer. */
+    private var linkOpening = false
 
     /** The key of the text file whose document is in [texts]; one at a time, for the page shown. */
     private var textShown: String? = null
@@ -827,6 +846,29 @@ internal open class ViewerComponent<T>(
         _state.value = _state.value.copy(delete = null)
     }
 
+    fun openLink(address: String) {
+        // Checked again here, whatever the screen handed in: only a web address ever leaves.
+        if (LinkRules.target(address, emptyMap()) !is LinkTarget.Web) return
+        if (linkOpening) return
+        val opener = links
+        val lock = lockVault
+        if (opener == null || lock == null) {
+            _state.value = _state.value.copy(notice = ViewerNotice.LinkNotOpened)
+            return
+        }
+        linkOpening = true
+        linkWork.launch {
+            try {
+                when (opener.open(address)) {
+                    LinkOpened.Opened -> lock()
+                    LinkOpened.NotOpened -> _state.value = _state.value.copy(notice = ViewerNotice.LinkNotOpened)
+                }
+            } finally {
+                linkOpening = false
+            }
+        }
+    }
+
     fun dismissNotice() {
         _state.value = _state.value.copy(notice = null)
     }
@@ -875,7 +917,10 @@ internal class DefaultVaultViewerComponent(
     openObject: (id: ByteArray, sink: RawSink) -> Outcome<Unit>,
     pdfs: VaultPdfRenderer?,
     pdfContext: CoroutineContext,
+    links: LinkOpener? = null,
+    lockVault: (() -> Unit)? = null,
 ) : ViewerComponent<ImageBitmap>(
     componentContext, observeGallery, observeAlbum, load, shred, filter, controls, startId, onBack,
     openRange, playerFactory, display, mainContext, ioContext, releaseContext, openObject, pdfs, pdfContext,
+    links = links, lockVault = lockVault,
 ), VaultViewerComponent

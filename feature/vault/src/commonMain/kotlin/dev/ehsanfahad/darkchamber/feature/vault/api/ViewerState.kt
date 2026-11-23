@@ -40,11 +40,14 @@ enum class ViewerDeleteStage {
     Deleting,
 }
 
-/** What a finished delete reports. */
+/** What a finished delete, or a link that could not be opened, reports. */
 enum class ViewerNotice {
     /** The item is gone; its key was destroyed. */
     Deleted,
 
     /** The vault refused. Nothing was deleted. */
     DeleteFailed,
+
+    /** No app took a web address the reader chose to open. Nothing left the vault and nothing locked. */
+    LinkNotOpened,
 }

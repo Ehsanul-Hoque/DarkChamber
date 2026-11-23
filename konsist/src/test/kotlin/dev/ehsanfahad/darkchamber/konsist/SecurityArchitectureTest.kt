@@ -257,6 +257,29 @@ class SecurityArchitectureTest {
         )
     }
 
+    @Test
+    fun `nothing opens a web address except the confirmed link opener`() {
+        // A web address leaves the vault only after the reader has seen the whole address in the
+        // confirmation, and the vault locks once a browser has it. Compose has its own ways to open
+        // one with neither: a `LinkAnnotation.Url` span opens on tap, and `LocalUriHandler` /
+        // `openUri` open whatever they are given. Text is drawn with `LinkAnnotation.Clickable`
+        // instead, handing the address to the confirmation; the app's `LinkOpener` is the one way
+        // out. Matched on source text, so an import, a qualified call and a member call are all seen.
+        val violations = productionFiles.filter { OPENS_AN_ADDRESS_BY_ITSELF.containsMatchIn(codeOf(it)) }
+
+        assertTrue(
+            violations.isEmpty(),
+            buildString {
+                appendLine(
+                    "A source uses a Compose API that opens a web address by itself (LinkAnnotation.Url, " +
+                        "LocalUriHandler, UriHandler or openUri). Draw links with LinkAnnotation.Clickable " +
+                        "and hand the address to the viewer's confirmation, which opens it through LinkOpener.",
+                )
+                violations.forEach { appendLine("  ${it.projectPath}") }
+            },
+        )
+    }
+
     private fun assertNoForbiddenImports(
         rule: String,
         forbidden: (String) -> Boolean,
@@ -376,6 +399,13 @@ class SecurityArchitectureTest {
                     // is caught by the call that made it.
                     """TextDecoding|MarkdownModel|JsonIndent)(?![A-Za-z0-9_])""",
             )
+
+        /**
+         * Compose's own ways to open a web address: a URL link span, the URI handler (as the
+         * composition local, the type, or its one call), and the span imported on its own.
+         */
+        val OPENS_AN_ADDRESS_BY_ITSELF =
+            Regex("""LinkAnnotation\s*\.\s*Url(?![A-Za-z0-9_])|(?<![A-Za-z0-9_])(LocalUriHandler|UriHandler|openUri)(?![A-Za-z0-9_])""")
 
         /** The helper that excludes the window it is composed in. */
         const val EXCLUDES_FROM_STRUCTURES = "ExcludeFromPlatformStructures"

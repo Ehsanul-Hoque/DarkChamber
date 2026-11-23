@@ -1,5 +1,6 @@
 package dev.ehsanfahad.darkchamber.feature.vault.presentation
 
+import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerNotice
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -39,10 +40,14 @@ class LinkDialogCopyTest {
         assertEquals("Cancel", ViewerFormat.cancel())
     }
 
-    /** When nothing can take the address, nothing left and nothing locked; it says only what failed. */
+    /**
+     * When nothing took the address, nothing left and nothing locked. The platform does not say why —
+     * no app for web links, or this address refused — so it names no cause; it is the viewer's notice.
+     */
     @Test
-    fun the_notice_when_no_app_can_open_it() {
-        assertEquals("No app on this device can open web links.", ViewerFormat.noBrowser())
+    fun the_notice_when_no_app_took_it() {
+        assertEquals("No app opened this link.", ViewerFormat.linkNotOpened())
+        assertEquals(ViewerFormat.linkNotOpened(), ViewerFormat.notice(ViewerNotice.LinkNotOpened))
     }
 
     /**
@@ -52,7 +57,7 @@ class LinkDialogCopyTest {
      */
     @Test
     fun the_dialog_promises_nothing_the_app_cannot_keep() {
-        val words = (dialog + ViewerFormat.noBrowser()).joinToString(" ").lowercase()
+        val words = (dialog + ViewerFormat.linkNotOpened()).joinToString(" ").lowercase()
         for (claim in listOf("safe", "secure", "private", "encrypt", "protect", "anonym", "trust", "verified", "won't", "will not", "never", "will know")) {
             assertFalse(claim in words, "the dialog must not say \"$claim\"")
         }

@@ -31,6 +31,8 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
 import dev.ehsanfahad.darkchamber.feature.vault.api.PhotoPicker
 import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerDisplay
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPdfRenderer
+import dev.ehsanfahad.darkchamber.app.link.IosLinkOpener
+import dev.ehsanfahad.darkchamber.feature.vault.api.LinkOpener
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPlayerFactory
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerImageDecoder
 import kotlinx.io.files.Path
@@ -75,6 +77,8 @@ actual fun platformModule(): Module = module {
     single<PlayerDisplay> { IosPlayerDisplay() }
     // Shows a PDF from memory through CoreGraphics. Stateless: each PDF gets its own buffer.
     single<VaultPdfRenderer> { IosPdfRenderer() }
+    // Hands a web address the reader confirmed to the browser, through UIApplication.
+    single<LinkOpener> { IosLinkOpener() }
     // Local-only and self-expiring; see the implementation for what a plain pasteboard write costs.
     single<SecretClipboard> { IosSecretClipboard() }
     single<CatalogProvider> { CatalogProvider { root -> openCatalog(root) } }

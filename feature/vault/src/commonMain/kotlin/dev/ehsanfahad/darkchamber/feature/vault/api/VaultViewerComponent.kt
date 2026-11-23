@@ -110,6 +110,13 @@ interface VaultViewerComponent {
     /** Close the confirmation without deleting. Ignored once the delete has started. */
     fun cancelDelete()
 
+    /**
+     * The reader confirmed opening a link to [address]. Only a web address the link rules accept is
+     * handed to the platform's browser; once it has taken the address the vault locks, and when
+     * nothing took it nothing locks and [ViewerNotice.LinkNotOpened] says so. Anything else is ignored.
+     */
+    fun openLink(address: String)
+
     /** Clear a shown [ViewerNotice]. */
     fun dismissNotice()
 
