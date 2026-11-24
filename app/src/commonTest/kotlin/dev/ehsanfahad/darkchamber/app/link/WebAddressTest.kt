@@ -51,4 +51,13 @@ class WebAddressTest {
             "https://example.com" + Char(0x7F),
         ).forEach { assertFalse(isWebAddress(it), it.replace(Char(0x0A), '|')) }
     }
+
+    /** Where a backslash ends the site is not agreed between browsers and iOS, so it is never handed over. */
+    @Test
+    fun a_backslash_anywhere_is_refused() {
+        val bs = Char(0x5C)
+        listOf("https://evil.example$bs@good.com/", "https://${bs}x", "https://example.com/a${bs}b").forEach {
+            assertFalse(isWebAddress(it), it)
+        }
+    }
 }

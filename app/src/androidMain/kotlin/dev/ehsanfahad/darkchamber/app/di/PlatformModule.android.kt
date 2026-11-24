@@ -12,6 +12,7 @@ import dev.ehsanfahad.darkchamber.app.image.AndroidViewerImageDecoder
 import dev.ehsanfahad.darkchamber.app.player.AndroidPlayerDisplay
 import dev.ehsanfahad.darkchamber.app.pdf.AndroidPdfRenderer
 import dev.ehsanfahad.darkchamber.app.link.AndroidLinkOpener
+import dev.ehsanfahad.darkchamber.app.link.startBrowsable
 import dev.ehsanfahad.darkchamber.feature.vault.api.LinkOpener
 import dev.ehsanfahad.darkchamber.app.player.AndroidVaultPlayerFactory
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraController
@@ -91,7 +92,10 @@ actual fun platformModule(): Module = module {
     // Shows a PDF from a memory-only file (Android 11+). Stateless: each PDF gets its own buffer.
     single<VaultPdfRenderer> { AndroidPdfRenderer() }
     // Hands a web address the reader confirmed to the browser, from the activity in front.
-    single<LinkOpener> { AndroidLinkOpener { get<ActivityHolder>().activity } }
+    single<LinkOpener> {
+        val holder = get<ActivityHolder>()
+        AndroidLinkOpener { holder.activity?.let { front -> { address: String -> startBrowsable(front, address) } } }
+    }
     // The application context, not an activity: the scheduled clear outlives the screen that copied.
     single<SecretClipboard> { AndroidSecretClipboard(androidContext()) }
     single<CatalogProvider> {
