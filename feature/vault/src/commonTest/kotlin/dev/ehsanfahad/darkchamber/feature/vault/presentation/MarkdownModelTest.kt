@@ -7,6 +7,7 @@ import kotlin.coroutines.cancellation.CancellationException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -355,6 +356,47 @@ class MarkdownModelTest {
             listOf(MdBlock.Table(listOf(CellAlign.Start, CellAlign.Start), cells("abc", "def"), listOf(cells("bar", ""), cells("bar", "baz")))),
             blocks("| abc | def |\n| --- | --- |\n| bar |\n| bar | baz | boo |"),
         )
+    }
+
+    /** A table of [columns] one-letter columns, with one body row. */
+    private fun table(columns: Int) = "a|".repeat(columns - 1) + "a\n" + "-|".repeat(columns - 1) + "-\n" + "b|".repeat(columns - 1) + "b\n"
+
+    /**
+     * A table wider than can be drawn is shown as written, every character of it, rather than as one
+     * row wider than a layout may be. Both sides of the limit.
+     */
+    @Test
+    fun a_table_too_wide_to_draw_is_shown_as_written() {
+        val widest = blocks(table(MARKDOWN_MAX_TABLE_COLUMNS)).single()
+        assertEquals(MARKDOWN_MAX_TABLE_COLUMNS, (widest as MdBlock.Table).alignments.size)
+        val tooWide = table(MARKDOWN_MAX_TABLE_COLUMNS + 1)
+        assertEquals(listOf(MdBlock.Raw(tooWide.trimEnd())), blocks(tooWide))
+    }
+
+    /**
+     * Twenty thousand columns: shown as written. (A 1 MB table of a quarter of a million columns can take
+     * the parser itself past the time budget on a slow device — then it is "can't format", also safe.)
+     */
+    @Test
+    fun a_table_of_twenty_thousand_columns_is_shown_as_written() {
+        assertIs<MdBlock.Raw>(blocks(table(20_001)).single())
+    }
+
+    /** A row holding more than a row of the page may: the table as written, not a cell cut short. */
+    @Test
+    fun a_table_with_a_row_too_long_to_draw_is_shown_as_written() {
+        val fits = "| a | b |\n| - | - |\n| ${"x".repeat(1_000)} | ${"y".repeat(1_000)} |\n"
+        assertIs<MdBlock.Table>(blocks(fits).single())
+        val tooLong = "| a | b |\n| - | - |\n| ${"x".repeat(1_000)} | ${"y".repeat(1_001)} |\n"
+        assertEquals(listOf(MdBlock.Raw(tooLong.trimEnd())), blocks(tooLong))
+        val longHeader = "| ${"h".repeat(2_001)} |\n| - |\n| b |\n"
+        assertIs<MdBlock.Raw>(blocks(longHeader).single(), "the header counts too")
+    }
+
+    @Test
+    fun the_table_limits_are_sixty_four_columns_and_a_rows_length() {
+        assertEquals(64, MARKDOWN_MAX_TABLE_COLUMNS)
+        assertEquals(2_000, TextReading.ROW_MAX_CHARS)
     }
 
     @Test

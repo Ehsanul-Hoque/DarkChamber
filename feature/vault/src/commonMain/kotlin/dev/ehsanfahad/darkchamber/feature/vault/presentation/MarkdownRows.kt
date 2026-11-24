@@ -6,7 +6,8 @@ internal enum class MdTextSize { Title1, Title2, Title3, Body }
 /**
  * One item of a formatted Markdown page. A block becomes one row or several: a block's size follows the
  * file, and a layout may not be taller or wider than Compose allows, so no row holds more than about
- * [TextReading.ROW_MAX_CHARS] characters.
+ * [TextReading.ROW_MAX_CHARS] characters — a table's piece counting all its cells, and a table too wide
+ * or with a row too long for that shown as written instead ([MARKDOWN_MAX_TABLE_COLUMNS]).
  *
  * Every row knows the top-level [block] it came from — where a `#section` link lands — how many list
  * levels it sits in ([indent]) and how many quotes ([quotes]), and whether space comes before it
@@ -85,7 +86,7 @@ internal sealed interface MdRow {
 }
 
 internal object MarkdownRows {
-    /** The most body rows of a table in one row of the page. */
+    /** The most body rows of a table in one row of the page; fewer when their cells are long. */
     const val TABLE_ROWS_PER_PIECE = 10
 
     /**
@@ -259,7 +260,7 @@ internal object MarkdownRows {
             val widths = List(columns) { c ->
                 all.maxOf { row -> row.getOrNull(c)?.sumOf { it.text.length } ?: 0 }.coerceIn(1, MAX_COLUMN_CHARS)
             }
-            val pieces = table.rows.chunked(TABLE_ROWS_PER_PIECE).ifEmpty { listOf(emptyList()) }
+            val pieces = tablePieces(table)
             val group = groups.take()
             pieces.forEachIndexed { i, rows ->
                 out += MdRow.TableRows(
@@ -275,6 +276,33 @@ internal object MarkdownRows {
                 )
             }
         }
+
+        /**
+         * A table's body rows in pieces of at most [TABLE_ROWS_PER_PIECE] rows whose cells together — the
+         * header's too, in the first — stay within [maxChars]: cells wrap in their narrow columns, so
+         * characters are what make a piece tall. A row past that on its own still gets a piece, and a
+         * header too long to share one has the first piece to itself.
+         */
+        private fun tablePieces(table: MdBlock.Table): List<List<List<List<MdSpan>>>> {
+            val pieces = mutableListOf<MutableList<List<List<MdSpan>>>>(mutableListOf())
+            var chars = charsIn(table.header)
+            for (row in table.rows) {
+                val size = charsIn(row)
+                val piece = pieces.last()
+                // A piece holding something — rows, or the header's words — is closed by what would overfill it.
+                val holds = piece.isNotEmpty() || chars > 0
+                if (holds && (piece.size == TABLE_ROWS_PER_PIECE || chars + size > maxChars)) {
+                    pieces += mutableListOf(row)
+                    chars = size
+                } else {
+                    piece += row
+                    chars += size
+                }
+            }
+            return pieces
+        }
+
+        private fun charsIn(row: List<List<MdSpan>>): Int = row.sumOf { cell -> cell.sumOf { it.text.length } }
 
         private fun sizeOf(level: Int): MdTextSize = when (level) {
             1 -> MdTextSize.Title1

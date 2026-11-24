@@ -135,6 +135,39 @@ class MarkdownRowsTest {
         assertEquals(listOf(true) + List(11) { false }, pieces.map { it.gapAbove })
     }
 
+    /**
+     * A table piece also ends before its cells pass a row's characters, so long cells — which wrap in
+     * their narrow columns — cannot make one piece taller than a layout may be. The header counts in the
+     * first piece; a row longer than that on its own still gets a piece, never an empty one.
+     */
+    @Test
+    fun a_table_piece_ends_before_its_cells_pass_a_rows_characters() {
+        val header = listOf(words("h"), words("h"))
+        val body = List(7) { listOf(words("x".repeat(20)), words("y".repeat(20))) }
+        val pieces = rows(MdBlock.Table(listOf(CellAlign.Start, CellAlign.Start), header, body), maxChars = 100)
+            .map { (it as MdRow.TableRows).rows.size }
+        // 2 + 40 + 40 = 82 in the first; then 40 + 40 = 80 a piece.
+        assertEquals(listOf(2, 2, 2, 1), pieces)
+
+        val long = listOf(listOf(words("z".repeat(150)), words("")), listOf(words("a"), words("b")))
+        val alone = rows(MdBlock.Table(listOf(CellAlign.Start, CellAlign.Start), header, long), maxChars = 100)
+            .map { (it as MdRow.TableRows).rows }
+        assertEquals(listOf(emptyList(), long.take(1), long.drop(1)), alone, "after the header's own piece")
+
+        // With no header words, the first piece takes the long row itself rather than staying empty.
+        val bare = listOf(words(""), words(""))
+        val first = rows(MdBlock.Table(listOf(CellAlign.Start, CellAlign.Start), bare, long), maxChars = 100)
+            .map { (it as MdRow.TableRows).rows }
+        assertEquals(listOf(long.take(1), long.drop(1)), first)
+
+        // A long header with a long first row: the header's piece holds the header alone.
+        val wideHeader = listOf(words("H".repeat(60)), words(""))
+        val after = rows(MdBlock.Table(listOf(CellAlign.Start, CellAlign.Start), wideHeader, List(3) { listOf(words("x".repeat(50)), words("")) }), maxChars = 100)
+            .map { it as MdRow.TableRows }
+        assertEquals(listOf(0, 2, 1), after.map { it.rows.size })
+        assertEquals(wideHeader, after[0].header)
+    }
+
     /** Short lines are cut by count too, so a piece of code stays shorter than a screen. */
     @Test
     fun a_code_piece_holds_at_most_twenty_lines() {

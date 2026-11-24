@@ -90,6 +90,13 @@ internal const val MARKDOWN_MAX_INDENT = 128
  */
 internal const val MARKDOWN_MAX_INLINE_NESTING = 64
 
+/**
+ * The most columns a table is drawn with. A wider one — or one with a row holding more than
+ * [TextReading.ROW_MAX_CHARS] characters — is shown as its source, as written: drawn, it would be one
+ * row wider or taller than a layout may be, and cutting cells would hide part of the file.
+ */
+internal const val MARKDOWN_MAX_TABLE_COLUMNS = 64
+
 internal object MarkdownModel {
 
     /**
@@ -286,9 +293,14 @@ private class TreeReader(private val src: String, root: ASTNode, private val che
         })
     }
 
-    /** Every row has the header's number of cells: a short one filled with empty cells, a long one cut. */
-    private fun table(node: ASTNode): MdBlock.Table {
+    /**
+     * Every row has the header's number of cells: a short one filled with empty cells, a long one cut —
+     * or the table as written, when it is too wide or a row too long to draw.
+     */
+    private fun table(node: ASTNode): MdBlock {
         val header = node.firstChild(GFMElementTypes.HEADER)
+        // Counted before any cell is read: a table can be a quarter of a million columns wide.
+        if ((header?.children?.count { it.type == GFMTokenTypes.CELL } ?: 0) > MARKDOWN_MAX_TABLE_COLUMNS) return MdBlock.Raw(source(node))
         val headerCells = header?.let(::cells) ?: emptyList()
         val delimiter = node.children.firstOrNull { it.type == GFMTokenTypes.TABLE_SEPARATOR }?.let(::source) ?: ""
         val alignments = delimiter.split('|').map { it.trim() }.filter { it.isNotEmpty() }.map {
@@ -303,6 +315,8 @@ private class TreeReader(private val src: String, root: ASTNode, private val che
             val cells = cells(row)
             List(columns) { cells.getOrElse(it) { emptyList() } }
         }
+        val tooLong = (listOf(headerCells) + rows).any { row -> row.sumOf { cell -> cell.sumOf { it.text.length } } > TextReading.ROW_MAX_CHARS }
+        if (tooLong) return MdBlock.Raw(source(node))
         return MdBlock.Table(List(columns) { alignments.getOrElse(it) { CellAlign.Start } }, headerCells, rows)
     }
 
