@@ -28,12 +28,13 @@ import dev.ehsanfahad.darkchamber.core.designsystem.prefersReducedMotion
 
 /**
  * The fast-scroll thumb at [topPx] on the right edge, and while it is [dragging] where it has reached
- * ([bubble]) beside it — a PDF's page or a text file's line. Drawing only — the column's gesture
+ * ([bubble]) beside it — a PDF's page or a text file's line; none on a page with nothing to name it by
+ * (a formatted Markdown file). Drawing only — the column's gesture
  * handler takes the touches — and nothing a screen reader lands on: the column's own scroll does the
  * same work there.
  */
 @Composable
-internal fun BoxWithConstraintsScope.FastScrollThumb(shown: Boolean, topPx: Int, dragging: Boolean, bubble: String) {
+internal fun BoxWithConstraintsScope.FastScrollThumb(shown: Boolean, topPx: Int, dragging: Boolean, bubble: String?) {
     val colors = DarkChamberTheme.colors
     val density = LocalDensity.current
     val duration = if (prefersReducedMotion()) 0 else DarkChamberTheme.motion.motionBase
@@ -54,7 +55,7 @@ internal fun BoxWithConstraintsScope.FastScrollThumb(shown: Boolean, topPx: Int,
             .border(1.dp, colors.textSecondary, DarkChamberTheme.shapes.small)
             .clearAndSetSemantics {},
     )
-    if (dragging) {
+    if (dragging && bubble != null) {
         var bubbleHeight by remember { mutableIntStateOf(0) }
         Text(
             text = bubble,

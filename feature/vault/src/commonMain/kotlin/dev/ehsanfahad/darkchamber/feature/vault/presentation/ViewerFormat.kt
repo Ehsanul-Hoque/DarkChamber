@@ -275,6 +275,16 @@ internal object ViewerFormat {
             FormatNote.NotJson -> "Shown as written: not valid JSON, so it can't be formatted."
         }
 
+    /** What a screen reader says for a task list item's box: drawn as a mark, never a control. */
+    fun taskSpoken(done: Boolean): String = if (done) "Done" else "Not done"
+
+    /**
+     * An image in a Markdown file, which is never fetched: its description where the image would be, in
+     * brackets so it does not read as the file's own words; an image with no description still shows
+     * its place.
+     */
+    fun imageText(description: String): String = if (description.isBlank()) "[Image]" else "[Image: $description]"
+
     /** The jump-to-page dialog's title, and its confirm button. */
     fun jumpTitle(): String = "Go to page"
 

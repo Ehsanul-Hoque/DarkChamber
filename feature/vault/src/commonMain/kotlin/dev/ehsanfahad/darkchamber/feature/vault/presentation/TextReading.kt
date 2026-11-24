@@ -1,7 +1,6 @@
 package dev.ehsanfahad.darkchamber.feature.vault.presentation
 
 import dev.ehsanfahad.darkchamber.feature.vault.api.TextKind
-import kotlin.math.roundToInt
 
 /** The two faces a text page reads in. */
 internal enum class TextFont {
@@ -38,10 +37,8 @@ internal sealed interface TextView {
 
 /**
  * The rules of a text page, apart from drawing it. The page is a column of [rows]; rows are laid out
- * only as they come on screen, so their heights are not known up front, and the fast-scroll thumb
- * measures by **rows** rather than pixels: it stands at how many rows lie above the screen, out of how
- * many can — a file of long and short lines puts it by count, not by height. At the end it stands at
- * the bottom whatever the count.
+ * only as they come on screen, so the fast-scroll thumb stands by their heights as measured so far and
+ * estimated for the rest ([RowHeights]).
  */
 internal object TextReading {
     /**
@@ -63,28 +60,18 @@ internal object TextReading {
     fun hasSwitch(kind: TextKind, canFormat: Boolean): Boolean =
         canFormat && (kind == TextKind.Markdown || kind == TextKind.Json)
 
-    /** Whether a column of [rowCount] rows, [visibleRows] of them on screen now, is long enough for a thumb. */
-    fun worthIt(rowCount: Int, visibleRows: Int): Boolean =
-        visibleRows > 0 && rowCount > visibleRows * PdfFastScroll.MIN_SCREENS
+    /**
+     * Whether the thumb is had now: the column's height is estimated from the rows laid out so far
+     * ([RowHeights]), so whether it is long enough ([worthNow]) can change as more are seen — once shown
+     * the thumb stays for the page, and while it is dragged it never goes.
+     */
+    fun keepsThumb(shownBefore: Boolean, worthNow: Boolean, dragging: Boolean): Boolean = shownBefore || worthNow || dragging
 
     /**
-     * How far through the column the screen is, 0 to 1: row [first] the first shown, [withinFirst] of
-     * the way down it, [visibleRows] on screen. [atEnd] — nothing left to scroll — is 1.
+     * Whether a drag to [fraction] is the whole way down, which goes to the very end of the column — the
+     * last row may be taller than the screen, and bringing its top to the top would leave its end unseen.
      */
-    fun fraction(first: Int, withinFirst: Float, rowCount: Int, visibleRows: Int, atEnd: Boolean): Float {
-        if (atEnd) return 1f
-        val canBeAbove = rowCount - visibleRows
-        if (canBeAbove <= 0) return 0f
-        return ((first + withinFirst) / canBeAbove).coerceIn(0f, 1f)
-    }
-
-    /** The row a thumb dragged to [fraction] brings to the top; the whole way down is the last row. */
-    fun rowAt(fraction: Float, rowCount: Int, visibleRows: Int): Int {
-        if (rowCount <= 0) return 0
-        if (fraction >= 1f) return rowCount - 1
-        val canBeAbove = (rowCount - visibleRows).coerceAtLeast(0)
-        return (fraction.coerceAtLeast(0f) * canBeAbove).roundToInt()
-    }
+    fun toTheEnd(fraction: Float): Boolean = fraction >= 1f
 
     /** The most characters one row holds: tall enough to read on, far short of the tallest item a layout allows. */
     const val ROW_MAX_CHARS = 2_000
@@ -120,8 +107,11 @@ internal object TextReading {
         return TextRows(text, packed.copyOf(3 * count))
     }
 
-    /** Where a row from [start] with room for [maxChars] ends: after a late space, or at the room's end. */
-    private fun cutAt(whole: String, start: Int, maxChars: Int): Int {
+    /**
+     * Where a row of [whole] from [start] with room for [maxChars] ends, when more than that remains:
+     * after a late space, or at the room's end. Shared with the Markdown page's long blocks.
+     */
+    fun cutAt(whole: String, start: Int, maxChars: Int): Int {
         val limit = start + maxChars
         // Only the last quarter is looked at: a search further back would read a minified file's one
         // long line again for every row cut from it.

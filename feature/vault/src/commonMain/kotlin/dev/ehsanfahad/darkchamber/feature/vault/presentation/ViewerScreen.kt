@@ -132,6 +132,7 @@ fun VaultViewerContent(component: VaultViewerComponent, modifier: Modifier = Mod
         playerActions = actions,
         now = now,
         onToggleFormatted = component::toggleFormatted,
+        onOpenLink = component::openLink,
         onPdfViewport = component::pdfViewport,
         onPdfScrolled = component::pdfScrolled,
         onViewport = component::viewportMeasured,
@@ -159,6 +160,7 @@ internal fun ViewerScreen(
     playerActions: PlayerActions,
     now: Long,
     onToggleFormatted: () -> Unit,
+    onOpenLink: (String) -> Unit,
     onPdfViewport: (visible: IntRange, shownWidthPx: Int, zoom: Float, screenWidthPx: Int) -> Unit,
     onPdfScrolled: (page: Int, offsetPx: Int) -> Unit,
     onViewport: (widthPx: Int, heightPx: Int) -> Unit,
@@ -267,6 +269,7 @@ internal fun ViewerScreen(
                         topPaddingPx = topBarPx,
                         bottomPaddingPx = bottomBarPx,
                         barsShown = barsVisible,
+                        onOpenLink = onOpenLink,
                     ),
                 )
             }
@@ -390,6 +393,7 @@ private fun ViewerPageView(
                 topPaddingPx = text.topPaddingPx,
                 bottomPaddingPx = text.bottomPaddingPx,
                 barsShown = text.barsShown,
+                onOpenLink = text.onOpenLink,
             )
         // Its text not here yet, or let go as the page was left: the quiet wait, as for any page loading.
         page is ViewerPage.Text -> QuietWait(onTap)
@@ -685,13 +689,14 @@ private class PdfHooks(
     val barsShown: Boolean,
 )
 
-/** What a text page needs from the screen: its document, the view chosen, and the bars' room. */
+/** What a text page needs from the screen: its document, the view chosen, the bars' room, and where a confirmed link goes. */
 private class TextHooks(
     val document: TextDocument?,
     val formatted: Boolean,
     val topPaddingPx: Int,
     val bottomPaddingPx: Int,
     val barsShown: Boolean,
+    val onOpenLink: (String) -> Unit,
 )
 
 /** The switch for the bottom bar's first slot, on a text page that has a formatted view; otherwise `null`. */

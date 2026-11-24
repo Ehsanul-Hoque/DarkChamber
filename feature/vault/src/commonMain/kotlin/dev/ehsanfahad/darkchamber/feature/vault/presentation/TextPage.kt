@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -21,6 +22,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -43,13 +45,11 @@ import kotlinx.coroutines.flow.drop
 import kotlin.math.roundToInt
 
 /**
- * A text file: one wrapped row per item of a lazy column — a line, or a piece of one too long for a
- * single item ([TextReading.rows]) — in the reading font or monospace
- * ([TextReading.view]), with the fast-scroll thumb on a long file. Left and right still turn the
- * viewer's page; a tap shows and hides the bars. Nothing is selectable — a selection would offer copy,
- * and the clipboard is outside the vault.
- *
- * A Markdown file chosen formatted is drawn here as its lines until its blocks have a page of their own.
+ * A text file: its lines as a column of wrapped rows in the reading font or monospace
+ * ([TextReading.view]), or — Markdown chosen formatted — its blocks ([MarkdownPageView]); either way
+ * with the fast-scroll thumb on a long file. Left and right still turn the viewer's page; a tap shows
+ * and hides the bars. Nothing is selectable — a selection would offer copy, and the clipboard is
+ * outside the vault.
  */
 @Composable
 internal fun TextPageView(
@@ -57,29 +57,40 @@ internal fun TextPageView(
     document: TextDocument,
     formatted: Boolean,
     onTap: () -> Unit,
-    /** Room above the first line and below the last, so neither ends under a bar. */
+    /** Room above the first row and below the last, so neither ends under a bar. */
     topPaddingPx: Int,
     bottomPaddingPx: Int,
     /** Whether the viewer's bars are on screen: the fast-scroll thumb shows with them. */
     barsShown: Boolean,
+    /** A web address the reader confirmed opening, for the viewer to hand over. */
+    onOpenLink: (String) -> Unit,
 ) {
     val view = TextReading.view(page.kind, canFormat = document.formatted != null, formatted = formatted)
-    val (lines, font) = when (view) {
-        is TextView.Lines ->
-            (if (view.indented) (document.formatted as? FormattedText.Json)?.lines ?: document.plain else document.plain) to view.font
-        TextView.Markdown -> document.plain to TextFont.Reading
-    }
-    // A new view starts at its top: its lines are not the other view's lines.
+    // A new view starts at its top: its rows are not the other view's rows.
     key(view) {
-        TextLines(
-            lines = lines,
-            style = if (font == TextFont.Mono) DarkChamberTheme.typography.mono else DarkChamberTheme.typography.bodyLarge,
-            note = page.note?.let(ViewerFormat::formatNote),
-            onTap = onTap,
-            topPaddingPx = topPaddingPx,
-            bottomPaddingPx = bottomPaddingPx,
-            barsShown = barsShown,
-        )
+        val markdown = (document.formatted as? FormattedText.Markdown)?.document
+        if (view == TextView.Markdown && markdown != null) {
+            MarkdownPageView(
+                document = markdown,
+                onTap = onTap,
+                topPaddingPx = topPaddingPx,
+                bottomPaddingPx = bottomPaddingPx,
+                barsShown = barsShown,
+                onOpenLink = onOpenLink,
+            )
+        } else {
+            val lines = view as? TextView.Lines
+            val shown = if (lines?.indented == true) (document.formatted as? FormattedText.Json)?.lines ?: document.plain else document.plain
+            TextLines(
+                lines = shown,
+                style = if (lines?.font == TextFont.Mono) DarkChamberTheme.typography.mono else DarkChamberTheme.typography.bodyLarge,
+                note = page.note?.let(ViewerFormat::formatNote),
+                onTap = onTap,
+                topPaddingPx = topPaddingPx,
+                bottomPaddingPx = bottomPaddingPx,
+                barsShown = barsShown,
+            )
+        }
     }
 }
 
@@ -94,16 +105,59 @@ private fun TextLines(
     barsShown: Boolean,
 ) {
     val colors = DarkChamberTheme.colors
-    val list = rememberLazyListState()
-    // The note, when there is one, is the column's first item; rows are counted after it.
-    val header = if (note != null) 1 else 0
     // A line too long to lay out as one item is cut into rows (the minified-file case).
     val rows = remember(lines) { TextReading.rows(lines) }
-    val rowCount = rows.count
+    RowsColumn(
+        list = rememberLazyListState(),
+        rowCount = rows.count,
+        note = note,
+        // The bubble names the stored line, whichever of its rows the drag has reached.
+        bubble = { row -> ViewerFormat.fastScrollLine(rows.lineOf(row)) },
+        onTap = onTap,
+        topPaddingPx = topPaddingPx,
+        bottomPaddingPx = bottomPaddingPx,
+        barsShown = barsShown,
+    ) { index ->
+        val row = rows.row(index)
+        val spoken = TextReading.spoken(row)
+        Text(
+            text = row,
+            style = style,
+            color = colors.textPrimary,
+            // Each row its own stop for a screen reader; a blank one is passed over.
+            modifier = Modifier.fillMaxWidth().clearAndSetSemantics {
+                if (spoken != null) contentDescription = spoken
+            },
+        )
+    }
+}
+
+/**
+ * A lazy column of [rowCount] rows, drawn by [row], under the bars, with a [note] above them when there
+ * is one and the fast-scroll thumb on a long column — placed by the rows' measured heights
+ * ([RowHeights]), naming the row reached with [bubble] while dragged (no bubble where it answers `null`).
+ */
+@Composable
+internal fun RowsColumn(
+    list: LazyListState,
+    rowCount: Int,
+    note: String?,
+    bubble: (row: Int) -> String?,
+    onTap: () -> Unit,
+    topPaddingPx: Int,
+    bottomPaddingPx: Int,
+    barsShown: Boolean,
+    row: @Composable (index: Int) -> Unit,
+) {
+    val colors = DarkChamberTheme.colors
+    // The note, when there is one, is the column's first item; rows are counted after it.
+    val header = if (note != null) 1 else 0
 
     var scrolledLately by remember { mutableStateOf(false) }
     var dragging by remember { mutableStateOf(false) }
     var dragFraction by remember { mutableFloatStateOf(0f) }
+    // Once the column has been long enough for the thumb, it keeps it (see TextReading.keepsThumb).
+    var thumbKept by remember { mutableStateOf(false) }
     LaunchedEffect(list) {
         snapshotFlow { list.firstVisibleItemIndex to list.firstVisibleItemScrollOffset }
             .drop(1)
@@ -124,34 +178,46 @@ private fun TextLines(
         val trackTop = topPaddingPx
         val trackBottom = heightPx - bottomPaddingPx
 
+        // Every item's height as it is laid out, and from them the column's height (see RowHeights). Kept
+        // for this width: a new width lays every item out again at another height.
+        val itemCount = header + rowCount
+        val heights = remember(itemCount, widthPx) { RowHeights(itemCount) }
+        var measured by remember(heights) { mutableIntStateOf(0) }
+        LaunchedEffect(list, heights) {
+            snapshotFlow { list.layoutInfo.visibleItemsInfo.map { it.index to it.size } }.collect { seen ->
+                seen.forEach { (index, size) -> heights.record(index, size) }
+                measured++
+            }
+        }
+
         val info = list.layoutInfo
-        val visibleRows = info.visibleItemsInfo.count { it.index >= header }
-        val firstItem = info.visibleItemsInfo.firstOrNull()
+        // Read so the figures below follow each new height recorded.
+        val total = measured.let { heights.total() }
+        val maxScroll = (total + info.beforeContentPadding + info.afterContentPadding - info.viewportSize.height).coerceAtLeast(0f)
+        val scrolled = heights.top(list.firstVisibleItemIndex) + list.firstVisibleItemScrollOffset
+        val fraction = when {
+            dragging -> dragFraction
+            !list.canScrollForward -> 1f
+            maxScroll <= 0f -> 0f
+            else -> (scrolled / maxScroll).coerceIn(0f, 1f)
+        }
         val firstRow = (list.firstVisibleItemIndex - header).coerceAtLeast(0)
-        val withinFirst = if (firstItem != null && firstItem.size > 0 && list.firstVisibleItemIndex >= header) {
-            list.firstVisibleItemScrollOffset.toFloat() / firstItem.size
-        } else {
-            0f
-        }
-        val fraction = if (dragging) {
-            dragFraction
-        } else {
-            TextReading.fraction(firstRow, withinFirst, rowCount, visibleRows, atEnd = !list.canScrollForward)
-        }
         val thumbTop = PdfFastScroll.thumbTop(fraction, trackTop, trackBottom, thumbHeightPx)
+        val worthNow = PdfFastScroll.worthIt(total.toInt(), info.viewportSize.height)
+        val hasThumb = TextReading.keepsThumb(thumbKept, worthNow, dragging)
+        LaunchedEffect(hasThumb) { if (hasThumb) thumbKept = true }
         val thumbShown = PdfFastScroll.visible(
-            worthIt = TextReading.worthIt(rowCount, visibleRows),
+            worthIt = hasThumb,
             zoomedIn = false,
             barsShown = barsShown,
             scrolledLately = scrolledLately,
             dragging = dragging,
         )
-        // The bubble names the stored line, whichever of its rows the drag has reached.
-        val reachedRow = if (dragging) TextReading.rowAt(dragFraction, rowCount, visibleRows) else firstRow
-        val reached = if (rowCount == 0) 0 else rows.lineOf(reachedRow.coerceIn(0, rowCount - 1))
+        val reachedRow = if (dragging) heights.at(dragFraction * maxScroll).index - header else firstRow
+        val reached = if (rowCount == 0) null else bubble(reachedRow.coerceIn(0, rowCount - 1))
         // Read by the gesture handler, which outlives a composition.
         val grab by rememberUpdatedState(Triple(thumbShown, thumbTop, fraction))
-        val track by rememberUpdatedState(Triple(trackTop, trackBottom, visibleRows))
+        val track by rememberUpdatedState(Triple(trackTop, trackBottom, maxScroll))
 
         LazyColumn(
             state = list,
@@ -160,7 +226,7 @@ private fun TextLines(
                     top = topPaddingPx.toDp() + DarkChamberTheme.spacing.spaceXs,
                     bottom = bottomPaddingPx.toDp() + DarkChamberTheme.spacing.spaceXs,
                     start = DarkChamberTheme.spacing.spaceMd,
-                    // Clear of the thumb, so it never sits over the ends of lines.
+                    // Clear of the thumb, so it never sits over the ends of rows.
                     end = DarkChamberTheme.spacing.spaceMd + THUMB_WIDTH,
                 )
             },
@@ -184,10 +250,16 @@ private fun TextLines(
                                 val event = awaitPointerEvent(PointerEventPass.Initial)
                                 val finger = event.changes.firstOrNull { it.id == down.id } ?: break
                                 if (!finger.pressed) break
-                                val (top, bottom, onScreen) = track
+                                val (top, bottom, scrollable) = track
                                 val next = PdfFastScroll.fractionAt((finger.position.y - hold).roundToInt(), top, bottom, thumbHeightPx)
                                 dragFraction = next
-                                list.requestScrollToItem(header + TextReading.rowAt(next, rowCount, onScreen))
+                                if (TextReading.toTheEnd(next) && itemCount > 0) {
+                                    // Past the last row's top to its end: the list stops at the end of its content.
+                                    list.requestScrollToItem(itemCount - 1, Int.MAX_VALUE)
+                                } else {
+                                    val spot = heights.at(next * scrollable)
+                                    list.requestScrollToItem(spot.index, spot.offsetPx)
+                                }
                                 event.changes.forEach { it.consume() }
                             }
                         } finally {
@@ -207,26 +279,9 @@ private fun TextLines(
                     )
                 }
             }
-            items(count = rowCount) { index ->
-                val row = rows.row(index)
-                val spoken = TextReading.spoken(row)
-                Text(
-                    text = row,
-                    style = style,
-                    color = colors.textPrimary,
-                    // Each row its own stop for a screen reader; a blank one is passed over.
-                    modifier = Modifier.fillMaxWidth().clearAndSetSemantics {
-                        if (spoken != null) contentDescription = spoken
-                    },
-                )
-            }
+            items(count = rowCount) { index -> row(index) }
         }
 
-        FastScrollThumb(
-            shown = thumbShown,
-            topPx = thumbTop,
-            dragging = dragging,
-            bubble = ViewerFormat.fastScrollLine(reached),
-        )
+        FastScrollThumb(shown = thumbShown, topPx = thumbTop, dragging = dragging, bubble = reached)
     }
 }

@@ -54,41 +54,25 @@ class TextReadingTest {
         assertFalse(TextReading.hasSwitch(TextKind.Code, canFormat = true))
     }
 
-    // ---- the thumb, by rows ----------------------------------------------------------------------
+    // ---- the thumb (its place is RowHeightsTest's) -----------------------------------------------
 
-    /** Worth a thumb past five screens of rows, as a PDF past five screens of pages. */
+    /**
+     * The column's height is estimated from the rows seen so far, so whether it is long enough can
+     * change as it scrolls; a thumb shown once stays for the page, and one being dragged never goes.
+     */
     @Test
-    fun a_thumb_is_worth_having_past_five_screens_of_rows() {
-        assertFalse(TextReading.worthIt(rowCount = 100, visibleRows = 20))
-        assertTrue(TextReading.worthIt(rowCount = 101, visibleRows = 20))
-        assertFalse(TextReading.worthIt(rowCount = 101, visibleRows = 0), "nothing laid out yet")
+    fun a_thumb_once_worth_having_stays() {
+        assertTrue(TextReading.keepsThumb(shownBefore = true, worthNow = false, dragging = false))
+        assertTrue(TextReading.keepsThumb(shownBefore = false, worthNow = true, dragging = false))
+        assertTrue(TextReading.keepsThumb(shownBefore = false, worthNow = false, dragging = true))
+        assertFalse(TextReading.keepsThumb(shownBefore = false, worthNow = false, dragging = false))
     }
 
+    /** The last row may be taller than the screen: the whole way down is its end, not its top. */
     @Test
-    fun the_fraction_is_rows_above_the_screen_out_of_how_many_can_be() {
-        // 1,000 rows, 20 on screen: 980 can be above it.
-        assertEquals(0f, TextReading.fraction(0, 0f, 1_000, 20, atEnd = false))
-        assertEquals(0.5f, TextReading.fraction(490, 0f, 1_000, 20, atEnd = false))
-        // 820 rows, 20 on screen: 800 can be above; 199 and a half of them are.
-        assertEquals(0.249375f, TextReading.fraction(199, 0.5f, 820, 20, atEnd = false), 0.000001f, "part of the first row counts")
-    }
-
-    /** Rows on screen change with their lengths; at the end the thumb is at the bottom regardless. */
-    @Test
-    fun at_the_end_the_fraction_is_one_and_never_past_it() {
-        assertEquals(1f, TextReading.fraction(900, 0f, 1_000, 20, atEnd = true))
-        assertEquals(1f, TextReading.fraction(995, 0f, 1_000, 20, atEnd = false))
-        assertEquals(0f, TextReading.fraction(0, 0f, 10, 20, atEnd = false), "all on one screen")
-    }
-
-    @Test
-    fun a_drag_brings_its_row_to_the_top_and_the_end_brings_the_last_row() {
-        assertEquals(0, TextReading.rowAt(0f, 1_000, 20))
-        assertEquals(490, TextReading.rowAt(0.5f, 1_000, 20))
-        assertEquals(999, TextReading.rowAt(1f, 1_000, 20), "the whole way down: the end shows")
-        assertEquals(0, TextReading.rowAt(-0.2f, 1_000, 20))
-        assertEquals(0, TextReading.rowAt(0.5f, 0, 20), "no rows")
-        assertEquals(0, TextReading.rowAt(1f, 0, 20), "no rows, the whole way down: never row -1")
+    fun only_the_whole_way_down_goes_to_the_very_end() {
+        assertTrue(TextReading.toTheEnd(1f))
+        assertFalse(TextReading.toTheEnd(0.999f))
     }
 
     // ---- rows ------------------------------------------------------------------------------------
