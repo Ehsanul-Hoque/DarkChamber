@@ -82,7 +82,7 @@ class MarkdownTextTest {
     /** Looking like a link would promise a tap that does nothing. */
     @Test
     fun an_inert_link_is_plain_words() {
-        for (address in listOf("javascript:alert(1)", "mailto:a@example.com", "#nowhere", "relative/path")) {
+        for (address in listOf("javascript:alert(1)", "mailto:a@example.com", "#nowhere", "relative/path", "https://a.example" + Char(0x5C) + "@b.example/")) {
             val t = text(MdSpan("x", link = address))
             assertTrue(t.links().isEmpty(), address)
             assertEquals(emptyList(), t.styleOver(0..0), address)

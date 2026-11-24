@@ -14,6 +14,9 @@ class LinkRulesTest {
 
     private fun web(address: String, host: String) = LinkTarget.Web(address, host)
 
+    /** A backslash, built rather than typed, so no escape sequence is ever written into this file. */
+    private val bs = Char(0x5C)
+
     // --- Sections of the same document ---
 
     private fun sections(markdown: String) = LinkRules.sections(MarkdownModel.from(markdown)!!)
@@ -145,6 +148,39 @@ class LinkRulesTest {
             assertEquals(LinkTarget.Inert, target(address), "U+" + code.toString(16).padStart(4, '0'))
         }
         assertEquals(LinkTarget.Inert, target("https://exa" + Char(0x202E) + "moc.elpmax"), "in the host too")
+    }
+
+    /**
+     * Browsers read a backslash in a web address as a slash, and iOS escapes it instead, so where the site
+     * ends is not agreed: `https://evil.example\@good.com/` reaches evil.example in Chrome while the
+     * confirmation would name good.com. No address with a backslash anywhere opens.
+     */
+    @Test
+    fun an_address_holding_a_backslash_does_nothing() {
+        for (
+            address in listOf(
+                "https://evil.example$bs@good.com/", "https://${bs}evil.example/", "https://example.com/a${bs}b",
+                "https://example.com$bs", "HTTP://example.com$bs$bs",
+            )
+        ) {
+            assertEquals(LinkTarget.Inert, target(address), address)
+        }
+    }
+
+    /** Each way a Markdown file can write that backslash reaches the rule, and none opens. */
+    @Test
+    fun a_backslash_written_any_way_markdown_allows_does_nothing() {
+        for (
+            markdown in listOf(
+                "[Sign in](https://evil.example$bs$bs@good.com/)",
+                "<https://evil.example$bs@good.com/>",
+                "[Sign in](https://evil.example&#92;@good.com/)",
+            )
+        ) {
+            val span = (MarkdownModel.from(markdown)!!.blocks.single() as MdBlock.Paragraph).spans.single()
+            assertEquals("https://evil.example$bs@good.com/", span.link, markdown)
+            assertEquals(LinkTarget.Inert, target(span.link!!), markdown)
+        }
     }
 
     /** Visible characters of any script are not unseen: an address in Bangla opens. */

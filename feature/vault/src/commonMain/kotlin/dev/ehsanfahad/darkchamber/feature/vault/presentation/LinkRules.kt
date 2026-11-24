@@ -22,11 +22,12 @@ internal object LinkRules {
      * when it starts with `http://` or `https://` (in any case) and names a site; nothing in it is
      * decoded or tidied, so the confirmation shows exactly what the file says. Every other scheme, an
      * address with none, and one padded or holding characters that change what is shown without
-     * being seen, does nothing.
+     * being seen, does nothing. So does one holding a backslash: browsers read it as a slash and iOS
+     * escapes it, so where the site ends is not agreed and the confirmation could not name it truly.
      */
     fun target(address: String, sections: Map<String, Int>): LinkTarget {
         if (address.startsWith('#')) return section(address.substring(1), sections)
-        if (address.any { it.isUnseen() }) return LinkTarget.Inert
+        if (address.any { it.isUnseen() || it == BACKSLASH }) return LinkTarget.Inert
         val rest = WEB_SCHEMES.firstOrNull { address.startsWith(it, ignoreCase = true) }?.let { address.substring(it.length) }
             ?: return LinkTarget.Inert
         val host = hostOf(rest)
@@ -103,4 +104,6 @@ internal object LinkRules {
             code in 0x200B..0x200F || code in 0x2028..0x202E || code in 0x2066..0x2069 || code == 0xFEFF
 
     private val WEB_SCHEMES = listOf("http://", "https://")
+
+    private val BACKSLASH = Char(0x5C)
 }
