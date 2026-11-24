@@ -93,7 +93,14 @@ internal fun fileSizeOrNull(path: String): Long? =
         ?.longLongValue
         ?.takeIf { it >= 0L }
 
-/** A deliberately small map: enough for the viewers v1 ships, honest `application/octet-stream` otherwise. */
+/**
+ * A deliberately small map: the types the viewers read, honest `application/octet-stream` otherwise.
+ *
+ * Text follows the viewer's own list of text extensions: a registered type where there is one, and
+ * `text/plain` for config, logs, subtitles and source that have none — which is what they are. `ts` is
+ * left out on purpose: it is also an MPEG transport stream, a video, and a stored text type would be a
+ * wrong answer kept for good.
+ */
 internal fun mimeForExtension(extension: String?): String =
     when (extension?.lowercase()) {
         "jpg", "jpeg" -> "image/jpeg"
@@ -107,7 +114,22 @@ internal fun mimeForExtension(extension: String?): String =
         "m4a" -> "audio/mp4"
         "wav" -> "audio/wav"
         "pdf" -> "application/pdf"
-        "txt" -> "text/plain"
-        "md" -> "text/markdown"
+        "md", "markdown", "mdown", "mkd" -> "text/markdown"
+        "json" -> "application/json"
+        "html", "htm" -> "text/html"
+        "xhtml" -> "application/xhtml+xml"
+        "xml" -> "application/xml"
+        "csv" -> "text/csv"
+        "tsv" -> "text/tab-separated-values"
+        "yaml", "yml" -> "application/yaml"
+        "toml" -> "application/toml"
+        "vtt" -> "text/vtt"
+        "css" -> "text/css"
+        "js" -> "text/javascript"
+        "sh" -> "application/x-sh"
+        "sql" -> "application/sql"
+        "txt", "text", "ini", "cfg", "conf", "properties", "log", "srt",
+        "kt", "kts", "java", "swift", "py", "c", "h", "cpp", "hpp", "cs", "go", "rs", "rb", "php", "gradle",
+        -> "text/plain"
         else -> "application/octet-stream"
     }
