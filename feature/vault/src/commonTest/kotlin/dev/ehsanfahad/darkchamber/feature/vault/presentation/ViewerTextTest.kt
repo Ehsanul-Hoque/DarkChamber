@@ -91,6 +91,9 @@ class ViewerTextTest {
         },
     ).apply { summaries.value = listing() }
 
+    /** How the viewer reads Markdown: the real reader unless a test makes it fail. */
+    private var readMarkdown: (String, () -> Boolean) -> MarkdownDocument? = { text, cancelled -> MarkdownModel.from(text, cancelled = cancelled) }
+
     private fun TestScope.viewer(
         start: Int,
         items: FakeVaultItems = items(),
@@ -112,6 +115,7 @@ class ViewerTextTest {
         releaseContext = UnconfinedTestDispatcher(testScheduler),
         openObject = items::open,
         textBuffer = { size -> ByteArray(size).also { buffers += it } },
+        readMarkdown = { text, cancelled -> readMarkdown(text, cancelled) },
     ).also { it.viewportMeasured(1_000, 2_000) }
 
     private fun ViewerComponent<*>.page(n: Int) = state.value.pages[key(n)]
@@ -346,6 +350,55 @@ class ViewerTextTest {
         val viewer = viewer(start = 3)
         assertEquals(ViewerPage.Text(TextKind.Markdown, FormatNote.TooComplex), viewer.page(3))
         assertNull(viewer.text(3)!!.formatted)
+    }
+
+    /** Styles nested thousands deep: the reader's own limit, all the way to the page — never a crash. */
+    @Test
+    fun markdown_nested_thousands_deep_is_shown_as_written_with_a_note() = runTest {
+        contents[3] = ("**a ".repeat(20_000) + "b" + " a**".repeat(20_000)).encodeToByteArray()
+        val viewer = viewer(start = 3)
+        assertEquals(ViewerPage.Text(TextKind.Markdown, FormatNote.TooComplex), viewer.page(3))
+        assertEquals(1, viewer.text(3)!!.plain.lineCount, "its lines are there")
+    }
+
+    /**
+     * Formatting a file is the one step that reads what a file holds in depth. Should it fail in a way
+     * nothing foresaw, the file is shown as written with a note — not an error that ends the app.
+     */
+    @Test
+    fun a_formatting_failure_shows_the_file_as_written_with_a_note() = runTest {
+        readMarkdown = { _, _ -> throw IllegalStateException("unforeseen") }
+        val viewer = viewer(start = 3)
+        assertEquals(ViewerPage.Text(TextKind.Markdown, FormatNote.TooComplex), viewer.page(3))
+        assertNull(viewer.text(3)!!.formatted)
+        assertEquals("# Title", viewer.text(3)!!.plain.line(0))
+        assertTrue(buffers.single().zeroed())
+    }
+
+    /** The reader is told when the read it serves has been left behind, so it can stop where it is. */
+    @Test
+    fun formatting_is_told_when_the_page_is_swiped_away() = runTest {
+        val seen = mutableListOf<Boolean>()
+        val viewer = viewer(start = 2) // the photo
+        readMarkdown = { _, cancelled ->
+            seen += cancelled()
+            viewer.showPage(2) // back to the photo, mid-format
+            seen += cancelled()
+            null
+        }
+        viewer.showPage(1) // b.md
+
+        assertEquals(listOf(false, true), seen)
+        assertTrue(viewer.texts.value.isEmpty())
+    }
+
+    /** A cancellation is not a failure to format: it stops the read, and nothing is shown for it. */
+    @Test
+    fun a_cancelled_format_shows_nothing_rather_than_a_note() = runTest {
+        readMarkdown = { _, _ -> throw kotlin.coroutines.cancellation.CancellationException("stopped") }
+        val viewer = viewer(start = 3)
+        assertEquals(ViewerPage.Loading, viewer.page(3))
+        assertNull(viewer.text(3))
     }
 
     @Test

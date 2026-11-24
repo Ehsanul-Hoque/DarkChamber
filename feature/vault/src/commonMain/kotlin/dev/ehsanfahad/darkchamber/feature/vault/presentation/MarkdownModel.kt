@@ -83,6 +83,13 @@ internal const val MARKDOWN_MAX_NESTING = 32
  */
 internal const val MARKDOWN_MAX_INDENT = 128
 
+/**
+ * The most levels of styles, links and images one run of text may sit inside before the file is shown
+ * as plain text. Reading them recurses per level, so a few kilobytes of nested `**` would otherwise run
+ * out of stack; no file written by hand comes near it.
+ */
+internal const val MARKDOWN_MAX_INLINE_NESTING = 64
+
 internal object MarkdownModel {
 
     /**
@@ -90,11 +97,16 @@ internal object MarkdownModel {
      * text with a note — when it nests deeper than the limits allow or reading it takes [budget].
      * Never throws on what a file holds: the parser runs with its assertions off, so input it cannot
      * make sense of comes back as plain paragraphs. Throws [CancellationException] as soon as
-     * [cancelled] says so, so a lock or a swipe away stops the parse where it is.
+     * [cancelled] says so, so a lock or a swipe away stops the parse, or the reading of its tree, where
+     * it is.
      *
-     * Nesting is limited before parsing, from each line's opening, because both the parser and this
-     * reading recurse per level and a stack overflow cannot be caught on iOS; the budget bounds the
-     * inputs whose parse time grows with the square of their size (long runs of brackets).
+     * Both the parser and this reading recurse per level, and a stack overflow cannot be caught on iOS.
+     * Quotes and lists are limited before parsing, from each line's opening; styles inside a run of text
+     * are limited as the tree is read ([MARKDOWN_MAX_INLINE_NESTING]) — the parser itself goes far
+     * deeper than that without trouble, and keeps links and images shallow on its own. The budget, and
+     * [cancelled], are checked by the parser as it goes and again at every piece of text as its tree is
+     * read: the parse can take time that grows with the square of the input (long runs of brackets),
+     * and a large file's reading takes long enough that a lock should not wait for it.
      */
     fun from(
         text: String,
@@ -104,22 +116,21 @@ internal object MarkdownModel {
     ): MarkdownDocument? {
         if (nestsTooDeep(text)) return null
         val started = clock.markNow()
-        val stop = CancellationToken {
+        // Checked by the parser as it goes, and by the reading of its tree after: both can take long.
+        val stop = {
             if (cancelled()) throw CancellationException("Markdown reading cancelled")
-            if (started.elapsedNow() >= budget) throw OverBudget()
+            if (started.elapsedNow() >= budget) throw CantFormat()
         }
         // The parser's String overload is deprecated in favour of this one; the text is the same.
         val chars: CharSequence = text
         return try {
-            val tree = MarkdownParser(GFMFlavourDescriptor(), assertionsEnabled = false, cancellationToken = stop)
+            val tree = MarkdownParser(GFMFlavourDescriptor(), assertionsEnabled = false, cancellationToken = CancellationToken { stop() })
                 .buildMarkdownTreeFromString(chars)
-            MarkdownDocument(TreeReader(text, tree).blocks(tree.children))
-        } catch (_: OverBudget) {
+            MarkdownDocument(TreeReader(text, tree, stop).blocks(tree.children))
+        } catch (_: CantFormat) {
             null
         }
     }
-
-    private class OverBudget : RuntimeException()
 
     /**
      * Whether any line opens with more than [MARKDOWN_MAX_NESTING] quote and list markers, or with an
@@ -163,8 +174,15 @@ internal object MarkdownModel {
     }
 }
 
-/** One parse tree read into blocks; holds what reading needs across the whole document. */
-private class TreeReader(private val src: String, root: ASTNode) {
+/** A file past one of the reading limits — nesting or time: shown as plain text, never an error. */
+private class CantFormat : RuntimeException()
+
+/**
+ * One parse tree read into blocks; holds what reading needs across the whole document. [check] throws to
+ * stop the reading — a lock, a swipe, the time budget — and is called for every piece of a block's text,
+ * where nearly all of a tree's nodes are; the rest of the reading is short and in step with the file.
+ */
+private class TreeReader(private val src: String, root: ASTNode, private val check: () -> Unit) {
 
     private val anchorsTaken = mutableMapOf<String, Int>()
 
@@ -322,13 +340,16 @@ private class TreeReader(private val src: String, root: ASTNode) {
 
     // --- Inline content ---
 
-    private fun inline(nodes: List<ASTNode>): List<MdSpan> = Runs().also { inline(nodes, MdSpan(""), it) }.spans
+    private fun inline(nodes: List<ASTNode>): List<MdSpan> = Runs().also { inline(nodes, MdSpan(""), it, depth = 0) }.spans
 
-    /** Appends [nodes] to [out] in [style] (a span whose text is unused). */
-    private fun inline(all: List<ASTNode>, style: MdSpan, out: Runs) {
+    /** Appends [nodes] to [out] in [style] (a span whose text is unused), [depth] levels inside a block's text. */
+    private fun inline(all: List<ASTNode>, style: MdSpan, out: Runs, depth: Int) {
+        if (depth > MARKDOWN_MAX_INLINE_NESTING) throw CantFormat()
+        val inner = depth + 1
         // A quote's `>` at the start of each continued line is layout; read the line as starting after it.
         val nodes = all.filter { it.type != MarkdownTokenTypes.BLOCK_QUOTE }
         for ((i, node) in nodes.withIndex()) {
+            check()
             // The angle brackets around an email address belong to the autolink, not the text.
             if (node.type == MarkdownTokenTypes.LT && nodes.getOrNull(i + 1)?.type == MarkdownTokenTypes.EMAIL_AUTOLINK) continue
             if (node.type == MarkdownTokenTypes.GT && nodes.getOrNull(i - 1)?.type == MarkdownTokenTypes.EMAIL_AUTOLINK) continue
@@ -342,20 +363,20 @@ private class TreeReader(private val src: String, root: ASTNode) {
                     // A soft break reads as a space; after a hard break the line has already ended.
                     if (i > 0 && i < nodes.lastIndex && nodes[i - 1].type != MarkdownTokenTypes.HARD_LINE_BREAK) out.add(" ", style)
                 MarkdownTokenTypes.HARD_LINE_BREAK -> out.add("\n", style)
-                MarkdownElementTypes.EMPH -> inline(node.children.trim(1), style.copy(emphasis = true), out)
-                MarkdownElementTypes.STRONG -> inline(node.children.trim(2), style.copy(strong = true), out)
+                MarkdownElementTypes.EMPH -> inline(node.children.trim(1), style.copy(emphasis = true), out, inner)
+                MarkdownElementTypes.STRONG -> inline(node.children.trim(2), style.copy(strong = true), out, inner)
                 GFMElementTypes.STRIKETHROUGH ->
-                    inline(node.children.dropWhile { it.type == GFMTokenTypes.TILDE }.dropLastWhile { it.type == GFMTokenTypes.TILDE }, style.copy(strike = true), out)
+                    inline(node.children.dropWhile { it.type == GFMTokenTypes.TILDE }.dropLastWhile { it.type == GFMTokenTypes.TILDE }, style.copy(strike = true), out, inner)
                 MarkdownElementTypes.CODE_SPAN -> out.add(codeSpan(node), style.copy(code = true))
                 MarkdownTokenTypes.HTML_TAG -> out.add(source(node), style)
                 MarkdownElementTypes.INLINE_LINK -> {
                     val address = node.firstChild(MarkdownElementTypes.LINK_DESTINATION)?.let(::address) ?: ""
-                    inline(linkText(node), style.copy(link = address), out)
+                    inline(linkText(node), style.copy(link = address), out, inner)
                 }
                 MarkdownElementTypes.FULL_REFERENCE_LINK, MarkdownElementTypes.SHORT_REFERENCE_LINK -> {
                     val address = referenceAddress(node)
                     // With no definition it is not a link at all: its brackets and words, as written.
-                    if (address == null) inline(node.children, style, out) else inline(linkText(node), style.copy(link = address), out)
+                    if (address == null) inline(node.children, style, out, inner) else inline(linkText(node), style.copy(link = address), out, inner)
                 }
                 MarkdownElementTypes.AUTOLINK -> {
                     val target = node.firstChild(MarkdownTokenTypes.AUTOLINK)?.let(::source) ?: ""
@@ -366,9 +387,9 @@ private class TreeReader(private val src: String, root: ASTNode) {
                     out.add(target, style.copy(link = if (target.startsWith("www.")) "http://$target" else target))
                 }
                 MarkdownTokenTypes.EMAIL_AUTOLINK -> out.add(source(node), style.copy(link = "mailto:${source(node)}"))
-                MarkdownElementTypes.IMAGE -> image(node, style, out)
+                MarkdownElementTypes.IMAGE -> image(node, style, out, inner)
                 else ->
-                    if (node.children.isEmpty()) out.add(unescape(source(node)), style) else inline(node.children, style, out)
+                    if (node.children.isEmpty()) out.add(unescape(source(node)), style) else inline(node.children, style, out, inner)
             }
         }
     }
@@ -404,7 +425,7 @@ private class TreeReader(private val src: String, root: ASTNode) {
      * An image stands as its description — the plain words of its brackets, styles dropped, as
      * CommonMark's `alt` is — never as anything fetched. It keeps a place even with no words.
      */
-    private fun image(node: ASTNode, style: MdSpan, out: Runs) {
+    private fun image(node: ASTNode, style: MdSpan, out: Runs, depth: Int) {
         val link = node.children.firstOrNull { it.type != MarkdownTokenTypes.EXCLAMATION_MARK }
         if (link == null || (link.type != MarkdownElementTypes.INLINE_LINK && referenceAddress(link) == null)) {
             // An image reference with no definition is its text as written.
@@ -414,7 +435,7 @@ private class TreeReader(private val src: String, root: ASTNode) {
         // Inside an image's brackets the parser reads an inner image as `!` then a link; the `!` is its mark.
         val text = linkText(link)
         val words = text.filterIndexed { i, n -> !(n.type == MarkdownTokenTypes.EXCLAMATION_MARK && text.getOrNull(i + 1)?.type in LINKS) }
-        out.addImage(Runs().also { inline(words, MdSpan(""), it) }.spans.joinToString("") { it.text }, style)
+        out.addImage(Runs().also { inline(words, MdSpan(""), it, depth) }.spans.joinToString("") { it.text }, style)
     }
 
     /**
@@ -458,23 +479,45 @@ private class TreeReader(private val src: String, root: ASTNode) {
     }
 }
 
-/** Collects runs of text, joining a run to the last when the style is the same. */
+/**
+ * Collects runs of text, joining a run to the last when the style is the same. The open run's words grow
+ * in a builder: copying the whole run on each addition would make a run of many small pieces (a line of
+ * brackets is one piece each) cost the square of its length.
+ */
 private class Runs {
-    val spans = mutableListOf<MdSpan>()
+    private val closed = mutableListOf<MdSpan>()
+
+    /** The open run's style (its text unused), or `null` when no run is open. */
+    private var openStyle: MdSpan? = null
+    private val openText = StringBuilder()
+
+    val spans: List<MdSpan>
+        get() {
+            close()
+            return closed
+        }
 
     fun add(text: String, style: MdSpan) {
         if (text.isEmpty()) return
-        val last = spans.lastOrNull()
-        if (last != null && last.copy(text = "") == style.copy(text = "")) {
-            spans[spans.lastIndex] = last.copy(text = last.text + text)
-        } else {
-            spans += style.copy(text = text)
+        val key = style.copy(text = "")
+        if (key != openStyle) {
+            close()
+            openStyle = key
         }
+        openText.append(text)
     }
 
     /** An image is its own run, never joined to text beside it — and kept even with no words. */
     fun addImage(description: String, style: MdSpan) {
-        spans += style.copy(text = description, image = true)
+        close()
+        closed += style.copy(text = description, image = true)
+    }
+
+    private fun close() {
+        val style = openStyle ?: return
+        closed += style.copy(text = openText.toString())
+        openText.setLength(0)
+        openStyle = null
     }
 }
 

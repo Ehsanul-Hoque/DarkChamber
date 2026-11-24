@@ -9,6 +9,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TestTimeSource
@@ -496,6 +497,15 @@ class MarkdownModelTest {
         assertEquals(listOf(para(plain("a "), MdSpan("", image = true), plain(" b"))), blocks("a ![](x.png) b\n"))
     }
 
+    /** Images side by side are a run each, with nothing between them and no empty run of text. */
+    @Test
+    fun images_side_by_side_are_a_run_each() {
+        assertEquals(
+            listOf(para(plain("a "), MdSpan("x", image = true), MdSpan("y", image = true), plain(" b"))),
+            blocks("a ![x](1.png)![y](2.png) b\n"),
+        )
+    }
+
     @Test
     fun an_image_reference_with_no_definition_is_its_text() {
         assertEquals(listOf(para(plain("![foo][nope]"))), blocks("![foo][nope]\n"))
@@ -573,10 +583,40 @@ class MarkdownModelTest {
         withContext(Dispatchers.Default) {
             assertNotNull(MarkdownModel.from("> ".repeat(MARKDOWN_MAX_NESTING) + "x\n"))
             assertNotNull(MarkdownModel.from((0 until MARKDOWN_MAX_INDENT / 2).joinToString("\n") { "  ".repeat(it) + "- x" }))
-            assertNotNull(MarkdownModel.from("![".repeat(2_000) + "a" + "](u)".repeat(2_000)))
-            assertNotNull(MarkdownModel.from("[".repeat(2_000) + "a" + "](u)".repeat(2_000)))
-            assertNotNull(MarkdownModel.from("*_".repeat(5_000)))
+            assertNotNull(MarkdownModel.from(nested("**", MARKDOWN_MAX_INLINE_NESTING)))
+            assertNotNull(MarkdownModel.from("*_".repeat(5_000)), "unmatched marks nest nothing")
         }
+    }
+
+    /** [n] levels of [mark] around one word: `**a **a b a** a**` for two levels of `**`. */
+    private fun nested(mark: String, n: Int) = "$mark${"a "}".repeat(n) + "b" + " a$mark".repeat(n)
+
+    /**
+     * Styles nest inside each other only as far as the limit; one level more and the
+     * file is "can't format" (shown as written with a note) — never a stack overflow, which on iOS ends
+     * the app and cannot be caught. Both sides of the limit.
+     */
+    @Test
+    fun styles_nest_only_as_far_as_the_limit() {
+        for (mark in listOf("**", "*", "~~")) {
+            val deepest = assertNotNull(MarkdownModel.from(nested(mark, MARKDOWN_MAX_INLINE_NESTING)), mark).blocks
+            // Every level inside the first has the same style, so the words are one run; the innermost is in it.
+            assertTrue((deepest.single() as MdBlock.Paragraph).spans.any { " b " in it.text }, mark)
+            assertNull(MarkdownModel.from(nested(mark, MARKDOWN_MAX_INLINE_NESTING + 1)), mark)
+        }
+    }
+
+    /** Far past the limit, on a background thread as the viewer reads it — the stack the iOS app has there. */
+    @Test
+    fun a_file_nested_thousands_deep_is_cant_format_not_a_crash() = runTest {
+        withContext(Dispatchers.Default) {
+            for (mark in listOf("**", "*", "~~")) assertNull(MarkdownModel.from(nested(mark, 20_000)), mark)
+        }
+    }
+
+    @Test
+    fun the_inline_nesting_limit_is_sixty_four() {
+        assertEquals(64, MARKDOWN_MAX_INLINE_NESTING)
     }
 
     /** Some inputs take the parser time that grows with the square of their size; a budget bounds it. */
@@ -601,6 +641,35 @@ class MarkdownModelTest {
     @Test
     fun a_cancelled_read_stops_with_a_cancellation() {
         assertFailsWith<CancellationException> { MarkdownModel.from("# a\n\ntext\n", cancelled = { true }) }
+    }
+
+    /**
+     * Twenty thousand brackets: the parser checks only a handful of times on its way through them, and
+     * reading the tree after it meets every one. A budget and a cancel only the parser checked would let
+     * that reading run on for as long as it takes — past the budget, and past a lock.
+     */
+    private val manyTokens = "[".repeat(20_000)
+
+    @Test
+    fun the_time_budget_covers_reading_the_tree_too() {
+        val clock = TestTimeSource()
+        var checks = 0
+        val ticking = { checks += 1; clock += 1.seconds; false }
+        assertNull(MarkdownModel.from(manyTokens, budget = 1_000.seconds, cancelled = ticking, clock = clock))
+        assertTrue(checks >= 1_000, "the reading checked as it went, up to the budget")
+    }
+
+    /** Two hundred one-word paragraphs: the parser checks thousands of times, the reading a few hundred. */
+    @Test
+    fun a_cancel_during_the_parse_stops_it() {
+        var checks = 0
+        assertFailsWith<CancellationException> { MarkdownModel.from("a\n\n".repeat(200), cancelled = { ++checks > 1_000 }) }
+    }
+
+    @Test
+    fun a_cancel_while_reading_the_tree_stops_it() {
+        var checks = 0
+        assertFailsWith<CancellationException> { MarkdownModel.from(manyTokens, cancelled = { ++checks > 1_000 }) }
     }
 
     @Test

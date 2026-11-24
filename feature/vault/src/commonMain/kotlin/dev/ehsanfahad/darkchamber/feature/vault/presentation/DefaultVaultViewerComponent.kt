@@ -114,6 +114,9 @@ internal open class ViewerComponent<T>(
     private val pdfContext: CoroutineContext = Dispatchers.Default.limitedParallelism(1),
     /** The array a text file is read into, sized from its stored size; a test keeps it to see it zeroed. */
     private val textBuffer: (size: Int) -> ByteArray = { ByteArray(it) },
+    /** Reads a Markdown file's text into the formatted view's model; a test can make it fail. */
+    private val readMarkdown: (text: String, cancelled: () -> Boolean) -> MarkdownDocument? =
+        { text, cancelled -> MarkdownModel.from(text, cancelled = cancelled) },
     /** The platform's browser hand-off, or `null` where there is none: then no link opens. */
     private val links: LinkOpener? = null,
     /**
@@ -222,7 +225,15 @@ internal open class ViewerComponent<T>(
                                 // which can take seconds.
                                 into.fill(0)
                                 val reading = coroutineContext.job
-                                val (formatted, note) = formatted(kind, decoded, item.size) { !reading.isActive }
+                                val (formatted, note) = try {
+                                    formatted(kind, decoded, item.size) { !reading.isActive }
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (_: Exception) {
+                                    // Formatting reads what the file holds in depth; whatever it trips on,
+                                    // the file is still shown as written.
+                                    null to FormatNote.TooComplex
+                                }
                                 TextRead.Shown(ViewerPage.Text(kind, note), TextDocument(decoded, formatted))
                             }
                         }
@@ -248,13 +259,13 @@ internal open class ViewerComponent<T>(
     /**
      * A Markdown or JSON file's formatted view, or the note saying why it is shown only as written;
      * neither for the other kinds. Markdown is formatted up to [MARKDOWN_FORMAT_CAP], within the
-     * reader's nesting and time limits, and its parse stops as soon as [cancelled] — a lock or a swipe.
+     * reader's nesting and time limits, and its reading stops as soon as [cancelled] — a lock or a swipe.
      */
     private fun formatted(kind: TextKind, text: DecodedText.Text, size: Long, cancelled: () -> Boolean): Pair<FormattedText?, FormatNote?> =
         when (kind) {
             TextKind.Markdown -> when {
                 size > MARKDOWN_FORMAT_CAP -> null to FormatNote.TooLarge
-                else -> MarkdownModel.from(text.whole, cancelled = cancelled)
+                else -> readMarkdown(text.whole, cancelled)
                     ?.let { FormattedText.Markdown(it) to null }
                     ?: (null to FormatNote.TooComplex)
             }
