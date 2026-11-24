@@ -218,6 +218,9 @@ internal open class ViewerComponent<T>(
                         else -> when (val decoded = TextDecoding.decode(into)) {
                             DecodedText.NotText -> TextRead.Refused(ViewerPage.NotText)
                             is DecodedText.Text -> {
+                                // The bytes are done with once decoded: zeroed now, not after formatting,
+                                // which can take seconds.
+                                into.fill(0)
                                 val reading = coroutineContext.job
                                 val (formatted, note) = formatted(kind, decoded, item.size) { !reading.isActive }
                                 TextRead.Shown(ViewerPage.Text(kind, note), TextDocument(decoded, formatted))
