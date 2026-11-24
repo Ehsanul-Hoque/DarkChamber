@@ -3,12 +3,9 @@ package dev.ehsanfahad.darkchamber.feature.vault.presentation
 import androidx.compose.animation.core.AnimationState
 import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.animateDecay
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.rememberSplineBasedDecay
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateCentroid
@@ -19,10 +16,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.BoxWithConstraintsScope
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -54,16 +48,13 @@ import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.input.pointer.util.addPointerInputChange
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import dev.ehsanfahad.darkchamber.core.designsystem.DarkChamberTheme
-import dev.ehsanfahad.darkchamber.core.designsystem.prefersReducedMotion
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerPage
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -357,50 +348,6 @@ internal fun PdfPageView(
     }
 }
 
-/**
- * The fast-scroll thumb at [topPx] on the right edge, and while it is [dragging] the page it has
- * reached beside it. Drawing only — the column's gesture handler takes the touches — and nothing a
- * screen reader lands on: the column's own scroll and the jump button do the same work there.
- */
-@Composable
-private fun BoxWithConstraintsScope.FastScrollThumb(shown: Boolean, topPx: Int, dragging: Boolean, bubble: String) {
-    val colors = DarkChamberTheme.colors
-    val density = LocalDensity.current
-    val duration = if (prefersReducedMotion()) 0 else DarkChamberTheme.motion.motionBase
-    val alpha by animateFloatAsState(if (shown) 1f else 0f, tween(duration), label = "thumb")
-    if (alpha == 0f) return
-    val marginPx = with(density) { THUMB_MARGIN.roundToPx() }
-    val thumbWidthPx = with(density) { THUMB_WIDTH.roundToPx() }
-    val thumbHeightPx = with(density) { THUMB_HEIGHT.roundToPx() }
-
-    Box(
-        modifier = Modifier
-            .align(Alignment.TopEnd)
-            .offset { IntOffset(-marginPx, topPx) }
-            .size(THUMB_WIDTH, THUMB_HEIGHT)
-            .graphicsLayer { this.alpha = alpha }
-            // Dark with a light edge: it shows over a white page and over the black between pages.
-            .background(ViewerBars.scrim, DarkChamberTheme.shapes.small)
-            .border(1.dp, colors.textSecondary, DarkChamberTheme.shapes.small)
-            .clearAndSetSemantics {},
-    )
-    if (dragging) {
-        var bubbleHeight by remember { mutableIntStateOf(0) }
-        Text(
-            text = bubble,
-            style = DarkChamberTheme.typography.label,
-            color = colors.textPrimary,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .offset { IntOffset(-(marginPx + thumbWidthPx + marginPx), topPx + thumbHeightPx / 2 - bubbleHeight / 2) }
-                .onSizeChanged { bubbleHeight = it.height }
-                .background(ViewerBars.scrim, DarkChamberTheme.shapes.medium)
-                .padding(horizontal = DarkChamberTheme.spacing.spaceMd, vertical = DarkChamberTheme.spacing.spaceXs)
-                .clearAndSetSemantics {},
-        )
-    }
-}
-
 /** What the column shows, as the viewer is told it. */
 private data class Seen(val pages: IntRange, val most: Int?, val zoom: Float, val dragging: Boolean)
 
@@ -439,16 +386,6 @@ private fun PdfPageSlot(heightDp: Dp, picture: ImageBitmap?, failed: Boolean, la
 
 /** The black between two pages. */
 private val PAGE_GAP = 8.dp
-
-/** The fast-scroll thumb: what is drawn, how far in from the edge, and what a finger can take. */
-private val THUMB_WIDTH = 8.dp
-private val THUMB_HEIGHT = 56.dp
-private val THUMB_MARGIN = 8.dp
-private val THUMB_STRIP = 48.dp
-private val THUMB_SLOP = 8.dp
-
-/** How long the thumb stays after the column last moved. */
-private const val THUMB_LINGER_MS = 1_500L
 
 /** The slowest a zoomed drag can be let go at and still fling: Android's own minimum fling speed. */
 private val MIN_FLING_VELOCITY = 50.dp

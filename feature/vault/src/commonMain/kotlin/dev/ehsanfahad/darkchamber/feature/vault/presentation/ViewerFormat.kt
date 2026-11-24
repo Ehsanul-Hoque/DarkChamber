@@ -1,6 +1,7 @@
 package dev.ehsanfahad.darkchamber.feature.vault.presentation
 
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
+import dev.ehsanfahad.darkchamber.feature.vault.api.FormatNote
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
 import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerKind
@@ -251,6 +252,28 @@ internal object ViewerFormat {
 
     /** Beside the fast-scroll thumb while it is dragged: the page the drag has reached, counted from 1. */
     fun fastScrollPage(index: Int): String = "Page ${index + 1}"
+
+    /** Beside a text file's fast-scroll thumb while it is dragged: the line the drag has reached, counted from 1. */
+    fun fastScrollLine(index: Int): String = "Line ${index + 1}"
+
+    /**
+     * The Formatted / Plain switch: its words name the view shown ([formatted] or as written), as the
+     * page indicator names the page shown; a screen reader hears what a tap does as its action.
+     */
+    fun textViewName(formatted: Boolean): String = if (formatted) "Formatted" else "Plain"
+
+    fun textViewAction(formatted: Boolean): String = if (formatted) "Show as written" else "Show formatted"
+
+    /**
+     * Above a Markdown or JSON file shown only as written. Each says why there is no formatted view and
+     * nothing about the file's state: it was read and verified, and the limit is this viewer's.
+     */
+    fun formatNote(note: FormatNote): String =
+        when (note) {
+            FormatNote.TooLarge -> "Shown as written: too large to format here."
+            FormatNote.TooComplex -> "Shown as written: too complex to format here."
+            FormatNote.NotJson -> "Shown as written: not valid JSON, so it can't be formatted."
+        }
 
     /** The jump-to-page dialog's title, and its confirm button. */
     fun jumpTitle(): String = "Go to page"

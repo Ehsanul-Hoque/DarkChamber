@@ -82,6 +82,7 @@ import dev.ehsanfahad.darkchamber.core.designsystem.prefersReducedMotion
 import dev.ehsanfahad.darkchamber.core.designsystem.screenReaderOn
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerState
+import dev.ehsanfahad.darkchamber.feature.vault.api.TextDocument
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPlayer
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultViewerComponent
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerDeleteStage
@@ -103,6 +104,7 @@ fun VaultViewerContent(component: VaultViewerComponent, modifier: Modifier = Mod
     val pictures by component.pictures.subscribeAsState()
     val players by component.players.subscribeAsState()
     val pdfPages by component.pdfPages.subscribeAsState()
+    val texts by component.texts.subscribeAsState()
     // Ages in Details are coarse (minutes at finest); "now" once per composition is enough.
     val now = remember { Clock.System.now().toEpochMilliseconds() }
     val actions = remember(component) {
@@ -126,8 +128,10 @@ fun VaultViewerContent(component: VaultViewerComponent, modifier: Modifier = Mod
         pictures = pictures,
         players = players,
         pdfPages = pdfPages,
+        texts = texts,
         playerActions = actions,
         now = now,
+        onToggleFormatted = component::toggleFormatted,
         onPdfViewport = component::pdfViewport,
         onPdfScrolled = component::pdfScrolled,
         onViewport = component::viewportMeasured,
@@ -151,8 +155,10 @@ internal fun ViewerScreen(
     pictures: Map<String, ImageBitmap>,
     players: Map<String, VaultPlayer>,
     pdfPages: Map<Int, ImageBitmap?>,
+    texts: Map<String, TextDocument>,
     playerActions: PlayerActions,
     now: Long,
+    onToggleFormatted: () -> Unit,
     onPdfViewport: (visible: IntRange, shownWidthPx: Int, zoom: Float, screenWidthPx: Int) -> Unit,
     onPdfScrolled: (page: Int, offsetPx: Int) -> Unit,
     onViewport: (widthPx: Int, heightPx: Int) -> Unit,
@@ -255,6 +261,13 @@ internal fun ViewerScreen(
                         jump = if (isShown) jumpRequest else null,
                         barsShown = barsVisible,
                     ),
+                    text = TextHooks(
+                        document = texts[key],
+                        formatted = state.formatted,
+                        topPaddingPx = topBarPx,
+                        bottomPaddingPx = bottomBarPx,
+                        barsShown = barsVisible,
+                    ),
                 )
             }
 
@@ -284,7 +297,12 @@ internal fun ViewerScreen(
                 modifier = Modifier.align(Alignment.BottomCenter).onSizeChanged {
                     if (it.height > 0 && media == null) bottomBarPx = it.height
                 },
-                leading = ViewerFormat.pdfIndicator(
+                leading = textSwitch(
+                    page = state.pages[shownKey],
+                    document = texts[shownKey],
+                    formatted = state.formatted,
+                    onToggle = onToggleFormatted,
+                ) ?: ViewerFormat.pdfIndicator(
                     page = state.pages[shownKey] ?: ViewerPage.Loading,
                     meta = shown.meta,
                     reading = pdfReading,
@@ -360,8 +378,21 @@ private fun ViewerPageView(
     onInteraction: () -> Unit,
     controlsShown: Boolean,
     pdf: PdfHooks,
+    text: TextHooks,
 ) {
     when {
+        page is ViewerPage.Text && text.document != null ->
+            TextPageView(
+                page = page,
+                document = text.document,
+                formatted = text.formatted,
+                onTap = onTap,
+                topPaddingPx = text.topPaddingPx,
+                bottomPaddingPx = text.bottomPaddingPx,
+                barsShown = text.barsShown,
+            )
+        // Its text not here yet, or let go as the page was left: the quiet wait, as for any page loading.
+        page is ViewerPage.Text -> QuietWait(onTap)
         page is ViewerPage.Pdf ->
             PdfPageView(
                 page = page,
@@ -584,7 +615,7 @@ private fun ViewerBottomBar(
     controls: (@Composable (trailing: (@Composable () -> Unit)?) -> Unit)? = null,
     /** A short screen: Details and Delete end the controls' row rather than taking a row of their own. */
     compact: Boolean = false,
-    /** What starts the row of Details and Delete: a PDF's page indicator. */
+    /** What starts the row of Details and Delete: a PDF's page indicator, or a text file's Formatted / Plain switch. */
     leading: (@Composable () -> Unit)? = null,
 ) {
     val duration = barsTransition()
@@ -653,6 +684,48 @@ private class PdfHooks(
     /** Whether the bars are on screen: the fast-scroll thumb shows with them. */
     val barsShown: Boolean,
 )
+
+/** What a text page needs from the screen: its document, the view chosen, and the bars' room. */
+private class TextHooks(
+    val document: TextDocument?,
+    val formatted: Boolean,
+    val topPaddingPx: Int,
+    val bottomPaddingPx: Int,
+    val barsShown: Boolean,
+)
+
+/** The switch for the bottom bar's first slot, on a text page that has a formatted view; otherwise `null`. */
+private fun textSwitch(page: ViewerPage?, document: TextDocument?, formatted: Boolean, onToggle: () -> Unit): (@Composable () -> Unit)? {
+    if (page !is ViewerPage.Text || document == null) return null
+    if (!TextReading.hasSwitch(page.kind, canFormat = document.formatted != null)) return null
+    return { TextViewSwitch(formatted = formatted, onToggle = onToggle) }
+}
+
+/**
+ * The Formatted / Plain switch: the name of the view shown, as tall as the actions beside it. A screen
+ * reader hears the view's name and, as the action, what a tap does ("Show as written").
+ */
+@Composable
+private fun TextViewSwitch(formatted: Boolean, onToggle: () -> Unit) {
+    val name = ViewerFormat.textViewName(formatted)
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .heightIn(min = 48.dp)
+            .widthIn(min = 72.dp)
+            .clickable(role = Role.Button, onClickLabel = ViewerFormat.textViewAction(formatted), onClick = onToggle)
+            .semantics(mergeDescendants = true) { contentDescription = name }
+            .padding(DarkChamberTheme.spacing.spaceXs),
+    ) {
+        Text(
+            text = name,
+            style = DarkChamberTheme.typography.label,
+            color = DarkChamberTheme.colors.textPrimary,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.clearAndSetSemantics {},
+        )
+    }
+}
 
 /**
  * "Page N of M", as tall as the actions beside it, spoken as [PageIndicator.spoken]. A button that

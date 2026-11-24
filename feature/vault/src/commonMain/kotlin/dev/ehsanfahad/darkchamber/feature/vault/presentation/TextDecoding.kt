@@ -18,6 +18,11 @@ internal sealed interface DecodedText {
 
         fun line(index: Int): String = text.substring(bounds[2 * index], bounds[2 * index + 1])
 
+        /** Where line [index] starts and ends in [whole]. */
+        fun start(index: Int): Int = bounds[2 * index]
+
+        fun end(index: Int): Int = bounds[2 * index + 1]
+
         /** Counts only: the text is vault content. */
         override fun toString(): String = "Text($lineCount lines)"
     }
