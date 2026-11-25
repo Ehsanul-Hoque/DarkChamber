@@ -12,10 +12,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -308,31 +311,39 @@ private fun LinkDialog(address: String, host: String, onOpen: () -> Unit, onCanc
                 .background(color = colors.surface, shape = DarkChamberTheme.shapes.large)
                 .padding(spacing.spaceLg),
         ) {
-            Text(text = ViewerFormat.linkTitle(), style = typography.title, color = colors.textPrimary)
-            Text(
-                text = address,
-                style = typography.mono,
-                color = colors.textPrimary,
-                modifier = Modifier.padding(top = spacing.spaceSm),
-            )
-            Text(
-                text = ViewerFormat.linkSite(host),
-                style = typography.body,
-                color = colors.textPrimary,
-                modifier = Modifier.padding(top = spacing.spaceXs),
-            )
-            Text(
-                text = ViewerFormat.linkLeaves(),
-                style = typography.body,
-                color = colors.textSecondary,
-                modifier = Modifier.padding(top = spacing.spaceSm),
-            )
-            Text(
-                text = ViewerFormat.linkLocks(),
-                style = typography.body,
-                color = colors.textSecondary,
-                modifier = Modifier.padding(top = spacing.spaceXs),
-            )
+            // The words scroll, if even they do not fit; the buttons below them never leave the screen.
+            Column(modifier = Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
+                Text(text = ViewerFormat.linkTitle(), style = typography.title, color = colors.textPrimary)
+                // A long address scrolls in a box of its own, so the site and the warnings stay right under
+                // it, beside Open, however long it is.
+                Text(
+                    text = address,
+                    style = typography.mono,
+                    color = colors.textPrimary,
+                    modifier = Modifier
+                        .padding(top = spacing.spaceSm)
+                        .heightIn(max = ADDRESS_MAX_HEIGHT)
+                        .verticalScroll(rememberScrollState()),
+                )
+                Text(
+                    text = ViewerFormat.linkSite(host),
+                    style = typography.body,
+                    color = colors.textPrimary,
+                    modifier = Modifier.padding(top = spacing.spaceXs),
+                )
+                Text(
+                    text = ViewerFormat.linkLeaves(),
+                    style = typography.body,
+                    color = colors.textSecondary,
+                    modifier = Modifier.padding(top = spacing.spaceSm),
+                )
+                Text(
+                    text = ViewerFormat.linkLocks(),
+                    style = typography.body,
+                    color = colors.textSecondary,
+                    modifier = Modifier.padding(top = spacing.spaceXs),
+                )
+            }
             Row(horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(top = spacing.spaceMd)) {
                 TextButton(onClick = onCancel) {
                     Text(text = ViewerFormat.cancel(), style = typography.label, color = colors.textPrimary)
@@ -344,6 +355,9 @@ private fun LinkDialog(address: String, host: String, onOpen: () -> Unit, onCanc
         }
     }
 }
+
+/** The tallest the link dialog's address is drawn before it scrolls in its own box: a few lines of it. */
+private val ADDRESS_MAX_HEIGHT: Dp = 160.dp
 
 /** The room a quote bar takes, and the bar itself. */
 private val QUOTE_STEP: Dp = 12.dp
