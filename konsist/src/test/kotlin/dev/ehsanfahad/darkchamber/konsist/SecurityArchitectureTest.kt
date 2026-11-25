@@ -418,11 +418,14 @@ class SecurityArchitectureTest {
             Regex("""LinkAnnotation\s*\.\s*Url(?![A-Za-z0-9_])|(?<![A-Za-z0-9_])(LocalUriHandler|UriHandler|openUri)(?![A-Za-z0-9_])""")
 
         /**
-         * The platforms' ways to open an address: Android's `VIEW` intent and custom tabs, iOS's
-         * `openURL` and Safari view.
+         * The platforms' ways to open an address: Android's `VIEW` intent (by its constant or spelled out as
+         * the action's name) and custom tabs, iOS's `openURL` and Safari view.
          */
         val PLATFORM_OPENS_AN_ADDRESS =
-            Regex("""(?<![A-Za-z0-9_])(ACTION_VIEW|openURL|CustomTabsIntent|SFSafariViewController)(?![A-Za-z0-9_])""")
+            Regex(
+                """(?<![A-Za-z0-9_])(ACTION_VIEW|android\.intent\.action\.VIEW|openURL|CustomTabsIntent|SFSafariViewController)""" +
+                    """(?![A-Za-z0-9_])""",
+            )
 
         /**
          * The files that open an address on purpose: the two link openers, which take only an address
