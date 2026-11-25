@@ -2,6 +2,8 @@ package dev.ehsanfahad.darkchamber.feature.vault.presentation
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
+import kotlin.test.assertNull
 
 /**
  * Reading a verified file's bytes as text. Only what decodes exactly is text: a file that is not
@@ -16,7 +18,7 @@ class TextDecodingTest {
     private fun lines(bytes: ByteArray): List<String>? =
         when (val d = TextDecoding.decode(bytes)) {
             is DecodedText.Text -> List(d.lineCount) { d.line(it) }
-            DecodedText.NotText -> null
+            DecodedText.NotText, DecodedText.TooManyLines -> null
         }
 
     // --- UTF-8 ---
@@ -198,5 +200,43 @@ class TextDecodingTest {
         assertEquals(emptyList(), lines(hex("FF FE")))
         assertEquals(emptyList(), lines(hex("FE FF")))
         assertEquals(emptyList(), lines(hex("EF BB BF")))
+    }
+
+    // --- how many lines a page holds ---
+
+    private fun decodeAtMost(text: String, maxLines: Int) = TextDecoding.decode(text.encodeToByteArray(), maxLines)
+
+    /** Lines are counted as they are split: a final ending adds none, empty lines count, CRLF is one ending. */
+    @Test
+    fun text_of_more_lines_than_a_page_holds_is_refused() {
+        assertEquals(3, assertIs<DecodedText.Text>(decodeAtMost("a\nb\nc", 3)).lineCount, "at the limit")
+        assertEquals(3, assertIs<DecodedText.Text>(decodeAtMost("a\nb\nc\n", 3)).lineCount, "a final ending adds none")
+        assertEquals(3, assertIs<DecodedText.Text>(decodeAtMost("a\r\nb\r\nc\r\n", 3)).lineCount, "CRLF is one ending")
+        assertEquals(DecodedText.TooManyLines, decodeAtMost("a\nb\nc\nd", 3), "one over")
+        assertEquals(DecodedText.TooManyLines, decodeAtMost("\n\n\n\n", 3), "empty lines count")
+    }
+
+    /** Not text stays not text, however many lines it would have had. */
+    @Test
+    fun bytes_that_are_not_text_are_not_text_whatever_their_lines() {
+        // a, b NUL, c, d: four lines, one holding a NUL.
+        val bytes = byteArrayOf(0x61, 0x0A, 0x62, 0x00, 0x0A, 0x63, 0x0A, 0x64)
+        assertEquals(DecodedText.NotText, TextDecoding.decode(bytes, 3))
+    }
+
+    @Test
+    fun a_page_holds_two_mebi_lines() {
+        assertEquals(2_097_152, TEXT_MAX_LINES)
+        assertEquals(TEXT_MAX_LINES, assertIs<DecodedText.Text>(TextDecoding.decode(ByteArray(TEXT_MAX_LINES) { 0x0A })).lineCount)
+        assertEquals(DecodedText.TooManyLines, TextDecoding.decode(ByteArray(TEXT_MAX_LINES + 1) { 0x0A }))
+    }
+
+    /** A text made for a whole page (re-indented JSON) is held to the same limit. */
+    @Test
+    fun a_page_made_from_text_holds_no_more_lines_than_a_file() {
+        assertEquals(listOf("a", "b", "c"), TextDecoding.pageLines("a\nb\nc\n", 3)?.let { t -> List(t.lineCount) { t.line(it) } })
+        assertNull(TextDecoding.pageLines("a\nb\nc\nd", 3))
+        assertEquals(TEXT_MAX_LINES, TextDecoding.pageLines("\n".repeat(TEXT_MAX_LINES))?.lineCount)
+        assertNull(TextDecoding.pageLines("\n".repeat(TEXT_MAX_LINES + 1)))
     }
 }

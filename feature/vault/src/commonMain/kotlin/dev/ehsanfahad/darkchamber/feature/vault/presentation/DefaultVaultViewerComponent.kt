@@ -220,6 +220,8 @@ internal open class ViewerComponent<T>(
                         !sink.full -> TextRead.Refused(ViewerPage.CouldntOpen) // fewer bytes than stored
                         else -> when (val decoded = TextDecoding.decode(into)) {
                             DecodedText.NotText -> TextRead.Refused(ViewerPage.NotText)
+                            // More lines than a page can hold in memory: refused before any is indexed.
+                            DecodedText.TooManyLines -> TextRead.Refused(ViewerPage.TooLarge)
                             is DecodedText.Text -> {
                                 // The bytes are done with once decoded: zeroed now, not after formatting,
                                 // which can take seconds.
@@ -260,6 +262,7 @@ internal open class ViewerComponent<T>(
      * A Markdown or JSON file's formatted view, or the note saying why it is shown only as written;
      * neither for the other kinds. Markdown is formatted up to [MARKDOWN_FORMAT_CAP], within the
      * reader's nesting and time limits, and its reading stops as soon as [cancelled] — a lock or a swipe.
+     * JSON is indented while the result fits the indent's own cap and [TEXT_MAX_LINES] lines.
      */
     private fun formatted(kind: TextKind, text: DecodedText.Text, size: Long, cancelled: () -> Boolean): Pair<FormattedText?, FormatNote?> =
         when (kind) {
@@ -270,7 +273,10 @@ internal open class ViewerComponent<T>(
                     ?: (null to FormatNote.TooComplex)
             }
             TextKind.Json -> when (val indented = JsonIndent.indent(text.whole)) {
-                is JsonIndent.Result.Indented -> FormattedText.Json(TextDecoding.lines(indented.text)) to null
+                // Indenting adds lines; past what a page holds, the file as written is shown instead.
+                is JsonIndent.Result.Indented -> TextDecoding.pageLines(indented.text)
+                    ?.let { FormattedText.Json(it) to null }
+                    ?: (null to FormatNote.TooLarge)
                 JsonIndent.Result.Invalid -> null to FormatNote.NotJson
                 JsonIndent.Result.TooLarge -> null to FormatNote.TooLarge
             }

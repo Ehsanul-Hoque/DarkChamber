@@ -138,6 +138,14 @@ private val TEXT_EXTENSIONS: Map<String, TextKind> =
 /** The largest text file the viewer reads: its bytes, then its decoded text, are held while shown. */
 internal const val TEXT_CAP: Long = 8L * 1024 * 1024
 
+/**
+ * The most lines a text page shows, as written or formatted. Each line costs the page about 30 bytes
+ * whatever it holds (where it starts and ends, its row, its height), so a file of 8 MiB of line endings
+ * would need several times the heap a phone gives the app; with 2 Mi lines it stays near a third of a
+ * 256 MB heap.
+ */
+internal const val TEXT_MAX_LINES: Int = 2 * 1024 * 1024
+
 /** The largest Markdown file the viewer formats; a larger one is shown as written, with a note. */
 internal const val MARKDOWN_FORMAT_CAP: Long = 1L * 1024 * 1024
 

@@ -29,6 +29,9 @@ internal sealed interface DecodedText {
 
     /** Bytes that are not text in an encoding this viewer reads. */
     data object NotText : DecodedText
+
+    /** Text of more lines than a page can hold ([TEXT_MAX_LINES]); counted before any line is indexed. */
+    data object TooManyLines : DecodedText
 }
 
 internal object TextDecoding {
@@ -38,9 +41,10 @@ internal object TextDecoding {
      * (a leading byte-order mark read and dropped). Anything not exactly valid is
      * [DecodedText.NotText]: a malformed sequence is reported, never replaced with a substitute
      * character, so what is shown is what the file holds. UTF-16 without a mark is not guessed at —
-     * its zero bytes read as binary. The caller still owns [bytes] and zeroes them; this never keeps them.
+     * its zero bytes read as binary. Text of more than [maxLines] lines is [DecodedText.TooManyLines].
+     * The caller still owns [bytes] and zeroes them; this never keeps them.
      */
-    fun decode(bytes: ByteArray): DecodedText {
+    fun decode(bytes: ByteArray, maxLines: Int = TEXT_MAX_LINES): DecodedText {
         val text = when {
             startsWith(bytes, UTF16_LE_BOM) -> utf16(bytes, littleEndian = true)
             startsWith(bytes, UTF16_BE_BOM) -> utf16(bytes, littleEndian = false)
@@ -48,19 +52,30 @@ internal object TextDecoding {
         } ?: return DecodedText.NotText
         // Valid in every encoding read here, yet no text file holds one; binary files are full of them.
         if (text.indexOf(NUL) >= 0) return DecodedText.NotText
-        return DecodedText.Text(text, lineBounds(text))
+        return pageLines(text, maxLines) ?: DecodedText.TooManyLines
     }
 
-    /** [text] — already a string, such as re-indented JSON — split into lines as a decoded file is. */
-    fun lines(text: String): DecodedText.Text = DecodedText.Text(text, lineBounds(text))
+    /** [text] — already a string, such as a cut piece of a block — split into lines as a decoded file is. */
+    fun lines(text: String): DecodedText.Text = DecodedText.Text(text, lineBounds(text, countLines(text)))
+
+    /**
+     * [text] made for a whole page — re-indented JSON — split into lines as a decoded file is, or `null`
+     * when it has more than [maxLines]: counted before any line is indexed.
+     */
+    fun pageLines(text: String, maxLines: Int = TEXT_MAX_LINES): DecodedText.Text? {
+        val count = countLines(text)
+        return if (count > maxLines) null else DecodedText.Text(text, lineBounds(text, count))
+    }
+
+    private fun countLines(text: String): Int = forEachLine(text) { _, _, _ -> }
 
     /**
      * Where each line starts and ends, endings excluded: LF, CRLF and a lone CR each end a line, so
      * a file from any platform reads the same. A final ending closes the last line rather than
-     * opening an empty one. Counted first, then filled, so nothing is boxed or copied.
+     * opening an empty one. Counted first ([count]), then filled, so nothing is boxed or copied.
      */
-    private fun lineBounds(text: String): IntArray {
-        val bounds = IntArray(2 * forEachLine(text) { _, _, _ -> })
+    private fun lineBounds(text: String, count: Int): IntArray {
+        val bounds = IntArray(2 * count)
         forEachLine(text) { index, start, end ->
             bounds[2 * index] = start
             bounds[2 * index + 1] = end

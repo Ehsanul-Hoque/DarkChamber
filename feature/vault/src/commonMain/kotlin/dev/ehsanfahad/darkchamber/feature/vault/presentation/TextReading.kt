@@ -98,31 +98,35 @@ internal object TextReading {
      * [text]'s lines as rows of at most [maxChars] characters. A longer line is cut after the last
      * space in the final quarter of the room, so a word is not split when one ends near the cut;
      * otherwise at the room's end — never between the two halves of a character outside the basic
-     * plane. Every character is in exactly one row, in order.
+     * plane. Every character is in exactly one row, in order. Counted first, then filled, so the rows
+     * of a file of millions of lines are one array of exactly their size, never grown or copied.
      */
     fun rows(text: DecodedText.Text, maxChars: Int = ROW_MAX_CHARS): TextRows {
         // Room for a whole character outside the basic plane, so every cut moves forward.
         require(maxChars >= 2)
-        val whole = text.whole
-        var packed = IntArray(3 * text.lineCount)
-        var count = 0
-        fun add(line: Int, start: Int, end: Int) {
-            if (3 * count == packed.size) packed = packed.copyOf(packed.size * 2)
-            packed[3 * count] = line
-            packed[3 * count + 1] = start
-            packed[3 * count + 2] = end
-            count++
+        val packed = IntArray(3 * forEachRow(text, maxChars) { _, _, _, _ -> })
+        forEachRow(text, maxChars) { row, line, start, end ->
+            packed[3 * row] = line
+            packed[3 * row + 1] = start
+            packed[3 * row + 2] = end
         }
+        return TextRows(text, packed)
+    }
+
+    /** Calls [row] for each row of [text] in order; answers how many there were. */
+    private inline fun forEachRow(text: DecodedText.Text, maxChars: Int, row: (index: Int, line: Int, start: Int, end: Int) -> Unit): Int {
+        var count = 0
         for (line in 0 until text.lineCount) {
             var start = text.start(line)
             val end = text.end(line)
             while (end - start > maxChars) {
-                add(line, start, cutAt(whole, start, maxChars))
-                start = packed[3 * count - 1]
+                val cut = cutAt(text.whole, start, maxChars)
+                row(count++, line, start, cut)
+                start = cut
             }
-            add(line, start, end)
+            row(count++, line, start, end)
         }
-        return TextRows(text, packed.copyOf(3 * count))
+        return count
     }
 
     /**

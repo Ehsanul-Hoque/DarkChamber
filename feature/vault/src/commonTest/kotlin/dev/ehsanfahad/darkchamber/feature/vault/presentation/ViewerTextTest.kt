@@ -209,6 +209,21 @@ class ViewerTextTest {
         assertEquals(0, viewer.text(4)!!.plain.lineCount)
     }
 
+    /** More lines than a page holds is too large to show, whatever the bytes come to; the limit itself is shown. */
+    @Test
+    fun a_text_file_of_more_lines_than_a_page_holds_is_too_large() = runTest {
+        contents[4] = ByteArray(TEXT_MAX_LINES + 1) { 0x0A }
+        val over = viewer(start = 4)
+        assertEquals(ViewerPage.TooLarge, over.page(4))
+        assertTrue(over.texts.value.isEmpty())
+        assertTrue(buffers.single().zeroed())
+
+        contents[4] = ByteArray(TEXT_MAX_LINES) { 0x0A }
+        val at = viewer(start = 4)
+        assertEquals(ViewerPage.Text(TextKind.Plain), at.page(4))
+        assertEquals(TEXT_MAX_LINES, at.text(4)!!.plain.lineCount)
+    }
+
     @Test
     fun bytes_that_are_not_text_are_said_to_be_so() = runTest {
         contents[4] = byteArrayOf(0x61, 0x00, 0x62)
@@ -451,6 +466,24 @@ class ViewerTextTest {
         val viewer = viewer(start = 1)
         assertEquals(ViewerPage.Text(TextKind.Json, FormatNote.TooLarge), viewer.page(1))
         assertNull(viewer.text(1)!!.formatted)
+    }
+
+    /** `[1,1,…,1]` of [elements]: indented, one line per element plus the two brackets. */
+    private fun ones(elements: Int) = ("[" + "1,".repeat(elements - 1) + "1]").encodeToByteArray()
+
+    /** Indenting adds lines: past what a page holds, the file is shown as written, with a note. */
+    @Test
+    fun json_whose_indented_lines_pass_what_a_page_holds_is_shown_as_written_with_a_note() = runTest {
+        contents[1] = ones(TEXT_MAX_LINES - 1) // indents to one line over
+        val over = viewer(start = 1)
+        assertEquals(ViewerPage.Text(TextKind.Json, FormatNote.TooLarge), over.page(1))
+        assertNull(over.text(1)!!.formatted)
+        assertEquals(1, over.text(1)!!.plain.lineCount)
+
+        contents[1] = ones(TEXT_MAX_LINES - 2) // indents to exactly the limit
+        val at = viewer(start = 1)
+        assertEquals(ViewerPage.Text(TextKind.Json), at.page(1))
+        assertEquals(TEXT_MAX_LINES, assertIs<FormattedText.Json>(at.text(1)!!.formatted).lines.lineCount)
     }
 
     @Test
