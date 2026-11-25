@@ -393,7 +393,8 @@ class SecurityArchitectureTest {
          * pictures; the players and surfaces that hold decoded video and sound; the PDF buffer, document
          * and renderers that hold a whole decrypted PDF; the viewer's text types, the rows a text page is
          * drawn as, a link's target (an address from the file) and Compose's styled text, all holding a
-         * decrypted file's words — and what makes those.
+         * decrypted file's words; the letter widths a text page measures (which characters a file holds)
+         * — and what makes those.
          */
         val HOLDS_DECRYPTED_CONTENT =
             Regex(
@@ -403,10 +404,10 @@ class SecurityArchitectureTest {
                     """VaultPdfRenderer|VaultPdfBuffer|VaultPdfDocument|PdfOpened|PdfRenderer|""" +
                     """PDFDocument|PDFPage|""" +
                     """TextDocument|DecodedText|FormattedText|MarkdownDocument|MdBlock|MdSpan|MdListItem|""" +
-                    """TextRows|MdRow|LinkTarget|AnnotatedString|""" +
+                    """TextRows|MdRow|LinkTarget|AnnotatedString|LetterWidths|""" +
                     // What makes them, so a value whose type is inferred (`val x = TextDecoding.decode(…)`)
                     // is caught by the call that made it.
-                    """TextDecoding|MarkdownModel|JsonIndent|TextReading|MarkdownRows|LinkRules)(?![A-Za-z0-9_])""",
+                    """TextDecoding|MarkdownModel|JsonIndent|TextReading|MarkdownRows|LinkRules|ScreenLines)(?![A-Za-z0-9_])""",
             )
 
         /**

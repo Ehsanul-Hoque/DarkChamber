@@ -105,6 +105,37 @@ class RowHeightsTest {
         assertEquals(60f, h.top(7))
     }
 
+    /** Every row estimated from the start: the column's height is known before anything is laid out. */
+    @Test
+    fun estimated_heights_add_up_before_anything_is_laid_out() {
+        val h = RowHeights.estimated(intArrayOf(10, 20, 30))
+        assertEquals(listOf(0f, 10f, 30f, 60f), (0..3).map { h.top(it) })
+        assertEquals(60f, h.total())
+        assertEquals(RowHeights.Spot(1, 5), h.at(15f))
+    }
+
+    /** A measured height replaces its row's estimate, and nothing else moves — no average stands in. */
+    @Test
+    fun a_measured_height_replaces_only_its_own_estimate() {
+        val h = RowHeights.estimated(intArrayOf(10, 20, 30))
+        h.record(0, 1000)
+        assertEquals(1050f, h.total())
+        h.record(1, 50)
+        assertEquals(listOf(0f, 1000f, 1050f, 1080f), (0..3).map { h.top(it) })
+    }
+
+    /** The trees are built in one pass over the estimates: every top is the sum before it. */
+    @Test
+    fun estimated_tops_are_the_sums_before_them() {
+        val estimates = IntArray(1_000) { (it * 37) % 101 }
+        val h = RowHeights.estimated(estimates)
+        var sum = 0L
+        for (i in 0..estimates.size) {
+            assertEquals(sum.toFloat(), h.top(i), "top of $i")
+            if (i < estimates.size) sum += estimates[i]
+        }
+    }
+
     /** A million rows: recording and asking stay cheap and right. */
     @Test
     fun a_large_column_adds_up() {

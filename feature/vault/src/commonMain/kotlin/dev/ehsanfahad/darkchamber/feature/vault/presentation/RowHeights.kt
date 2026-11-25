@@ -2,7 +2,8 @@ package dev.ehsanfahad.darkchamber.feature.vault.presentation
 
 /**
  * The heights of a lazy column's [count] items as they are laid out, and from them the column's height
- * estimated: an item not laid out yet counts as the average of those that have been. The fast-scroll
+ * estimated: an item not laid out yet counts as the average of those that have been — or, for a column
+ * built [estimated], as its own estimate (12 bytes an item then, against 16). The fast-scroll
  * thumb stands by these pixels, as a PDF's does by its known page heights — never by how many items
  * happen to be on screen, which changes as items of different heights come and go and would move the
  * thumb with it.
@@ -10,15 +11,46 @@ package dev.ehsanfahad.darkchamber.feature.vault.presentation
  * Sums run on Fenwick trees, so recording a height and asking how far down an item starts take time
  * in the logarithm of [count] — a text file can be a million rows.
  */
-internal class RowHeights(val count: Int) {
-    /** Each item's height, or -1 while it has not been laid out. */
-    private val heights = IntArray(count) { -1 }
+internal class RowHeights private constructor(
+    /** Each item's height, or -1 while it has not been laid out (never, when [estimated]). */
+    private val heights: IntArray,
+    estimated: Boolean,
+) {
+    /** A column of [count] items, none laid out yet: each counts as the average of those that have been. */
+    constructor(count: Int) : this(IntArray(count) { -1 }, estimated = false)
+
+    val count: Int = heights.size
 
     /** Fenwick trees over the known heights and over which items are known (1-based). */
     private val sums = LongArray(count + 1)
-    private val known = IntArray(count + 1)
+
+    /** Not kept when every item has an estimate: all of them are known from the start. */
+    private val known: IntArray? = if (estimated) null else IntArray(count + 1)
     private var knownSum = 0L
     private var knownCount = 0
+
+    init {
+        if (estimated) {
+            // Built in one pass: each node passes its sum on to its parent.
+            for (i in 0 until count) {
+                sums[i + 1] += heights[i].toLong()
+                knownSum += heights[i]
+            }
+            for (i in 1..count) {
+                val parent = i + (i and -i)
+                if (parent <= count) sums[parent] += sums[i]
+            }
+            knownCount = count
+        }
+    }
+
+    companion object {
+        /**
+         * A column whose every item has an [estimates] height before any is laid out (a plain page's rows,
+         * see [ScreenLines]); a measured height replaces its item's estimate. Takes the array as its own.
+         */
+        fun estimated(estimates: IntArray): RowHeights = RowHeights(estimates, estimated = true)
+    }
 
     /** Record that item [index] was laid out [height] pixels tall. A later height replaces an earlier one. */
     fun record(index: Int, height: Int) {
@@ -26,7 +58,7 @@ internal class RowHeights(val count: Int) {
         val before = heights[index]
         if (before == height) return
         if (before < 0) {
-            add(known, index, 1)
+            known?.let { add(it, index, 1) }
             knownCount++
             add(sums, index, height.toLong())
             knownSum += height
@@ -69,7 +101,7 @@ internal class RowHeights(val count: Int) {
 
     /** The items before [index]: their known heights, and the rest at the average. */
     private fun topOf(index: Int): Double {
-        val knownBefore = prefix(known, index)
+        val knownBefore = known?.let { prefix(it, index) } ?: index
         val unknownBefore = index - knownBefore
         val average = if (knownCount == 0) 0.0 else knownSum.toDouble() / knownCount
         return prefix(sums, index).toDouble() + unknownBefore * average

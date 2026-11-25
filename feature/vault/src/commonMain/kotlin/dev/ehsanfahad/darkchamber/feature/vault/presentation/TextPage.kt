@@ -33,13 +33,18 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFontFamilyResolver
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import dev.ehsanfahad.darkchamber.core.designsystem.DarkChamberTheme
 import dev.ehsanfahad.darkchamber.feature.vault.api.TextDocument
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerPage
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.drop
 import kotlin.math.roundToInt
@@ -118,6 +123,7 @@ private fun TextLines(
         bottomPaddingPx = bottomPaddingPx,
         barsShown = barsShown,
         thumbWhenScrolls = false,
+        estimate = rememberRowEstimate(rows, style),
     ) { index ->
         val row = rows.row(index)
         val spoken = TextReading.spoken(row)
@@ -138,7 +144,8 @@ private fun TextLines(
  * is one and the fast-scroll thumb on a long column ([TextReading.worthAThumb]; [thumbWhenScrolls] for
  * formatted Markdown) — placed by the rows' measured heights ([RowHeights]) and kept still while those
  * estimates are corrected ([ThumbPlace]), naming the row reached with [bubble] while dragged (no bubble where
- * it answers `null`).
+ * it answers `null`). With [estimate] — every row's height for a width its text is laid out in, or `null`
+ * when it cannot tell — rows not laid out yet count as their own estimate rather than the average.
  */
 @Composable
 internal fun RowsColumn(
@@ -151,6 +158,7 @@ internal fun RowsColumn(
     bottomPaddingPx: Int,
     barsShown: Boolean,
     thumbWhenScrolls: Boolean,
+    estimate: (suspend (textWidthPx: Int) -> IntArray?)? = null,
     row: @Composable (index: Int) -> Unit,
 ) {
     val colors = DarkChamberTheme.colors
@@ -185,7 +193,22 @@ internal fun RowsColumn(
         // Every item's height as it is laid out, and from them the column's height (see RowHeights). Kept
         // for this width: a new width lays every item out again at another height.
         val itemCount = header + rowCount
-        val heights = remember(itemCount, widthPx) { RowHeights(itemCount) }
+        // A new density (the font size setting) lays every row out again at another height, as a new width does.
+        val averaged = remember(itemCount, widthPx, density) { RowHeights(itemCount) }
+        // Every row's own estimate once worked out off the main thread (see ScreenLines); until then, and
+        // where there is none, the average stands in. A new estimate (another font or size) starts over.
+        var estimated by remember(itemCount, widthPx, estimate) { mutableStateOf<RowHeights?>(null) }
+        if (estimate != null) {
+            val layoutDirection = LocalLayoutDirection.current
+            val insets = WindowInsets.safeDrawing.let { it.getLeft(density, layoutDirection) + it.getRight(density, layoutDirection) }
+            // The rows' own width: the column's, less the side insets and the content padding either side.
+            val textWidthPx = widthPx - insets - with(density) { (DarkChamberTheme.spacing.spaceMd * 2 + THUMB_WIDTH).roundToPx() }
+            LaunchedEffect(itemCount, textWidthPx, estimate) {
+                val rows = estimate(textWidthPx) ?: return@LaunchedEffect
+                if (rows.size == rowCount) estimated = RowHeights.estimated(IntArray(header) + rows)
+            }
+        }
+        val heights = estimated ?: averaged
         var measured by remember(heights) { mutableIntStateOf(0) }
         // Where a shown thumb was pinned when an estimate last changed under it (see ThumbPlace).
         var anchor by remember(heights) { mutableStateOf<ThumbAnchor?>(null) }
@@ -316,3 +339,42 @@ internal fun RowsColumn(
         FastScrollThumb(shown = thumbShown, topPx = thumbTop, dragging = dragging, bubble = reached)
     }
 }
+
+/**
+ * Every one of [rows]' heights in [style] for a given text width, worked out off the main thread: each
+ * distinct character measured once, in a single layout, then each row wrapped over those widths
+ * ([ScreenLines]). `null` when the measuring cannot be trusted. The widths come from the file's own
+ * characters, so they live only in this work and the heights it hands back.
+ */
+@Composable
+private fun rememberRowEstimate(rows: TextRows, style: TextStyle): suspend (textWidthPx: Int) -> IntArray? {
+    val resolver = LocalFontFamilyResolver.current
+    val density = LocalDensity.current
+    val direction = LocalLayoutDirection.current
+    return remember(rows, style, resolver, density, direction) {
+        { textWidthPx ->
+            withContext(Dispatchers.Default) {
+                // A measurer of its own, used only here: nothing else touches it from another thread.
+                val measurer = TextMeasurer(resolver, density, direction, cacheSize = 0)
+                val codes = ScreenLines.measurable(ScreenLines.distinct(rows.whole))
+                // Each character between two bars, one per line, so a space is measured too (a space
+                // ending a line would hang and measure nothing); the bars alone are line 0.
+                val probe = buildString {
+                    append(BAR).append(BAR)
+                    codes.forEach { append('\n').append(BAR).append(ScreenLines.text(it)).append(BAR) }
+                }
+                val layout = measurer.measure(probe, style, softWrap = false)
+                if (layout.lineCount != codes.size + 1) return@withContext null
+                fun lineWidth(line: Int) = layout.getLineRight(line) - layout.getLineLeft(line)
+                val bars = lineWidth(0)
+                val widths = LetterWidths(codes, FloatArray(codes.size) { (lineWidth(it + 1) - bars).coerceAtLeast(0f) })
+                val firstLine = measurer.measure("A", style).size.height
+                val nextLine = measurer.measure("A\nA", style).size.height - firstLine
+                ScreenLines.heights(rows, textWidthPx.toFloat(), widths, firstLine, nextLine)
+            }
+        }
+    }
+}
+
+/** What each measured character sits between. */
+private const val BAR = '|'

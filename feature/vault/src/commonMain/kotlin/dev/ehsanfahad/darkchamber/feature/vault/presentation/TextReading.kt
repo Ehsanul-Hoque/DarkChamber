@@ -24,6 +24,13 @@ internal class TextRows internal constructor(private val text: DecodedText.Text,
     fun lineOf(index: Int): Int = packed[3 * index]
 
     fun row(index: Int): String = text.whole.substring(packed[3 * index + 1], packed[3 * index + 2])
+
+    /** The whole text, and where row [index] starts and ends in it — to read a row without copying it. */
+    val whole: String get() = text.whole
+
+    fun start(index: Int): Int = packed[3 * index + 1]
+
+    fun end(index: Int): Int = packed[3 * index + 2]
 }
 
 /** What a text page draws. */
