@@ -12,7 +12,6 @@ import dev.ehsanfahad.darkchamber.app.image.AndroidViewerImageDecoder
 import dev.ehsanfahad.darkchamber.app.player.AndroidPlayerDisplay
 import dev.ehsanfahad.darkchamber.app.pdf.AndroidPdfRenderer
 import dev.ehsanfahad.darkchamber.app.link.AndroidLinkOpener
-import dev.ehsanfahad.darkchamber.app.link.startBrowsable
 import dev.ehsanfahad.darkchamber.feature.vault.api.LinkOpener
 import dev.ehsanfahad.darkchamber.app.player.AndroidVaultPlayerFactory
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraController
@@ -94,7 +93,7 @@ actual fun platformModule(): Module = module {
     // Hands a web address the reader confirmed to the browser, from the activity in front.
     single<LinkOpener> {
         val holder = get<ActivityHolder>()
-        AndroidLinkOpener { holder.activity?.let { front -> { address: String -> startBrowsable(front, address) } } }
+        AndroidLinkOpener.fromFront { holder.activity }
     }
     // The application context, not an activity: the scheduled clear outlives the screen that copied.
     single<SecretClipboard> { AndroidSecretClipboard(androidContext()) }

@@ -14,10 +14,19 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.LinkOpener
  * No permission and no `<queries>` entry: starting an implicit intent needs neither, and nothing here
  * asks which apps are installed.
  *
- * [front] answers how to start an address from the activity in front ([startBrowsable] on it), or
- * `null` when no activity is in front.
+ * [front] answers how to start an address from the activity in front, or `null` when no activity is in
+ * front; the app builds it with [fromFront], tests with a stand-in.
  */
 internal class AndroidLinkOpener(private val front: () -> ((address: String) -> Unit)?) : LinkOpener {
+
+    companion object {
+        /**
+         * The opener for the app: an address starts as a browsable `VIEW` intent from [activity], the one
+         * in front. The intent is built only here — nothing else in the app can start one through this file.
+         */
+        fun fromFront(activity: () -> Activity?): AndroidLinkOpener =
+            AndroidLinkOpener { activity()?.let { front -> { address: String -> startBrowsable(front, address) } } }
+    }
 
     override suspend fun open(address: String): LinkOpened {
         if (!isWebAddress(address)) return LinkOpened.NotOpened
@@ -43,7 +52,10 @@ internal class AndroidLinkOpener(private val front: () -> ((address: String) -> 
     }
 }
 
-/** Starts [address] from [activity] as a browsable `VIEW` intent. */
-internal fun startBrowsable(activity: Activity, address: String) {
+/**
+ * Starts [address] from [activity] as a browsable `VIEW` intent. Private: it checks nothing itself, so
+ * only the opener — which checks the address first — may reach it.
+ */
+private fun startBrowsable(activity: Activity, address: String) {
     activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(address)).addCategory(Intent.CATEGORY_BROWSABLE))
 }
