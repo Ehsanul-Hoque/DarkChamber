@@ -289,6 +289,31 @@ class ViewerTextTest {
         assertTrue(buffers.single().zeroed())
     }
 
+    /**
+     * Back mid-read: the viewer stops the decrypt and lets the text go itself, before the host removes it
+     * — closing is not a lock, and the host may keep the viewer a moment longer for its animation.
+     */
+    @Test
+    fun closing_the_viewer_mid_read_stops_the_decrypt_and_shows_nothing() = runTest {
+        val items = items()
+        val viewer = viewer(start = 2, items = items)
+        duringRead = { viewer.back() }
+        viewer.showPage(1) // b.md
+
+        assertEquals(1, items.openCalls, "the read did start")
+        assertTrue(3 !in wroteAll, "the decrypt stopped at the next write")
+        assertTrue(viewer.texts.value.isEmpty())
+        assertTrue(buffers.single().zeroed())
+    }
+
+    @Test
+    fun closing_the_viewer_lets_the_text_shown_go() = runTest {
+        val viewer = viewer(start = 4)
+        assertTrue(viewer.texts.value.isNotEmpty())
+        viewer.back()
+        assertTrue(viewer.texts.value.isEmpty())
+    }
+
     @Test
     fun leaving_a_text_file_drops_its_text_and_coming_back_reads_it_again() = runTest {
         val items = items()
