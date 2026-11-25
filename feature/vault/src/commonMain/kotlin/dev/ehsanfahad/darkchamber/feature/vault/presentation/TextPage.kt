@@ -274,6 +274,9 @@ internal fun RowsColumn(
         val grab by rememberUpdatedState(Triple(thumbShown, thumbTop, fraction))
         val track by rememberUpdatedState(Triple(trackTop, trackBottom, maxScroll))
         val pinned by rememberUpdatedState(anchor)
+        // The heights too: the estimate can land after the gesture handler started, and the averaged
+        // heights it would otherwise keep are no longer recorded.
+        val heightsNow by rememberUpdatedState(heights)
 
         LazyColumn(
             state = list,
@@ -313,7 +316,7 @@ internal fun RowsColumn(
                                     // Past the last row's top to its end: the list stops at the end of its content.
                                     list.requestScrollToItem(itemCount - 1, Int.MAX_VALUE)
                                 } else {
-                                    val spot = heights.at(ThumbPlace.scrolledAt(next, scrollable, pinned))
+                                    val spot = heightsNow.at(ThumbPlace.scrolledAt(next, scrollable, pinned))
                                     list.requestScrollToItem(spot.index, spot.offsetPx)
                                 }
                                 event.changes.forEach { it.consume() }
