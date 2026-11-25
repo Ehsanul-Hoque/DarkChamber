@@ -75,7 +75,7 @@ Package root: `dev.ehsanfahad.darkchamber`.
 >   seam — read whole into the platform's memory buffer, opened only after the read verifies, one
 >   document at a time behind one single-call context, pages drawn for the screen ±1 within 16 Mi pixels
 >   each and kept out of screen state, with zoom, a page indicator, jump-to-page and fast scroll; text
->   files (plain, code-like, JSON, Markdown, HTML as its source) read whole up to 8 MiB for the page
+>   files (plain, code-like, JSON, Markdown, HTML as its source) read whole up to 8 MiB and 2 Mi lines for the page
 >   shown only, decoded (UTF-8, or UTF-16 with a byte-order mark) only after the read verifies, the bytes
 >   zeroed, the decoded text in its own types kept out of screen state — JSON re-indented by changing
 >   whitespace only, Markdown parsed by `org.jetbrains:markdown` and drawn by our own Compose code (no
