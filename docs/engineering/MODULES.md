@@ -130,9 +130,10 @@ The rest read production source text, for hazards an import list cannot see:
   decoded text, nor a call that produces one;
 - nothing opens a web address except the confirmed link opener: Compose's `LinkAnnotation.Url`,
   `UriHandler`/`LocalUriHandler` and `openUri` appear nowhere in production code, since each opens an
-  address with no confirmation and no lock; the platforms' own (`ACTION_VIEW`, `openURL`,
-  `CustomTabsIntent`, `SFSafariViewController`) appear only in the two link openers and in the iOS
-  camera's link to the app's Settings page.
+  address with no confirmation and no lock; the platforms' own (`ACTION_VIEW` or its action name
+  written out, `openURL`, `CustomTabsIntent`, `SFSafariViewController`) appear only in the two link
+  openers and in the iOS camera's link to the app's Settings page. The Android opener builds its intent
+  in a function private to its file, so the rest of the app can reach it only through the opener.
 
 Two details that make these real rather than decorative:
 
