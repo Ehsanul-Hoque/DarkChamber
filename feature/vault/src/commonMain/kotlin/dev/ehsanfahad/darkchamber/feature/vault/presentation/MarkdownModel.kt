@@ -26,14 +26,22 @@ internal class MarkdownDocument(val blocks: List<MdBlock>) {
     override fun toString(): String = "MarkdownDocument(${blocks.size} blocks)"
 }
 
+/**
+ * A block prints counts and kinds, never the file's words: a type holding text of its own says how long
+ * it is instead, and the others print their parts, which do the same.
+ */
 internal sealed interface MdBlock {
     /** [anchor] is the `#section` name a link inside the document reaches it by. */
-    data class Heading(val level: Int, val spans: List<MdSpan>, val anchor: String) : MdBlock
+    data class Heading(val level: Int, val spans: List<MdSpan>, val anchor: String) : MdBlock {
+        override fun toString(): String = "Heading(level=$level, ${spans.size} runs)"
+    }
 
     data class Paragraph(val spans: List<MdSpan>) : MdBlock
 
     /** Fenced or indented code, exactly as written; [language] is the fence's word, if any. */
-    data class Code(val code: String, val language: String?) : MdBlock
+    data class Code(val code: String, val language: String?) : MdBlock {
+        override fun toString(): String = "Code(${code.length} chars)"
+    }
 
     data class Quote(val blocks: List<MdBlock>) : MdBlock
 
@@ -49,7 +57,9 @@ internal sealed interface MdBlock {
     data object Rule : MdBlock
 
     /** Shown exactly as written, in monospace: HTML blocks and footnote definitions. */
-    data class Raw(val text: String) : MdBlock
+    data class Raw(val text: String) : MdBlock {
+        override fun toString(): String = "Raw(${text.length} chars)"
+    }
 }
 
 /** [task] is `null` for a plain item, else whether its box is ticked. */
@@ -69,7 +79,20 @@ internal data class MdSpan(
     val code: Boolean = false,
     val link: String? = null,
     val image: Boolean = false,
-)
+) {
+    /** Its length and style only — never its words or its address: both are vault content. */
+    override fun toString(): String {
+        val kinds = listOfNotNull(
+            "strong".takeIf { strong },
+            "emphasis".takeIf { emphasis },
+            "strike".takeIf { strike },
+            "code".takeIf { code },
+            "link".takeIf { link != null },
+            "image".takeIf { image },
+        )
+        return "MdSpan(${(listOf("${text.length} chars") + kinds).joinToString(", ")})"
+    }
+}
 
 /** How long reading one file as Markdown may take before it is shown as plain text instead. */
 internal val MARKDOWN_TIME_BUDGET: Duration = 10.seconds

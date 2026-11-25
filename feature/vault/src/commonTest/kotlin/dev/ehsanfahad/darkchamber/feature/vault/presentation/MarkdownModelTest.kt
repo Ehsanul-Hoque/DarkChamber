@@ -714,6 +714,30 @@ class MarkdownModelTest {
         assertFailsWith<CancellationException> { MarkdownModel.from(manyTokens, cancelled = { ++checks > 1_000 }) }
     }
 
+    /**
+     * The model holds a decrypted file's words, links and code; a printout of it — a log line, a failed
+     * check's message, a debugger — shows counts and kinds, never them.
+     */
+    @Test
+    fun the_model_prints_counts_never_the_files_words() {
+        val secret = "SECRET"
+        val span = MdSpan(secret, strong = true, link = "https://$secret.example/")
+        val printed = listOf(
+            span,
+            MdBlock.Heading(1, listOf(span), secret),
+            MdBlock.Paragraph(listOf(span)),
+            MdBlock.Code(secret, secret),
+            MdBlock.Quote(listOf(MdBlock.Paragraph(listOf(span)))),
+            MdBlock.ListBlock(1, false, listOf(MdListItem(null, listOf(MdBlock.Paragraph(listOf(span)))))),
+            MdListItem(true, listOf(MdBlock.Raw(secret))),
+            MdBlock.Table(listOf(CellAlign.Start), listOf(listOf(span)), listOf(listOf(listOf(span)))),
+            MdBlock.Raw(secret),
+        ).map { it.toString() }
+        for (text in printed) assertTrue(secret !in text, text)
+        assertEquals("MdSpan(6 chars, strong, link)", printed[0])
+        assertEquals("Raw(6 chars)", printed.last())
+    }
+
     @Test
     fun an_html_block_is_shown_as_written() { // Example 160
         assertEquals(listOf(MdBlock.Raw("<table><tr><td>\nfoo\n</td></tr></table>")), blocks("<table><tr><td>\nfoo\n</td></tr></table>\n"))

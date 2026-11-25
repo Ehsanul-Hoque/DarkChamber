@@ -11,7 +11,8 @@ internal enum class MdTextSize { Title1, Title2, Title3, Body }
  *
  * Every row knows the top-level [block] it came from — where a `#section` link lands — how many list
  * levels it sits in ([indent]) and how many quotes ([quotes]), and whether space comes before it
- * ([gapAbove]): between blocks, and between the items of a loose list.
+ * ([gapAbove]): between blocks, and between the items of a loose list. A row prints counts and kinds,
+ * never the file's words: one holding text of its own says how long it is, the others print their runs.
  */
 internal sealed interface MdRow {
     val block: Int
@@ -49,7 +50,9 @@ internal sealed interface MdRow {
         val widthChars: Int,
         val first: Boolean,
         val last: Boolean,
-    ) : MdRow
+    ) : MdRow {
+        override fun toString(): String = "Code(block=$block, group=$group, ${text.length} chars)"
+    }
 
     /**
      * Rows of a table — the header, on the first piece only, and some of the body — with each column
@@ -82,7 +85,9 @@ internal sealed interface MdRow {
         override val quotes: Int,
         override val gapAbove: Boolean,
         val text: String,
-    ) : MdRow
+    ) : MdRow {
+        override fun toString(): String = "Raw(block=$block, ${text.length} chars)"
+    }
 }
 
 internal object MarkdownRows {

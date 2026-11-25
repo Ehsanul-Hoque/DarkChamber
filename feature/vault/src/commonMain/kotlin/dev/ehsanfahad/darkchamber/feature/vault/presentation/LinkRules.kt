@@ -4,9 +4,12 @@ package dev.ehsanfahad.darkchamber.feature.vault.presentation
 internal sealed interface LinkTarget {
     /**
      * A web address, opened only through the confirmation, which shows [address] exactly as the file
-     * gives it and names [host] — the site it really reaches — on its own.
+     * gives it and names [host] — the site it really reaches — on its own. Prints its length only: the
+     * address is the file's content.
      */
-    data class Web(val address: String, val host: String) : LinkTarget
+    data class Web(val address: String, val host: String) : LinkTarget {
+        override fun toString(): String = "Web(${address.length} chars)"
+    }
 
     /** A `#section` link to a heading in the same document: the top-level block that holds it. */
     data class Section(val blockIndex: Int) : LinkTarget

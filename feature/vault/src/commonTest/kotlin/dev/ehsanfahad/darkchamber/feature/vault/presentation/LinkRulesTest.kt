@@ -2,6 +2,7 @@ package dev.ehsanfahad.darkchamber.feature.vault.presentation
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /**
  * What a link in a text file may do. Only a web address opens, and only through the confirmation;
@@ -181,6 +182,14 @@ class LinkRulesTest {
             assertEquals("https://evil.example$bs@good.com/", span.link, markdown)
             assertEquals(LinkTarget.Inert, target(span.link!!), markdown)
         }
+    }
+
+    /** A web target holds an address from the file; its printout shows its length, never the address or the site. */
+    @Test
+    fun a_web_target_prints_no_address() {
+        val printed = web("https://secret.example/path", "secret.example").toString()
+        assertTrue("secret" !in printed, printed)
+        assertEquals("Web(27 chars)", printed)
     }
 
     /** Visible characters of any script are not unseen: an address in Bangla opens. */

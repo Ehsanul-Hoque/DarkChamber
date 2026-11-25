@@ -168,6 +168,21 @@ class MarkdownRowsTest {
         assertEquals(wideHeader, after[0].header)
     }
 
+    /** A row holds a decrypted file's words; its printout shows counts and kinds, never them. */
+    @Test
+    fun a_row_prints_counts_never_the_files_words() {
+        val secret = "SECRET"
+        val printed = listOf(
+            // A list mark is the app's own (a bullet, a number, "Done"), not the file's words.
+            MdRow.Words(0, 0, 0, false, MdTextSize.Body, listOf(MdSpan(secret)), marker = "1.", markerSpoken = "1."),
+            MdRow.Code(0, 0, 0, false, group = 0, text = secret, widthChars = 6, first = true, last = true),
+            MdRow.TableRows(0, 0, 0, false, 0, listOf(6), listOf(CellAlign.Start), listOf(listOf(MdSpan(secret))), listOf(listOf(listOf(MdSpan(secret))))),
+            MdRow.Raw(0, 0, 0, false, secret),
+        ).map { it.toString() }
+        for (text in printed) assertTrue(secret !in text, text)
+        assertEquals("Raw(block=0, 6 chars)", printed.last())
+    }
+
     /** Short lines are cut by count too, so a piece of code stays shorter than a screen. */
     @Test
     fun a_code_piece_holds_at_most_twenty_lines() {
