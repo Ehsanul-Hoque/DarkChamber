@@ -155,9 +155,9 @@ internal fun PdfPageView(
             page.pageSizes.map { with(density) { PdfReading.pageHeight(widthPx, it.widthPt, it.heightPt).toDp().roundToPx() } }
         }
         val gapPx = with(density) { PAGE_GAP.roundToPx() }
-        val tops = remember(heights, gapPx) { PdfFastScroll.tops(heights, gapPx) }
-        val contentHeight = remember(heights, gapPx) { PdfFastScroll.contentHeight(heights, gapPx) }
-        val maxScroll = PdfFastScroll.maxScroll(contentHeight, topPaddingPx, bottomPaddingPx, heightPx)
+        val tops = remember(heights, gapPx) { FastScroll.tops(heights, gapPx) }
+        val contentHeight = remember(heights, gapPx) { FastScroll.contentHeight(heights, gapPx) }
+        val maxScroll = FastScroll.maxScroll(contentHeight, topPaddingPx, bottomPaddingPx, heightPx)
         val thumbHeightPx = with(density) { THUMB_HEIGHT.roundToPx() }
         val stripPx = with(density) { THUMB_STRIP.roundToPx() }
         val slopPx = with(density) { THUMB_SLOP.roundToPx() }
@@ -166,11 +166,11 @@ internal fun PdfPageView(
         val fraction = if (dragging) {
             dragFraction
         } else {
-            PdfFastScroll.fraction(tops, list.firstVisibleItemIndex, list.firstVisibleItemScrollOffset, maxScroll)
+            FastScroll.fraction(tops, list.firstVisibleItemIndex, list.firstVisibleItemScrollOffset, maxScroll)
         }
-        val thumbTop = PdfFastScroll.thumbTop(fraction, trackTop, trackBottom, thumbHeightPx)
-        val thumbShown = PdfFastScroll.visible(
-            worthIt = PdfFastScroll.worthIt(contentHeight, heightPx),
+        val thumbTop = FastScroll.thumbTop(fraction, trackTop, trackBottom, thumbHeightPx)
+        val thumbShown = FastScroll.visible(
+            worthIt = FastScroll.worthIt(contentHeight, heightPx),
             zoomedIn = !ViewerZoom.pagerMaySwipe(zoom),
             barsShown = barsShown,
             scrolledLately = scrolledLately,
@@ -219,7 +219,7 @@ internal fun PdfPageView(
                         val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
                         val (shownNow, topNow, fractionNow) = grab
                         val grabbed = shownNow &&
-                            PdfFastScroll.grabs(down.position.x, down.position.y, widthPx, stripPx, topNow, thumbHeightPx, slopPx)
+                            FastScroll.grabs(down.position.x, down.position.y, widthPx, stripPx, topNow, thumbHeightPx, slopPx)
                         if (!grabbed) return@awaitEachGesture
                         down.consume()
                         // Where on the thumb the finger is, so the thumb does not jump to put its top there.
@@ -232,9 +232,9 @@ internal fun PdfPageView(
                                 val finger = event.changes.firstOrNull { it.id == down.id } ?: break
                                 if (!finger.pressed) break
                                 val (top, bottom, scrollable) = track
-                                val next = PdfFastScroll.fractionAt((finger.position.y - hold).roundToInt(), top, bottom, thumbHeightPx)
+                                val next = FastScroll.fractionAt((finger.position.y - hold).roundToInt(), top, bottom, thumbHeightPx)
                                 dragFraction = next
-                                val place = PdfFastScroll.placeAt(next, pageTops, scrollable)
+                                val place = FastScroll.placeAt(next, pageTops, scrollable)
                                 list.requestScrollToItem(place.page, place.offsetPx)
                                 event.changes.forEach { it.consume() }
                             }

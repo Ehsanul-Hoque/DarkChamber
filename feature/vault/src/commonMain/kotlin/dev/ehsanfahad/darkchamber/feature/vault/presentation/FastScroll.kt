@@ -4,13 +4,15 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.PdfPlace
 import kotlin.math.roundToInt
 
 /**
- * The rules for a long PDF's fast-scroll thumb. All in the column's own pixels: page slots stacked with
- * a gap, scrolled by `s` = the top of the first page shown plus how far down it the screen starts. The
- * thumb runs along a track (from the top bar's bottom to the bottom bar's top) and stands where `s`
- * stands between the top and the end, so it measures the real height, not the page count — a book of
- * mixed page sizes puts the thumb where the reader actually is.
+ * The rules for a long column's fast-scroll thumb — a PDF's pages or a text file's rows. All in the
+ * column's own pixels: the thumb runs along a track (from the top bar's bottom to the bottom bar's top)
+ * and stands where the scroll stands between the top and the end, so it measures the real height, not
+ * the item count — a book of mixed page sizes, or a document of short lines and tall tables, puts the
+ * thumb where the reader actually is. For a PDF the column is page slots stacked with a gap, scrolled by
+ * `s` = the top of the first page shown plus how far down it the screen starts ([tops], [placeAt]); a text
+ * page measures its rows as they are drawn ([RowHeights]) and uses the track and drag rules here.
  */
-internal object PdfFastScroll {
+internal object FastScroll {
     /** How many screens tall a column must be for a thumb to be worth having. */
     const val MIN_SCREENS = 5
 

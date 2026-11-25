@@ -202,11 +202,11 @@ internal fun RowsColumn(
             else -> (scrolled / maxScroll).coerceIn(0f, 1f)
         }
         val firstRow = (list.firstVisibleItemIndex - header).coerceAtLeast(0)
-        val thumbTop = PdfFastScroll.thumbTop(fraction, trackTop, trackBottom, thumbHeightPx)
-        val worthNow = PdfFastScroll.worthIt(total.toInt(), info.viewportSize.height)
+        val thumbTop = FastScroll.thumbTop(fraction, trackTop, trackBottom, thumbHeightPx)
+        val worthNow = FastScroll.worthIt(total.toInt(), info.viewportSize.height)
         val hasThumb = TextReading.keepsThumb(thumbKept, worthNow, dragging)
         LaunchedEffect(hasThumb) { if (hasThumb) thumbKept = true }
-        val thumbShown = PdfFastScroll.visible(
+        val thumbShown = FastScroll.visible(
             worthIt = hasThumb,
             zoomedIn = false,
             barsShown = barsShown,
@@ -239,7 +239,7 @@ internal fun RowsColumn(
                         val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
                         val (shownNow, topNow, fractionNow) = grab
                         val grabbed = shownNow &&
-                            PdfFastScroll.grabs(down.position.x, down.position.y, size.width, stripPx, topNow, thumbHeightPx, slopPx)
+                            FastScroll.grabs(down.position.x, down.position.y, size.width, stripPx, topNow, thumbHeightPx, slopPx)
                         if (!grabbed) return@awaitEachGesture
                         down.consume()
                         val hold = down.position.y - topNow
@@ -251,7 +251,7 @@ internal fun RowsColumn(
                                 val finger = event.changes.firstOrNull { it.id == down.id } ?: break
                                 if (!finger.pressed) break
                                 val (top, bottom, scrollable) = track
-                                val next = PdfFastScroll.fractionAt((finger.position.y - hold).roundToInt(), top, bottom, thumbHeightPx)
+                                val next = FastScroll.fractionAt((finger.position.y - hold).roundToInt(), top, bottom, thumbHeightPx)
                                 dragFraction = next
                                 if (TextReading.toTheEnd(next) && itemCount > 0) {
                                     // Past the last row's top to its end: the list stops at the end of its content.
