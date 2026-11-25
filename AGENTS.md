@@ -82,7 +82,8 @@ Package root: `dev.ehsanfahad.darkchamber`.
 >   web view, no platform HTML engine, images shown as their description, nothing selectable), a
 >   Formatted / Plain switch, and links: `http`/`https` only, after a dialog showing the full address,
 >   opened through the `LinkOpener` seam, after which the viewer locks the vault itself (a Konsist rule
->   forbids Compose's own link opening anywhere); every other kind shown as its badge, and back handing
+>   forbids Compose's own link opening anywhere, and the platforms' own outside the link openers);
+>   every other kind shown as its badge, and back handing
 >   the grid the item last viewed. And **delete**, which is
 >   crypto-shred: one item from the viewer, many from the grid's selection in one write, both behind a
 >   confirmation whose words promise no more than the shred does. Public surface is the factories plus
