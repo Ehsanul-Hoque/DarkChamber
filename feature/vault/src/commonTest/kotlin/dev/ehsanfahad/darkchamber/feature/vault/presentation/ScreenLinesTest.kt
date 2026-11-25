@@ -3,6 +3,7 @@ package dev.ehsanfahad.darkchamber.feature.vault.presentation
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 /** A plain page's row heights, estimated before the rows are laid out. */
 class ScreenLinesTest {
@@ -119,6 +120,64 @@ class ScreenLinesTest {
     @Test
     fun the_width_table_prints_no_characters() {
         assertEquals("LetterWidths", LetterWidths(intArrayOf('q'.code), floatArrayOf(1f)).toString())
+    }
+
+    /** Places for the items above the rows come first and empty, so the column takes the array as it is. */
+    @Test
+    fun heights_leave_room_for_the_items_above_the_rows() {
+        val text = TextDecoding.decode("aa\naa".encodeToByteArray()) as DecodedText.Text
+        val heights = ScreenLines.heights(TextReading.rows(text), 50f, mono(), firstLinePx = 100, nextLinePx = 80, leading = 1)
+        assertContentEquals(intArrayOf(0, 100, 100), heights)
+    }
+
+    private fun rowsOf(lines: Int, chars: Int): TextRows {
+        val text = TextDecoding.decode(List(lines) { "a".repeat(chars) }.joinToString("\n").encodeToByteArray()) as DecodedText.Text
+        return TextReading.rows(text)
+    }
+
+    /**
+     * The stop check comes every so many characters, whatever the rows look like: as often over a few long
+     * rows as over many short ones — counting rows, a minified file would never be checked. Both sides of
+     * the cadence.
+     */
+    @Test
+    fun the_stop_check_comes_every_so_many_characters_not_rows() {
+        val every = ScreenLines.STOP_EVERY_CHARS
+        fun checksIn(rows: TextRows): Int {
+            var checks = 0
+            ScreenLines.heights(rows, 1000f, mono(), 10, 10, stop = { checks++ })
+            return checks
+        }
+        assertEquals(3, checksIn(rowsOf(lines = 100, chars = 2_000)), "200,000 characters in long rows")
+        assertEquals(3, checksIn(rowsOf(lines = 100_000, chars = 2)), "200,000 characters in short rows")
+        assertEquals(0, checksIn(rowsOf(lines = 1, chars = every - 1)) + checksIn(rowsOf(lines = 0, chars = 0)))
+        assertEquals(1, checksIn(rowsOf(lines = 33, chars = 2_000)), "66,000 characters")
+        // Exactly at the mark, and one character short of it.
+        assertEquals(1, checksIn(rowsOf(lines = 64, chars = 1_024)), "65,536 characters")
+        val oneShort = TextDecoding.decode((List(63) { "a".repeat(1_024) } + "a".repeat(1_023)).joinToString("\n").encodeToByteArray())
+        assertEquals(0, checksIn(TextReading.rows(oneShort as DecodedText.Text)), "65,535 characters")
+    }
+
+    @Test
+    fun the_scan_for_characters_is_checked_as_often() {
+        var checks = 0
+        ScreenLines.distinct("a".repeat(200_000)) { checks++ }
+        assertEquals(3, checks)
+        // Both sides of the mark: a check before the character at the mark, none for a text that ends at it.
+        checks = 0
+        ScreenLines.distinct("a".repeat(ScreenLines.STOP_EVERY_CHARS + 1)) { checks++ }
+        assertEquals(1, checks)
+        checks = 0
+        ScreenLines.distinct("a".repeat(ScreenLines.STOP_EVERY_CHARS)) { checks++ }
+        assertEquals(0, checks)
+    }
+
+    /** A stop that throws ends the work there and then: nothing is handed back. */
+    @Test
+    fun a_stop_that_throws_ends_the_work() {
+        class Stopped : RuntimeException()
+        assertFailsWith<Stopped> { ScreenLines.heights(rowsOf(lines = 100, chars = 2_000), 1000f, mono(), 10, 10, stop = { throw Stopped() }) }
+        assertFailsWith<Stopped> { ScreenLines.distinct("a".repeat(100_000)) { throw Stopped() } }
     }
 
     @Test

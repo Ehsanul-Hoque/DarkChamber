@@ -35,12 +35,26 @@ internal class LetterWidths(codePoints: IntArray, widths: FloatArray) {
  */
 internal object ScreenLines {
 
-    /** Every distinct character (code point) in [text], ascending — what to measure. */
-    fun distinct(text: CharSequence): IntArray {
+    /**
+     * How many characters the work walks between two calls of its stop check — counted in characters, not
+     * rows, so the gap stays short however long the rows are (a minified file is rows of 2,000).
+     */
+    const val STOP_EVERY_CHARS = 65_536
+
+    /**
+     * Every distinct character (code point) in [text], ascending — what to measure. [stop] is called every
+     * [STOP_EVERY_CHARS] characters and ends the work by throwing (a cancelled coroutine's check).
+     */
+    fun distinct(text: CharSequence, stop: () -> Unit = {}): IntArray {
         val seen = BooleanArray(BASIC_PLANE)
         val beyond = HashSet<Int>()
         var i = 0
+        var nextStop = STOP_EVERY_CHARS
         while (i < text.length) {
+            if (i >= nextStop) {
+                stop()
+                nextStop += STOP_EVERY_CHARS
+            }
             val code = codePointAt(text, i, text.length)
             if (code < BASIC_PLANE) seen[code] = true else beyond += code
             i += if (code < BASIC_PLANE) 1 else 2
@@ -115,12 +129,33 @@ internal object ScreenLines {
     /**
      * Each of [rows]' heights in px at [widthPx]: [firstLinePx] for its first screen line and [nextLinePx]
      * for each one after.
+     * The array starts with [leading] empty places (items above the rows, such as a note) so the column
+     * takes it as it is, with no copy. [stop] as for [distinct], every [STOP_EVERY_CHARS] characters wrapped.
      */
-    fun heights(rows: TextRows, widthPx: Float, widths: LetterWidths, firstLinePx: Int, nextLinePx: Int): IntArray {
+    fun heights(
+        rows: TextRows,
+        widthPx: Float,
+        widths: LetterWidths,
+        firstLinePx: Int,
+        nextLinePx: Int,
+        leading: Int = 0,
+        stop: () -> Unit = {},
+    ): IntArray {
         val whole = rows.whole
-        return IntArray(rows.count) { row ->
-            firstLinePx + (count(whole, rows.start(row), rows.end(row), widthPx, widths) - 1) * nextLinePx
+        val heights = IntArray(leading + rows.count)
+        var walked = 0
+        for (row in 0 until rows.count) {
+            val start = rows.start(row)
+            val end = rows.end(row)
+            heights[leading + row] = firstLinePx + (count(whole, start, end, widthPx, widths) - 1) * nextLinePx
+            // A row holds at most ROW_MAX_CHARS characters, so the gap between checks stays bounded.
+            walked += end - start
+            if (walked >= STOP_EVERY_CHARS) {
+                stop()
+                walked = 0
+            }
         }
+        return heights
     }
 
     /** The code point at [i]: a surrogate pair read whole, any lone half as itself. */
