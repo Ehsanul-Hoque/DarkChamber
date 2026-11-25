@@ -1,5 +1,7 @@
 package dev.ehsanfahad.darkchamber.feature.vault.presentation
 
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.LineHeightStyle
 import dev.ehsanfahad.darkchamber.feature.vault.api.TextKind
 
 /** The two faces a text page reads in. */
@@ -136,6 +138,23 @@ internal object TextReading {
         }
         return if (whole[limit - 1].isHighSurrogate()) limit - 1 else limit
     }
+
+    /**
+     * Which ends of a row keep Compose's line-height trim — the room a line height adds above a text's
+     * first line and below its last. Only a block's own ends ([first], [last]) do: every row of a plain
+     * page continues the text-line spacing, and a cut piece's inner side continues its block, so the
+     * lines either side of it sit as far apart as two wrapped lines.
+     */
+    fun trim(first: Boolean, last: Boolean): LineHeightStyle.Trim = when {
+        first && last -> LineHeightStyle.Trim.Both
+        first -> LineHeightStyle.Trim.FirstLineTop
+        last -> LineHeightStyle.Trim.LastLineBottom
+        else -> LineHeightStyle.Trim.None
+    }
+
+    /** [style] trimmed as [trim] says, nothing else changed. */
+    fun spaced(style: TextStyle, first: Boolean, last: Boolean): TextStyle =
+        style.copy(lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Proportional, trim(first, last)))
 
     /** What a screen reader says for a line: nothing for a blank one, which it then passes over. */
     fun spoken(line: String): String? = line.takeIf { it.isNotBlank() }

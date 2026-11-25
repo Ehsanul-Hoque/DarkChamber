@@ -88,7 +88,7 @@ internal fun TextPageView(
             val shown = if (lines?.indented == true) (document.formatted as? FormattedText.Json)?.lines ?: document.plain else document.plain
             TextLines(
                 lines = shown,
-                style = if (lines?.font == TextFont.Mono) DarkChamberTheme.typography.mono else DarkChamberTheme.typography.bodyLarge,
+                font = if (lines?.font == TextFont.Mono) DarkChamberTheme.typography.mono else DarkChamberTheme.typography.bodyLarge,
                 note = page.note?.let(ViewerFormat::formatNote),
                 onTap = onTap,
                 topPaddingPx = topPaddingPx,
@@ -102,7 +102,7 @@ internal fun TextPageView(
 @Composable
 private fun TextLines(
     lines: DecodedText.Text,
-    style: TextStyle,
+    font: TextStyle,
     note: String?,
     onTap: () -> Unit,
     topPaddingPx: Int,
@@ -110,6 +110,8 @@ private fun TextLines(
     barsShown: Boolean,
 ) {
     val colors = DarkChamberTheme.colors
+    // Every row continues the text-line spacing: two stored lines sit as far apart as two wrapped ones.
+    val style = remember(font) { TextReading.spaced(font, first = false, last = false) }
     // A line too long to lay out as one item is cut into rows (the minified-file case).
     val rows = remember(lines) { TextReading.rows(lines) }
     RowsColumn(

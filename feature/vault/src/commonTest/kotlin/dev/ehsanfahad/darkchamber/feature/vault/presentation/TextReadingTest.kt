@@ -1,5 +1,8 @@
 package dev.ehsanfahad.darkchamber.feature.vault.presentation
 
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.LineHeightStyle
+import androidx.compose.ui.unit.sp
 import dev.ehsanfahad.darkchamber.feature.vault.api.FormatNote
 import dev.ehsanfahad.darkchamber.feature.vault.api.TextKind
 import kotlin.test.Test
@@ -66,6 +69,27 @@ class TextReadingTest {
         assertTrue(TextReading.keepsThumb(shownBefore = false, worthNow = true, dragging = false))
         assertTrue(TextReading.keepsThumb(shownBefore = false, worthNow = false, dragging = true))
         assertFalse(TextReading.keepsThumb(shownBefore = false, worthNow = false, dragging = false))
+    }
+
+    /**
+     * Compose trims the room a line height adds above a text's first line and below its last; only a
+     * block's own ends keep that trim, so a row that continues one — every plain row, a cut piece's
+     * inner side — is spaced exactly like a wrapped line.
+     */
+    @Test
+    fun only_a_blocks_own_ends_are_trimmed() {
+        assertEquals(LineHeightStyle.Trim.Both, TextReading.trim(first = true, last = true))
+        assertEquals(LineHeightStyle.Trim.FirstLineTop, TextReading.trim(first = true, last = false))
+        assertEquals(LineHeightStyle.Trim.LastLineBottom, TextReading.trim(first = false, last = true))
+        assertEquals(LineHeightStyle.Trim.None, TextReading.trim(first = false, last = false))
+    }
+
+    @Test
+    fun a_spaced_style_changes_only_its_line_height_style() {
+        val style = TextStyle(fontSize = 16.sp, lineHeight = 24.sp)
+        val spaced = TextReading.spaced(style, first = false, last = true)
+        assertEquals(LineHeightStyle(LineHeightStyle.Alignment.Proportional, LineHeightStyle.Trim.LastLineBottom), spaced.lineHeightStyle)
+        assertEquals(style.copy(lineHeightStyle = spaced.lineHeightStyle), spaced)
     }
 
     /** Formatted Markdown: a thumb as soon as the column scrolls, however short. */

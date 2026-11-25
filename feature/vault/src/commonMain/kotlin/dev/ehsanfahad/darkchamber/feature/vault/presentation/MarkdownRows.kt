@@ -23,6 +23,8 @@ internal sealed interface MdRow {
     /**
      * Words: a heading, a paragraph, or a piece of a long one. [marker] starts a list item's first row
      * — a bullet, a number or a task's box — and [markerSpoken] is what a screen reader says for it.
+     * [first] and [last] say whether a piece starts and ends its paragraph (both, when it is not cut), so
+     * the lines either side of a cut sit as far apart as any two ([TextReading.spaced]).
      */
     data class Words(
         override val block: Int,
@@ -33,6 +35,8 @@ internal sealed interface MdRow {
         val spans: List<MdSpan>,
         val marker: String? = null,
         val markerSpoken: String? = null,
+        val first: Boolean = true,
+        val last: Boolean = true,
     ) : MdRow
 
     /**
@@ -78,13 +82,18 @@ internal sealed interface MdRow {
         override val gapAbove: Boolean,
     ) : MdRow
 
-    /** HTML and footnotes as written, in monospace and wrapped, or a piece of them. */
+    /**
+     * HTML and footnotes as written, in monospace and wrapped, or a piece of them; [first] and [last] as
+     * for [Words].
+     */
     data class Raw(
         override val block: Int,
         override val indent: Int,
         override val quotes: Int,
         override val gapAbove: Boolean,
         val text: String,
+        val first: Boolean = true,
+        val last: Boolean = true,
     ) : MdRow {
         override fun toString(): String = "Raw(block=$block, ${text.length} chars)"
     }
@@ -193,7 +202,8 @@ internal object MarkdownRows {
         }
 
         private fun words(size: MdTextSize, spans: List<MdSpan>, at: Place, gap: Boolean, marker: Marker?) {
-            cutSpans(spans).forEachIndexed { i, piece ->
+            val pieces = cutSpans(spans)
+            pieces.forEachIndexed { i, piece ->
                 out += MdRow.Words(
                     block = top,
                     indent = at.indent,
@@ -203,6 +213,8 @@ internal object MarkdownRows {
                     spans = piece,
                     marker = if (i == 0) marker?.shown else null,
                     markerSpoken = if (i == 0) marker?.spoken else null,
+                    first = i == 0,
+                    last = i == pieces.lastIndex,
                 )
             }
         }
@@ -254,7 +266,7 @@ internal object MarkdownRows {
                 out += if (code) {
                     MdRow.Code(top, at.indent, at.quotes, gapAbove, group, joined, width, first = i == 0, last = i == groups.lastIndex)
                 } else {
-                    MdRow.Raw(top, at.indent, at.quotes, gapAbove, joined)
+                    MdRow.Raw(top, at.indent, at.quotes, gapAbove, joined, first = i == 0, last = i == groups.lastIndex)
                 }
             }
         }

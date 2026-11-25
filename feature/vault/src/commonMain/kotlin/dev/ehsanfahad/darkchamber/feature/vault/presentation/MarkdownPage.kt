@@ -172,7 +172,11 @@ private fun MdRowView(row: MdRow, runStyles: MdRunStyles, sections: Map<String, 
                 is MdRow.Code -> CodeRow(row, scroll!!)
                 is MdRow.TableRows -> TableRow(row, runStyles, sections, onLink, scroll!!)
                 is MdRow.Rule -> Box(Modifier.fillMaxWidth().padding(vertical = spacing.spaceXs).height(1.dp).background(colors.outline))
-                is MdRow.Raw -> Text(text = row.text, style = DarkChamberTheme.typography.mono, color = colors.textPrimary)
+                is MdRow.Raw -> Text(
+                    text = row.text,
+                    style = TextReading.spaced(DarkChamberTheme.typography.mono, row.first, row.last),
+                    color = colors.textPrimary,
+                )
             }
         }
     }
@@ -182,12 +186,14 @@ private fun MdRowView(row: MdRow, runStyles: MdRunStyles, sections: Map<String, 
 private fun WordsRow(row: MdRow.Words, runStyles: MdRunStyles, sections: Map<String, Int>, onLink: (String) -> Unit) {
     if (row.spans.isEmpty()) return
     val typography = DarkChamberTheme.typography
-    val style = when (row.size) {
+    val font = when (row.size) {
         MdTextSize.Title1 -> typography.titleLarge
         MdTextSize.Title2 -> typography.title
         MdTextSize.Title3 -> typography.bodyLarge.copy(fontWeight = FontWeight.Bold)
         MdTextSize.Body -> typography.bodyLarge
     }
+    // A cut paragraph's inner sides untrimmed, so its pieces join like wrapped lines.
+    val style = TextReading.spaced(font, row.first, row.last)
     val text = remember(row, runStyles) { MarkdownText.annotated(row.spans, runStyles, sections, onLink) }
     Text(
         text = text,
@@ -216,7 +222,8 @@ private fun CodeRow(row: MdRow.Code, scroll: ScrollState) {
     ) {
         Text(
             text = row.text,
-            style = mono,
+            // Pieces of one block join like its lines.
+            style = TextReading.spaced(mono, row.first, row.last),
             color = colors.textPrimary,
             softWrap = false,
             modifier = Modifier.widthIn(min = with(density) { (row.widthChars * charPx).toDp() }),

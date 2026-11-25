@@ -60,6 +60,14 @@ class MarkdownRowsTest {
         assertEquals(listOf(0, 0, 0), r.map { it.block })
     }
 
+    /** Each piece knows whether it starts and ends its paragraph, so a cut can be spaced like a wrap. */
+    @Test
+    fun a_cut_paragraphs_pieces_know_their_ends() {
+        val r = rows(para("x"), para("a".repeat(25)), maxChars = 10).map { it as MdRow.Words }
+        assertEquals(listOf(true, true, false, false), r.map { it.first })
+        assertEquals(listOf(true, false, false, true), r.map { it.last })
+    }
+
     @Test
     fun only_the_first_piece_of_a_long_paragraph_has_space_above_it() {
         val r = rows(para("x"), para("a".repeat(25)), maxChars = 10)
@@ -117,6 +125,9 @@ class MarkdownRowsTest {
         val r = rows(MdBlock.Raw(raw), maxChars = 40)
         assertTrue(r.size > 1 && r.all { it is MdRow.Raw && it.text.length <= 40 })
         assertEquals(raw, r.joinToString("\n") { it.text() })
+        val pieces = r.map { it as MdRow.Raw }
+        assertEquals(listOf(true) + List(pieces.size - 1) { false }, pieces.map { it.first })
+        assertEquals(List(pieces.size - 1) { false } + listOf(true), pieces.map { it.last })
     }
 
     @Test
