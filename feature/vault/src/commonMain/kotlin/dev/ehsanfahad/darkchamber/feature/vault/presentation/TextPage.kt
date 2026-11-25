@@ -117,6 +117,7 @@ private fun TextLines(
         topPaddingPx = topPaddingPx,
         bottomPaddingPx = bottomPaddingPx,
         barsShown = barsShown,
+        thumbWhenScrolls = false,
     ) { index ->
         val row = rows.row(index)
         val spoken = TextReading.spoken(row)
@@ -134,8 +135,10 @@ private fun TextLines(
 
 /**
  * A lazy column of [rowCount] rows, drawn by [row], under the bars, with a [note] above them when there
- * is one and the fast-scroll thumb on a long column — placed by the rows' measured heights
- * ([RowHeights]), naming the row reached with [bubble] while dragged (no bubble where it answers `null`).
+ * is one and the fast-scroll thumb on a long column ([TextReading.worthAThumb]; [thumbWhenScrolls] for
+ * formatted Markdown) — placed by the rows' measured heights ([RowHeights]) and kept still while those
+ * estimates are corrected ([ThumbPlace]), naming the row reached with [bubble] while dragged (no bubble where
+ * it answers `null`).
  */
 @Composable
 internal fun RowsColumn(
@@ -147,6 +150,7 @@ internal fun RowsColumn(
     topPaddingPx: Int,
     bottomPaddingPx: Int,
     barsShown: Boolean,
+    thumbWhenScrolls: Boolean,
     row: @Composable (index: Int) -> Unit,
 ) {
     val colors = DarkChamberTheme.colors
@@ -183,9 +187,31 @@ internal fun RowsColumn(
         val itemCount = header + rowCount
         val heights = remember(itemCount, widthPx) { RowHeights(itemCount) }
         var measured by remember(heights) { mutableIntStateOf(0) }
+        // Where a shown thumb was pinned when an estimate last changed under it (see ThumbPlace).
+        var anchor by remember(heights) { mutableStateOf<ThumbAnchor?>(null) }
+        // How far down the column is, and how far it can go, by the heights known at the time of asking.
+        fun scrolledNow(): Float = heights.top(list.firstVisibleItemIndex) + list.firstVisibleItemScrollOffset
+        fun maxScrollNow(): Float = list.layoutInfo.let {
+            (heights.total() + it.beforeContentPadding + it.afterContentPadding - it.viewportSize.height).coerceAtLeast(0f)
+        }
+        // The fraction the thumb stands at, as it is drawn.
+        fun fractionNow(): Float = when {
+            dragging -> dragFraction
+            !list.canScrollForward -> 1f
+            else -> ThumbPlace.fraction(scrolledNow(), maxScrollNow(), anchor)
+        }
+        var thumbShownLately by remember { mutableStateOf(false) }
         LaunchedEffect(list, heights) {
             snapshotFlow { list.layoutInfo.visibleItemsInfo.map { it.index to it.size } }.collect { seen ->
+                // The thumb's place by the old estimate, so that a corrected one cannot move it.
+                val shownBefore = fractionNow()
+                val scrolledBefore = scrolledNow()
+                val maxBefore = maxScrollNow()
                 seen.forEach { (index, size) -> heights.record(index, size) }
+                val scrolledAfter = scrolledNow()
+                if (scrolledAfter != scrolledBefore || maxScrollNow() != maxBefore) {
+                    anchor = ThumbPlace.repin(thumbShownLately, shownBefore, scrolledAfter)
+                }
                 measured++
             }
         }
@@ -193,17 +219,16 @@ internal fun RowsColumn(
         val info = list.layoutInfo
         // Read so the figures below follow each new height recorded.
         val total = measured.let { heights.total() }
-        val maxScroll = (total + info.beforeContentPadding + info.afterContentPadding - info.viewportSize.height).coerceAtLeast(0f)
-        val scrolled = heights.top(list.firstVisibleItemIndex) + list.firstVisibleItemScrollOffset
-        val fraction = when {
-            dragging -> dragFraction
-            !list.canScrollForward -> 1f
-            maxScroll <= 0f -> 0f
-            else -> (scrolled / maxScroll).coerceIn(0f, 1f)
-        }
+        val maxScroll = measured.let { maxScrollNow() }
+        val fraction = measured.let { fractionNow() }
         val firstRow = (list.firstVisibleItemIndex - header).coerceAtLeast(0)
         val thumbTop = FastScroll.thumbTop(fraction, trackTop, trackBottom, thumbHeightPx)
-        val worthNow = FastScroll.worthIt(total.toInt(), info.viewportSize.height)
+        val worthNow = TextReading.worthAThumb(
+            whenScrolls = thumbWhenScrolls,
+            canScroll = list.canScrollForward || list.canScrollBackward,
+            contentHeight = total.toInt(),
+            viewportHeight = info.viewportSize.height,
+        )
         val hasThumb = TextReading.keepsThumb(thumbKept, worthNow, dragging)
         LaunchedEffect(hasThumb) { if (hasThumb) thumbKept = true }
         val thumbShown = FastScroll.visible(
@@ -213,11 +238,17 @@ internal fun RowsColumn(
             scrolledLately = scrolledLately,
             dragging = dragging,
         )
-        val reachedRow = if (dragging) heights.at(dragFraction * maxScroll).index - header else firstRow
+        // A hidden thumb keeps no pin: its true place is taken up unseen, ready for the next time it shows.
+        LaunchedEffect(thumbShown) {
+            thumbShownLately = thumbShown
+            if (!thumbShown) anchor = null
+        }
+        val reachedRow = if (dragging) heights.at(ThumbPlace.scrolledAt(dragFraction, maxScroll, anchor)).index - header else firstRow
         val reached = if (rowCount == 0) null else bubble(reachedRow.coerceIn(0, rowCount - 1))
         // Read by the gesture handler, which outlives a composition.
         val grab by rememberUpdatedState(Triple(thumbShown, thumbTop, fraction))
         val track by rememberUpdatedState(Triple(trackTop, trackBottom, maxScroll))
+        val pinned by rememberUpdatedState(anchor)
 
         LazyColumn(
             state = list,
@@ -257,7 +288,7 @@ internal fun RowsColumn(
                                     // Past the last row's top to its end: the list stops at the end of its content.
                                     list.requestScrollToItem(itemCount - 1, Int.MAX_VALUE)
                                 } else {
-                                    val spot = heights.at(next * scrollable)
+                                    val spot = heights.at(ThumbPlace.scrolledAt(next, scrollable, pinned))
                                     list.requestScrollToItem(spot.index, spot.offsetPx)
                                 }
                                 event.changes.forEach { it.consume() }

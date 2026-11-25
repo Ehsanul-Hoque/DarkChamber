@@ -106,6 +106,8 @@ internal fun MarkdownPageView(
         topPaddingPx = topPaddingPx,
         bottomPaddingPx = bottomPaddingPx,
         barsShown = barsShown,
+        // Its height is a guess until every row is laid out, so it could pass five screens only late.
+        thumbWhenScrolls = true,
     ) { index ->
         val row = rows[index]
         val scroll = when (row) {

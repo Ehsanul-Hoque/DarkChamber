@@ -68,6 +68,15 @@ internal object TextReading {
     fun keepsThumb(shownBefore: Boolean, worthNow: Boolean, dragging: Boolean): Boolean = shownBefore || worthNow || dragging
 
     /**
+     * Whether a column is worth a thumb now. Formatted Markdown ([whenScrolls]) has one as soon as it can
+     * scroll at all — known from its first layout, while its height is still a guess that could pass five
+     * screens only late; the other pages, whose height is known before drawing, past five screens
+     * ([FastScroll.worthIt]).
+     */
+    fun worthAThumb(whenScrolls: Boolean, canScroll: Boolean, contentHeight: Int, viewportHeight: Int): Boolean =
+        if (whenScrolls) canScroll else FastScroll.worthIt(contentHeight, viewportHeight)
+
+    /**
      * Whether a drag to [fraction] is the whole way down, which goes to the very end of the column — the
      * last row may be taller than the screen, and bringing its top to the top would leave its end unseen.
      */

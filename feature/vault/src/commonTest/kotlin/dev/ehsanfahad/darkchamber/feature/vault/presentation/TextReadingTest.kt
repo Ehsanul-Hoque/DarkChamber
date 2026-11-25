@@ -68,6 +68,20 @@ class TextReadingTest {
         assertFalse(TextReading.keepsThumb(shownBefore = false, worthNow = false, dragging = false))
     }
 
+    /** Formatted Markdown: a thumb as soon as the column scrolls, however short. */
+    @Test
+    fun formatted_markdown_is_worth_a_thumb_whenever_it_scrolls() {
+        assertTrue(TextReading.worthAThumb(whenScrolls = true, canScroll = true, contentHeight = 1100, viewportHeight = 1000))
+        assertFalse(TextReading.worthAThumb(whenScrolls = true, canScroll = false, contentHeight = 9000, viewportHeight = 1000))
+    }
+
+    /** Every other page: past five screens, scrolling or not (both sides of the limit). */
+    @Test
+    fun other_pages_are_worth_a_thumb_past_five_screens() {
+        assertTrue(TextReading.worthAThumb(whenScrolls = false, canScroll = true, contentHeight = 5001, viewportHeight = 1000))
+        assertFalse(TextReading.worthAThumb(whenScrolls = false, canScroll = true, contentHeight = 5000, viewportHeight = 1000))
+    }
+
     /** The last row may be taller than the screen: the whole way down is its end, not its top. */
     @Test
     fun only_the_whole_way_down_goes_to_the_very_end() {
