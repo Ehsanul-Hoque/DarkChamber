@@ -25,6 +25,19 @@ val composeRules =
         .let { "${it.module}:${it.versionConstraint.requiredVersion}" }
 val editorConfig = rootProject.file(".editorconfig")
 
+// Spotless passes ktlint the standard rules' settings from .editorconfig but not the Compose rule
+// set's own (`compose_*`), so those are read here and handed over, keeping .editorconfig their one
+// home.
+val composeRuleProperties: Map<String, String> =
+    providers
+        .fileContents(rootProject.layout.projectDirectory.file(".editorconfig"))
+        .asText
+        .get()
+        .lineSequence()
+        .map { it.trim() }
+        .filter { it.startsWith("compose_") && "=" in it }
+        .associate { it.substringBefore("=").trim() to it.substringAfter("=").trim() }
+
 spotless {
     if (project == rootProject) {
         // The root has no sources of its own; it owns the scripts no module does.
@@ -37,7 +50,10 @@ spotless {
         kotlin {
             target("src/**/*.kt")
             targetExclude("**/build/**", "src/nativeInterop/**")
-            ktlint(ktlintVersion).setEditorConfigPath(editorConfig).customRuleSets(listOf(composeRules))
+            ktlint(ktlintVersion)
+                .setEditorConfigPath(editorConfig)
+                .customRuleSets(listOf(composeRules))
+                .editorConfigOverride(composeRuleProperties)
         }
         kotlinGradle {
             target("*.gradle.kts")
