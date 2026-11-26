@@ -6,121 +6,40 @@ DarkChamber is a **Kotlin Multiplatform (KMP) + Compose Multiplatform (CMP)** ap
 
 Package root: `dev.ehsanfahad.darkchamber`.
 
-> **Current state.** Phase 0 is **complete** — the encrypted-vault core is built — and **Phase 1 is
-> in progress**: the vault feature module ships the gallery and import, and the camera module takes
-> photos and records video. The module graph is wired by the `:build-logic` convention plugins (`darkchamber.kmp.library`,
-> `darkchamber.android.application`, `darkchamber.kmp.compose`, `darkchamber.kmp.feature`), versions
-> pinned in `gradle/libs.versions.toml`. What exists:
+> **Current state.** Phase 0 (the encrypted-vault core) is complete; **Phase 1 is in progress** — the
+> gallery, import, albums and browsing, the private camera (photos and video), the viewer (images, video,
+> audio, PDF, text and Markdown) and delete are built; export with metadata scrubbing is next. This file
+> stays a map, not a mirror: `docs/` is the source of truth for *where things are going*, the **code** for
+> *how things work*, and `docs/engineering/MODULES.md` describes each module in full.
 >
-> - **`:core:model`** — `VaultError` / `Outcome` types.
-> - **`:core:crypto`** — the `.dchm` container codec (chunked AES-256-GCM) behind the swappable
->   `CryptoEngine` seam; the key hierarchy (MasterKey/DEK, a CBOR `KeyStore` with an Argon2id
->   passphrase slot + PBKDF2 fallback + HKDF recovery slot, Crockford-base32 recovery key); the
->   in-memory `VaultSession`; and the injected `SecureKeyStore` + `BiometricAuthenticator` seams.
->   Committed format + KeyStore test vectors. **The only module that touches cipher primitives.**
-> - **`:core:storage`** — `VaultStorage` over an injected root: atomic object/thumbnail/key-blob
->   stores + purge-on-lock `tmp/`, and positioned reads of an object (`FileChannel` / `pread`). No
->   `core:crypto` dep (`.dchm` bytes flow through opaque).
-> - **`:core:db`** — SQLDelight schema v1 (`items`/`albums`/`audit_log`) + a fail-closed `CatalogStore`
->   over an injected driver. Opaque encrypted-BLOB + plaintext-index columns only; no `core:crypto` dep.
-> - **`:core:vault`** — `VaultObjects`: streaming `importObject`/`openObject`/`openMeta`/`shredObject`,
->   `openRange` (any byte range of an object, decrypting only the chunks it touches, the key unwrapped
->   per chunk and never held — what a video's preview and the video and audio players read), albums, and
->   live listings and counts (a count reads plaintext columns and opens nothing); the one place
->   crypto + storage + db compose. Imports no cipher primitive.
-> - **`:core:designsystem`** — `DarkChamberTheme` roles, the `Aperture` signature, the icon set as
->   Kotlin `ImageVector`s (a drawable is unreachable from `commonMain`, so iOS would draw nothing)
->   handed out only through composables that take a theme role, and `ExcludeFromPlatformStructures` —
->   the expect/actual that keeps a window out of the platform's autofill and content-capture
->   structures. **Every window that opens one of its own must call it**; a dialog or a menu is its own
->   window and inherits nothing, and a Konsist rule fails the build when one forgets.
-> - **`:core:logging`** — Kermit + the `VaultError` redaction boundary (hard rule #4).
-> - **`:app`** — the composition root: the Koin graph, the platform seams (`VaultRootResolver`, the
->   catalog driver, `SecureKeyStore`, the pickers, and the camera — CameraX / AVFoundation capturing
->   photos into memory and video into one `tmp/` scratch file it is handed, plus free space and the
->   video preview frames — and the players: Media3 / AVPlayer reading an item only through its range
->   reader, with no cache, media session or lock-screen card, and the screen's brightness, forced
->   orientation and keep-awake, all put back on lock — and the PDF renderers: `PdfRenderer` over an
->   anonymous memory file on Android 11+, CoreGraphics over in-memory data on iOS, never a file — and
->   the link openers, which hand a confirmed web address to the browser: a browsable `VIEW` intent on
->   Android, `UIApplication.openURL` on iOS, each re-checking the address is `http`/`https`),
->   `VaultBootstrap`'s fail-closed cold-open, the Decompose
->   `Locked | Unlocked` session gate (Unlocked constructed with a live session), cryptographic per-use
->   biometric unlock (passphrase fallback + forced-passphrase on re-enrollment), the create/recovery/
->   unlock Compose UI, and the lock lifecycle (teardown on Lock **and** on background). Hosted by an
->   Android `FragmentActivity` (`:androidApp`) and an iOS `ComposeUIViewController` linking the
->   `Shared` umbrella framework (`:iosApp`).
-> - **`:feature:vault`** — the gallery (adaptive grid over `observeItems`, newest first, encrypted
->   previews in the media slot), import (multi-select file + photo pickers behind `FilePicker` /
->   `PhotoPicker` seams the app implements, a sequential batch with two-level progress,
->   continue-on-error and a stop that lands **within** a file, thumbnails generated inline at import
->   under their own DEK, and the original-delete offer behind its non-dismissable disclosure) and the
->   **album surface**: one item grid serving three listings (whole vault / one album / unfiled), the
->   album grid, create/rename/delete, a multi-select that moves items in and out, and imports landing in
->   the album being viewed. An album is a **label, not a container** — deleting one keeps its items
->   (they become unfiled) and an item is in one album at a time, so filing is a move; see
->   `docs/ARCHITECTURE.md` §5.1. Plus **browsing**: four orders (newest, oldest, A–Z, Z–A) and a
->   name search, both applied *above* the catalog's query because a name lives in an opaque blob —
->   the subscription is keyed by the listing filter alone, so re-ordering or typing never re-decrypts
->   a row; a filed item's album drawn on its tile from the album listing, at no per-item cost; and the
->   browse chrome (the controls row, the empty-result and damaged-item copy, the way back to a
->   just-imported file a filter would hide). Plus the **viewer**: a pager over the listing a tile was
->   tapped in (same filter, order and search, through the same pipeline), images decoded through the
->   `ViewerImageDecoder` seam the app implements per platform — read whole, decoded only after the read
->   verifies, the buffer zeroed, sized at about twice the screen, an image over 64 MiB not read —
->   decoded pictures held for the shown page ±1 and never in screen state (a Konsist rule); video and
->   audio played through the `VaultPlayer` / `PlayerDisplay` seams — one player, for the page shown,
->   streaming through `openRange`, failures told apart by where they came from, the player kept out of
->   screen state by the same rule (see `docs/ARCHITECTURE.md` §7); PDFs through the `VaultPdfRenderer`
->   seam — read whole into the platform's memory buffer, opened only after the read verifies, one
->   document at a time behind one single-call context, pages drawn for the screen ±1 within 16 Mi pixels
->   each and kept out of screen state, with zoom, a page indicator, jump-to-page and fast scroll; text
->   files (plain, code-like, JSON, Markdown, HTML as its source) read whole up to 8 MiB and 2 Mi lines for the page
->   shown only, decoded (UTF-8, or UTF-16 with a byte-order mark) only after the read verifies, the bytes
->   zeroed, the decoded text in its own types kept out of screen state — JSON re-indented by changing
->   whitespace only, Markdown parsed by `org.jetbrains:markdown` and drawn by our own Compose code (no
->   web view, no platform HTML engine, images shown as their description, nothing selectable), a
->   Formatted / Plain switch, and links: `http`/`https` only, after a dialog showing the full address,
->   opened through the `LinkOpener` seam, after which the viewer locks the vault itself (a Konsist rule
->   forbids Compose's own link opening anywhere, and the platforms' own outside the link openers);
->   every other kind shown as its badge, and back handing
->   the grid the item last viewed. And **delete**, which is
->   crypto-shred: one item from the viewer, many from the grid's selection in one write, both behind a
->   confirmation whose words promise no more than the shred does. Public surface is the factories plus
->   the `api` package — which includes `VaultThumbnail`, one item's encrypted preview drawn through the
->   session's loader, for a screen outside the feature; everything else is `internal`. Reaches the
->   vault through `core:vault` only, and navigates only through callbacks the host supplies (opening
->   the camera and opening an item are two).
-> - **`:feature:camera`** — the private camera, photos and video: the `CameraController` seam the app
->   implements, a camera opened on the listing it came from (filing where an import from there would,
->   counting that listing live). **Photos** go from memory straight into `importObject` — the JPEG's
->   orientation written in memory, no file and no `tmp/` stage, this code's own arrays zeroed on every
->   path, at most three held. **Video** is the one disclosed exception: one plaintext scratch file in
->   `tmp/`, size-limited from free space, encrypted by a one-clip-at-a-time lane and deleted on every
->   way out, with what a lock took reported on the next unlocked screen. Both save paths run in the
->   **session's** scope, so closing the camera lets a capture finish and only a lock abandons one.
->   The screen holds portrait, turns its icons and letterboxes the viewfinder at the capture's shape.
->   Does not depend on `:feature:vault`; the last-shot tile is the host's `VaultThumbnail` slot, and a
->   tap on it reports the shot's id for the host to open in the viewer — only while nothing is
->   capturing or recording, since covering the camera releases it. See `docs/ARCHITECTURE.md` §6.
-> - **`:konsist`** — the architecture + **security-invariant** rules, running in CI on every PR.
+> - **`:core:model`** — `VaultError` / `Outcome`.
+> - **`:core:crypto`** — the `.dchm` codec behind the `CryptoEngine` seam, the key hierarchy, `VaultSession`, the
+>   `SecureKeyStore` / `BiometricAuthenticator` seams, format test vectors. **The only module that touches cipher
+>   primitives.**
+> - **`:core:storage`** — `VaultStorage` over an injected root: objects, thumbnails, key blobs, purge-on-lock `tmp/`,
+>   positioned reads. No `core:crypto` dependency.
+> - **`:core:db`** — SQLDelight `CatalogStore`: opaque encrypted blobs plus plaintext index columns only. No
+>   `core:crypto` dependency.
+> - **`:core:vault`** — `VaultObjects`, the one place crypto, storage and db compose: streaming import/open/shred,
+>   `openRange` (decrypts only the chunks a byte range touches), albums, live listings.
+> - **`:core:designsystem`** — theme roles, the `Aperture` signature, icons as `ImageVector`s, and
+>   `ExcludeFromPlatformStructures`: **every window the app opens — each dialog and menu included — must call it**
+>   (a Konsist rule fails the build otherwise).
+> - **`:core:logging`** — Kermit plus the `VaultError` redaction boundary (hard rule 4).
+> - **`:feature:vault`** — gallery, import, albums, browse, the viewer and delete; reaches the vault only through
+>   `core:vault`, navigates only through host callbacks; public surface = factories + the `api` package.
+> - **`:feature:camera`** — the private camera behind the `CameraController` seam; photos memory-only, video through one
+>   disclosed `tmp/` scratch file. Does not depend on `:feature:vault`.
+> - **`:app`** — the composition root: Koin graph and every platform seam (pickers, camera, players, PDF renderers,
+>   link openers, keystore, catalog driver), the fail-closed cold-open, the `Locked | Unlocked` session gate, unlock
+>   and the lock lifecycle. Hosted by `:androidApp` (`FragmentActivity`) and `:iosApp` (`ComposeUIViewController`).
+> - **`:konsist`** — architecture and **security-invariant** rules, run in CI on every PR. `:core:testing` is a stub.
 >
-> Still a stub (marker + smoke test): `:core:testing`. **In progress: Phase 1** — albums and browsing
-> are in and merged (browse refinement landed 2026-10-17), and the camera takes photos and records
-> video; reads by byte range are in, and a video's preview is taken through them from the stored
-> object; the viewer opens images, plays video and audio, shows PDFs and shows text and Markdown, and
-> delete is in; next is
-> export and the metadata scrubber.
-> **Planned, not yet wired:** ktlint/detekt/Kover and
-> `migrationTest` — verify a Gradle task exists before assuming it runs. **Wired:** a tracked `commit-msg`
-> hook (`./gradlew installGitHooks`) runs CI's own commit check, scopes listed in
-> `config/commit-scopes.txt`, and a tracked `pre-commit` hook refuses a doc comment cut off its
-> declaration (`scripts/check-doc-comments.sh`, also run by CI). CI:
-> `pr.yml` is enabled (build + commit-message check + a gated macOS job that runs the **iOS unit
-> tests** and compiles the device architecture); its `quality` job stays
-> commented out until those plugins land, and `nightly`/`release`/`test-build` stay committed
-> **disabled** (`*.yml.disabled`). Treat `docs/` as the source of truth for *where things are going*,
-> and the **code** as the source of truth for *how things work* (this file stays a map, not a mirror).
+> **Tooling.** Wired: a tracked `commit-msg` hook (`./gradlew installGitHooks`) running CI's commit check (scopes in
+> `config/commit-scopes.txt`); a tracked `pre-commit` hook refusing a doc comment cut off its declaration
+> (`scripts/check-doc-comments.sh`, also in CI); `pr.yml` (build, commit check, a gated macOS job running the iOS
+> tests). **Not wired yet:** ktlint, detekt, Kover, `migrationTest` and the `quality` job; `nightly` / `release` /
+> `test-build` workflows stay `*.yml.disabled` — verify a Gradle task exists before assuming it runs.
 
 ## Source of truth — read these first
 
