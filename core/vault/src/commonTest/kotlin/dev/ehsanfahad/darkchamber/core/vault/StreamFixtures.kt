@@ -1,4 +1,4 @@
-/**
+/*
  * Test fixtures for the bounded-RAM streaming round-trip: a deterministic generating
  * source and a counting/hashing discard sink. Together they push an arbitrary volume through
  * import + open while only ever holding O(chunkSize) bytes — the plaintext is never materialised

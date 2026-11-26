@@ -119,7 +119,8 @@ class RangeReaderTest {
         val reader = objects.openRange(stored(data)).ok()
 
         val into = ByteArray(20)
-        assertEquals(4, reader.readAt(position = 60, into = into, offset = 0, size = 20).ok()) // 60..63, then the boundary
+        // 60..63, then the boundary
+        assertEquals(4, reader.readAt(position = 60, into = into, offset = 0, size = 20).ok())
         assertContentEquals(data.copyOfRange(60, 64), into.copyOfRange(0, 4))
 
         val whole = ByteArray(200 + 3)

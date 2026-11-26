@@ -320,9 +320,12 @@ class VaultItemSummaryTest {
     }
 }
 
-/** Records whether work was actually handed to it — the evidence that `flowOn` is in effect. */
-// `internal` rather than private: the album listing makes the same claim about its own mapping
-// context and pins it the same way, and a second copy of this would be a second thing to keep right.
+/**
+ * Records whether work was actually handed to it — the evidence that `flowOn` is in effect.
+ *
+ * `internal` rather than private: the album listing makes the same claim about its own mapping
+ * context and pins it the same way, and a second copy of this would be a second thing to keep right.
+ */
 internal class CountingDispatcher(
     private val delegate: CoroutineDispatcher,
 ) : CoroutineDispatcher() {
