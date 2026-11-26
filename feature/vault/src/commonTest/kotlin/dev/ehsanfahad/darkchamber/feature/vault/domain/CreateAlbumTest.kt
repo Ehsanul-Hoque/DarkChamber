@@ -24,16 +24,16 @@ import kotlin.test.assertTrue
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class CreateAlbumTest {
-
     @Test
-    fun a_usable_name_reaches_the_vault_and_the_new_id_comes_back() = runTest {
-        val vault = FakeVaultItems(createResult = Outcome.Ok(byteArrayOf(9, 9)))
+    fun a_usable_name_reaches_the_vault_and_the_new_id_comes_back() =
+        runTest {
+            val vault = FakeVaultItems(createResult = Outcome.Ok(byteArrayOf(9, 9)))
 
-        val result = CreateAlbum(vault, ioContext = UnconfinedTestDispatcher(testScheduler))("Receipts")
+            val result = CreateAlbum(vault, ioContext = UnconfinedTestDispatcher(testScheduler))("Receipts")
 
-        assertEquals(listOf("Receipts"), vault.createdNames)
-        assertContentEquals(byteArrayOf(9, 9), assertIs<CreateAlbumResult.Created>(result).id)
-    }
+            assertEquals(listOf("Receipts"), vault.createdNames)
+            assertContentEquals(byteArrayOf(9, 9), assertIs<CreateAlbumResult.Created>(result).id)
+        }
 
     /**
      * Surrounding whitespace is removed before the name is stored, not merely tolerated.
@@ -43,14 +43,15 @@ class CreateAlbumTest {
      * albums in two unrelated places for a reason invisible on screen.
      */
     @Test
-    fun a_name_is_trimmed_before_it_is_stored() = runTest {
-        val vault = FakeVaultItems()
+    fun a_name_is_trimmed_before_it_is_stored() =
+        runTest {
+            val vault = FakeVaultItems()
 
-        val result = CreateAlbum(vault, ioContext = UnconfinedTestDispatcher(testScheduler))("  Holiday\n")
+            val result = CreateAlbum(vault, ioContext = UnconfinedTestDispatcher(testScheduler))("  Holiday\n")
 
-        assertIs<CreateAlbumResult.Created>(result)
-        assertEquals(listOf("Holiday"), vault.createdNames, "stored trimmed, not as typed")
-    }
+            assertIs<CreateAlbumResult.Created>(result)
+            assertEquals(listOf("Holiday"), vault.createdNames, "stored trimmed, not as typed")
+        }
 
     /**
      * An empty field is refused **here**, and the vault is never asked.
@@ -59,14 +60,15 @@ class CreateAlbumTest {
      * layer can say next to the field and the vault cannot say at all — it would throw.
      */
     @Test
-    fun an_empty_name_is_refused_without_reaching_the_vault() = runTest {
-        val vault = FakeVaultItems()
+    fun an_empty_name_is_refused_without_reaching_the_vault() =
+        runTest {
+            val vault = FakeVaultItems()
 
-        val result = CreateAlbum(vault, ioContext = UnconfinedTestDispatcher(testScheduler))("")
+            val result = CreateAlbum(vault, ioContext = UnconfinedTestDispatcher(testScheduler))("")
 
-        assertIs<CreateAlbumResult.NameMissing>(result)
-        assertTrue(vault.createdNames.isEmpty(), "nothing was attempted, so nothing was called")
-    }
+            assertIs<CreateAlbumResult.NameMissing>(result)
+            assertTrue(vault.createdNames.isEmpty(), "nothing was attempted, so nothing was called")
+        }
 
     /**
      * Whitespace alone is nothing, by the same rule the trim implies: it reduces to an empty name, so
@@ -74,27 +76,29 @@ class CreateAlbumTest {
      * another one, or described to anyone.
      */
     @Test
-    fun a_name_of_only_whitespace_is_nothing() = runTest {
-        val vault = FakeVaultItems()
+    fun a_name_of_only_whitespace_is_nothing() =
+        runTest {
+            val vault = FakeVaultItems()
 
-        val result = CreateAlbum(vault, ioContext = UnconfinedTestDispatcher(testScheduler))("   \t ")
+            val result = CreateAlbum(vault, ioContext = UnconfinedTestDispatcher(testScheduler))("   \t ")
 
-        assertIs<CreateAlbumResult.NameMissing>(result)
-        assertTrue(vault.createdNames.isEmpty(), "three spaces is not a name")
-    }
+            assertIs<CreateAlbumResult.NameMissing>(result)
+            assertTrue(vault.createdNames.isEmpty(), "three spaces is not a name")
+        }
 
     /**
      * A vault that refuses comes back as a failure carrying its error — the surface needs the code to
      * decide what to say, and the log needs it to record anything at all.
      */
     @Test
-    fun a_refused_create_comes_back_as_a_failure_carrying_the_error() = runTest {
-        val vault = FakeVaultItems(createResult = Outcome.Err(VaultError.Crypto.IntegrityFailure))
+    fun a_refused_create_comes_back_as_a_failure_carrying_the_error() =
+        runTest {
+            val vault = FakeVaultItems(createResult = Outcome.Err(VaultError.Crypto.IntegrityFailure))
 
-        val result = CreateAlbum(vault, ioContext = UnconfinedTestDispatcher(testScheduler))("Receipts")
+            val result = CreateAlbum(vault, ioContext = UnconfinedTestDispatcher(testScheduler))("Receipts")
 
-        assertEquals(VaultError.Crypto.IntegrityFailure, assertIs<CreateAlbumResult.Failed>(result).error)
-    }
+            assertEquals(VaultError.Crypto.IntegrityFailure, assertIs<CreateAlbumResult.Failed>(result).error)
+        }
 
     /**
      * The create runs on the injected context, not on the caller's thread.
@@ -104,18 +108,20 @@ class CreateAlbumTest {
      * not been touched, which a context that was ignored could not arrange.
      */
     @Test
-    fun the_create_runs_on_the_injected_context() = runTest {
-        val io = ManualDispatcher()
-        val vault = FakeVaultItems()
+    fun the_create_runs_on_the_injected_context() =
+        runTest {
+            val io = ManualDispatcher()
+            val vault = FakeVaultItems()
 
-        val job = launch(UnconfinedTestDispatcher(testScheduler)) {
-            CreateAlbum(vault, ioContext = io)("Receipts")
+            val job =
+                launch(UnconfinedTestDispatcher(testScheduler)) {
+                    CreateAlbum(vault, ioContext = io)("Receipts")
+                }
+
+            assertTrue(vault.createdNames.isEmpty(), "nothing may happen before the io dispatcher runs")
+            io.drain()
+            job.join()
+
+            assertEquals(listOf("Receipts"), vault.createdNames)
         }
-
-        assertTrue(vault.createdNames.isEmpty(), "nothing may happen before the io dispatcher runs")
-        io.drain()
-        job.join()
-
-        assertEquals(listOf("Receipts"), vault.createdNames)
-    }
 }

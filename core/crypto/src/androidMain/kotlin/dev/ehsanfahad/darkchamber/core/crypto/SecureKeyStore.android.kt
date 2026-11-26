@@ -51,18 +51,23 @@ class AndroidSecureKeyStore(
 ) : SecureKeyStore {
     override fun isAvailable(): Boolean = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
 
-    override suspend fun wrap(mk: ByteArray, authenticator: BiometricAuthenticator): Outcome<ByteArray> {
+    override suspend fun wrap(
+        mk: ByteArray,
+        authenticator: BiometricAuthenticator,
+    ): Outcome<ByteArray> {
         // init can throw KeyPermanentlyInvalidatedException (re-enrolled biometrics) — key-gone; any
         // other refusal is a retry (see keyUseFailure).
-        val cipher = try {
-            Cipher.getInstance(TRANSFORMATION).apply { init(Cipher.ENCRYPT_MODE, getOrCreateKey()) }
-        } catch (e: GeneralSecurityException) {
-            return Outcome.Err(keyUseFailure(e))
-        }
+        val cipher =
+            try {
+                Cipher.getInstance(TRANSFORMATION).apply { init(Cipher.ENCRYPT_MODE, getOrCreateKey()) }
+            } catch (e: GeneralSecurityException) {
+                return Outcome.Err(keyUseFailure(e))
+            }
         // Authenticate THIS CryptoObject; only its authorised Cipher can doFinal (never a throw out).
         return authenticator.authenticate(request(BiometricPrompt.CryptoObject(cipher))).flatMap { auth ->
-            val authorized = (auth.handle as? BiometricPrompt.CryptoObject)?.cipher
-                ?: return@flatMap Outcome.Err(VaultError.Crypto.IntegrityFailure)
+            val authorized =
+                (auth.handle as? BiometricPrompt.CryptoObject)?.cipher
+                    ?: return@flatMap Outcome.Err(VaultError.Crypto.IntegrityFailure)
             try {
                 Outcome.Ok(authorized.iv + authorized.doFinal(mk)) // iv is the 12-byte GCM nonce
             } catch (e: GeneralSecurityException) {
@@ -71,20 +76,28 @@ class AndroidSecureKeyStore(
         }
     }
 
-    override suspend fun unwrap(blob: ByteArray, authenticator: BiometricAuthenticator): Outcome<ByteArray> {
+    override suspend fun unwrap(
+        blob: ByteArray,
+        authenticator: BiometricAuthenticator,
+    ): Outcome<ByteArray> {
         if (blob.size <= GCM_IV_SIZE) return Outcome.Err(VaultError.Crypto.IntegrityFailure)
-        val cipher = try {
-            val key = loadKey() ?: return Outcome.Err(VaultError.Crypto.IntegrityFailure)
-            val iv = blob.copyOfRange(0, GCM_IV_SIZE)
-            Cipher.getInstance(TRANSFORMATION).apply { init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(GCM_TAG_BITS, iv)) }
-        } catch (e: GeneralSecurityException) {
-            // Key wiped by a device credential change / biometric enrolment → key-gone (§3.3);
-            // anything else → a retry (see keyUseFailure).
-            return Outcome.Err(keyUseFailure(e))
-        }
+        val cipher =
+            try {
+                val key = loadKey() ?: return Outcome.Err(VaultError.Crypto.IntegrityFailure)
+                val iv = blob.copyOfRange(0, GCM_IV_SIZE)
+                Cipher
+                    .getInstance(
+                        TRANSFORMATION,
+                    ).apply { init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(GCM_TAG_BITS, iv)) }
+            } catch (e: GeneralSecurityException) {
+                // Key wiped by a device credential change / biometric enrolment → key-gone (§3.3);
+                // anything else → a retry (see keyUseFailure).
+                return Outcome.Err(keyUseFailure(e))
+            }
         return authenticator.authenticate(request(BiometricPrompt.CryptoObject(cipher))).flatMap { auth ->
-            val authorized = (auth.handle as? BiometricPrompt.CryptoObject)?.cipher
-                ?: return@flatMap Outcome.Err(VaultError.Crypto.IntegrityFailure)
+            val authorized =
+                (auth.handle as? BiometricPrompt.CryptoObject)?.cipher
+                    ?: return@flatMap Outcome.Err(VaultError.Crypto.IntegrityFailure)
             val ciphertext = blob.copyOfRange(GCM_IV_SIZE, blob.size)
             try {
                 Outcome.Ok(authorized.doFinal(ciphertext))
@@ -97,12 +110,13 @@ class AndroidSecureKeyStore(
 
     // The prompt copy is a neutral default; the :app authenticator localises/overrides it and only
     // relies on `cryptoHandle` (the CryptoObject to authorise). Honest copy per docs/DESIGN.md §11.
-    private fun request(cryptoObject: BiometricPrompt.CryptoObject): BiometricRequest = BiometricRequest(
-        title = PROMPT_TITLE,
-        subtitle = PROMPT_SUBTITLE,
-        cancelLabel = PROMPT_CANCEL,
-        cryptoHandle = cryptoObject,
-    )
+    private fun request(cryptoObject: BiometricPrompt.CryptoObject): BiometricRequest =
+        BiometricRequest(
+            title = PROMPT_TITLE,
+            subtitle = PROMPT_SUBTITLE,
+            cancelLabel = PROMPT_CANCEL,
+            cryptoHandle = cryptoObject,
+        )
 
     override fun deleteHardwareKey() {
         val store = androidKeyStore()
@@ -127,25 +141,25 @@ class AndroidSecureKeyStore(
 
     private fun buildKey(strongBox: Boolean): SecretKey {
         val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, ANDROID_KEYSTORE)
-        val spec = KeyGenParameterSpec.Builder(
-            alias,
-            KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
-        )
-            .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-            .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-            .setKeySize(256)
-            // Per-use biometric binding: every wrap/unwrap requires a fresh auth of the
-            // Cipher via a CryptoObject. setInvalidatedByBiometricEnrollment is true by default for
-            // auth-required keys, so re-enrolling biometrics invalidates the key (→ IntegrityFailure).
-            .setUserAuthenticationRequired(true)
-            .apply {
-                // Device-unlocked gating + StrongBox are both API 28+.
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    setUnlockedDeviceRequired(true)
-                    if (strongBox) setIsStrongBoxBacked(true)
-                }
-            }
-            .build()
+        val spec =
+            KeyGenParameterSpec
+                .Builder(
+                    alias,
+                    KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
+                ).setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setKeySize(256)
+                // Per-use biometric binding: every wrap/unwrap requires a fresh auth of the
+                // Cipher via a CryptoObject. setInvalidatedByBiometricEnrollment is true by default for
+                // auth-required keys, so re-enrolling biometrics invalidates the key (→ IntegrityFailure).
+                .setUserAuthenticationRequired(true)
+                .apply {
+                    // Device-unlocked gating + StrongBox are both API 28+.
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        setUnlockedDeviceRequired(true)
+                        if (strongBox) setIsStrongBoxBacked(true)
+                    }
+                }.build()
         generator.init(spec)
         return generator.generateKey()
     }

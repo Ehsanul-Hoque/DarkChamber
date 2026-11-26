@@ -20,44 +20,60 @@ internal object PlaybackRules {
      * Where a skip of [byMs] from [positionMs] lands: never before the start, and never past the end
      * when the end is known. [durationMs] is null while the player does not know it yet.
      */
-    fun skipped(positionMs: Long, byMs: Long, durationMs: Long?): Long {
+    fun skipped(
+        positionMs: Long,
+        byMs: Long,
+        durationMs: Long?,
+    ): Long {
         val landed = (positionMs + byMs).coerceAtLeast(0L)
         return if (durationMs == null) landed else landed.coerceAtMost(durationMs)
     }
 
     /** How far along the seek bar [positionMs] is, from 0 to 1; 0 while the length is not known. */
-    fun seekFraction(positionMs: Long, durationMs: Long?): Float {
+    fun seekFraction(
+        positionMs: Long,
+        durationMs: Long?,
+    ): Float {
         if (durationMs == null || durationMs <= 0L) return 0f
         return (positionMs.toFloat() / durationMs).coerceIn(0f, 1f)
     }
 
     /** The position a point [fraction] along the seek bar stands for. */
-    fun seekPosition(fraction: Float, durationMs: Long): Long =
-        (fraction.coerceIn(0f, 1f).toDouble() * durationMs).roundToLong()
+    fun seekPosition(
+        fraction: Float,
+        durationMs: Long,
+    ): Long = (fraction.coerceIn(0f, 1f).toDouble() * durationMs).roundToLong()
 
     /** The speed the player runs at: a held half's speed while it is held, else the one that was set. */
-    fun runningSpeed(setSpeed: Float, held: HeldSpeed?): Float = held?.speed ?: setSpeed
+    fun runningSpeed(
+        setSpeed: Float,
+        held: HeldSpeed?,
+    ): Float = held?.speed ?: setSpeed
 
     /** Where a player that reported [state] stands: an ended item is ended, whatever else it says. */
-    fun status(state: PlayerState): PlaybackStatus = when {
-        state.ended -> PlaybackStatus.Ended
-        state.playing -> PlaybackStatus.Playing
-        else -> PlaybackStatus.Paused
-    }
+    fun status(state: PlayerState): PlaybackStatus =
+        when {
+            state.ended -> PlaybackStatus.Ended
+            state.playing -> PlaybackStatus.Playing
+            else -> PlaybackStatus.Paused
+        }
 
     /** What the play/pause control in the centre shows, and does, for [status]. */
-    fun centreControl(status: PlaybackStatus): CentreControl = when (status) {
-        PlaybackStatus.Playing -> CentreControl.Pause
-        PlaybackStatus.Paused -> CentreControl.Play
-        PlaybackStatus.Ended -> CentreControl.Replay
-    }
+    fun centreControl(status: PlaybackStatus): CentreControl =
+        when (status) {
+            PlaybackStatus.Playing -> CentreControl.Pause
+            PlaybackStatus.Paused -> CentreControl.Play
+            PlaybackStatus.Ended -> CentreControl.Replay
+        }
 
     /** Only a playing item keeps the screen on; a paused or finished one lets it sleep. */
     fun keepsScreenOn(status: PlaybackStatus): Boolean = status == PlaybackStatus.Playing
 }
 
 /** A half held down: slower on the left, faster on the right, only while the finger stays. */
-internal enum class HeldSpeed(val speed: Float) {
+internal enum class HeldSpeed(
+    val speed: Float,
+) {
     Slow(0.5f),
     Fast(2f),
 }
@@ -90,7 +106,12 @@ internal class PlaybackMemory {
      * Records where [id] stood as its page was left. [ended] means it had played to its end; a
      * position at the end counts as that too, so either way the item starts again from the beginning.
      */
-    fun leave(id: ByteArray, positionMs: Long, durationMs: Long?, ended: Boolean) {
+    fun leave(
+        id: ByteArray,
+        positionMs: Long,
+        durationMs: Long?,
+        ended: Boolean,
+    ) {
         val finished = ended || (durationMs != null && positionMs >= durationMs)
         positions[ItemKey(id)] = if (finished) 0L else positionMs.coerceAtLeast(0L)
     }
@@ -99,7 +120,9 @@ internal class PlaybackMemory {
     fun startPosition(id: ByteArray): Long = positions[ItemKey(id)] ?: 0L
 
     /** An id as a map key: equal by its content, which a `ByteArray` on its own is not. */
-    private class ItemKey(private val id: ByteArray) {
+    private class ItemKey(
+        private val id: ByteArray,
+    ) {
         override fun equals(other: Any?): Boolean = other is ItemKey && other.id.contentEquals(id)
 
         override fun hashCode(): Int = id.contentHashCode()

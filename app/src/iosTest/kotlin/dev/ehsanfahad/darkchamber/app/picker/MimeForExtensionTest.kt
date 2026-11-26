@@ -9,32 +9,32 @@ import kotlin.test.assertEquals
  * for what is recorded and shown in Details, and for a viewer that goes by type alone.
  */
 class MimeForExtensionTest {
-
     @Test
     fun text_files_record_their_type() {
-        val expected = mapOf(
-            "txt" to "text/plain",
-            "text" to "text/plain",
-            "md" to "text/markdown",
-            "markdown" to "text/markdown",
-            "mdown" to "text/markdown",
-            "mkd" to "text/markdown",
-            "json" to "application/json",
-            "html" to "text/html",
-            "htm" to "text/html",
-            "xhtml" to "application/xhtml+xml",
-            "xml" to "application/xml",
-            "csv" to "text/csv",
-            "tsv" to "text/tab-separated-values",
-            "yaml" to "application/yaml",
-            "yml" to "application/yaml",
-            "toml" to "application/toml",
-            "vtt" to "text/vtt",
-            "css" to "text/css",
-            "js" to "text/javascript",
-            "sh" to "application/x-sh",
-            "sql" to "application/sql",
-        )
+        val expected =
+            mapOf(
+                "txt" to "text/plain",
+                "text" to "text/plain",
+                "md" to "text/markdown",
+                "markdown" to "text/markdown",
+                "mdown" to "text/markdown",
+                "mkd" to "text/markdown",
+                "json" to "application/json",
+                "html" to "text/html",
+                "htm" to "text/html",
+                "xhtml" to "application/xhtml+xml",
+                "xml" to "application/xml",
+                "csv" to "text/csv",
+                "tsv" to "text/tab-separated-values",
+                "yaml" to "application/yaml",
+                "yml" to "application/yaml",
+                "toml" to "application/toml",
+                "vtt" to "text/vtt",
+                "css" to "text/css",
+                "js" to "text/javascript",
+                "sh" to "application/x-sh",
+                "sql" to "application/sql",
+            )
         expected.forEach { (extension, type) -> assertEquals(type, mimeForExtension(extension), extension) }
     }
 
@@ -42,8 +42,27 @@ class MimeForExtensionTest {
     @Test
     fun text_with_no_registered_type_records_plain_text() {
         listOf(
-            "ini", "cfg", "conf", "properties", "log", "srt",
-            "kt", "kts", "java", "swift", "py", "c", "h", "cpp", "hpp", "cs", "go", "rs", "rb", "php", "gradle",
+            "ini",
+            "cfg",
+            "conf",
+            "properties",
+            "log",
+            "srt",
+            "kt",
+            "kts",
+            "java",
+            "swift",
+            "py",
+            "c",
+            "h",
+            "cpp",
+            "hpp",
+            "cs",
+            "go",
+            "rs",
+            "rb",
+            "php",
+            "gradle",
         ).forEach { assertEquals("text/plain", mimeForExtension(it), it) }
     }
 

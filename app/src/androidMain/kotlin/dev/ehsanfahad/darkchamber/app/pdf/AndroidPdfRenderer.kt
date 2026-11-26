@@ -17,11 +17,11 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.PdfRefusal
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPdfBuffer
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPdfDocument
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPdfRenderer
-import java.io.FileDescriptor
-import java.io.IOException
 import kotlinx.io.Buffer
 import kotlinx.io.RawSink
 import kotlinx.io.readTo
+import java.io.FileDescriptor
+import java.io.IOException
 
 /**
  * PDFs on Android, from memory only: the decrypted file goes into an anonymous memory file
@@ -33,7 +33,9 @@ import kotlinx.io.readTo
  * renderer has its own, the renderer's when the document closes — and **not wiped** (nothing here can
  * reach those pages to zero them). This code's own transfer buffer is zeroed after every write.
  */
-internal class AndroidPdfRenderer(sdkInt: Int = Build.VERSION.SDK_INT) : VaultPdfRenderer {
+internal class AndroidPdfRenderer(
+    sdkInt: Int = Build.VERSION.SDK_INT,
+) : VaultPdfRenderer {
     override val supported: Boolean = PdfMapping.supported(sdkInt)
 
     override fun newBuffer(sizeHint: Long): VaultPdfBuffer =
@@ -42,13 +44,17 @@ internal class AndroidPdfRenderer(sdkInt: Int = Build.VERSION.SDK_INT) : VaultPd
 
 /** Where PDFs cannot be shown: takes nothing in and refuses to open. The viewer asks [VaultPdfRenderer.supported] first. */
 private object NoBuffer : VaultPdfBuffer {
-    override val sink: RawSink = object : RawSink {
-        override fun write(source: Buffer, byteCount: Long) = throw IOException("PDFs are not shown on this Android version")
+    override val sink: RawSink =
+        object : RawSink {
+            override fun write(
+                source: Buffer,
+                byteCount: Long,
+            ) = throw IOException("PDFs are not shown on this Android version")
 
-        override fun flush() = Unit
+            override fun flush() = Unit
 
-        override fun close() = Unit
-    }
+            override fun close() = Unit
+        }
 
     override fun open(): PdfOpened = PdfOpened.Refused(PdfRefusal.Unsupported)
 
@@ -61,29 +67,33 @@ private class MemoryFileBuffer : VaultPdfBuffer {
     private var own: FileDescriptor? = Os.memfd_create(NAME, 0)
     private val chunk = ByteArray(CHUNK_BYTES)
 
-    override val sink: RawSink = object : RawSink {
-        override fun write(source: Buffer, byteCount: Long) {
-            val fd = own ?: throw IOException("the buffer is closed")
-            var left = byteCount
-            try {
-                while (left > 0) {
-                    val count = minOf(left, CHUNK_BYTES.toLong()).toInt()
-                    source.readTo(chunk, 0, count)
-                    var written = 0
-                    while (written < count) written += Os.write(fd, chunk, written, count - written)
-                    left -= count
+    override val sink: RawSink =
+        object : RawSink {
+            override fun write(
+                source: Buffer,
+                byteCount: Long,
+            ) {
+                val fd = own ?: throw IOException("the buffer is closed")
+                var left = byteCount
+                try {
+                    while (left > 0) {
+                        val count = minOf(left, CHUNK_BYTES.toLong()).toInt()
+                        source.readTo(chunk, 0, count)
+                        var written = 0
+                        while (written < count) written += Os.write(fd, chunk, written, count - written)
+                        left -= count
+                    }
+                } catch (e: ErrnoException) {
+                    throw IOException("the memory buffer refused a write", e)
+                } finally {
+                    chunk.fill(0)
                 }
-            } catch (e: ErrnoException) {
-                throw IOException("the memory buffer refused a write", e)
-            } finally {
-                chunk.fill(0)
             }
+
+            override fun flush() = Unit
+
+            override fun close() = Unit
         }
-
-        override fun flush() = Unit
-
-        override fun close() = Unit
-    }
 
     override fun open(): PdfOpened {
         val fd = own ?: return PdfOpened.Refused(PdfRefusal.Unreadable)
@@ -127,7 +137,9 @@ private class MemoryFileBuffer : VaultPdfBuffer {
  * `PdfRenderer` opens one page at a time and is not safe from two threads; the viewer also makes its
  * calls one at a time, so the lock is a second guard, not the first.
  */
-private class AndroidPdfDocument(private val renderer: PdfRenderer) : VaultPdfDocument {
+private class AndroidPdfDocument(
+    private val renderer: PdfRenderer,
+) : VaultPdfDocument {
     private var closed = false
 
     override val pageCount: Int = renderer.pageCount
@@ -141,7 +153,10 @@ private class AndroidPdfDocument(private val renderer: PdfRenderer) : VaultPdfDo
         }
 
     @Synchronized
-    override fun render(index: Int, widthPx: Int): ImageBitmap? {
+    override fun render(
+        index: Int,
+        widthPx: Int,
+    ): ImageBitmap? {
         if (closed || widthPx <= 0) return null
         return try {
             renderer.openPage(index).use { page ->

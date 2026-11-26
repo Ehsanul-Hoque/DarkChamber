@@ -45,10 +45,11 @@ class VaultRootResolverTest {
     @Test
     fun resolve_runs_the_backup_exclusion_hook_with_the_root() {
         var seen: Path? = null
-        val outcome = DirectoryVaultRootResolver(vaultRoot, excludeFromBackup = {
-            seen = it
-            Outcome.Ok(Unit)
-        }).resolve()
+        val outcome =
+            DirectoryVaultRootResolver(vaultRoot, excludeFromBackup = {
+                seen = it
+                Outcome.Ok(Unit)
+            }).resolve()
 
         assertTrue(outcome is Outcome.Ok)
         assertEquals(vaultRoot, seen)
@@ -56,9 +57,10 @@ class VaultRootResolverTest {
 
     @Test
     fun resolve_surfaces_a_backup_exclusion_failure_as_err() {
-        val outcome = DirectoryVaultRootResolver(vaultRoot, excludeFromBackup = {
-            Outcome.Err(VaultError.Io(IllegalStateException("exclusion failed")))
-        }).resolve()
+        val outcome =
+            DirectoryVaultRootResolver(vaultRoot, excludeFromBackup = {
+                Outcome.Err(VaultError.Io(IllegalStateException("exclusion failed")))
+            }).resolve()
 
         assertTrue(outcome is Outcome.Err)
         assertTrue(outcome.error is VaultError.Io)

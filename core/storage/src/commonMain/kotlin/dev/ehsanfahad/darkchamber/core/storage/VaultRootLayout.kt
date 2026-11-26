@@ -20,7 +20,10 @@ import kotlinx.io.files.SystemFileSystem
  * @param fs the filesystem to operate on; defaults to [SystemFileSystem] (a param only so a test
  *   can substitute a fake).
  */
-fun prepareVaultRoot(root: Path, fs: FileSystem = SystemFileSystem): Outcome<Path> =
+fun prepareVaultRoot(
+    root: Path,
+    fs: FileSystem = SystemFileSystem,
+): Outcome<Path> =
     try {
         fs.createDirectories(root)
         fs.createDirectories(Path(root, "db"))

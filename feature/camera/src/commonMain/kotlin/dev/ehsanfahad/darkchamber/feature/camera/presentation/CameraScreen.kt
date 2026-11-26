@@ -156,83 +156,32 @@ internal fun CameraScreen(
     }
 
     BoxWithConstraints(
-        modifier = modifier
-            .fillMaxSize()
-            // Pure black, whatever the theme: a media surface (docs/DESIGN.md §2), and the one place
-            // a raw colour is the token.
-            .background(Color.Black),
+        modifier =
+            modifier
+                .fillMaxSize()
+                // Pure black, whatever the theme: a media surface (docs/DESIGN.md §2), and the one place
+                // a raw colour is the token.
+                .background(Color.Black),
     ) {
         val layout = cameraLayout(IntSize(constraints.maxWidth, constraints.maxHeight))
         val angle = rememberIconAngle(tilt, layout)
-        val controls = Controls(
-            state = state,
-            angle = angle,
-            blinks = blinks,
-            lastShot = lastShot,
-            onShoot = shoot,
-            onFlip = onFlip,
-            onCycleFlash = onCycleFlash,
-            onToggleTorch = onToggleTorch,
-            onOpenLastShot = onOpenLastShot,
-        )
+        val controls =
+            Controls(
+                state = state,
+                angle = angle,
+                blinks = blinks,
+                lastShot = lastShot,
+                onShoot = shoot,
+                onFlip = onFlip,
+                onCycleFlash = onCycleFlash,
+                onToggleTorch = onToggleTorch,
+                onOpenLastShot = onOpenLastShot,
+            )
         when (layout) {
-            CameraLayout.Below -> Box(modifier = Modifier.fillMaxSize()) {
-                var barHeight by remember { mutableIntStateOf(0) }
-                val barDp = with(LocalDensity.current) { barHeight.toDp() }
-                ViewfinderArea(
-                    state = state,
-                    layout = layout,
-                    blinks = blinks,
-                    preview = preview,
-                    onZoom = onZoom,
-                    onFocus = onFocus,
-                    onAllow = onAllow,
-                    onOpenSettings = onOpenSettings,
-                    // A photo's 4:3 box sits under the bar; a clip's 16:9 box is centred, under the
-                    // chrome's bands.
-                    topInset = if (state.mode == CaptureMode.Photo) barDp else 0.dp,
-                    modifier = Modifier.fillMaxSize(),
-                )
-                TopBar(
-                    state = state,
-                    angle = angle,
-                    unreadableNameLabel = unreadableNameLabel,
-                    onClose = onClose,
-                    onSwitchQuality = onSwitchQuality,
-                    onToggleSound = onToggleSound,
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .fillMaxWidth()
-                        .background(BandColor)
-                        // Measured with the status bar's inset in it, so a photo's box starts below
-                        // both.
-                        .onSizeChanged { barHeight = it.height }
-                        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)),
-                )
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .background(BandColor)
-                        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)),
-                ) {
-                    BelowViewfinder(state = state, onSetMode = onSetMode, onRequestMicrophone = onRequestMicrophone)
-                    BottomRow(controls)
-                }
-            }
-            // The wide-window fallback, where the portrait hold was refused: the display turns, so
-            // the icons stay upright as drawn and the controls stand beside the viewfinder.
-            CameraLayout.Beside -> Row(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
-                Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                    TopBar(
-                        state = state,
-                        angle = angle,
-                        unreadableNameLabel = unreadableNameLabel,
-                        onClose = onClose,
-                        onSwitchQuality = onSwitchQuality,
-                        onToggleSound = onToggleSound,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
+            CameraLayout.Below -> {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    var barHeight by remember { mutableIntStateOf(0) }
+                    val barDp = with(LocalDensity.current) { barHeight.toDp() }
                     ViewfinderArea(
                         state = state,
                         layout = layout,
@@ -242,12 +191,78 @@ internal fun CameraScreen(
                         onFocus = onFocus,
                         onAllow = onAllow,
                         onOpenSettings = onOpenSettings,
-                        topInset = 0.dp,
-                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                        // A photo's 4:3 box sits under the bar; a clip's 16:9 box is centred, under the
+                        // chrome's bands.
+                        topInset = if (state.mode == CaptureMode.Photo) barDp else 0.dp,
+                        modifier = Modifier.fillMaxSize(),
                     )
-                    BelowViewfinder(state = state, onSetMode = onSetMode, onRequestMicrophone = onRequestMicrophone)
+                    TopBar(
+                        state = state,
+                        angle = angle,
+                        unreadableNameLabel = unreadableNameLabel,
+                        onClose = onClose,
+                        onSwitchQuality = onSwitchQuality,
+                        onToggleSound = onToggleSound,
+                        modifier =
+                            Modifier
+                                .align(Alignment.TopCenter)
+                                .fillMaxWidth()
+                                .background(BandColor)
+                                // Measured with the status bar's inset in it, so a photo's box starts below
+                                // both.
+                                .onSizeChanged { barHeight = it.height }
+                                .windowInsetsPadding(
+                                    WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
+                                ),
+                    )
+                    Column(
+                        modifier =
+                            Modifier
+                                .align(Alignment.BottomCenter)
+                                .fillMaxWidth()
+                                .background(BandColor)
+                                .windowInsetsPadding(
+                                    WindowInsets.safeDrawing.only(
+                                        WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal,
+                                    ),
+                                ),
+                    ) {
+                        BelowViewfinder(state = state, onSetMode = onSetMode, onRequestMicrophone = onRequestMicrophone)
+                        BottomRow(controls)
+                    }
                 }
-                SideColumn(controls)
+            }
+
+            // The wide-window fallback, where the portrait hold was refused: the display turns, so
+            // the icons stay upright as drawn and the controls stand beside the viewfinder.
+            CameraLayout.Beside -> {
+                Row(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
+                    Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                        TopBar(
+                            state = state,
+                            angle = angle,
+                            unreadableNameLabel = unreadableNameLabel,
+                            onClose = onClose,
+                            onSwitchQuality = onSwitchQuality,
+                            onToggleSound = onToggleSound,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        ViewfinderArea(
+                            state = state,
+                            layout = layout,
+                            blinks = blinks,
+                            preview = preview,
+                            onZoom = onZoom,
+                            onFocus = onFocus,
+                            onAllow = onAllow,
+                            onOpenSettings = onOpenSettings,
+                            topInset = 0.dp,
+                            modifier = Modifier.weight(1f).fillMaxWidth(),
+                        )
+                        BelowViewfinder(state = state, onSetMode = onSetMode, onRequestMicrophone = onRequestMicrophone)
+                    }
+                    SideColumn(controls)
+                }
             }
         }
     }
@@ -271,13 +286,23 @@ private class Controls(
  * way round, or snapped under reduced motion and in the wide fallback.
  */
 @Composable
-private fun rememberIconAngle(tilt: Int, layout: CameraLayout): Float {
+private fun rememberIconAngle(
+    tilt: Int,
+    layout: CameraLayout,
+): Float {
     val reduced = prefersReducedMotion()
     val duration = DarkChamberTheme.motion.motionBase
     val angle = remember { Animatable(0f) }
     LaunchedEffect(tilt, layout, reduced) {
         val turn = iconTurn(current = angle.value, tilt = tilt, layout = layout, reducedMotion = reduced)
-        if (turn.animated) angle.animateTo(turn.degrees, tween(durationMillis = duration)) else angle.snapTo(turn.degrees)
+        if (turn.animated) {
+            angle.animateTo(
+                turn.degrees,
+                tween(durationMillis = duration),
+            )
+        } else {
+            angle.snapTo(turn.degrees)
+        }
     }
     return angle.value
 }
@@ -288,7 +313,9 @@ private fun Modifier.turned(angle: Float): Modifier = graphicsLayer { rotationZ 
 private enum class Opening { Row, Column, InPlace }
 
 // What an appearing control last showed, so it can still draw it while it fades out.
-private class Held<T : Any>(var value: T? = null)
+private class Held<T : Any>(
+    var value: T? = null,
+)
 
 /**
  * [value]'s content while it is non-null, faded in and out at `motionFast` — and opened along the
@@ -296,7 +323,11 @@ private class Held<T : Any>(var value: T? = null)
  * while it leaves. Instant under reduced motion, like the icons' turn.
  */
 @Composable
-private fun <T : Any> Appearing(value: T?, opening: Opening, content: @Composable (T) -> Unit) {
+private fun <T : Any> Appearing(
+    value: T?,
+    opening: Opening,
+    content: @Composable (T) -> Unit,
+) {
     val reduced = prefersReducedMotion()
     val spec = tween<Float>(durationMillis = DarkChamberTheme.motion.motionFast)
     val sizeSpec = tween<IntSize>(durationMillis = DarkChamberTheme.motion.motionFast)
@@ -304,18 +335,20 @@ private fun <T : Any> Appearing(value: T?, opening: Opening, content: @Composabl
     if (value != null) held.value = value
     AnimatedVisibility(
         visible = value != null,
-        enter = when {
-            reduced -> EnterTransition.None
-            opening == Opening.Row -> fadeIn(spec) + expandHorizontally(sizeSpec)
-            opening == Opening.Column -> fadeIn(spec) + expandVertically(sizeSpec)
-            else -> fadeIn(spec)
-        },
-        exit = when {
-            reduced -> ExitTransition.None
-            opening == Opening.Row -> fadeOut(spec) + shrinkHorizontally(sizeSpec)
-            opening == Opening.Column -> fadeOut(spec) + shrinkVertically(sizeSpec)
-            else -> fadeOut(spec)
-        },
+        enter =
+            when {
+                reduced -> EnterTransition.None
+                opening == Opening.Row -> fadeIn(spec) + expandHorizontally(sizeSpec)
+                opening == Opening.Column -> fadeIn(spec) + expandVertically(sizeSpec)
+                else -> fadeIn(spec)
+            },
+        exit =
+            when {
+                reduced -> ExitTransition.None
+                opening == Opening.Row -> fadeOut(spec) + shrinkHorizontally(sizeSpec)
+                opening == Opening.Column -> fadeOut(spec) + shrinkVertically(sizeSpec)
+                else -> fadeOut(spec)
+            },
     ) {
         held.value?.let { content(it) }
     }
@@ -329,7 +362,7 @@ private fun TopBar(
     onClose: () -> Unit,
     onSwitchQuality: () -> Unit,
     onToggleSound: () -> Unit,
-    modifier: Modifier,
+    modifier: Modifier = Modifier,
 ) {
     val spacing = DarkChamberTheme.spacing
     val colors = DarkChamberTheme.colors
@@ -361,11 +394,12 @@ private fun TopBar(
                 style = DarkChamberTheme.typography.label,
                 color = colors.sealed,
                 maxLines = 1,
-                modifier = Modifier
-                    .padding(end = spacing.spaceXs)
-                    .clip(DarkChamberTheme.shapes.small)
-                    .background(colors.sealedContainer)
-                    .padding(horizontal = spacing.spaceXs, vertical = spacing.spaceXxs),
+                modifier =
+                    Modifier
+                        .padding(end = spacing.spaceXs)
+                        .clip(DarkChamberTheme.shapes.small)
+                        .background(colors.sealedContainer)
+                        .padding(horizontal = spacing.spaceXs, vertical = spacing.spaceXxs),
             )
         }
         Appearing(state.microphoneToggle, Opening.Row) { toggle ->
@@ -382,20 +416,22 @@ private fun TopBar(
             // label-sized thing.
             Box(
                 contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .size(spacing.spaceXxl)
-                    .clickable(role = Role.Button, onClick = onSwitchQuality)
-                    .semantics { contentDescription = CameraFormat.qualityDescription(chip.current) },
+                modifier =
+                    Modifier
+                        .size(spacing.spaceXxl)
+                        .clickable(role = Role.Button, onClick = onSwitchQuality)
+                        .semantics { contentDescription = CameraFormat.qualityDescription(chip.current) },
             ) {
                 Text(
                     text = CameraFormat.qualityLabel(chip.current),
                     style = DarkChamberTheme.typography.label,
                     color = colors.textPrimary,
                     maxLines = 1,
-                    modifier = Modifier
-                        .turned(angle)
-                        .border(1.dp, colors.outline, DarkChamberTheme.shapes.small)
-                        .padding(horizontal = spacing.spaceXs, vertical = spacing.spaceXxs),
+                    modifier =
+                        Modifier
+                            .turned(angle)
+                            .border(1.dp, colors.outline, DarkChamberTheme.shapes.small)
+                            .padding(horizontal = spacing.spaceXs, vertical = spacing.spaceXxs),
                 )
             }
         }
@@ -418,7 +454,7 @@ private fun ViewfinderArea(
     onAllow: () -> Unit,
     onOpenSettings: () -> Unit,
     topInset: Dp,
-    modifier: Modifier,
+    modifier: Modifier = Modifier,
 ) {
     val reduced = prefersReducedMotion()
     val long = state.captureRatio.longOverShort
@@ -455,7 +491,11 @@ private fun ViewfinderArea(
  * recording, the status in their place.
  */
 @Composable
-private fun BelowViewfinder(state: CameraState, onSetMode: (CaptureMode) -> Unit, onRequestMicrophone: () -> Unit) {
+private fun BelowViewfinder(
+    state: CameraState,
+    onSetMode: (CaptureMode) -> Unit,
+    onRequestMicrophone: () -> Unit,
+) {
     val spacing = DarkChamberTheme.spacing
     val colors = DarkChamberTheme.colors
     Column(
@@ -496,10 +536,11 @@ private fun BelowViewfinder(state: CameraState, onSetMode: (CaptureMode) -> Unit
         // The recording is held so its status can still be drawn while it fades out after the stop.
         val recording = remember { Held<ActiveRecording>() }
         state.recorder.active?.let { recording.value = it }
-        val row = when (state.row) {
-            CameraRow.ModeLabels -> if (state.showsViewfinder) CameraRow.ModeLabels else null
-            CameraRow.Status -> if (state.recorder.active != null) CameraRow.Status else null
-        }
+        val row =
+            when (state.row) {
+                CameraRow.ModeLabels -> if (state.showsViewfinder) CameraRow.ModeLabels else null
+                CameraRow.Status -> if (state.recorder.active != null) CameraRow.Status else null
+            }
         Swapping(row) { shown ->
             when (shown) {
                 CameraRow.ModeLabels -> ModeLabels(selected = state.mode, onSetMode = onSetMode)
@@ -512,7 +553,10 @@ private fun BelowViewfinder(state: CameraState, onSetMode: (CaptureMode) -> Unit
 
 /** [content] for [target], cross-faded at `motionFast` when it changes and resized smoothly; a cut under reduced motion. */
 @Composable
-private fun <T> Swapping(target: T, content: @Composable (T) -> Unit) {
+private fun <T> Swapping(
+    target: T,
+    content: @Composable (T) -> Unit,
+) {
     if (prefersReducedMotion()) {
         content(target)
         return
@@ -532,7 +576,10 @@ private fun <T> Swapping(target: T, content: @Composable (T) -> Unit) {
 
 /** PHOTO · VIDEO, tapped to switch; the selected one in accent. Text, so it never turns. */
 @Composable
-private fun ModeLabels(selected: CaptureMode, onSetMode: (CaptureMode) -> Unit) {
+private fun ModeLabels(
+    selected: CaptureMode,
+    onSetMode: (CaptureMode) -> Unit,
+) {
     val spacing = DarkChamberTheme.spacing
     val colors = DarkChamberTheme.colors
     Row(horizontalArrangement = Arrangement.spacedBy(spacing.spaceXs)) {
@@ -540,11 +587,12 @@ private fun ModeLabels(selected: CaptureMode, onSetMode: (CaptureMode) -> Unit) 
             val isSelected = mode == selected
             Box(
                 contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .widthIn(min = spacing.spaceXxl * 2)
-                    .clip(DarkChamberTheme.shapes.small)
-                    .selectable(selected = isSelected, role = Role.Tab, onClick = { onSetMode(mode) })
-                    .padding(horizontal = spacing.spaceSm, vertical = spacing.spaceSm),
+                modifier =
+                    Modifier
+                        .widthIn(min = spacing.spaceXxl * 2)
+                        .clip(DarkChamberTheme.shapes.small)
+                        .selectable(selected = isSelected, role = Role.Tab, onClick = { onSetMode(mode) })
+                        .padding(horizontal = spacing.spaceSm, vertical = spacing.spaceSm),
             ) {
                 Text(
                     text = CameraFormat.modeLabel(mode).uppercase(),
@@ -558,7 +606,10 @@ private fun ModeLabels(selected: CaptureMode, onSetMode: (CaptureMode) -> Unit) 
 
 /** ● 02:14 · 1.2 GB recorded · 3.4 GB left, and the no-sound mark when the clip has none. */
 @Composable
-private fun RecordingStatus(active: ActiveRecording, noSound: Boolean) {
+private fun RecordingStatus(
+    active: ActiveRecording,
+    noSound: Boolean,
+) {
     val spacing = DarkChamberTheme.spacing
     val colors = DarkChamberTheme.colors
     val progress by active.progress.collectAsState()
@@ -598,7 +649,7 @@ private fun Viewfinder(
     preview: @Composable (Modifier) -> Unit,
     onZoom: (Float) -> Unit,
     onFocus: (x: Float, y: Float) -> Unit,
-    modifier: Modifier,
+    modifier: Modifier = Modifier,
 ) {
     val colors = DarkChamberTheme.colors
     val density = LocalDensity.current
@@ -611,22 +662,22 @@ private fun Viewfinder(
     val currentOnFocus by rememberUpdatedState(onFocus)
 
     Box(
-        modifier = modifier
-            // The platform's preview fills by scaling its picture past its own bounds; unclipped, it
-            // draws over the bar and under the controls whenever the box is not the camera's shape.
-            .clipToBounds()
-            .onSizeChanged { size = it }
-            .pointerInput(Unit) {
-                detectTapGestures { tap ->
-                    val (x, y) = focusFractions(tap, size) ?: return@detectTapGestures
-                    focusAt = tap
-                    focusTaps++
-                    currentOnFocus(x, y)
-                }
-            }
-            .pointerInput(Unit) {
-                detectTransformGestures { _, _, pinch, _ -> if (pinch != 1f) currentOnZoom(currentZoom * pinch) }
-            },
+        modifier =
+            modifier
+                // The platform's preview fills by scaling its picture past its own bounds; unclipped, it
+                // draws over the bar and under the controls whenever the box is not the camera's shape.
+                .clipToBounds()
+                .onSizeChanged { size = it }
+                .pointerInput(Unit) {
+                    detectTapGestures { tap ->
+                        val (x, y) = focusFractions(tap, size) ?: return@detectTapGestures
+                        focusAt = tap
+                        focusTaps++
+                        currentOnFocus(x, y)
+                    }
+                }.pointerInput(Unit) {
+                    detectTransformGestures { _, _, pinch, _ -> if (pinch != 1f) currentOnZoom(currentZoom * pinch) }
+                },
     ) {
         preview(Modifier.fillMaxSize())
 
@@ -634,10 +685,11 @@ private fun Viewfinder(
             val half = with(density) { FocusSize.toPx() } / 2f
             // A rounded square, not a ring: the full circle is the aperture's alone (docs/DESIGN.md §4).
             Box(
-                modifier = Modifier
-                    .offset { IntOffset((at.x - half).roundToInt(), (at.y - half).roundToInt()) }
-                    .size(FocusSize)
-                    .border(2.dp, colors.accent, DarkChamberTheme.shapes.small),
+                modifier =
+                    Modifier
+                        .offset { IntOffset((at.x - half).roundToInt(), (at.y - half).roundToInt()) }
+                        .size(FocusSize)
+                        .border(2.dp, colors.accent, DarkChamberTheme.shapes.small),
             )
         }
 
@@ -678,7 +730,11 @@ private fun CaptureBlink(blinks: Int) {
 
 /** What stands where the viewfinder would, with its one useful action if it has one. */
 @Composable
-private fun Explainer(explainer: CameraExplainer, onAllow: () -> Unit, onOpenSettings: () -> Unit) {
+private fun Explainer(
+    explainer: CameraExplainer,
+    onAllow: () -> Unit,
+    onOpenSettings: () -> Unit,
+) {
     val copy = CameraFormat.explainer(explainer) ?: return
     val spacing = DarkChamberTheme.spacing
     val colors = DarkChamberTheme.colors
@@ -765,20 +821,28 @@ private fun LightControl(controls: Controls) {
     Box(modifier = Modifier.size(spacing.spaceXxl)) {
         Swapping(state.light?.takeIf { state.showsViewfinder }) { light ->
             when (light) {
-                null -> Unit
-                is LightControl.Flash -> IconButton(onClick = controls.onCycleFlash, modifier = Modifier.size(spacing.spaceXxl)) {
-                    FlashMark(
-                        glyph = flashGlyph(light.mode),
-                        contentDescription = CameraFormat.flashDescription(light.mode),
-                        modifier = Modifier.size(spacing.spaceLg).turned(controls.angle),
-                    )
+                null -> {
+                    Unit
                 }
-                is LightControl.Torch -> IconButton(onClick = controls.onToggleTorch, modifier = Modifier.size(spacing.spaceXxl)) {
-                    TorchMark(
-                        on = light.on,
-                        contentDescription = CameraFormat.torchDescription(light.on),
-                        modifier = Modifier.size(spacing.spaceLg).turned(controls.angle),
-                    )
+
+                is LightControl.Flash -> {
+                    IconButton(onClick = controls.onCycleFlash, modifier = Modifier.size(spacing.spaceXxl)) {
+                        FlashMark(
+                            glyph = flashGlyph(light.mode),
+                            contentDescription = CameraFormat.flashDescription(light.mode),
+                            modifier = Modifier.size(spacing.spaceLg).turned(controls.angle),
+                        )
+                    }
+                }
+
+                is LightControl.Torch -> {
+                    IconButton(onClick = controls.onToggleTorch, modifier = Modifier.size(spacing.spaceXxl)) {
+                        TorchMark(
+                            on = light.on,
+                            contentDescription = CameraFormat.torchDescription(light.on),
+                            modifier = Modifier.size(spacing.spaceLg).turned(controls.angle),
+                        )
+                    }
                 }
             }
         }
@@ -814,25 +878,31 @@ private fun LastShotTile(controls: Controls) {
     val shape = DarkChamberTheme.shapes.medium
     val radius = DarkChamberTheme.shapes.radiusMd
     val tile = controls.state.tile
-    val description = if (tile.saving) {
-        CameraFormat.savingDescription(tile.progress)
-    } else {
-        CameraFormat.lastShotDescription(tile.lastShot)
-    }
+    val description =
+        if (tile.saving) {
+            CameraFormat.savingDescription(tile.progress)
+        } else {
+            CameraFormat.lastShotDescription(tile.lastShot)
+        }
     Box(
-        modifier = Modifier
-            .size(TileSize)
-            .turned(controls.angle)
-            .clip(shape)
-            .clickable(enabled = controls.state.lastShotOpens, role = Role.Button, onClick = controls.onOpenLastShot)
-            .semantics { contentDescription = description },
+        modifier =
+            Modifier
+                .size(TileSize)
+                .turned(controls.angle)
+                .clip(shape)
+                .clickable(
+                    enabled = controls.state.lastShotOpens,
+                    role = Role.Button,
+                    onClick = controls.onOpenLastShot,
+                ).semantics { contentDescription = description },
     ) {
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .clip(shape)
-                .background(colors.surfaceRaised)
-                .border(1.dp, colors.outline, shape),
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .clip(shape)
+                    .background(colors.surfaceRaised)
+                    .border(1.dp, colors.outline, shape),
         ) {
             tile.lastShot?.let { controls.lastShot(it.itemId, Modifier.fillMaxSize()) }
         }
@@ -842,28 +912,40 @@ private fun LastShotTile(controls: Controls) {
 
 /** The tile's border traced in accent as far as the save has got — the tile's own shape, not a circle. */
 @Composable
-private fun SavingRing(progress: Float?, radius: Dp) {
+private fun SavingRing(
+    progress: Float?,
+    radius: Dp,
+) {
     val accent = DarkChamberTheme.colors.accent
     Canvas(modifier = Modifier.fillMaxSize()) {
         val stroke = RingWidth.toPx()
         val inset = stroke / 2f
-        val outline = Path().apply {
-            addRoundRect(
-                RoundRect(
-                    left = inset,
-                    top = inset,
-                    right = size.width - inset,
-                    bottom = size.height - inset,
-                    cornerRadius = CornerRadius(radius.toPx()),
-                ),
-            )
-        }
-        val traced = if (progress == null) {
-            outline
-        } else {
-            val measure = PathMeasure().apply { setPath(outline, forceClosed = true) }
-            Path().also { measure.getSegment(0f, measure.length * progress.coerceIn(0f, 1f), it, startWithMoveTo = true) }
-        }
+        val outline =
+            Path().apply {
+                addRoundRect(
+                    RoundRect(
+                        left = inset,
+                        top = inset,
+                        right = size.width - inset,
+                        bottom = size.height - inset,
+                        cornerRadius = CornerRadius(radius.toPx()),
+                    ),
+                )
+            }
+        val traced =
+            if (progress == null) {
+                outline
+            } else {
+                val measure = PathMeasure().apply { setPath(outline, forceClosed = true) }
+                Path().also {
+                    measure.getSegment(
+                        0f,
+                        measure.length * progress.coerceIn(0f, 1f),
+                        it,
+                        startWithMoveTo = true,
+                    )
+                }
+            }
         drawPath(traced, color = accent, style = Stroke(width = stroke))
     }
 }
@@ -875,7 +957,11 @@ private fun SavingRing(progress: Float?, radius: Dp) {
  * pulses slowly — steady under reduced motion. Disabled, it is drawn dimmed and does not respond.
  */
 @Composable
-private fun Shutter(shutter: Shutter, blinks: Int, onShoot: () -> Unit) {
+private fun Shutter(
+    shutter: Shutter,
+    blinks: Int,
+    onShoot: () -> Unit,
+) {
     val motion = DarkChamberTheme.motion
     val accent = DarkChamberTheme.colors.accent
     var shut by remember { mutableStateOf(false) }
@@ -886,24 +972,26 @@ private fun Shutter(shutter: Shutter, blinks: Int, onShoot: () -> Unit) {
         shut = false
     }
     val pulsing = shutter.kind == ShutterKind.Stop && !prefersReducedMotion()
-    val ringAlpha = if (pulsing) {
-        val pulse = rememberInfiniteTransition()
-        val value by pulse.animateFloat(
-            initialValue = 1f,
-            targetValue = PulseLow,
-            animationSpec = infiniteRepeatable(tween(durationMillis = PulseMillis), RepeatMode.Reverse),
-        )
-        value
-    } else {
-        1f
-    }
+    val ringAlpha =
+        if (pulsing) {
+            val pulse = rememberInfiniteTransition()
+            val value by pulse.animateFloat(
+                initialValue = 1f,
+                targetValue = PulseLow,
+                animationSpec = infiniteRepeatable(tween(durationMillis = PulseMillis), RepeatMode.Reverse),
+            )
+            value
+        } else {
+            1f
+        }
     Box(
         contentAlignment = Alignment.Center,
-        modifier = Modifier
-            .size(ApertureDefaults.Size)
-            .clip(CircleShape)
-            .clickable(enabled = shutter.enabled, role = Role.Button, onClick = onShoot)
-            .alpha(if (shutter.enabled) 1f else DisabledAlpha),
+        modifier =
+            Modifier
+                .size(ApertureDefaults.Size)
+                .clip(CircleShape)
+                .clickable(enabled = shutter.enabled, role = Role.Button, onClick = onShoot)
+                .alpha(if (shutter.enabled) 1f else DisabledAlpha),
     ) {
         Box(modifier = Modifier.alpha(ringAlpha)) {
             Aperture(
@@ -912,10 +1000,20 @@ private fun Shutter(shutter: Shutter, blinks: Int, onShoot: () -> Unit) {
             )
         }
         when (shutter.kind) {
-            ShutterKind.Photo -> Unit
+            ShutterKind.Photo -> {
+                Unit
+            }
+
             // Inside the aperture, so the one place a full circle belongs.
-            ShutterKind.Record -> Box(modifier = Modifier.size(RecordDotSize).clip(CircleShape).background(accent))
-            ShutterKind.Stop -> Box(modifier = Modifier.size(StopSquareSize).clip(RoundedCornerShape(StopCorner)).background(accent))
+            ShutterKind.Record -> {
+                Box(modifier = Modifier.size(RecordDotSize).clip(CircleShape).background(accent))
+            }
+
+            ShutterKind.Stop -> {
+                Box(
+                    modifier = Modifier.size(StopSquareSize).clip(RoundedCornerShape(StopCorner)).background(accent),
+                )
+            }
         }
     }
 }

@@ -12,10 +12,10 @@ import dev.ehsanfahad.darkchamber.core.storage.VaultStorage
 import kotlinx.io.Buffer
 import kotlinx.io.IOException
 import kotlinx.io.RawSource
-import kotlinx.io.readByteArray
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 import kotlinx.io.files.SystemTemporaryDirectory
+import kotlinx.io.readByteArray
 import kotlin.random.Random
 import kotlin.random.nextULong
 import kotlin.test.AfterTest
@@ -60,15 +60,18 @@ class VaultImportHandedSourceTest {
     private fun newSession(): VaultSession =
         VaultSession.createVault(engine, kdf, "correct horse battery".encodeToByteArray(), cheapKdf).session
 
-    private fun objects(session: VaultSession, storage: VaultStorage, catalog: CatalogStore) =
-        VaultObjects(
-            session = session,
-            storage = storage,
-            catalog = catalog,
-            codec = DchmCodec(engine),
-            clock = { 42L },
-            random = Random(11).let { r -> { n: Int -> r.nextBytes(n) } },
-        )
+    private fun objects(
+        session: VaultSession,
+        storage: VaultStorage,
+        catalog: CatalogStore,
+    ) = VaultObjects(
+        session = session,
+        storage = storage,
+        catalog = catalog,
+        codec = DchmCodec(engine),
+        clock = { 42L },
+        random = Random(11).let { r -> { n: Int -> r.nextBytes(n) } },
+    )
 
     private fun tmpEntries(): List<Path> = SystemFileSystem.list(Path(testDir, "tmp")).toList()
 
@@ -79,14 +82,15 @@ class VaultImportHandedSourceTest {
         val opener = TrackingOpener(data, maxOpens = Int.MAX_VALUE)
         val handed = TrackedSource(data)
 
-        val result = vo.importObject(
-            kind = VaultItemKind.FILE.code,
-            name = "handed.bin",
-            mime = "application/octet-stream",
-            chunkSize = 64,
-            first = handed,
-            openSource = opener::open,
-        )
+        val result =
+            vo.importObject(
+                kind = VaultItemKind.FILE.code,
+                name = "handed.bin",
+                mime = "application/octet-stream",
+                chunkSize = 64,
+                first = handed,
+                openSource = opener::open,
+            )
 
         assertIs<Outcome.Ok<ByteArray>>(result)
         // Without a handed source this import opens four times: the held first open, the
@@ -102,14 +106,15 @@ class VaultImportHandedSourceTest {
         val data = ByteArray(300) { it.toByte() }
         val handed = TrackedSource(data)
 
-        val result = vo.importObject(
-            kind = VaultItemKind.FILE.code,
-            name = "reopenable.bin",
-            mime = "application/octet-stream",
-            chunkSize = 64,
-            first = handed,
-            openSource = { TrackedSource(data) },
-        )
+        val result =
+            vo.importObject(
+                kind = VaultItemKind.FILE.code,
+                name = "reopenable.bin",
+                mime = "application/octet-stream",
+                chunkSize = 64,
+                first = handed,
+                openSource = { TrackedSource(data) },
+            )
 
         assertIs<Outcome.Ok<ByteArray>>(result)
         // The source re-opens, so the payload streams in place and the handed source is never read.
@@ -125,15 +130,16 @@ class VaultImportHandedSourceTest {
         val data = ByteArray(300) { (it * 3 + 1).toByte() }
         val handed = TrackedSource(data)
 
-        val id = vo.importObject(
-            kind = VaultItemKind.FILE.code,
-            name = "one-shot.bin",
-            mime = "application/octet-stream",
-            chunkSize = 64,
-            first = handed,
-            // Nothing re-opens: the handed source is the only one there is, so it must be spilled.
-            openSource = { throw IOException("this source opens only once") },
-        )
+        val id =
+            vo.importObject(
+                kind = VaultItemKind.FILE.code,
+                name = "one-shot.bin",
+                mime = "application/octet-stream",
+                chunkSize = 64,
+                first = handed,
+                // Nothing re-opens: the handed source is the only one there is, so it must be spilled.
+                openSource = { throw IOException("this source opens only once") },
+            )
 
         assertIs<Outcome.Ok<ByteArray>>(id, "a handed one-shot source must still import")
         assertTrue(handed.bytesRead > 0, "the handed source supplied the payload")
@@ -154,14 +160,15 @@ class VaultImportHandedSourceTest {
         // Pull the items table out from under the store so the row insert fails after the bytes land.
         catalog.close()
 
-        val result = vo.importObject(
-            kind = VaultItemKind.FILE.code,
-            name = "doomed.bin",
-            mime = "application/octet-stream",
-            chunkSize = 64,
-            first = handed,
-            openSource = { TrackedSource(data) },
-        )
+        val result =
+            vo.importObject(
+                kind = VaultItemKind.FILE.code,
+                name = "doomed.bin",
+                mime = "application/octet-stream",
+                chunkSize = 64,
+                first = handed,
+                openSource = { TrackedSource(data) },
+            )
 
         assertIs<Outcome.Err>(result, "a broken catalog must fail the import")
         assertTrue(handed.closed, "a failed import must not leak the descriptor it was handed")
@@ -176,14 +183,15 @@ class VaultImportHandedSourceTest {
         // for a DEK, so the encrypt throws from inside the spill's block rather than returning.
         val handed = TrackedSource(data, onExhausted = session::close)
 
-        val result = vo.importObject(
-            kind = VaultItemKind.FILE.code,
-            name = "locked.bin",
-            mime = "application/octet-stream",
-            chunkSize = 64,
-            first = handed,
-            openSource = { throw IOException("this source opens only once") },
-        )
+        val result =
+            vo.importObject(
+                kind = VaultItemKind.FILE.code,
+                name = "locked.bin",
+                mime = "application/octet-stream",
+                chunkSize = 64,
+                first = handed,
+                openSource = { throw IOException("this source opens only once") },
+            )
 
         assertIs<Outcome.Err>(result, "a dead session must not throw out of importObject")
         assertTrue(handed.closed, "a throw from inside the spill must still release the descriptor")
@@ -196,13 +204,14 @@ class VaultImportHandedSourceTest {
         val data = ByteArray(300) { it.toByte() }
         val opener = TrackingOpener(data, maxOpens = Int.MAX_VALUE)
 
-        val result = vo.importObject(
-            kind = VaultItemKind.FILE.code,
-            name = "unhanded.bin",
-            mime = "application/octet-stream",
-            chunkSize = 64,
-            openSource = opener::open,
-        )
+        val result =
+            vo.importObject(
+                kind = VaultItemKind.FILE.code,
+                name = "unhanded.bin",
+                mime = "application/octet-stream",
+                chunkSize = 64,
+                openSource = opener::open,
+            )
 
         assertIs<Outcome.Ok<ByteArray>>(result)
         // The default is what every caller but the import use case relies on, including the preview
@@ -226,7 +235,10 @@ private class TrackedSource(
     var closed: Boolean = false
         private set
 
-    override fun readAtMostTo(sink: Buffer, byteCount: Long): Long {
+    override fun readAtMostTo(
+        sink: Buffer,
+        byteCount: Long,
+    ): Long {
         val n = buffer.readAtMostTo(sink, byteCount)
         if (n > 0L) bytesRead += n
         if (n == -1L && !reported) {
@@ -243,7 +255,10 @@ private class TrackedSource(
 }
 
 /** Counts the opens an import performs, and the closes it balances them with. */
-private class TrackingOpener(private val data: ByteArray, private val maxOpens: Int) {
+private class TrackingOpener(
+    private val data: ByteArray,
+    private val maxOpens: Int,
+) {
     var opens = 0
         private set
     var created = 0
@@ -258,7 +273,10 @@ private class TrackingOpener(private val data: ByteArray, private val maxOpens: 
         return object : RawSource {
             private val buffer = Buffer().apply { write(data) }
 
-            override fun readAtMostTo(sink: Buffer, byteCount: Long): Long = buffer.readAtMostTo(sink, byteCount)
+            override fun readAtMostTo(
+                sink: Buffer,
+                byteCount: Long,
+            ): Long = buffer.readAtMostTo(sink, byteCount)
 
             override fun close() {
                 closed++

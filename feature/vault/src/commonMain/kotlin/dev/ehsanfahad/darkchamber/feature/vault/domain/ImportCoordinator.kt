@@ -10,13 +10,13 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.VaultImports
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.withContext
-import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.concurrent.Volatile
+import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.cancellation.CancellationException
 
 /**
@@ -75,7 +75,6 @@ internal class ImportCoordinator(
      */
     var deletableOriginals: List<PickedFile> = emptyList()
         private set
-
 
     override fun importPhotos(albumId: ByteArray?) = start(albumId) { photoPicker.pickPhotos() }
 
@@ -140,9 +139,10 @@ internal class ImportCoordinator(
             // nothing about this coroutine guarantees that, and overwriting a newer state with an
             // older one is how a summary starts describing the wrong batch.
             val current = _state.value as? ImportState.Finished ?: return@launch
-            _state.value = current.copy(
-                originalDelete = OriginalDelete.Done(deleted = deleted, requested = originals.size),
-            )
+            _state.value =
+                current.copy(
+                    originalDelete = OriginalDelete.Done(deleted = deleted, requested = originals.size),
+                )
         }
     }
 
@@ -160,7 +160,10 @@ internal class ImportCoordinator(
      * stored on this object: a field would be a second thing a later batch could leave stale, and the
      * destination has exactly one life — this pick.
      */
-    private fun start(albumId: ByteArray?, pick: suspend () -> List<PickedFile>) {
+    private fun start(
+        albumId: ByteArray?,
+        pick: suspend () -> List<PickedFile>,
+    ) {
         // Set before the coroutine is even scheduled, so a double tap cannot open two pickers.
         if (isRunning) return
         cancelled = false
@@ -169,63 +172,68 @@ internal class ImportCoordinator(
         deletableOriginals = emptyList()
         _state.value = ImportState.Picking
 
-        job = scope.launch {
-            val picked = try {
-                pick()
-            } catch (e: CancellationException) {
-                // The session was torn down while the picker was up. Not a failure, and there is no
-                // state left to publish — this object is going away with it.
-                throw e
-            } catch (_: Exception) {
-                // The picker could not even be shown: no grant was taken, nothing to close, nothing
-                // imported. Said out loud rather than dropped back to Idle, which left the button
-                // the user had just tapped looking inert. Its own state, because "the picker would
-                // not open" is not "that file could not be added" — there is no file to name.
-                _state.value = ImportState.PickerUnavailable
-                return@launch
-            }
+        job =
+            scope.launch {
+                val picked =
+                    try {
+                        pick()
+                    } catch (e: CancellationException) {
+                        // The session was torn down while the picker was up. Not a failure, and there is no
+                        // state left to publish — this object is going away with it.
+                        throw e
+                    } catch (_: Exception) {
+                        // The picker could not even be shown: no grant was taken, nothing to close, nothing
+                        // imported. Said out loud rather than dropped back to Idle, which left the button
+                        // the user had just tapped looking inert. Its own state, because "the picker would
+                        // not open" is not "that file could not be added" — there is no file to name.
+                        _state.value = ImportState.PickerUnavailable
+                        return@launch
+                    }
 
-            // An empty pick is the user backing out. Idle, not Finished(0) — a summary reading
-            // "imported 0" would look like a failure to someone who simply changed their mind.
-            if (picked.isEmpty()) {
-                _state.value = ImportState.Idle
-                return@launch
-            }
+                // An empty pick is the user backing out. Idle, not Finished(0) — a summary reading
+                // "imported 0" would look like a failure to someone who simply changed their mind.
+                if (picked.isEmpty()) {
+                    _state.value = ImportState.Idle
+                    return@launch
+                }
 
-            val summary = queue(
-                files = picked,
-                albumId = albumId,
-                isActive = { !cancelled },
-                onProgress = { progress ->
-                    _state.value = ImportState.Running(
-                        index = progress.index,
-                        total = progress.total,
-                        name = progress.name,
-                        stage = progress.stage,
-                        fileFraction = progress.fileFraction,
-                        // Carried on every emission, not just set once by cancel(): the queue keeps
-                        // reporting progress for the file it is still finishing, and rebuilding the
-                        // state from the progress alone would clear the flag again on the next read.
-                        stopping = cancelled,
+                val summary =
+                    queue(
+                        files = picked,
+                        albumId = albumId,
+                        isActive = { !cancelled },
+                        onProgress = { progress ->
+                            _state.value =
+                                ImportState.Running(
+                                    index = progress.index,
+                                    total = progress.total,
+                                    name = progress.name,
+                                    stage = progress.stage,
+                                    fileFraction = progress.fileFraction,
+                                    // Carried on every emission, not just set once by cancel(): the queue keeps
+                                    // reporting progress for the file it is still finishing, and rebuilding the
+                                    // state from the progress alone would clear the flag again on the next read.
+                                    stopping = cancelled,
+                                )
+                        },
                     )
-                },
-            )
 
-            // Logged here, where a batch ends exactly once, rather than where the summary is shown:
-            // a screen can be rebuilt and replay this state any number of times, and one failed file
-            // is one event however often it is rendered. Redacted either way — the stage tag and the
-            // error type, never the file's name.
-            summary.failed.forEach { logVaultError(IMPORT_STAGE, it.error) }
+                // Logged here, where a batch ends exactly once, rather than where the summary is shown:
+                // a screen can be rebuilt and replay this state any number of times, and one failed file
+                // is one event however often it is rendered. Redacted either way — the stage tag and the
+                // error type, never the file's name.
+                summary.failed.forEach { logVaultError(IMPORT_STAGE, it.error) }
 
-            // Retained before the state that advertises them is published, so a screen can never
-            // read a count without the handles behind it already being here.
-            deletableOriginals = summary.deletableOriginals
-            _state.value = ImportState.Finished(
-                imported = summary.imported,
-                failed = summary.failed,
-                deletableOriginals = summary.deletableOriginals.size,
-            )
-        }
+                // Retained before the state that advertises them is published, so a screen can never
+                // read a count without the handles behind it already being here.
+                deletableOriginals = summary.deletableOriginals
+                _state.value =
+                    ImportState.Finished(
+                        imported = summary.imported,
+                        failed = summary.failed,
+                        deletableOriginals = summary.deletableOriginals.size,
+                    )
+            }
     }
 
     private companion object {

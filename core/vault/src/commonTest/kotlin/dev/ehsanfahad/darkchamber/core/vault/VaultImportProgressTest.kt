@@ -80,17 +80,18 @@ class VaultImportProgressTest {
         val phases = mutableListOf<ImportPhase>()
         val reports = mutableListOf<Long>()
 
-        val result = vo.importObject(
-            kind = VaultItemKind.FILE.code,
-            name = "big.bin",
-            mime = "application/octet-stream",
-            chunkSize = 8192,
-            onProgress = { phase, bytes ->
-                phases += phase
-                reports += bytes
-            },
-            openSource = { ReplayingSource(data) },
-        )
+        val result =
+            vo.importObject(
+                kind = VaultItemKind.FILE.code,
+                name = "big.bin",
+                mime = "application/octet-stream",
+                chunkSize = 8192,
+                onProgress = { phase, bytes ->
+                    phases += phase
+                    reports += bytes
+                },
+                openSource = { ReplayingSource(data) },
+            )
 
         assertIs<Outcome.Ok<ByteArray>>(result)
         assertTrue(reports.size > 20, "expected progress across many reads, got ${reports.size} reports")
@@ -152,14 +153,15 @@ class VaultImportProgressTest {
 
         // maxOpens = 1: the re-openability probe fails, so the payload takes the spill path.
         val opener = OneShotOpener(data)
-        val result = vo.importObject(
-            kind = VaultItemKind.FILE.code,
-            name = "one-shot.bin",
-            mime = "application/octet-stream",
-            chunkSize = 8192,
-            onProgress = { phase, bytes -> reports += phase to bytes },
-            openSource = opener::open,
-        )
+        val result =
+            vo.importObject(
+                kind = VaultItemKind.FILE.code,
+                name = "one-shot.bin",
+                mime = "application/octet-stream",
+                chunkSize = 8192,
+                onProgress = { phase, bytes -> reports += phase to bytes },
+                openSource = opener::open,
+            )
 
         assertIs<Outcome.Ok<ByteArray>>(result)
 
@@ -210,14 +212,15 @@ class VaultImportProgressTest {
 
         val size = 64L * 1024
         val reports = mutableListOf<Pair<ImportPhase, Long>>()
-        val result = vo.importObject(
-            kind = VaultItemKind.FILE.code,
-            name = "photo.jpg",
-            mime = "image/jpeg",
-            chunkSize = 4096,
-            onProgress = { phase, bytes -> reports += phase to bytes },
-            openSource = { ReplayingSource(ByteArray(size.toInt()) { it.toByte() }) },
-        )
+        val result =
+            vo.importObject(
+                kind = VaultItemKind.FILE.code,
+                name = "photo.jpg",
+                mime = "image/jpeg",
+                chunkSize = 4096,
+                onProgress = { phase, bytes -> reports += phase to bytes },
+                openSource = { ReplayingSource(ByteArray(size.toInt()) { it.toByte() }) },
+            )
 
         assertIs<Outcome.Ok<ByteArray>>(result)
         assertEquals(1, encoder.encodeCount, "the encoder must have been asked exactly once")
@@ -257,14 +260,15 @@ class VaultImportProgressTest {
         val vo = objects(session, storage, catalog, FakeThumbnailEncoder(FakeThumbnailEncoder.Mode.Decline))
 
         val phases = mutableListOf<ImportPhase>()
-        val result = vo.importObject(
-            kind = VaultItemKind.FILE.code,
-            name = "clip.mp4",
-            mime = "video/mp4",
-            chunkSize = 4096,
-            onProgress = { phase, _ -> phases += phase },
-            openSource = { ReplayingSource(ByteArray(8192) { it.toByte() }) },
-        )
+        val result =
+            vo.importObject(
+                kind = VaultItemKind.FILE.code,
+                name = "clip.mp4",
+                mime = "video/mp4",
+                chunkSize = 4096,
+                onProgress = { phase, _ -> phases += phase },
+                openSource = { ReplayingSource(ByteArray(8192) { it.toByte() }) },
+            )
 
         assertIs<Outcome.Ok<ByteArray>>(result)
         assertEquals(1, phases.count { it == ImportPhase.PREVIEWING }, "the attempt is announced either way")
@@ -281,14 +285,15 @@ class VaultImportProgressTest {
         val vo = objects(session, storage, catalog, FakeThumbnailEncoder(FakeThumbnailEncoder.Mode.Throw))
 
         val phases = mutableListOf<ImportPhase>()
-        val result = vo.importObject(
-            kind = VaultItemKind.FILE.code,
-            name = "corrupt.jpg",
-            mime = "image/jpeg",
-            chunkSize = 4096,
-            onProgress = { phase, _ -> phases += phase },
-            openSource = { ReplayingSource(ByteArray(8192) { it.toByte() }) },
-        )
+        val result =
+            vo.importObject(
+                kind = VaultItemKind.FILE.code,
+                name = "corrupt.jpg",
+                mime = "image/jpeg",
+                chunkSize = 4096,
+                onProgress = { phase, _ -> phases += phase },
+                openSource = { ReplayingSource(ByteArray(8192) { it.toByte() }) },
+            )
 
         assertIs<Outcome.Ok<ByteArray>>(result, "a thumbnail is a cache; losing one cannot fail an import")
         assertEquals(1, phases.count { it == ImportPhase.PREVIEWING }, "the attempt happened, so it is reported")
@@ -304,14 +309,15 @@ class VaultImportProgressTest {
         val vo = objects(session, storage, catalog)
 
         val phases = mutableListOf<ImportPhase>()
-        val result = vo.importObject(
-            kind = VaultItemKind.FILE.code,
-            name = "streamed.bin",
-            mime = "application/octet-stream",
-            chunkSize = 8192,
-            onProgress = { phase, _ -> phases += phase },
-            openSource = { ReplayingSource(ByteArray(64 * 1024) { it.toByte() }) },
-        )
+        val result =
+            vo.importObject(
+                kind = VaultItemKind.FILE.code,
+                name = "streamed.bin",
+                mime = "application/octet-stream",
+                chunkSize = 8192,
+                onProgress = { phase, _ -> phases += phase },
+                openSource = { ReplayingSource(ByteArray(64 * 1024) { it.toByte() }) },
+            )
 
         assertIs<Outcome.Ok<ByteArray>>(result)
         // Nothing was copied, so nothing may be reported as copying. A phase reported for work that
@@ -333,12 +339,13 @@ class VaultImportProgressTest {
 
         // Reporting is opt-in: every existing caller omits it, and the parameter must not become a
         // required one on the import path.
-        val result = vo.importObject(
-            kind = VaultItemKind.FILE.code,
-            name = "quiet.bin",
-            mime = "application/octet-stream",
-            openSource = { ReplayingSource(ByteArray(4096) { it.toByte() }) },
-        )
+        val result =
+            vo.importObject(
+                kind = VaultItemKind.FILE.code,
+                name = "quiet.bin",
+                mime = "application/octet-stream",
+                openSource = { ReplayingSource(ByteArray(4096) { it.toByte() }) },
+            )
 
         assertIs<Outcome.Ok<ByteArray>>(result)
         catalog.close()
@@ -353,13 +360,14 @@ class VaultImportProgressTest {
         val vo = objects(session, storage, catalog)
 
         val reports = mutableListOf<Long>()
-        val result = vo.importObject(
-            kind = VaultItemKind.FILE.code,
-            name = "empty.bin",
-            mime = "application/octet-stream",
-            onProgress = { _, bytes -> reports += bytes },
-            openSource = { ReplayingSource(ByteArray(0)) },
-        )
+        val result =
+            vo.importObject(
+                kind = VaultItemKind.FILE.code,
+                name = "empty.bin",
+                mime = "application/octet-stream",
+                onProgress = { _, bytes -> reports += bytes },
+                openSource = { ReplayingSource(ByteArray(0)) },
+            )
 
         assertIs<Outcome.Ok<ByteArray>>(result)
         // Zero bytes read is zero bytes reported — never a synthetic "done" the feature layer would
@@ -375,7 +383,9 @@ class VaultImportProgressTest {
  * The re-openability probe asks for a second source before reading anything, so a factory that
  * allows exactly one open is what drives an import down the spill path.
  */
-private class OneShotOpener(private val data: ByteArray) {
+private class OneShotOpener(
+    private val data: ByteArray,
+) {
     private var opens = 0
 
     fun open(): RawSource {
@@ -386,10 +396,15 @@ private class OneShotOpener(private val data: ByteArray) {
 }
 
 /** A re-openable source over a fixed payload — each open replays the same bytes from the start. */
-private class ReplayingSource(data: ByteArray) : RawSource {
+private class ReplayingSource(
+    data: ByteArray,
+) : RawSource {
     private val buffer = Buffer().apply { write(data) }
 
-    override fun readAtMostTo(sink: Buffer, byteCount: Long): Long = buffer.readAtMostTo(sink, byteCount)
+    override fun readAtMostTo(
+        sink: Buffer,
+        byteCount: Long,
+    ): Long = buffer.readAtMostTo(sink, byteCount)
 
     override fun close() = buffer.close()
 }

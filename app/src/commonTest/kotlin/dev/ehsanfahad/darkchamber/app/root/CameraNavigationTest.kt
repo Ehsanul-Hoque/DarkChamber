@@ -25,6 +25,7 @@ import dev.ehsanfahad.darkchamber.core.model.ItemFilter
 import dev.ehsanfahad.darkchamber.core.model.NotSavedKind
 import dev.ehsanfahad.darkchamber.core.model.NotSavedReason
 import dev.ehsanfahad.darkchamber.core.model.Outcome
+import dev.ehsanfahad.darkchamber.core.model.VaultItemKind
 import dev.ehsanfahad.darkchamber.core.storage.VaultStorage
 import dev.ehsanfahad.darkchamber.core.vault.VaultObjects
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraController
@@ -33,17 +34,16 @@ import dev.ehsanfahad.darkchamber.feature.camera.api.CaptureMode
 import dev.ehsanfahad.darkchamber.feature.camera.api.FreeSpace
 import dev.ehsanfahad.darkchamber.feature.camera.api.RecordingEnd
 import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
+import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryOrder
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryScope
 import dev.ehsanfahad.darkchamber.feature.vault.api.PhotoPicker
-import dev.ehsanfahad.darkchamber.core.model.VaultItemKind
-import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryOrder
-import kotlinx.io.Buffer
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
+import kotlinx.io.Buffer
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 import kotlinx.io.files.SystemTemporaryDirectory
@@ -75,17 +75,18 @@ class CameraNavigationTest {
     private val camera = FakeCameraController()
     private val engine = CryptographyKotlinEngine()
 
-    private val koin = koinApplication {
-        modules(
-            module {
-                single<CryptoEngine> { engine }
-                single<FilePicker> { FakeFilePicker() }
-                single<PhotoPicker> { FakePhotoPicker() }
-                single<CameraController> { camera }
-                single<FreeSpace> { FreeSpace { 64_000_000_000L } }
-            },
-        )
-    }.koin
+    private val koin =
+        koinApplication {
+            modules(
+                module {
+                    single<CryptoEngine> { engine }
+                    single<FilePicker> { FakeFilePicker() }
+                    single<PhotoPicker> { FakePhotoPicker() }
+                    single<CameraController> { camera }
+                    single<FreeSpace> { FreeSpace { 64_000_000_000L } }
+                },
+            )
+        }.koin
 
     private val lifecycle = LifecycleRegistry().apply { resume() }
     private var locks = 0
@@ -121,22 +122,27 @@ class CameraNavigationTest {
      * shows it, and dismissing it clears it so the next unlock says nothing about it again.
      */
     @Test
-    fun a_photo_a_lock_discards_is_reported_where_the_next_unlock_finds_it() = runTest {
-        val open = openVault()
-        val component = component(open)
-        camera.holdCaptures()
-        component.openCameraFromTop()
-        assertIs<UnlockedChild.Camera>(component.active).component.shoot()
+    fun a_photo_a_lock_discards_is_reported_where_the_next_unlock_finds_it() =
+        runTest {
+            val open = openVault()
+            val component = component(open)
+            camera.holdCaptures()
+            component.openCameraFromTop()
+            assertIs<UnlockedChild.Camera>(component.active).component.shoot()
 
-        component.lock()
+            component.lock()
 
-        assertEquals(1, notSaved.summary.value.count(NotSavedKind.Photo, NotSavedReason.Locked))
+            assertEquals(1, notSaved.summary.value.count(NotSavedKind.Photo, NotSavedReason.Locked))
 
-        val next = component(openVault())
-        assertEquals(1, next.notSaved.value.count(NotSavedKind.Photo, NotSavedReason.Locked), "the next session sees it")
-        next.dismissNotSaved()
-        assertTrue(notSaved.summary.value.isEmpty(), "and once dismissed it is gone")
-    }
+            val next = component(openVault())
+            assertEquals(
+                1,
+                next.notSaved.value.count(NotSavedKind.Photo, NotSavedReason.Locked),
+                "the next session sees it",
+            )
+            next.dismissNotSaved()
+            assertTrue(notSaved.summary.value.isEmpty(), "and once dismissed it is gone")
+        }
 
     /**
      * Back while recording keeps the clip: it goes through the camera's close, which finalizes,
@@ -144,23 +150,28 @@ class CameraNavigationTest {
      * destroy the screen mid-recording and lose the clip.
      */
     @Test
-    fun back_while_recording_keeps_the_clip_and_pops_only_after_it_is_handed_over() = runTest {
-        val open = openVault()
-        val component = component(open)
-        component.openCameraFromTop()
-        val camera = assertIs<UnlockedChild.Camera>(component.active).component
-        camera.setMode(CaptureMode.Video)
-        this@CameraNavigationTest.camera.endOnStop = null
-        camera.shoot()
+    fun back_while_recording_keeps_the_clip_and_pops_only_after_it_is_handed_over() =
+        runTest {
+            val open = openVault()
+            val component = component(open)
+            component.openCameraFromTop()
+            val camera = assertIs<UnlockedChild.Camera>(component.active).component
+            camera.setMode(CaptureMode.Video)
+            this@CameraNavigationTest.camera.endOnStop = null
+            camera.shoot()
 
-        component.onBack()
-        assertIs<UnlockedChild.Camera>(component.active, "still on the camera while the platform finalizes")
+            component.onBack()
+            assertIs<UnlockedChild.Camera>(component.active, "still on the camera while the platform finalizes")
 
-        this@CameraNavigationTest.camera.recording!!.finish(RecordingEnd.Finalized)
-        assertIs<UnlockedChild.Gallery>(component.active, "popped once the clip is handed over")
-        assertEquals(1L, vaultObjects(open).observeItemCount(ItemFilter.All).first(), "and the clip is in the vault")
-        component.lock()
-    }
+            this@CameraNavigationTest.camera.recording!!.finish(RecordingEnd.Finalized)
+            assertIs<UnlockedChild.Gallery>(component.active, "popped once the clip is handed over")
+            assertEquals(
+                1L,
+                vaultObjects(open).observeItemCount(ItemFilter.All).first(),
+                "and the clip is in the vault",
+            )
+            component.lock()
+        }
 
     // --- The last shot, opened in the viewer ---
 
@@ -170,52 +181,60 @@ class CameraNavigationTest {
      * tap in the grid, and a handoff left over from one would leak a typed search into this one.
      */
     @Test
-    fun the_last_shot_opens_the_viewer_newest_first_unsearched() = runTest {
-        val open = openVault()
-        val objects = vaultObjects(open)
-        val earlier = listOf("cherry.jpg", "apple.jpg").map { name ->
-            (objects.importObject(kind = VaultItemKind.FILE.code, name = name, mime = "image/jpeg", openSource = { Buffer().apply { write(byteArrayOf(1, 2, 3)) } }) as Outcome.Ok).value
+    fun the_last_shot_opens_the_viewer_newest_first_unsearched() =
+        runTest {
+            val open = openVault()
+            val objects = vaultObjects(open)
+            val earlier =
+                listOf("cherry.jpg", "apple.jpg").map { name ->
+                    (
+                        objects
+                            .importObject(kind = VaultItemKind.FILE.code, name = name, mime = "image/jpeg", openSource = {
+                                Buffer().apply { write(byteArrayOf(1, 2, 3)) }
+                            }) as Outcome.Ok
+                    ).value
+                }
+            val component = component(open)
+            val grid = assertIs<UnlockedChild.Gallery>(component.active).component
+            grid.chooseOrder(GalleryOrder.NameAsc)
+            grid.openSearch()
+            grid.editSearch("apple")
+            grid.tapItem(earlier[1].copyOf()) // a viewer opened from the grid, sorted and searched
+            component.onBack()
+
+            component.openCameraFromTop()
+            val cam = assertIs<UnlockedChild.Camera>(component.active).component
+            cam.shoot()
+            cam.openLastShot()
+
+            val viewer = assertIs<UnlockedChild.Viewer>(component.active).component
+            val shown = viewer.state.value
+            assertEquals(3, shown.items.size, "unsearched: every item, not only the grid's match")
+            val shot = shown.items[shown.index].id.toList()
+            assertFalse(shot in earlier.map { it.toList() }, "opened at the shot")
+            assertEquals(0, shown.index, "newest first: the shot just taken leads")
+            component.lock()
         }
-        val component = component(open)
-        val grid = assertIs<UnlockedChild.Gallery>(component.active).component
-        grid.chooseOrder(GalleryOrder.NameAsc)
-        grid.openSearch()
-        grid.editSearch("apple")
-        grid.tapItem(earlier[1].copyOf()) // a viewer opened from the grid, sorted and searched
-        component.onBack()
-
-        component.openCameraFromTop()
-        val cam = assertIs<UnlockedChild.Camera>(component.active).component
-        cam.shoot()
-        cam.openLastShot()
-
-        val viewer = assertIs<UnlockedChild.Viewer>(component.active).component
-        val shown = viewer.state.value
-        assertEquals(3, shown.items.size, "unsearched: every item, not only the grid's match")
-        val shot = shown.items[shown.index].id.toList()
-        assertFalse(shot in earlier.map { it.toList() }, "opened at the shot")
-        assertEquals(0, shown.index, "newest first: the shot just taken leads")
-        component.lock()
-    }
 
     /** Covered by the viewer, the camera lets go of the hardware; back returns to it, and it opens again. */
     @Test
-    fun the_camera_is_released_while_the_viewer_covers_it_and_back_returns_to_it() = runTest {
-        val component = component(openVault())
-        component.openCameraFromTop()
-        val cam = assertIs<UnlockedChild.Camera>(component.active).component
-        cam.shoot()
-        assertTrue(camera.isOpen)
+    fun the_camera_is_released_while_the_viewer_covers_it_and_back_returns_to_it() =
+        runTest {
+            val component = component(openVault())
+            component.openCameraFromTop()
+            val cam = assertIs<UnlockedChild.Camera>(component.active).component
+            cam.shoot()
+            assertTrue(camera.isOpen)
 
-        cam.openLastShot()
-        assertIs<UnlockedChild.Viewer>(component.active)
-        assertFalse(camera.isOpen, "released while covered")
+            cam.openLastShot()
+            assertIs<UnlockedChild.Viewer>(component.active)
+            assertFalse(camera.isOpen, "released while covered")
 
-        component.onBack()
-        assertIs<UnlockedChild.Camera>(component.active)
-        assertTrue(camera.isOpen, "and open again on the way back")
-        component.lock()
-    }
+            component.onBack()
+            assertIs<UnlockedChild.Camera>(component.active)
+            assertTrue(camera.isOpen, "and open again on the way back")
+            component.lock()
+        }
 
     // --- A lock and what it takes ---
 
@@ -225,20 +244,21 @@ class CameraNavigationTest {
      * subtree torn down.
      */
     @Test
-    fun a_lock_while_recording_records_a_video_lost_to_it_and_leaves_no_clip() = runTest {
-        val component = component(openVault())
-        component.openCameraFromTop()
-        val camera = assertIs<UnlockedChild.Camera>(component.active).component
-        camera.setMode(CaptureMode.Video)
-        camera.shoot()
-        assertTrue(scratchFiles().isNotEmpty(), "the clip is being written")
+    fun a_lock_while_recording_records_a_video_lost_to_it_and_leaves_no_clip() =
+        runTest {
+            val component = component(openVault())
+            component.openCameraFromTop()
+            val camera = assertIs<UnlockedChild.Camera>(component.active).component
+            camera.setMode(CaptureMode.Video)
+            camera.shoot()
+            assertTrue(scratchFiles().isNotEmpty(), "the clip is being written")
 
-        component.lock()
+            component.lock()
 
-        assertEquals(1, locks, "the lock went through at once")
-        assertEquals(1, notSaved.summary.value.count(NotSavedKind.Video, NotSavedReason.Locked))
-        assertTrue(scratchFiles().isEmpty(), "no plaintext clip left: ${scratchFiles()}")
-    }
+            assertEquals(1, locks, "the lock went through at once")
+            assertEquals(1, notSaved.summary.value.count(NotSavedKind.Video, NotSavedReason.Locked))
+            assertTrue(scratchFiles().isEmpty(), "no plaintext clip left: ${scratchFiles()}")
+        }
 
     /**
      * A lock while the lane encrypts a clip. The encrypt is held on its own thread when the lock
@@ -247,48 +267,50 @@ class CameraNavigationTest {
      * as lost to the lock, and no plaintext is left.
      */
     @Test
-    fun a_lock_while_a_clip_encrypts_never_waits_and_records_the_clip_lost_to_it() = runTest {
-        val encrypt = GateDispatcher()
-        val open = openVault()
-        val component = component(open, ioContext = encrypt)
-        component.openCameraFromTop()
-        val camera = assertIs<UnlockedChild.Camera>(component.active).component
-        camera.setMode(CaptureMode.Video)
-        camera.shoot()
-        camera.shoot()
-        assertEquals(1, encrypt.pending, "the clip is waiting on the encrypt")
+    fun a_lock_while_a_clip_encrypts_never_waits_and_records_the_clip_lost_to_it() =
+        runTest {
+            val encrypt = GateDispatcher()
+            val open = openVault()
+            val component = component(open, ioContext = encrypt)
+            component.openCameraFromTop()
+            val camera = assertIs<UnlockedChild.Camera>(component.active).component
+            camera.setMode(CaptureMode.Video)
+            camera.shoot()
+            camera.shoot()
+            assertEquals(1, encrypt.pending, "the clip is waiting on the encrypt")
 
-        component.lock()
-        assertEquals(1, locks, "the lock returned with the encrypt still pending")
-        assertEquals(1, encrypt.pending)
+            component.lock()
+            assertEquals(1, locks, "the lock returned with the encrypt still pending")
+            assertEquals(1, encrypt.pending)
 
-        encrypt.runAll()
+            encrypt.runAll()
 
-        assertEquals(1, notSaved.summary.value.count(NotSavedKind.Video, NotSavedReason.Locked))
-        assertTrue(scratchFiles().isEmpty(), "no plaintext clip left: ${scratchFiles()}")
-    }
+            assertEquals(1, notSaved.summary.value.count(NotSavedKind.Video, NotSavedReason.Locked))
+            assertTrue(scratchFiles().isEmpty(), "no plaintext clip left: ${scratchFiles()}")
+        }
 
     /** Held photos and a recording, lost to one lock: both counts, each under its own kind. */
     @Test
-    fun a_lock_with_held_photos_and_a_recording_records_both() = runTest {
-        // Photos taken and still saving: a switch to video waits only for photos in the platform's
-        // hands, so a recording can start behind saves that have not finished.
-        val encrypt = GateDispatcher()
-        val component = component(openVault(), ioContext = encrypt)
-        component.openCameraFromTop()
-        val camera = assertIs<UnlockedChild.Camera>(component.active).component
-        camera.shoot()
-        camera.shoot()
-        camera.setMode(CaptureMode.Video)
-        camera.shoot()
+    fun a_lock_with_held_photos_and_a_recording_records_both() =
+        runTest {
+            // Photos taken and still saving: a switch to video waits only for photos in the platform's
+            // hands, so a recording can start behind saves that have not finished.
+            val encrypt = GateDispatcher()
+            val component = component(openVault(), ioContext = encrypt)
+            component.openCameraFromTop()
+            val camera = assertIs<UnlockedChild.Camera>(component.active).component
+            camera.shoot()
+            camera.shoot()
+            camera.setMode(CaptureMode.Video)
+            camera.shoot()
 
-        component.lock()
-        encrypt.runAll()
+            component.lock()
+            encrypt.runAll()
 
-        val summary = notSaved.summary.value
-        assertEquals(2, summary.count(NotSavedKind.Photo, NotSavedReason.Locked))
-        assertEquals(1, summary.count(NotSavedKind.Video, NotSavedReason.Locked))
-    }
+            val summary = notSaved.summary.value
+            assertEquals(2, summary.count(NotSavedKind.Photo, NotSavedReason.Locked))
+            assertEquals(1, summary.count(NotSavedKind.Video, NotSavedReason.Locked))
+        }
 
     // Every file directly inside a vault's tmp/ under this test's directory.
     private fun scratchFiles(): List<Path> =
@@ -299,15 +321,16 @@ class CameraNavigationTest {
 
     /** Back with nothing recording still pops at once. */
     @Test
-    fun back_on_an_idle_camera_pops_at_once() = runTest {
-        val component = component(openVault())
-        component.openCameraFromTop()
+    fun back_on_an_idle_camera_pops_at_once() =
+        runTest {
+            val component = component(openVault())
+            component.openCameraFromTop()
 
-        component.onBack()
+            component.onBack()
 
-        assertIs<UnlockedChild.Gallery>(component.active)
-        component.lock()
-    }
+            assertIs<UnlockedChild.Gallery>(component.active)
+            component.lock()
+        }
 
     private val DefaultUnlockedComponent.active get() = stack.value.active.instance
 
@@ -316,32 +339,39 @@ class CameraNavigationTest {
 
     /** Each listing hands the camera itself as the destination, album id intact. */
     @Test
-    fun each_listing_opens_the_camera_on_itself() = runTest {
-        val open = openVault()
-        val objects = vaultObjects(open)
-        val trip = (objects.createAlbum("Trip") as Outcome.Ok).value
-        val component = component(open)
+    fun each_listing_opens_the_camera_on_itself() =
+        runTest {
+            val open = openVault()
+            val objects = vaultObjects(open)
+            val trip = (objects.createAlbum("Trip") as Outcome.Ok).value
+            val component = component(open)
 
-        component.openCameraFromTop()
-        assertEquals(CameraDestination.AllItems, assertIs<UnlockedChild.Camera>(component.active).component.destination)
-        component.onBack()
+            component.openCameraFromTop()
+            assertEquals(
+                CameraDestination.AllItems,
+                assertIs<UnlockedChild.Camera>(component.active).component.destination,
+            )
+            component.onBack()
 
-        component.openAlbums()
-        assertIs<UnlockedChild.Albums>(component.active).component.openUnfiled()
-        component.openCameraFromTop()
-        assertEquals(CameraDestination.Unfiled, assertIs<UnlockedChild.Camera>(component.active).component.destination)
-        component.onBack()
-        component.onBack()
+            component.openAlbums()
+            assertIs<UnlockedChild.Albums>(component.active).component.openUnfiled()
+            component.openCameraFromTop()
+            assertEquals(
+                CameraDestination.Unfiled,
+                assertIs<UnlockedChild.Camera>(component.active).component.destination,
+            )
+            component.onBack()
+            component.onBack()
 
-        assertIs<UnlockedChild.Albums>(component.active).component.openAlbum(trip.copyOf())
-        component.openCameraFromTop()
-        val inAlbum = assertIs<UnlockedChild.Camera>(component.active).component
-        assertEquals(CameraDestination.Album(trip), inAlbum.destination)
+            assertIs<UnlockedChild.Albums>(component.active).component.openAlbum(trip.copyOf())
+            component.openCameraFromTop()
+            val inAlbum = assertIs<UnlockedChild.Camera>(component.active).component
+            assertEquals(CameraDestination.Album(trip), inAlbum.destination)
 
-        // And the photo really goes there — the destination is not only reported but used.
-        inAlbum.shoot()
-        assertEquals(1L, objects.observeItemCount(ItemFilter.Album(trip)).first())
-    }
+            // And the photo really goes there — the destination is not only reported but used.
+            inAlbum.shoot()
+            assertEquals(1L, objects.observeItemCount(ItemFilter.Album(trip)).first())
+        }
 
     /**
      * The camera is drawn without the vault's bar — its own ✕ is the way out, and the bar's lock
@@ -349,18 +379,19 @@ class CameraNavigationTest {
      * for its own reasons; `ViewerNavigationTest` says so.)
      */
     @Test
-    fun the_camera_hides_the_vault_bar_and_the_grid_keeps_it() = runTest {
-        val component = component(openVault())
-        assertTrue(showsUnlockedBar(component.active), "the grid")
+    fun the_camera_hides_the_vault_bar_and_the_grid_keeps_it() =
+        runTest {
+            val component = component(openVault())
+            assertTrue(showsUnlockedBar(component.active), "the grid")
 
-        component.openCameraFromTop()
-        assertFalse(showsUnlockedBar(component.active), "the camera")
-        assertEquals(null, crumbFor(component.active, gallery = null), "and names nothing in a bar it has not got")
+            component.openCameraFromTop()
+            assertFalse(showsUnlockedBar(component.active), "the camera")
+            assertEquals(null, crumbFor(component.active, gallery = null), "and names nothing in a bar it has not got")
 
-        component.onBack()
-        component.openAlbums()
-        assertTrue(showsUnlockedBar(component.active), "the album grid")
-    }
+            component.onBack()
+            component.openAlbums()
+            assertTrue(showsUnlockedBar(component.active), "the album grid")
+        }
 
     /**
      * The camera draws under the system bars — its black and its viewfinder run to the screen's
@@ -368,80 +399,90 @@ class CameraNavigationTest {
      * bars by the host.
      */
     @Test
-    fun only_the_camera_is_drawn_under_the_system_bars() = runTest {
-        val component = component(openVault())
-        assertTrue(paddedByHost(component.active), "the grid")
+    fun only_the_camera_is_drawn_under_the_system_bars() =
+        runTest {
+            val component = component(openVault())
+            assertTrue(paddedByHost(component.active), "the grid")
 
-        component.openCameraFromTop()
-        assertFalse(paddedByHost(component.active), "the camera")
+            component.openCameraFromTop()
+            assertFalse(paddedByHost(component.active), "the camera")
 
-        component.onBack()
-        component.openAlbums()
-        assertTrue(paddedByHost(component.active), "the album grid")
-    }
+            component.onBack()
+            component.openAlbums()
+            assertTrue(paddedByHost(component.active), "the album grid")
+        }
 
     /**
      * A platform module that binds no camera opens a camera screen that says it is unavailable —
      * not a crash on the gallery's button.
      */
     @Test
-    fun no_bound_camera_still_opens_the_screen() = runTest {
-        val bare = koinApplication {
-            modules(
-                module {
-                    single<CryptoEngine> { engine }
-                    single<FilePicker> { FakeFilePicker() }
-                    single<PhotoPicker> { FakePhotoPicker() }
-                },
-            )
-        }.koin
-        val component = component(openVault(), graph = bare)
+    fun no_bound_camera_still_opens_the_screen() =
+        runTest {
+            val bare =
+                koinApplication {
+                    modules(
+                        module {
+                            single<CryptoEngine> { engine }
+                            single<FilePicker> { FakeFilePicker() }
+                            single<PhotoPicker> { FakePhotoPicker() }
+                        },
+                    )
+                }.koin
+            val component = component(openVault(), graph = bare)
 
-        component.openCameraFromTop()
+            component.openCameraFromTop()
 
-        assertIs<UnlockedChild.Camera>(component.active)
-    }
+            assertIs<UnlockedChild.Camera>(component.active)
+        }
 
     /** A double tap on the button is one camera, not two — and not a crash on a duplicate config. */
     @Test
-    fun a_double_tap_opens_one_camera() = runTest {
-        val component = component(openVault())
+    fun a_double_tap_opens_one_camera() =
+        runTest {
+            val component = component(openVault())
 
-        component.openCameraFromTop()
-        // The second tap lands on the gallery's component, which is still alive beneath.
-        assertIs<UnlockedChild.Gallery>(component.stack.value.items.first().instance).component.openCamera()
+            component.openCameraFromTop()
+            // The second tap lands on the gallery's component, which is still alive beneath.
+            assertIs<UnlockedChild.Gallery>(
+                component.stack.value.items
+                    .first()
+                    .instance,
+            ).component.openCamera()
 
-        assertEquals(2, component.stack.value.items.size, "the grid and one camera")
-    }
+            assertEquals(2, component.stack.value.items.size, "the grid and one camera")
+        }
 
     /** ✕ goes back to the listing the camera was opened from, and releases the camera. */
     @Test
-    fun closing_returns_to_the_same_listing() = runTest {
-        val component = component(openVault())
-        component.openAlbums()
-        assertIs<UnlockedChild.Albums>(component.active).component.openUnfiled()
-        component.openCameraFromTop()
-        assertTrue(camera.isOpen)
+    fun closing_returns_to_the_same_listing() =
+        runTest {
+            val component = component(openVault())
+            component.openAlbums()
+            assertIs<UnlockedChild.Albums>(component.active).component.openUnfiled()
+            component.openCameraFromTop()
+            assertTrue(camera.isOpen)
 
-        assertIs<UnlockedChild.Camera>(component.active).component.close()
+            assertIs<UnlockedChild.Camera>(component.active).component.close()
 
-        assertEquals(GalleryScope.Unfiled, assertIs<UnlockedChild.Gallery>(component.active).scope)
-        assertEquals(3, component.stack.value.items.size, "one screen popped, no more")
-        assertFalse(camera.isOpen, "the camera is released with its screen")
-    }
+            assertEquals(GalleryScope.Unfiled, assertIs<UnlockedChild.Gallery>(component.active).scope)
+            assertEquals(3, component.stack.value.items.size, "one screen popped, no more")
+            assertFalse(camera.isOpen, "the camera is released with its screen")
+        }
 
     /** A lock — here, backgrounding — tears the camera down with the subtree and releases it. */
     @Test
-    fun a_lock_releases_the_camera() = runTest {
-        val component = component(openVault())
-        component.openCameraFromTop()
-        assertTrue(camera.isOpen)
+    fun a_lock_releases_the_camera() =
+        runTest {
+            val component = component(openVault())
+            component.openCameraFromTop()
+            assertTrue(camera.isOpen)
 
-        lifecycle.destroy()
+            lifecycle.destroy()
 
-        assertEquals(1, locks, "it locked")
-        assertFalse(camera.isOpen, "and the camera indicator is off")
-    }
+            assertEquals(1, locks, "it locked")
+            assertFalse(camera.isOpen, "and the camera indicator is off")
+        }
 
     /**
      * Closing the camera with a photo still on its way is **not** a lock: the photo was taken on
@@ -449,20 +490,21 @@ class CameraNavigationTest {
      * scope rather than the screen's.
      */
     @Test
-    fun closing_with_a_save_in_flight_lets_it_finish() = runTest {
-        val open = openVault()
-        val objects = vaultObjects(open)
-        val component = component(open)
-        camera.holdCaptures()
-        component.openCameraFromTop()
-        assertIs<UnlockedChild.Camera>(component.active).component.shoot()
+    fun closing_with_a_save_in_flight_lets_it_finish() =
+        runTest {
+            val open = openVault()
+            val objects = vaultObjects(open)
+            val component = component(open)
+            camera.holdCaptures()
+            component.openCameraFromTop()
+            assertIs<UnlockedChild.Camera>(component.active).component.shoot()
 
-        assertIs<UnlockedChild.Camera>(component.active).component.close()
-        assertIs<UnlockedChild.Gallery>(component.active)
-        camera.release()
+            assertIs<UnlockedChild.Camera>(component.active).component.close()
+            assertIs<UnlockedChild.Gallery>(component.active)
+            camera.release()
 
-        assertEquals(1L, objects.observeItemCount(ItemFilter.All).first(), "the photo is in the vault")
-    }
+            assertEquals(1L, objects.observeItemCount(ItemFilter.All).first(), "the photo is in the vault")
+        }
 
     private fun vaultObjects(open: VaultBootstrap.OpenVault): VaultObjects =
         VaultObjects(
@@ -478,7 +520,14 @@ class CameraNavigationTest {
 
     private fun openVault(catalogContext: CoroutineDispatcher): VaultBootstrap.OpenVault {
         val cheap = PassphraseKdfProfile.Argon2id(memoryKib = 256, iterations = 1, parallelism = 1)
-        val session = VaultSession.createVault(engine, DefaultKeyDerivation(engine), "pw".encodeToByteArray(), cheap).session
+        val session =
+            VaultSession
+                .createVault(
+                    engine,
+                    DefaultKeyDerivation(engine),
+                    "pw".encodeToByteArray(),
+                    cheap,
+                ).session
         val root = Path(testDir, "vault-${Random.nextULong()}")
         SystemFileSystem.createDirectories(Path(root, "tmp"))
         val catalog = (CatalogStore.create(testSqlDriver(), catalogContext) as Outcome.Ok).value

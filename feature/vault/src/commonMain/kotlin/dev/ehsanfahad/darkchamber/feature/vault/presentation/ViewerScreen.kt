@@ -99,7 +99,10 @@ import kotlin.time.ExperimentalTime
  */
 @OptIn(ExperimentalTime::class)
 @Composable
-fun VaultViewerContent(component: VaultViewerComponent, modifier: Modifier = Modifier) {
+fun VaultViewerContent(
+    component: VaultViewerComponent,
+    modifier: Modifier = Modifier,
+) {
     val state by component.state.subscribeAsState()
     val pictures by component.pictures.subscribeAsState()
     val players by component.players.subscribeAsState()
@@ -107,21 +110,22 @@ fun VaultViewerContent(component: VaultViewerComponent, modifier: Modifier = Mod
     val texts by component.texts.subscribeAsState()
     // Ages in Details are coarse (minutes at finest); "now" once per composition is enough.
     val now = remember { Clock.System.now().toEpochMilliseconds() }
-    val actions = remember(component) {
-        PlayerActions(
-            playPause = component::playPause,
-            seekTo = component::seekTo,
-            skip = component::skip,
-            holdSpeed = component::holdSpeed,
-            releaseSpeed = component::releaseSpeed,
-            setVolume = component::setVolume,
-            volume = component::volume,
-            brightness = component::brightness,
-            setBrightness = component::setBrightness,
-            chooseSpeed = component::chooseSpeed,
-            switchOrientation = component::switchOrientation,
-        )
-    }
+    val actions =
+        remember(component) {
+            PlayerActions(
+                playPause = component::playPause,
+                seekTo = component::seekTo,
+                skip = component::skip,
+                holdSpeed = component::holdSpeed,
+                releaseSpeed = component::releaseSpeed,
+                setVolume = component::setVolume,
+                volume = component::volume,
+                brightness = component::brightness,
+                setBrightness = component::setBrightness,
+                chooseSpeed = component::chooseSpeed,
+                switchOrientation = component::switchOrientation,
+            )
+        }
 
     ViewerScreen(
         state = state,
@@ -253,24 +257,26 @@ internal fun ViewerScreen(
                     playerActions = playerActions,
                     onInteraction = { interactions++ },
                     controlsShown = barsVisible,
-                    pdf = PdfHooks(
-                        drawn = if (isShown) pdfPages else emptyMap(),
-                        onViewport = onPdfViewport,
-                        onScrolled = onPdfScrolled,
-                        onReading = { if (isShown) pdfReading = it },
-                        topPaddingPx = topBarPx,
-                        bottomPaddingPx = bottomBarPx,
-                        jump = if (isShown) jumpRequest else null,
-                        barsShown = barsVisible,
-                    ),
-                    text = TextHooks(
-                        document = texts[key],
-                        formatted = state.formatted,
-                        topPaddingPx = topBarPx,
-                        bottomPaddingPx = bottomBarPx,
-                        barsShown = barsVisible,
-                        onOpenLink = onOpenLink,
-                    ),
+                    pdf =
+                        PdfHooks(
+                            drawn = if (isShown) pdfPages else emptyMap(),
+                            onViewport = onPdfViewport,
+                            onScrolled = onPdfScrolled,
+                            onReading = { if (isShown) pdfReading = it },
+                            topPaddingPx = topBarPx,
+                            bottomPaddingPx = bottomBarPx,
+                            jump = if (isShown) jumpRequest else null,
+                            barsShown = barsVisible,
+                        ),
+                    text =
+                        TextHooks(
+                            document = texts[key],
+                            formatted = state.formatted,
+                            topPaddingPx = topBarPx,
+                            bottomPaddingPx = bottomBarPx,
+                            barsShown = barsVisible,
+                            onOpenLink = onOpenLink,
+                        ),
                 )
             }
 
@@ -291,49 +297,68 @@ internal fun ViewerScreen(
                 title = ViewerFormat.title(shown.meta),
                 position = ViewerFormat.position(state.index, state.items.size),
                 onBack = onBack,
-                modifier = Modifier.align(Alignment.TopCenter).onSizeChanged { if (it.height > 0) topBarPx = it.height },
+                modifier =
+                    Modifier.align(Alignment.TopCenter).onSizeChanged {
+                        if (it.height >
+                            0
+                        ) {
+                            topBarPx = it.height
+                        }
+                    },
             )
             ViewerBottomBar(
                 visible = barsVisible,
                 onDetails = { detailsOpen = true },
                 onDelete = onRequestDelete,
-                modifier = Modifier.align(Alignment.BottomCenter).onSizeChanged {
-                    if (it.height > 0 && media == null) bottomBarPx = it.height
-                },
-                leading = textSwitch(
-                    page = state.pages[shownKey],
-                    document = texts[shownKey],
-                    formatted = state.formatted,
-                    onToggle = onToggleFormatted,
-                ) ?: ViewerFormat.pdfIndicator(
-                    page = state.pages[shownKey] ?: ViewerPage.Loading,
-                    meta = shown.meta,
-                    reading = pdfReading,
-                    loadingMs = loadingMs,
-                )?.let { slot ->
-                    when (slot) {
-                        // Nothing drawn and nothing to land on: the place alone keeps Details and Delete still.
-                        IndicatorSlot.Held -> { {} }
-                        is IndicatorSlot.Shown -> {
-                            { PdfIndicator(slot.indicator, onClick = if (slot.indicator.ready) ({ jumpOpen = true }) else null) }
+                modifier =
+                    Modifier.align(Alignment.BottomCenter).onSizeChanged {
+                        if (it.height > 0 && media == null) bottomBarPx = it.height
+                    },
+                leading =
+                    textSwitch(
+                        page = state.pages[shownKey],
+                        document = texts[shownKey],
+                        formatted = state.formatted,
+                        onToggle = onToggleFormatted,
+                    ) ?: ViewerFormat
+                        .pdfIndicator(
+                            page = state.pages[shownKey] ?: ViewerPage.Loading,
+                            meta = shown.meta,
+                            reading = pdfReading,
+                            loadingMs = loadingMs,
+                        )?.let { slot ->
+                            when (slot) {
+                                // Nothing drawn and nothing to land on: the place alone keeps Details and Delete still.
+                                IndicatorSlot.Held -> {
+                                    {}
+                                }
+
+                                is IndicatorSlot.Shown -> {
+                                    {
+                                        PdfIndicator(
+                                            slot.indicator,
+                                            onClick = if (slot.indicator.ready) ({ jumpOpen = true }) else null,
+                                        )
+                                    }
+                                }
+                            }
+                        },
+                controls =
+                    if (media != null && playerState != null) {
+                        { trailing ->
+                            PlayerControls(
+                                kind = media.kind,
+                                state = playerState,
+                                speed = state.speed,
+                                orientationTarget = state.orientationTarget,
+                                actions = playerActions,
+                                onInteraction = { interactions++ },
+                                trailing = trailing,
+                            )
                         }
-                    }
-                },
-                controls = if (media != null && playerState != null) {
-                    { trailing ->
-                        PlayerControls(
-                            kind = media.kind,
-                            state = playerState,
-                            speed = state.speed,
-                            orientationTarget = state.orientationTarget,
-                            actions = playerActions,
-                            onInteraction = { interactions++ },
-                            trailing = trailing,
-                        )
-                    }
-                } else {
-                    null
-                },
+                    } else {
+                        null
+                    },
                 // A phone on its side: one row under the seek bar, clear of the centre control.
                 compact = PlayerChrome.compactBar(maxHeight.value),
             )
@@ -363,7 +388,11 @@ internal fun ViewerScreen(
     }
 
     state.delete?.let { stage ->
-        DeleteDialog(deleting = stage == ViewerDeleteStage.Deleting, onConfirm = onConfirmDelete, onCancel = onCancelDelete)
+        DeleteDialog(
+            deleting = stage == ViewerDeleteStage.Deleting,
+            onConfirm = onConfirmDelete,
+            onCancel = onCancelDelete,
+        )
     }
 }
 
@@ -384,7 +413,7 @@ private fun ViewerPageView(
     text: TextHooks,
 ) {
     when {
-        page is ViewerPage.Text && text.document != null ->
+        page is ViewerPage.Text && text.document != null -> {
             TextPageView(
                 page = page,
                 document = text.document,
@@ -395,9 +424,14 @@ private fun ViewerPageView(
                 barsShown = text.barsShown,
                 onOpenLink = text.onOpenLink,
             )
+        }
+
         // Its text not here yet, or let go as the page was left: the quiet wait, as for any page loading.
-        page is ViewerPage.Text -> QuietWait(onTap)
-        page is ViewerPage.Pdf ->
+        page is ViewerPage.Text -> {
+            QuietWait(onTap)
+        }
+
+        page is ViewerPage.Pdf -> {
             PdfPageView(
                 page = page,
                 drawn = pdf.drawn,
@@ -412,7 +446,9 @@ private fun ViewerPageView(
                 jump = pdf.jump,
                 barsShown = pdf.barsShown,
             )
-        page is ViewerPage.Media ->
+        }
+
+        page is ViewerPage.Media -> {
             PlayerPageView(
                 kind = page.kind,
                 badge = ViewerFormat.pageBadge(page, item.meta),
@@ -423,7 +459,9 @@ private fun ViewerPageView(
                 onInteraction = onInteraction,
                 controlsShown = controlsShown,
             )
-        page == ViewerPage.Picture && picture != null ->
+        }
+
+        page == ViewerPage.Picture && picture != null -> {
             ZoomablePicture(
                 picture = picture,
                 description = ViewerFormat.title(item.meta),
@@ -431,8 +469,15 @@ private fun ViewerPageView(
                 onTap = onTap,
                 onZoomedIn = onZoomedIn,
             )
-        page == ViewerPage.Loading -> QuietWait(onTap)
-        else -> PageMessage(page = page, badge = ViewerFormat.pageBadge(page, item.meta), onTap = onTap)
+        }
+
+        page == ViewerPage.Loading -> {
+            QuietWait(onTap)
+        }
+
+        else -> {
+            PageMessage(page = page, badge = ViewerFormat.pageBadge(page, item.meta), onTap = onTap)
+        }
     }
 }
 
@@ -470,43 +515,66 @@ private fun ZoomablePicture(
             contentDescription = description,
             contentScale = ContentScale.Fit,
             filterQuality = FilterQuality.High,
-            modifier = Modifier
-                .fillMaxSize()
-                .pointerInput(box, content) {
-                    detectTapGestures(
-                        onTap = { onTap() },
-                        onDoubleTap = { tap ->
-                            val next = ViewerZoom.afterDoubleTap(zoom)
-                            val moved = if (next == 1f) Offset.Zero else ViewerZoom.offsetForDoubleTapAt(tap, center, next)
-                            offset = ViewerZoom.clampOffset(moved, next, content, box)
-                            zoom = next
-                        },
-                    )
-                }
-                .pointerInput(box, content) {
-                    awaitEachGesture {
-                        awaitFirstDown(requireUnconsumed = false)
-                        do {
-                            val event = awaitPointerEvent()
-                            val fingers = event.changes.count { it.pressed }
-                            if (fingers > 1 || !ViewerZoom.pagerMaySwipe(zoom)) {
-                                val next = ViewerZoom.afterPinch(zoom, event.calculateZoom())
-                                val centroid = event.calculateCentroid(useCurrent = true)
-                                    .takeIf { it != Offset.Unspecified } ?: center
-                                val moved = ViewerZoom.offsetAfterPinch(offset, zoom, next, centroid, center, event.calculatePan())
-                                offset = if (next <= 1f) Offset.Zero else ViewerZoom.clampOffset(moved, next, content, box)
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .pointerInput(box, content) {
+                        detectTapGestures(
+                            onTap = { onTap() },
+                            onDoubleTap = { tap ->
+                                val next = ViewerZoom.afterDoubleTap(zoom)
+                                val moved =
+                                    if (next ==
+                                        1f
+                                    ) {
+                                        Offset.Zero
+                                    } else {
+                                        ViewerZoom.offsetForDoubleTapAt(tap, center, next)
+                                    }
+                                offset = ViewerZoom.clampOffset(moved, next, content, box)
                                 zoom = next
-                                event.changes.forEach { if (it.positionChanged()) it.consume() }
-                            }
-                        } while (event.changes.any { it.pressed })
-                    }
-                }
-                .graphicsLayer {
-                    scaleX = zoom
-                    scaleY = zoom
-                    translationX = offset.x
-                    translationY = offset.y
-                },
+                            },
+                        )
+                    }.pointerInput(box, content) {
+                        awaitEachGesture {
+                            awaitFirstDown(requireUnconsumed = false)
+                            do {
+                                val event = awaitPointerEvent()
+                                val fingers = event.changes.count { it.pressed }
+                                if (fingers > 1 || !ViewerZoom.pagerMaySwipe(zoom)) {
+                                    val next = ViewerZoom.afterPinch(zoom, event.calculateZoom())
+                                    val centroid =
+                                        event
+                                            .calculateCentroid(useCurrent = true)
+                                            .takeIf { it != Offset.Unspecified } ?: center
+                                    val moved =
+                                        ViewerZoom.offsetAfterPinch(
+                                            offset,
+                                            zoom,
+                                            next,
+                                            centroid,
+                                            center,
+                                            event.calculatePan(),
+                                        )
+                                    offset =
+                                        if (next <=
+                                            1f
+                                        ) {
+                                            Offset.Zero
+                                        } else {
+                                            ViewerZoom.clampOffset(moved, next, content, box)
+                                        }
+                                    zoom = next
+                                    event.changes.forEach { if (it.positionChanged()) it.consume() }
+                                }
+                            } while (event.changes.any { it.pressed })
+                        }
+                    }.graphicsLayer {
+                        scaleX = zoom
+                        scaleY = zoom
+                        translationX = offset.x
+                        translationY = offset.y
+                    },
         )
     }
 }
@@ -531,18 +599,23 @@ private fun QuietWait(onTap: () -> Unit) {
 
 /** A page with no picture: the file's badge and what the page has to say. */
 @Composable
-private fun PageMessage(page: ViewerPage, badge: String, onTap: () -> Unit) {
+private fun PageMessage(
+    page: ViewerPage,
+    badge: String,
+    onTap: () -> Unit,
+) {
     val colors = DarkChamberTheme.colors
     val spacing = DarkChamberTheme.spacing
     val warning = ViewerFormat.pageIsWarning(page)
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
-        modifier = Modifier
-            .fillMaxSize()
-            .pointerInput(Unit) { detectTapGestures(onTap = { onTap() }) }
-            .windowInsetsPadding(WindowInsets.safeDrawing)
-            .padding(horizontal = spacing.spaceXl),
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .pointerInput(Unit) { detectTapGestures(onTap = { onTap() }) }
+                .windowInsetsPadding(WindowInsets.safeDrawing)
+                .padding(horizontal = spacing.spaceXl),
     ) {
         Text(
             text = badge,
@@ -566,7 +639,13 @@ private fun barsTransition(): Int = if (prefersReducedMotion()) 0 else DarkChamb
 
 /** Back, the item's name, and where it stands in the listing — on the bars' flat scrim. */
 @Composable
-private fun ViewerTopBar(visible: Boolean, title: String, position: String, onBack: () -> Unit, modifier: Modifier) {
+private fun ViewerTopBar(
+    visible: Boolean,
+    title: String,
+    position: String,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val duration = barsTransition()
     AnimatedVisibility(
         visible = visible,
@@ -578,11 +657,13 @@ private fun ViewerTopBar(visible: Boolean, title: String, position: String, onBa
         val spacing = DarkChamberTheme.spacing
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(ViewerBars.scrim)
-                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
-                .padding(horizontal = spacing.spaceXs, vertical = spacing.spaceXs),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .background(ViewerBars.scrim)
+                    .windowInsetsPadding(
+                        WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
+                    ).padding(horizontal = spacing.spaceXs, vertical = spacing.spaceXs),
         ) {
             IconButton(onClick = onBack) {
                 BackMark(contentDescription = ViewerFormat.back())
@@ -614,7 +695,7 @@ private fun ViewerBottomBar(
     visible: Boolean,
     onDetails: () -> Unit,
     onDelete: () -> Unit,
-    modifier: Modifier,
+    modifier: Modifier = Modifier,
     /** A player page's controls, given whatever should end their row (see [compact]). */
     controls: (@Composable (trailing: (@Composable () -> Unit)?) -> Unit)? = null,
     /** A short screen: Details and Delete end the controls' row rather than taking a row of their own. */
@@ -631,14 +712,20 @@ private fun ViewerBottomBar(
     ) {
         val colors = DarkChamberTheme.colors
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(ViewerBars.scrim)
-                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))
-                .padding(vertical = DarkChamberTheme.spacing.spaceXs),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .background(ViewerBars.scrim)
+                    .windowInsetsPadding(
+                        WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal),
+                    ).padding(vertical = DarkChamberTheme.spacing.spaceXs),
         ) {
             val details: @Composable () -> Unit = {
-                BarAction(label = ViewerFormat.detailsAction(), color = colors.textPrimary, onClick = onDetails) { tint ->
+                BarAction(
+                    label = ViewerFormat.detailsAction(),
+                    color = colors.textPrimary,
+                    onClick = onDetails,
+                ) { tint ->
                     DetailsMark(contentDescription = null, tint = tint)
                 }
             }
@@ -700,7 +787,12 @@ private class TextHooks(
 )
 
 /** The switch for the bottom bar's first slot, on a text page that has a formatted view; otherwise `null`. */
-private fun textSwitch(page: ViewerPage?, document: TextDocument?, formatted: Boolean, onToggle: () -> Unit): (@Composable () -> Unit)? {
+private fun textSwitch(
+    page: ViewerPage?,
+    document: TextDocument?,
+    formatted: Boolean,
+    onToggle: () -> Unit,
+): (@Composable () -> Unit)? {
     if (page !is ViewerPage.Text || document == null) return null
     if (!TextReading.hasSwitch(page.kind, canFormat = document.formatted != null)) return null
     return { TextViewSwitch(formatted = formatted, onToggle = onToggle) }
@@ -711,16 +803,23 @@ private fun textSwitch(page: ViewerPage?, document: TextDocument?, formatted: Bo
  * reader hears the view's name and, as the action, what a tap does ("Show as written").
  */
 @Composable
-private fun TextViewSwitch(formatted: Boolean, onToggle: () -> Unit) {
+private fun TextViewSwitch(
+    formatted: Boolean,
+    onToggle: () -> Unit,
+) {
     val name = ViewerFormat.textViewName(formatted)
     Box(
         contentAlignment = Alignment.Center,
-        modifier = Modifier
-            .heightIn(min = 48.dp)
-            .widthIn(min = 72.dp)
-            .clickable(role = Role.Button, onClickLabel = ViewerFormat.textViewAction(formatted), onClick = onToggle)
-            .semantics(mergeDescendants = true) { contentDescription = name }
-            .padding(DarkChamberTheme.spacing.spaceXs),
+        modifier =
+            Modifier
+                .heightIn(min = 48.dp)
+                .widthIn(min = 72.dp)
+                .clickable(
+                    role = Role.Button,
+                    onClickLabel = ViewerFormat.textViewAction(formatted),
+                    onClick = onToggle,
+                ).semantics(mergeDescendants = true) { contentDescription = name }
+                .padding(DarkChamberTheme.spacing.spaceXs),
     ) {
         Text(
             text = name,
@@ -737,15 +836,19 @@ private fun TextViewSwitch(formatted: Boolean, onToggle: () -> Unit) {
  * opens the jump dialog once the pages are known ([onClick]); plain text before.
  */
 @Composable
-private fun PdfIndicator(indicator: PageIndicator, onClick: (() -> Unit)?) {
+private fun PdfIndicator(
+    indicator: PageIndicator,
+    onClick: (() -> Unit)?,
+) {
     Box(
         contentAlignment = Alignment.Center,
-        modifier = Modifier
-            .heightIn(min = 48.dp)
-            .widthIn(min = 72.dp)
-            .then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier)
-            .semantics(mergeDescendants = true) { contentDescription = indicator.spoken }
-            .padding(DarkChamberTheme.spacing.spaceXs),
+        modifier =
+            Modifier
+                .heightIn(min = 48.dp)
+                .widthIn(min = 72.dp)
+                .then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier)
+                .semantics(mergeDescendants = true) { contentDescription = indicator.spoken }
+                .padding(DarkChamberTheme.spacing.spaceXs),
     ) {
         Text(
             text = indicator.text,
@@ -761,16 +864,22 @@ private fun PdfIndicator(indicator: PageIndicator, onClick: (() -> Unit)?) {
 
 /** An icon over its label, one 48 dp target, spoken as its label. */
 @Composable
-private fun BarAction(label: String, color: Color, onClick: () -> Unit, icon: @Composable (Color) -> Unit) {
+private fun BarAction(
+    label: String,
+    color: Color,
+    onClick: () -> Unit,
+    icon: @Composable (Color) -> Unit,
+) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
-        modifier = Modifier
-            .heightIn(min = 48.dp)
-            .widthIn(min = 72.dp)
-            .clickable(role = Role.Button, onClick = onClick)
-            .semantics(mergeDescendants = true) { contentDescription = label }
-            .padding(DarkChamberTheme.spacing.spaceXs),
+        modifier =
+            Modifier
+                .heightIn(min = 48.dp)
+                .widthIn(min = 72.dp)
+                .clickable(role = Role.Button, onClick = onClick)
+                .semantics(mergeDescendants = true) { contentDescription = label }
+                .padding(DarkChamberTheme.spacing.spaceXs),
     ) {
         icon(color)
         Text(text = label, style = DarkChamberTheme.typography.label, color = color)
@@ -780,12 +889,21 @@ private fun BarAction(label: String, color: Color, onClick: () -> Unit, icon: @C
 /** The item's details: its own window, so its own exclusion from the platform's structures. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DetailsSheet(rows: List<ViewerFormat.DetailRow>, onDismiss: () -> Unit) {
+private fun DetailsSheet(
+    rows: List<ViewerFormat.DetailRow>,
+    onDismiss: () -> Unit,
+) {
     val colors = DarkChamberTheme.colors
     val spacing = DarkChamberTheme.spacing
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = colors.surface) {
         ExcludeFromPlatformStructures()
-        Column(modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = spacing.spaceLg, vertical = spacing.spaceSm)) {
+        Column(
+            modifier =
+                Modifier.fillMaxWidth().navigationBarsPadding().padding(
+                    horizontal = spacing.spaceLg,
+                    vertical = spacing.spaceSm,
+                ),
+        ) {
             Text(
                 text = ViewerFormat.detailsAction(),
                 style = DarkChamberTheme.typography.title,
@@ -817,7 +935,11 @@ private fun DetailsSheet(rows: List<ViewerFormat.DetailRow>, onDismiss: () -> Un
  * Once confirmed nothing on it responds — a shred cannot be called back — and the action says why.
  */
 @Composable
-private fun DeleteDialog(deleting: Boolean, onConfirm: () -> Unit, onCancel: () -> Unit) {
+private fun DeleteDialog(
+    deleting: Boolean,
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit,
+) {
     val colors = DarkChamberTheme.colors
     val spacing = DarkChamberTheme.spacing
     Dialog(
@@ -827,19 +949,27 @@ private fun DeleteDialog(deleting: Boolean, onConfirm: () -> Unit, onCancel: () 
         // Its own window, so its own exclusion.
         ExcludeFromPlatformStructures()
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(color = colors.surface, shape = DarkChamberTheme.shapes.large)
-                .padding(spacing.spaceLg),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .background(color = colors.surface, shape = DarkChamberTheme.shapes.large)
+                    .padding(spacing.spaceLg),
         ) {
-            Text(text = ViewerFormat.deleteQuestion(1), style = DarkChamberTheme.typography.title, color = colors.textPrimary)
+            Text(
+                text = ViewerFormat.deleteQuestion(1),
+                style = DarkChamberTheme.typography.title,
+                color = colors.textPrimary,
+            )
             Text(
                 text = ViewerFormat.deleteExplanation(1),
                 style = DarkChamberTheme.typography.body,
                 color = colors.textSecondary,
                 modifier = Modifier.padding(top = spacing.spaceSm),
             )
-            Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth().padding(top = spacing.spaceMd)) {
+            Row(
+                horizontalArrangement = Arrangement.End,
+                modifier = Modifier.fillMaxWidth().padding(top = spacing.spaceMd),
+            ) {
                 TextButton(onClick = onCancel, enabled = !deleting) {
                     Text(
                         text = ViewerFormat.cancel(),
@@ -861,7 +991,12 @@ private fun DeleteDialog(deleting: Boolean, onConfirm: () -> Unit, onCancel: () 
 
 /** What a finished delete reports, gone after a few seconds or on a tap. */
 @Composable
-private fun NoticeBanner(text: String, warning: Boolean, onDismiss: () -> Unit, modifier: Modifier) {
+private fun NoticeBanner(
+    text: String,
+    warning: Boolean,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val colors = DarkChamberTheme.colors
     LaunchedEffect(text) {
         delay(NOTICE_MS)
@@ -872,11 +1007,12 @@ private fun NoticeBanner(text: String, warning: Boolean, onDismiss: () -> Unit, 
         style = DarkChamberTheme.typography.body,
         color = if (warning) colors.danger else colors.textPrimary,
         textAlign = TextAlign.Center,
-        modifier = modifier
-            .padding(DarkChamberTheme.spacing.spaceLg)
-            .background(color = colors.surfaceRaised, shape = DarkChamberTheme.shapes.medium)
-            .clickable(onClick = onDismiss)
-            .padding(horizontal = DarkChamberTheme.spacing.spaceMd, vertical = DarkChamberTheme.spacing.spaceSm),
+        modifier =
+            modifier
+                .padding(DarkChamberTheme.spacing.spaceLg)
+                .background(color = colors.surfaceRaised, shape = DarkChamberTheme.shapes.medium)
+                .clickable(onClick = onDismiss)
+                .padding(horizontal = DarkChamberTheme.spacing.spaceMd, vertical = DarkChamberTheme.spacing.spaceSm),
     )
 }
 

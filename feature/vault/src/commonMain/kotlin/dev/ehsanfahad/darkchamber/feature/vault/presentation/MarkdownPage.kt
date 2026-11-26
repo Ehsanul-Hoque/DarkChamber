@@ -82,18 +82,29 @@ internal fun MarkdownPageView(
     // One sideways scroll per code block or table, shared by its pieces so they move together.
     val sideways = remember(rows) { HashMap<Int, ScrollState>() }
 
-    val runStyles = remember(colors, typography) {
-        MdRunStyles(
-            code = SpanStyle(fontFamily = typography.mono.fontFamily, background = colors.surface),
-            link = SpanStyle(color = colors.accent, textDecoration = TextDecoration.Underline),
-            image = SpanStyle(fontStyle = FontStyle.Italic, color = colors.textSecondary),
-        )
-    }
+    val runStyles =
+        remember(colors, typography) {
+            MdRunStyles(
+                code = SpanStyle(fontFamily = typography.mono.fontFamily, background = colors.surface),
+                link = SpanStyle(color = colors.accent, textDecoration = TextDecoration.Underline),
+                image = SpanStyle(fontStyle = FontStyle.Italic, color = colors.textSecondary),
+            )
+        }
     val onLink: (String) -> Unit = { address ->
         when (val target = LinkRules.target(address, sections)) {
-            is LinkTarget.Web -> asking = target
-            is LinkTarget.Section -> MarkdownRows.firstRowOf(rows, target.blockIndex)?.let { scope.launch { list.animateScrollToItem(it) } }
-            LinkTarget.Inert -> Unit
+            is LinkTarget.Web -> {
+                asking = target
+            }
+
+            is LinkTarget.Section -> {
+                MarkdownRows.firstRowOf(rows, target.blockIndex)?.let {
+                    scope.launch { list.animateScrollToItem(it) }
+                }
+            }
+
+            LinkTarget.Inert -> {
+                Unit
+            }
         }
     }
 
@@ -110,11 +121,12 @@ internal fun MarkdownPageView(
         thumbWhenScrolls = true,
     ) { index ->
         val row = rows[index]
-        val scroll = when (row) {
-            is MdRow.Code -> sideways.getOrPut(row.group) { ScrollState(0) }
-            is MdRow.TableRows -> sideways.getOrPut(row.group) { ScrollState(0) }
-            else -> null
-        }
+        val scroll =
+            when (row) {
+                is MdRow.Code -> sideways.getOrPut(row.group) { ScrollState(0) }
+                is MdRow.TableRows -> sideways.getOrPut(row.group) { ScrollState(0) }
+                else -> null
+            }
         MdRowView(row = row, runStyles = runStyles, sections = sections, onLink = onLink, scroll = scroll)
     }
 
@@ -133,7 +145,13 @@ internal fun MarkdownPageView(
 
 /** One row: its quote bars and list indent, then what it holds. */
 @Composable
-private fun MdRowView(row: MdRow, runStyles: MdRunStyles, sections: Map<String, Int>, onLink: (String) -> Unit, scroll: ScrollState?) {
+private fun MdRowView(
+    row: MdRow,
+    runStyles: MdRunStyles,
+    sections: Map<String, Int>,
+    onLink: (String) -> Unit,
+    scroll: ScrollState?,
+) {
     val colors = DarkChamberTheme.colors
     val spacing = DarkChamberTheme.spacing
     val quotes = row.quotes.coerceAtMost(MarkdownRows.MAX_DRAWN_DEPTH)
@@ -141,16 +159,16 @@ private fun MdRowView(row: MdRow, runStyles: MdRunStyles, sections: Map<String, 
     val density = LocalDensity.current
     val barColor = colors.outline
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = if (row.gapAbove) spacing.spaceSm else 0.dp)
-            // The quote bars, one per quote, drawn down the row's left edge.
-            .drawBehind {
-                val step = with(density) { QUOTE_STEP.toPx() }
-                val bar = with(density) { QUOTE_BAR.toPx() }
-                repeat(quotes) { i -> drawRect(barColor, Offset(i * step, 0f), Size(bar, size.height)) }
-            }
-            .padding(start = QUOTE_STEP * quotes + INDENT_STEP * (indent - 1).coerceAtLeast(0)),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(top = if (row.gapAbove) spacing.spaceSm else 0.dp)
+                // The quote bars, one per quote, drawn down the row's left edge.
+                .drawBehind {
+                    val step = with(density) { QUOTE_STEP.toPx() }
+                    val bar = with(density) { QUOTE_BAR.toPx() }
+                    repeat(quotes) { i -> drawRect(barColor, Offset(i * step, 0f), Size(bar, size.height)) }
+                }.padding(start = QUOTE_STEP * quotes + INDENT_STEP * (indent - 1).coerceAtLeast(0)),
     ) {
         if (indent > 0) {
             val marker = (row as? MdRow.Words)?.marker
@@ -168,30 +186,57 @@ private fun MdRowView(row: MdRow, runStyles: MdRunStyles, sections: Map<String, 
         }
         Box(modifier = Modifier.weight(1f)) {
             when (row) {
-                is MdRow.Words -> WordsRow(row, runStyles, sections, onLink)
-                is MdRow.Code -> CodeRow(row, scroll!!)
-                is MdRow.TableRows -> TableRow(row, runStyles, sections, onLink, scroll!!)
-                is MdRow.Rule -> Box(Modifier.fillMaxWidth().padding(vertical = spacing.spaceXs).height(1.dp).background(colors.outline))
-                is MdRow.Raw -> Text(
-                    text = row.text,
-                    style = TextReading.spaced(DarkChamberTheme.typography.mono, row.first, row.last),
-                    color = colors.textPrimary,
-                )
+                is MdRow.Words -> {
+                    WordsRow(row, runStyles, sections, onLink)
+                }
+
+                is MdRow.Code -> {
+                    CodeRow(row, scroll!!)
+                }
+
+                is MdRow.TableRows -> {
+                    TableRow(row, runStyles, sections, onLink, scroll!!)
+                }
+
+                is MdRow.Rule -> {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(
+                                vertical = spacing.spaceXs,
+                            ).height(1.dp)
+                            .background(colors.outline),
+                    )
+                }
+
+                is MdRow.Raw -> {
+                    Text(
+                        text = row.text,
+                        style = TextReading.spaced(DarkChamberTheme.typography.mono, row.first, row.last),
+                        color = colors.textPrimary,
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-private fun WordsRow(row: MdRow.Words, runStyles: MdRunStyles, sections: Map<String, Int>, onLink: (String) -> Unit) {
+private fun WordsRow(
+    row: MdRow.Words,
+    runStyles: MdRunStyles,
+    sections: Map<String, Int>,
+    onLink: (String) -> Unit,
+) {
     if (row.spans.isEmpty()) return
     val typography = DarkChamberTheme.typography
-    val font = when (row.size) {
-        MdTextSize.Title1 -> typography.titleLarge
-        MdTextSize.Title2 -> typography.title
-        MdTextSize.Title3 -> typography.bodyLarge.copy(fontWeight = FontWeight.Bold)
-        MdTextSize.Body -> typography.bodyLarge
-    }
+    val font =
+        when (row.size) {
+            MdTextSize.Title1 -> typography.titleLarge
+            MdTextSize.Title2 -> typography.title
+            MdTextSize.Title3 -> typography.bodyLarge.copy(fontWeight = FontWeight.Bold)
+            MdTextSize.Body -> typography.bodyLarge
+        }
     // A cut paragraph's inner sides untrimmed, so its pieces join like wrapped lines.
     val style = TextReading.spaced(font, row.first, row.last)
     val text = remember(row, runStyles) { MarkdownText.annotated(row.spans, runStyles, sections, onLink) }
@@ -199,26 +244,42 @@ private fun WordsRow(row: MdRow.Words, runStyles: MdRunStyles, sections: Map<Str
         text = text,
         style = style,
         color = DarkChamberTheme.colors.textPrimary,
-        modifier = Modifier.fillMaxWidth().then(if (row.size != MdTextSize.Body) Modifier.semantics { heading() } else Modifier),
+        modifier =
+            Modifier.fillMaxWidth().then(
+                if (row.size !=
+                    MdTextSize.Body
+                ) {
+                    Modifier.semantics { heading() }
+                } else {
+                    Modifier
+                },
+            ),
     )
 }
 
 /** A piece of a code block: monospace, unwrapped, as wide as the block's longest line, on the code ground. */
 @Composable
-private fun CodeRow(row: MdRow.Code, scroll: ScrollState) {
+private fun CodeRow(
+    row: MdRow.Code,
+    scroll: ScrollState,
+) {
     val colors = DarkChamberTheme.colors
     val spacing = DarkChamberTheme.spacing
     val mono = DarkChamberTheme.typography.mono
     val charPx = rememberCharWidth(mono)
     val density = LocalDensity.current
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(colors.surface)
-            .keepsItsDrag(scroll)
-            .horizontalScroll(scroll)
-            .padding(horizontal = spacing.spaceSm)
-            .padding(top = if (row.first) spacing.spaceSm else 0.dp, bottom = if (row.last) spacing.spaceSm else 0.dp),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(colors.surface)
+                .keepsItsDrag(scroll)
+                .horizontalScroll(scroll)
+                .padding(horizontal = spacing.spaceSm)
+                .padding(
+                    top = if (row.first) spacing.spaceSm else 0.dp,
+                    bottom = if (row.last) spacing.spaceSm else 0.dp,
+                ),
     ) {
         Text(
             text = row.text,
@@ -233,7 +294,13 @@ private fun CodeRow(row: MdRow.Code, scroll: ScrollState) {
 
 /** A piece of a table: its rows of cells, each column one width across the whole table. */
 @Composable
-private fun TableRow(row: MdRow.TableRows, runStyles: MdRunStyles, sections: Map<String, Int>, onLink: (String) -> Unit, scroll: ScrollState) {
+private fun TableRow(
+    row: MdRow.TableRows,
+    runStyles: MdRunStyles,
+    sections: Map<String, Int>,
+    onLink: (String) -> Unit,
+    scroll: ScrollState,
+) {
     val colors = DarkChamberTheme.colors
     val spacing = DarkChamberTheme.spacing
     val body = DarkChamberTheme.typography.bodyLarge
@@ -250,21 +317,23 @@ private fun TableRow(row: MdRow.TableRows, runStyles: MdRunStyles, sections: Map
                     val spans = cells.getOrNull(c).orEmpty()
                     val text = remember(spans, runStyles) { MarkdownText.annotated(spans, runStyles, sections, onLink) }
                     Box(
-                        modifier = Modifier
-                            .width(width)
-                            .fillMaxHeight()
-                            .border(1.dp, colors.outline)
-                            .padding(horizontal = spacing.spaceSm, vertical = spacing.spaceXs),
+                        modifier =
+                            Modifier
+                                .width(width)
+                                .fillMaxHeight()
+                                .border(1.dp, colors.outline)
+                                .padding(horizontal = spacing.spaceSm, vertical = spacing.spaceXs),
                     ) {
                         Text(
                             text = text,
                             style = if (isHeader) body.copy(fontWeight = FontWeight.Bold) else body,
                             color = colors.textPrimary,
-                            textAlign = when (row.alignments.getOrNull(c)) {
-                                CellAlign.Center -> TextAlign.Center
-                                CellAlign.End -> TextAlign.End
-                                else -> TextAlign.Start
-                            },
+                            textAlign =
+                                when (row.alignments.getOrNull(c)) {
+                                    CellAlign.Center -> TextAlign.Center
+                                    CellAlign.End -> TextAlign.End
+                                    else -> TextAlign.Start
+                                },
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }
@@ -279,24 +348,38 @@ private fun TableRow(row: MdRow.TableRows, runStyles: MdRunStyles, sections: Map
  * and of a fling, stops there rather than going on to turn the viewer's page — a new drag does that.
  * A block narrow enough not to scroll keeps nothing, so the page still turns over it.
  */
-private fun Modifier.keepsItsDrag(scroll: ScrollState): Modifier = nestedScroll(
-    object : NestedScrollConnection {
-        override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset =
-            if (scroll.maxValue > 0) Offset(available.x, 0f) else Offset.Zero
+private fun Modifier.keepsItsDrag(scroll: ScrollState): Modifier =
+    nestedScroll(
+        object : NestedScrollConnection {
+            override fun onPostScroll(
+                consumed: Offset,
+                available: Offset,
+                source: NestedScrollSource,
+            ): Offset = if (scroll.maxValue > 0) Offset(available.x, 0f) else Offset.Zero
 
-        override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity =
-            if (scroll.maxValue > 0) Velocity(available.x, 0f) else Velocity.Zero
-    },
-)
+            override suspend fun onPostFling(
+                consumed: Velocity,
+                available: Velocity,
+            ): Velocity = if (scroll.maxValue > 0) Velocity(available.x, 0f) else Velocity.Zero
+        },
+    )
 
 /**
  * The width of one character in [style], in pixels: the average over [sample] — a monospace face's
  * exactly, a reading face's on average, since its letters differ.
  */
 @Composable
-private fun rememberCharWidth(style: TextStyle, sample: String = "0"): Float {
+private fun rememberCharWidth(
+    style: TextStyle,
+    sample: String = "0",
+): Float {
     val measurer = rememberTextMeasurer()
-    return remember(style, measurer, sample) { measurer.measure(sample, style).size.width.toFloat() / sample.length }
+    return remember(style, measurer, sample) {
+        measurer
+            .measure(sample, style)
+            .size.width
+            .toFloat() / sample.length
+    }
 }
 
 /** Letters and digits, for a reading face's average width. */
@@ -308,17 +391,23 @@ private const val LETTERS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXY
  * window, so its own exclusion from the platform's structures.
  */
 @Composable
-private fun LinkDialog(address: String, host: String, onOpen: () -> Unit, onCancel: () -> Unit) {
+private fun LinkDialog(
+    address: String,
+    host: String,
+    onOpen: () -> Unit,
+    onCancel: () -> Unit,
+) {
     val colors = DarkChamberTheme.colors
     val spacing = DarkChamberTheme.spacing
     val typography = DarkChamberTheme.typography
     Dialog(onDismissRequest = onCancel) {
         ExcludeFromPlatformStructures()
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(color = colors.surface, shape = DarkChamberTheme.shapes.large)
-                .padding(spacing.spaceLg),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .background(color = colors.surface, shape = DarkChamberTheme.shapes.large)
+                    .padding(spacing.spaceLg),
         ) {
             // The words scroll, if even they do not fit; the buttons below them never leave the screen.
             Column(modifier = Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
@@ -329,10 +418,11 @@ private fun LinkDialog(address: String, host: String, onOpen: () -> Unit, onCanc
                     text = address,
                     style = typography.mono,
                     color = colors.textPrimary,
-                    modifier = Modifier
-                        .padding(top = spacing.spaceSm)
-                        .heightIn(max = ADDRESS_MAX_HEIGHT)
-                        .verticalScroll(rememberScrollState()),
+                    modifier =
+                        Modifier
+                            .padding(top = spacing.spaceSm)
+                            .heightIn(max = ADDRESS_MAX_HEIGHT)
+                            .verticalScroll(rememberScrollState()),
                 )
                 Text(
                     text = ViewerFormat.linkSite(host),
@@ -353,7 +443,11 @@ private fun LinkDialog(address: String, host: String, onOpen: () -> Unit, onCanc
                     modifier = Modifier.padding(top = spacing.spaceXs),
                 )
             }
-            Row(horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(top = spacing.spaceMd)) {
+            Row(
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth().padding(top = spacing.spaceMd),
+            ) {
                 TextButton(onClick = onCancel) {
                     Text(text = ViewerFormat.cancel(), style = typography.label, color = colors.textPrimary)
                 }

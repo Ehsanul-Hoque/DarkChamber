@@ -26,7 +26,6 @@ package dev.ehsanfahad.darkchamber.app.system
  * from anywhere else.
  */
 class SystemUiHandoff {
-
     // A counter, not a flag: nothing today overlaps two pickers, but a stray end() must not cancel
     // an unrelated handoff that is still open.
     private var depth = 0

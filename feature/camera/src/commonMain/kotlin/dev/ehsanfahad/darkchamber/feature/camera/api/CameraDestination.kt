@@ -20,7 +20,9 @@ sealed interface CameraDestination {
      * Not a data class — the generated `equals` would compare [id] by identity, so two destinations
      * over the same album would differ. Equality is by content.
      */
-    class Album(val id: ByteArray) : CameraDestination {
+    class Album(
+        val id: ByteArray,
+    ) : CameraDestination {
         override fun equals(other: Any?): Boolean = other is Album && id.contentEquals(other.id)
 
         override fun hashCode(): Int = id.contentHashCode()

@@ -19,7 +19,6 @@ import kotlin.test.assertTrue
  * screen shows is still asserted somewhere.
  */
 class CameraStateTest {
-
     private fun state(
         permission: CameraPermission = CameraPermission.Granted,
         availability: CameraAvailability = CameraAvailability.Available,
@@ -66,9 +65,16 @@ class CameraStateTest {
 
     @Test
     fun which_explainer_shows_for_each_permission_and_availability() {
-        assertEquals(CameraExplainer.None, state(permission = CameraPermission.NotAsked).explainer, "the system prompt is up")
+        assertEquals(
+            CameraExplainer.None,
+            state(permission = CameraPermission.NotAsked).explainer,
+            "the system prompt is up",
+        )
         assertEquals(CameraExplainer.Denied, state(permission = CameraPermission.Denied).explainer)
-        assertEquals(CameraExplainer.PermanentlyDenied, state(permission = CameraPermission.PermanentlyDenied).explainer)
+        assertEquals(
+            CameraExplainer.PermanentlyDenied,
+            state(permission = CameraPermission.PermanentlyDenied).explainer,
+        )
         assertEquals(CameraExplainer.None, state().explainer)
         assertEquals(CameraExplainer.InUse, state(availability = CameraAvailability.InUseByAnotherApp).explainer)
         assertEquals(CameraExplainer.Unavailable, state(availability = CameraAvailability.Unavailable).explainer)
@@ -85,8 +91,15 @@ class CameraStateTest {
     fun a_count_is_shown_only_once_it_is_known() {
         assertEquals(10L, state().count)
         assertNull(state(destination = null).count, "not loaded yet is not zero")
-        assertNull(state(destination = DestinationInfo(DestinationTitle.AllItems, null)).count, "unreadable is not zero")
-        assertEquals(0L, state(destination = DestinationInfo(DestinationTitle.Unfiled, 0L)).count, "a real zero is shown")
+        assertNull(
+            state(destination = DestinationInfo(DestinationTitle.AllItems, null)).count,
+            "unreadable is not zero",
+        )
+        assertEquals(
+            0L,
+            state(destination = DestinationInfo(DestinationTitle.Unfiled, 0L)).count,
+            "a real zero is shown",
+        )
     }
 
     /** The album being gone outranks a single failed photo: it explains every photo that follows. */
@@ -98,7 +111,10 @@ class CameraStateTest {
         assertEquals(CameraMessage.CaptureFailed, state(problem = CaptureProblem.CaptureFailed).message)
         assertEquals(
             CameraMessage.AlbumGone,
-            state(problem = CaptureProblem.SaveFailed, destination = DestinationInfo(DestinationTitle.AlbumGone, null)).message,
+            state(
+                problem = CaptureProblem.SaveFailed,
+                destination = DestinationInfo(DestinationTitle.AlbumGone, null),
+            ).message,
         )
     }
 

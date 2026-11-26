@@ -77,7 +77,10 @@ class PlayerMappingTest {
 
     @Test
     fun a_kind_with_no_tracks_is_absent() {
-        assertEquals(PlayerTracks(TrackSupport.Absent, TrackSupport.Playable), PlayerMapping.tracksOf(listOf(FoundTrack(audio, true))))
+        assertEquals(
+            PlayerTracks(TrackSupport.Absent, TrackSupport.Playable),
+            PlayerMapping.tracksOf(listOf(FoundTrack(audio, true))),
+        )
         assertEquals(PlayerTracks(), PlayerMapping.tracksOf(emptyList()))
     }
 
@@ -90,7 +93,12 @@ class PlayerMappingTest {
 
     @Test
     fun subtitles_and_metadata_are_not_counted_as_picture_or_sound() {
-        val found = listOf(FoundTrack(C.TRACK_TYPE_TEXT, false), FoundTrack(C.TRACK_TYPE_METADATA, false), FoundTrack(audio, true))
+        val found =
+            listOf(
+                FoundTrack(C.TRACK_TYPE_TEXT, false),
+                FoundTrack(C.TRACK_TYPE_METADATA, false),
+                FoundTrack(audio, true),
+            )
 
         assertEquals(PlayerTracks(TrackSupport.Absent, TrackSupport.Playable), PlayerMapping.tracksOf(found))
     }

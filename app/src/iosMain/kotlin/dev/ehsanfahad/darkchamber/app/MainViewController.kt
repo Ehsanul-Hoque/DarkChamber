@@ -45,38 +45,39 @@ fun MainViewController(): UIViewController {
     val koin = appKoin
     val lifecycle = LifecycleRegistry()
 
-    val root: RootComponent = DefaultRootComponent(
-        componentContext = DefaultComponentContext(lifecycle),
-        lockedFactory = { ctx, onUnlocked ->
-            DefaultLockedComponent(
-                componentContext = ctx,
-                bootstrap = koin.get(),
-                authenticator = koin.get<BiometricAuthenticator>(),
-                clipboard = koin.get<SecretClipboard>(),
-                mainContext = Dispatchers.Main,
-                onUnlocked = onUnlocked,
-            )
-        },
-        unlockedFactory = { ctx, vault, notSaved, onLock ->
-            DefaultUnlockedComponent(
-                ctx,
-                vault,
-                koin,
-                notSavedRecord = notSaved,
-                onLock = onLock,
-                // Nothing, because iOS has neither half of what this is for: no system back reaches
-                // the gate (the context above is built without a back handler, so the callback that
-                // would offer to leave is never enabled by anything), and an app does not quit
-                // itself here — leaving is the home gesture, which backgrounds us and locks the
-                // vault through `didEnterBackground`.
-                onLeave = {},
-            )
-        },
-        // Wired for symmetry, and for the pickers Phase 1 still has to add. iOS never *needs* the
-        // exemption today: `UIDocumentPickerViewController` is presented inside our own window, so
-        // the app stays foreground-active and `didEnterBackground` never fires during a pick.
-        handoff = koin.get(),
-    )
+    val root: RootComponent =
+        DefaultRootComponent(
+            componentContext = DefaultComponentContext(lifecycle),
+            lockedFactory = { ctx, onUnlocked ->
+                DefaultLockedComponent(
+                    componentContext = ctx,
+                    bootstrap = koin.get(),
+                    authenticator = koin.get<BiometricAuthenticator>(),
+                    clipboard = koin.get<SecretClipboard>(),
+                    mainContext = Dispatchers.Main,
+                    onUnlocked = onUnlocked,
+                )
+            },
+            unlockedFactory = { ctx, vault, notSaved, onLock ->
+                DefaultUnlockedComponent(
+                    ctx,
+                    vault,
+                    koin,
+                    notSavedRecord = notSaved,
+                    onLock = onLock,
+                    // Nothing, because iOS has neither half of what this is for: no system back reaches
+                    // the gate (the context above is built without a back handler, so the callback that
+                    // would offer to leave is never enabled by anything), and an app does not quit
+                    // itself here — leaving is the home gesture, which backgrounds us and locks the
+                    // vault through `didEnterBackground`.
+                    onLeave = {},
+                )
+            },
+            // Wired for symmetry, and for the pickers Phase 1 still has to add. iOS never *needs* the
+            // exemption today: `UIDocumentPickerViewController` is presented inside our own window, so
+            // the app stays foreground-active and `didEnterBackground` never fires during a pick.
+            handoff = koin.get(),
+        )
 
     lifecycle.resume()
     observeAppLifecycle(lifecycle, root)
@@ -93,7 +94,10 @@ private val appKoin: Koin by lazy {
 }
 
 @OptIn(ExperimentalForeignApi::class)
-private fun observeAppLifecycle(lifecycle: LifecycleRegistry, root: RootComponent) {
+private fun observeAppLifecycle(
+    lifecycle: LifecycleRegistry,
+    root: RootComponent,
+) {
     val center = NSNotificationCenter.defaultCenter
     center.addObserverForName(UIApplicationDidEnterBackgroundNotification, null, NSOperationQueue.mainQueue) { _ ->
         // Lock the session on background (the child lifecycle is standalone, so drive it explicitly),
@@ -124,13 +128,17 @@ private fun observeSnapshotCover() {
     val center = NSNotificationCenter.defaultCenter
     center.addObserverForName(UIApplicationWillResignActiveNotification, null, NSOperationQueue.mainQueue) { _ ->
         if (snapshotCover != null) return@addObserverForName
-        val window = keyWindow() ?: run {
-            // Silent failure would leave vault content in the app-switcher card, so make it visible
-            // in a diagnostic log (event name only — no content, hard rule #4).
-            logVaultError(SNAPSHOT_COVER_STAGE, VaultError.Unexpected(IllegalStateException("no window")))
-            return@addObserverForName
-        }
-        val cover = UIVisualEffectView(effect = UIBlurEffect.effectWithStyle(UIBlurEffectStyle.UIBlurEffectStyleSystemThickMaterialDark))
+        val window =
+            keyWindow() ?: run {
+                // Silent failure would leave vault content in the app-switcher card, so make it visible
+                // in a diagnostic log (event name only — no content, hard rule #4).
+                logVaultError(SNAPSHOT_COVER_STAGE, VaultError.Unexpected(IllegalStateException("no window")))
+                return@addObserverForName
+            }
+        val cover =
+            UIVisualEffectView(
+                effect = UIBlurEffect.effectWithStyle(UIBlurEffectStyle.UIBlurEffectStyleSystemThickMaterialDark),
+            )
         cover.setFrame(window.bounds)
         cover.setAutoresizingMask(UIViewAutoresizingFlexibleWidth or UIViewAutoresizingFlexibleHeight)
         window.addSubview(cover)

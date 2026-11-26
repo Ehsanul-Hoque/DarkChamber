@@ -17,14 +17,21 @@ sealed interface ViewerPage {
      * under the item's key; a page beside it has no player. [note] says which part of it this device
      * cannot play, while the rest plays.
      */
-    data class Media(val kind: PlayerKind, val note: TrackNote? = null) : ViewerPage
+    data class Media(
+        val kind: PlayerKind,
+        val note: TrackNote? = null,
+    ) : ViewerPage
 
     /**
      * A PDF that read, verified and opened: [pageCount] pages, each of the size in [pageSizes]. Its
      * drawn pages are in [VaultViewerComponent.pdfPages] while it is the page shown; [start] is where
      * reading resumes — the top, or where it was left earlier in this viewer.
      */
-    data class Pdf(val pageCount: Int, val pageSizes: List<PdfPageSize>, val start: PdfPlace = PdfPlace()) : ViewerPage
+    data class Pdf(
+        val pageCount: Int,
+        val pageSizes: List<PdfPageSize>,
+        val start: PdfPlace = PdfPlace(),
+    ) : ViewerPage
 
     /**
      * A text file that read and verified and is shown as text, of [kind]. The text itself is in
@@ -32,7 +39,10 @@ sealed interface ViewerPage {
      * Markdown or JSON file is shown only as written — `null` when its formatted view is there too (and
      * always for the kinds that have none).
      */
-    data class Text(val kind: TextKind, val note: FormatNote? = null) : ViewerPage
+    data class Text(
+        val kind: TextKind,
+        val note: FormatNote? = null,
+    ) : ViewerPage
 
     /**
      * Read and verified, but not text this viewer reads: bytes that are not valid UTF-8 or UTF-16 with
@@ -41,7 +51,9 @@ sealed interface ViewerPage {
     data object NotText : ViewerPage
 
     /** A kind with no viewer here — anything but an image, video, audio, PDF or text — shown as its [badge]. Nothing was read. */
-    data class NotViewable(val badge: String) : ViewerPage
+    data class NotViewable(
+        val badge: String,
+    ) : ViewerPage
 
     /** Larger than the viewer reads into memory. Nothing was read. */
     data object TooLarge : ViewerPage

@@ -22,9 +22,10 @@ sealed interface PassphraseKdfProfile {
             KdfParams.Argon2id(salt, memoryKib, iterations, parallelism)
     }
 
-    class Pbkdf2(val iterations: Int) : PassphraseKdfProfile {
-        override fun paramsWithSalt(salt: ByteArray): KdfParams =
-            KdfParams.Pbkdf2(salt, iterations)
+    class Pbkdf2(
+        val iterations: Int,
+    ) : PassphraseKdfProfile {
+        override fun paramsWithSalt(salt: ByteArray): KdfParams = KdfParams.Pbkdf2(salt, iterations)
     }
 
     companion object {

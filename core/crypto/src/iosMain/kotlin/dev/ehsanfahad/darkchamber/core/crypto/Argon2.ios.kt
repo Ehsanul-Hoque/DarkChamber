@@ -25,23 +25,24 @@ internal actual fun platformArgon2id(
     outLenBytes: Int,
 ): ByteArray {
     val out = ByteArray(outLenBytes)
-    val rc = password.usePinned { pw ->
-        salt.usePinned { s ->
-            out.usePinned { o ->
-                argon2id_hash_raw(
-                    iterations.convert(),
-                    memoryKib.convert(),
-                    parallelism.convert(),
-                    pw.addressOf(0),
-                    password.size.convert(),
-                    s.addressOf(0),
-                    salt.size.convert(),
-                    o.addressOf(0),
-                    outLenBytes.convert(),
-                )
+    val rc =
+        password.usePinned { pw ->
+            salt.usePinned { s ->
+                out.usePinned { o ->
+                    argon2id_hash_raw(
+                        iterations.convert(),
+                        memoryKib.convert(),
+                        parallelism.convert(),
+                        pw.addressOf(0),
+                        password.size.convert(),
+                        s.addressOf(0),
+                        salt.size.convert(),
+                        o.addressOf(0),
+                        outLenBytes.convert(),
+                    )
+                }
             }
         }
-    }
     check(rc == 0) { "argon2id_hash_raw failed with code $rc" }
     return out
 }

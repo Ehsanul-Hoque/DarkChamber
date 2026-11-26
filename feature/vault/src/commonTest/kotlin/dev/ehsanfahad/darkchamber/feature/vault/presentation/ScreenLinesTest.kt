@@ -7,13 +7,17 @@ import kotlin.test.assertFailsWith
 
 /** A plain page's row heights, estimated before the rows are laid out. */
 class ScreenLinesTest {
-
     /** Every character [px] wide, as a monospace font draws them. */
-    private fun mono(px: Float = 10f, chars: String = " ab") =
-        LetterWidths(chars.map { it.code }.toIntArray(), FloatArray(chars.length) { px })
+    private fun mono(
+        px: Float = 10f,
+        chars: String = " ab",
+    ) = LetterWidths(chars.map { it.code }.toIntArray(), FloatArray(chars.length) { px })
 
-    private fun lines(text: String, width: Float, widths: LetterWidths = mono()) =
-        ScreenLines.count(text, 0, text.length, width, widths)
+    private fun lines(
+        text: String,
+        width: Float,
+        widths: LetterWidths = mono(),
+    ) = ScreenLines.count(text, 0, text.length, width, widths)
 
     // An emoji outside the basic plane, as its two UTF-16 halves.
     private val grin = "" + Char(0xD83D) + Char(0xDE00)
@@ -107,7 +111,10 @@ class ScreenLinesTest {
     @Test
     fun characters_that_break_a_line_are_not_measured() {
         val breaking = intArrayOf(0x0A, 0x0B, 0x0C, 0x0D, 0x85, 0x2028, 0x2029)
-        assertContentEquals(intArrayOf('a'.code, grinCode), ScreenLines.measurable(breaking + intArrayOf('a'.code, grinCode)))
+        assertContentEquals(
+            intArrayOf('a'.code, grinCode),
+            ScreenLines.measurable(breaking + intArrayOf('a'.code, grinCode)),
+        )
     }
 
     @Test
@@ -126,12 +133,28 @@ class ScreenLinesTest {
     @Test
     fun heights_leave_room_for_the_items_above_the_rows() {
         val text = TextDecoding.decode("aa\naa".encodeToByteArray()) as DecodedText.Text
-        val heights = ScreenLines.heights(TextReading.rows(text), 50f, mono(), firstLinePx = 100, nextLinePx = 80, leading = 1)
+        val heights =
+            ScreenLines.heights(
+                TextReading.rows(text),
+                50f,
+                mono(),
+                firstLinePx = 100,
+                nextLinePx = 80,
+                leading = 1,
+            )
         assertContentEquals(intArrayOf(0, 100, 100), heights)
     }
 
-    private fun rowsOf(lines: Int, chars: Int): TextRows {
-        val text = TextDecoding.decode(List(lines) { "a".repeat(chars) }.joinToString("\n").encodeToByteArray()) as DecodedText.Text
+    private fun rowsOf(
+        lines: Int,
+        chars: Int,
+    ): TextRows {
+        val text =
+            TextDecoding.decode(
+                List(lines) {
+                    "a".repeat(chars)
+                }.joinToString("\n").encodeToByteArray(),
+            ) as DecodedText.Text
         return TextReading.rows(text)
     }
 
@@ -143,6 +166,7 @@ class ScreenLinesTest {
     @Test
     fun the_stop_check_comes_every_so_many_characters_not_rows() {
         val every = ScreenLines.STOP_EVERY_CHARS
+
         fun checksIn(rows: TextRows): Int {
             var checks = 0
             ScreenLines.heights(rows, 1000f, mono(), 10, 10, stop = { checks++ })
@@ -154,7 +178,14 @@ class ScreenLinesTest {
         assertEquals(1, checksIn(rowsOf(lines = 33, chars = 2_000)), "66,000 characters")
         // Exactly at the mark, and one character short of it.
         assertEquals(1, checksIn(rowsOf(lines = 64, chars = 1_024)), "65,536 characters")
-        val oneShort = TextDecoding.decode((List(63) { "a".repeat(1_024) } + "a".repeat(1_023)).joinToString("\n").encodeToByteArray())
+        val oneShort =
+            TextDecoding.decode(
+                (
+                    List(63) {
+                        "a".repeat(1_024)
+                    } + "a".repeat(1_023)
+                ).joinToString("\n").encodeToByteArray(),
+            )
         assertEquals(0, checksIn(TextReading.rows(oneShort as DecodedText.Text)), "65,535 characters")
     }
 
@@ -176,7 +207,9 @@ class ScreenLinesTest {
     @Test
     fun a_stop_that_throws_ends_the_work() {
         class Stopped : RuntimeException()
-        assertFailsWith<Stopped> { ScreenLines.heights(rowsOf(lines = 100, chars = 2_000), 1000f, mono(), 10, 10, stop = { throw Stopped() }) }
+        assertFailsWith<Stopped> {
+            ScreenLines.heights(rowsOf(lines = 100, chars = 2_000), 1000f, mono(), 10, 10, stop = { throw Stopped() })
+        }
         assertFailsWith<Stopped> { ScreenLines.distinct("a".repeat(100_000)) { throw Stopped() } }
     }
 
@@ -184,6 +217,9 @@ class ScreenLinesTest {
     fun heights_are_the_first_line_and_each_line_after() {
         val text = TextDecoding.decode("aa\n\naaaa aaaa".encodeToByteArray()) as DecodedText.Text
         val rows = TextReading.rows(text)
-        assertContentEquals(intArrayOf(100, 100, 180), ScreenLines.heights(rows, 50f, mono(), firstLinePx = 100, nextLinePx = 80))
+        assertContentEquals(
+            intArrayOf(100, 100, 180),
+            ScreenLines.heights(rows, 50f, mono(), firstLinePx = 100, nextLinePx = 80),
+        )
     }
 }

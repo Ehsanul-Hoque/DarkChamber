@@ -19,11 +19,14 @@ object RecoveryKey {
     private const val ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
     private const val GROUP = 4
 
-    private val decodeMap: Map<Char, Int> = buildMap {
-        ALPHABET.forEachIndexed { i, c -> put(c, i) }
-        // Crockford look-alike folds.
-        put('I', 1); put('L', 1); put('O', 0)
-    }
+    private val decodeMap: Map<Char, Int> =
+        buildMap {
+            ALPHABET.forEachIndexed { i, c -> put(c, i) }
+            // Crockford look-alike folds.
+            put('I', 1)
+            put('L', 1)
+            put('O', 0)
+        }
 
     /** Body length for a 32-byte key: ceil(256 / 5) = 52 base32 chars. */
     private const val BODY_LEN = (RECOVERY_KEY_SIZE * 8 + 4) / 5
@@ -64,7 +67,11 @@ object RecoveryKey {
         // Fold the checksum char through the same Crockford aliases (I/L→1, O→0) before comparing, so
         // a look-alike typo in the checksum position is tolerated exactly like one in the body.
         val providedIdx = decodeMap[providedCheck] ?: return Outcome.Err(VaultError.Crypto.MalformedContainer)
-        if (providedIdx != decodeMap.getValue(checkSymbol(raw))) return Outcome.Err(VaultError.Crypto.MalformedContainer)
+        if (providedIdx !=
+            decodeMap.getValue(checkSymbol(raw))
+        ) {
+            return Outcome.Err(VaultError.Crypto.MalformedContainer)
+        }
         return Outcome.Ok(raw)
     }
 

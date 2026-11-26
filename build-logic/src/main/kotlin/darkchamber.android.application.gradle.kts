@@ -25,10 +25,12 @@ val libs = the<LibrariesForLibs>()
 // ---------------------------------------------------------------------------
 // local.properties (present on dev machines, absent on CI — both are fine)
 // ---------------------------------------------------------------------------
-val localProps = Properties().apply {
-    val f = rootProject.file("local.properties")
-    if (f.exists()) f.inputStream().use { load(it) }
-}
+val localProps =
+    Properties().apply {
+        val f = rootProject.file("local.properties")
+        if (f.exists()) f.inputStream().use { load(it) }
+    }
+
 /** Returns a local.properties value, or null if missing/blank. */
 fun local(key: String): String? = localProps.getProperty(key)?.takeIf { it.isNotBlank() }
 
@@ -45,10 +47,14 @@ fun local(key: String): String? = localProps.getProperty(key)?.takeIf { it.isNot
 // ---------------------------------------------------------------------------
 
 /** Nearest tag reachable from HEAD, e.g. "v0.2.0". Empty when the repo has no tags. */
-val gitTag: String = providers.exec {
-    commandLine("git", "describe", "--tags", "--abbrev=0")
-    isIgnoreExitValue = true // no tags yet (or no git) must not fail the build
-}.standardOutput.asText.getOrElse("").trim()
+val gitTag: String =
+    providers
+        .exec {
+            commandLine("git", "describe", "--tags", "--abbrev=0")
+            isIgnoreExitValue = true // no tags yet (or no git) must not fail the build
+        }.standardOutput.asText
+        .getOrElse("")
+        .trim()
 
 /** Maps a SemVer string to a monotonic integer Play Store versionCode. */
 fun semVerToVersionCode(semVer: String): Int {
@@ -63,23 +69,33 @@ fun semVerToVersionCode(semVer: String): Int {
 }
 
 val appVersionName: String =
-    (findProperty("versionName") as String?)          // CI (compute-version.sh / test builds)
-        ?: gitTag.removePrefix("v").ifBlank { null }  // local: nearest tag
-        ?: "0.0.0"                                    // no tags yet
+    (findProperty("versionName") as String?) // CI (compute-version.sh / test builds)
+        ?: gitTag.removePrefix("v").ifBlank { null } // local: nearest tag
+        ?: "0.0.0" // no tags yet
 
 val appVersionCode: Int =
-    ((findProperty("versionCode") as String?)?.toIntOrNull()
-        ?: semVerToVersionCode(appVersionName))
-        .coerceAtLeast(1) // Play requires versionCode >= 1; 0.0.0 would otherwise be 0
+    (
+        (findProperty("versionCode") as String?)?.toIntOrNull()
+            ?: semVerToVersionCode(appVersionName)
+    ).coerceAtLeast(1) // Play requires versionCode >= 1; 0.0.0 would otherwise be 0
 
 // React to the app module applying com.android.application — never apply it here.
 plugins.withId("com.android.application") {
     extensions.configure<ApplicationExtension> {
-        compileSdk = libs.versions.android.compileSdk.get().toInt()
+        compileSdk =
+            libs.versions.android.compileSdk
+                .get()
+                .toInt()
 
         defaultConfig {
-            minSdk = libs.versions.android.minSdk.get().toInt()
-            targetSdk = libs.versions.android.targetSdk.get().toInt()
+            minSdk =
+                libs.versions.android.minSdk
+                    .get()
+                    .toInt()
+            targetSdk =
+                libs.versions.android.targetSdk
+                    .get()
+                    .toInt()
 
             versionCode = appVersionCode
             versionName = appVersionName
@@ -150,7 +166,7 @@ plugins.withId("com.android.application") {
                 isMinifyEnabled = false
                 proguardFiles(
                     getDefaultProguardFile("proguard-android-optimize.txt"),
-                    "proguard-rules.pro"
+                    "proguard-rules.pro",
                 )
             }
             // `debug` picks up the (possibly overridden) debug signingConfig automatically.

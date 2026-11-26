@@ -23,7 +23,9 @@ import java.lang.ref.WeakReference
  * the orientation button itself recreates the activity, and the new window would otherwise start at
  * the system's brightness and let the screen sleep mid-video.
  */
-internal class AndroidPlayerDisplay(private val activities: ActivityHolder) : PlayerDisplay {
+internal class AndroidPlayerDisplay(
+    private val activities: ActivityHolder,
+) : PlayerDisplay {
     private val held = HeldDisplay()
 
     /** The activity last in front, held weakly: a window going away is not kept alive for this. */
@@ -68,12 +70,18 @@ internal class AndroidPlayerDisplay(private val activities: ActivityHolder) : Pl
         window()?.let { applyKeepOn(it, on) }
     }
 
-    private fun applyBrightness(activity: Activity, level: Float?) {
+    private fun applyBrightness(
+        activity: Activity,
+        level: Float?,
+    ) {
         val window = activity.window
         window.attributes = window.attributes.apply { screenBrightness = DisplayMapping.windowBrightness(level) }
     }
 
-    private fun applyKeepOn(activity: Activity, on: Boolean) {
+    private fun applyKeepOn(
+        activity: Activity,
+        on: Boolean,
+    ) {
         if (on) {
             activity.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         } else {

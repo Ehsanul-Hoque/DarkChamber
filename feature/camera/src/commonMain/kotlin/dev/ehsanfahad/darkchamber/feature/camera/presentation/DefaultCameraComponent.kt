@@ -71,19 +71,20 @@ internal class DefaultCameraComponent(
     // Where tapping the last-shot tile goes: the host's viewer, on the shot's id. This module never
     // learns a viewer exists.
     private val onOpenLastShot: (itemId: ByteArray) -> Unit = {},
-) : CameraComponent(), ComponentContext by componentContext {
-
-    private val _state = MutableValue(
-        CameraState(
-            destination = null,
-            permission = camera.permission.value,
-            availability = camera.availability.value,
-            capabilities = camera.capabilities.value,
-            queue = queue.state.value,
-            quality = session.quality.value,
-            microphone = camera.microphonePermission.value,
-        ),
-    )
+) : CameraComponent(),
+    ComponentContext by componentContext {
+    private val _state =
+        MutableValue(
+            CameraState(
+                destination = null,
+                permission = camera.permission.value,
+                availability = camera.availability.value,
+                capabilities = camera.capabilities.value,
+                queue = queue.state.value,
+                quality = session.quality.value,
+                microphone = camera.microphonePermission.value,
+            ),
+        )
     override val state: Value<CameraState> = _state
 
     override val tilt: StateFlow<Int> get() = camera.deviceRotation
@@ -127,18 +128,23 @@ internal class DefaultCameraComponent(
                 val id = queued.lastSavedId
                 if (queued.saved > photosSeen && id != null) lastShot.value = LastShot(id, CaptureMode.Photo)
                 photosSeen = queued.saved
-            }
-            .launchIn(scope)
+            }.launchIn(scope)
         var clipsSeen = session.lane.state.value.saved
         session.lane.state
             .onEach { lane ->
                 val id = lane.lastSavedId
                 if (lane.saved > clipsSeen && id != null) lastShot.value = LastShot(id, CaptureMode.Video)
                 clipsSeen = lane.saved
-            }
-            .launchIn(scope)
+            }.launchIn(scope)
 
-        val camera = combine(camera.permission, camera.availability, camera.capabilities, camera.microphonePermission, ::CameraReading)
+        val camera =
+            combine(
+                camera.permission,
+                camera.availability,
+                camera.capabilities,
+                camera.microphonePermission,
+                ::CameraReading,
+            )
         val video = combine(recorder.state, session.lane.state, session.quality, session.soundWanted, ::VideoReading)
         combine(
             observeDestination(destination).onStart<DestinationInfo?> { emit(null) },
@@ -166,17 +172,17 @@ internal class DefaultCameraComponent(
                 soundWanted = video.soundWanted,
                 lastShot = shot,
             )
-        }
-            .onEach { state ->
-                _state.value = state
-                // The album went while recording: stop, keeping the clip — the lane files it unfiled
-                // and says where it went. A photo would simply fail; a clip is minutes of someone's
-                // time.
-                if (state.destination?.title == DestinationTitle.AlbumGone && state.recording && !state.recorder.stopping) {
-                    recorder.stop()
-                }
+        }.onEach { state ->
+            _state.value = state
+            // The album went while recording: stop, keeping the clip — the lane files it unfiled
+            // and says where it went. A photo would simply fail; a clip is minutes of someone's
+            // time.
+            if (state.destination?.title == DestinationTitle.AlbumGone && state.recording &&
+                !state.recorder.stopping
+            ) {
+                recorder.stop()
             }
-            .launchIn(scope)
+        }.launchIn(scope)
     }
 
     /**
@@ -188,14 +194,14 @@ internal class DefaultCameraComponent(
         // Unconditionally first: the seam reads the platform's permissions afresh in its start, and
         // that is the only way a change made in the system's settings is ever seen.
         camera.start()
-        binding = camera.permission
-            .onEach {
-                if (it == CameraPermission.Granted) {
-                    camera.start()
-                    applyControls()
-                }
-            }
-            .launchIn(scope)
+        binding =
+            camera.permission
+                .onEach {
+                    if (it == CameraPermission.Granted) {
+                        camera.start()
+                        applyControls()
+                    }
+                }.launchIn(scope)
         if (!asked && camera.permission.value == CameraPermission.NotAsked) {
             asked = true
             scope.launch { camera.requestPermission() }
@@ -255,17 +261,18 @@ internal class DefaultCameraComponent(
 
     private fun afterCaptures() {
         if (waitingForCaptures?.isActive == true) return
-        waitingForCaptures = scope.launch {
-            queue.state.first { it.capturing == 0 }
-            pendingMode?.let {
-                pendingMode = null
-                applyMode(it)
+        waitingForCaptures =
+            scope.launch {
+                queue.state.first { it.capturing == 0 }
+                pendingMode?.let {
+                    pendingMode = null
+                    applyMode(it)
+                }
+                if (pendingFlip) {
+                    pendingFlip = false
+                    applyFlip()
+                }
             }
-            if (pendingFlip) {
-                pendingFlip = false
-                applyFlip()
-            }
-        }
     }
 
     private fun applyMode(mode: CaptureMode) {
@@ -275,7 +282,9 @@ internal class DefaultCameraComponent(
         controls.update { it.copy(mode = mode, torch = false) }
         camera.setMode(mode)
         camera.setTorch(false)
-        if (mode == CaptureMode.Video && !askedMicrophone && camera.microphonePermission.value == MicrophonePermission.NotAsked) {
+        if (mode == CaptureMode.Video && !askedMicrophone &&
+            camera.microphonePermission.value == MicrophonePermission.NotAsked
+        ) {
             askedMicrophone = true
             scope.launch { camera.requestMicrophonePermission() }
         }
@@ -306,11 +315,12 @@ internal class DefaultCameraComponent(
 
     override fun cycleFlash() {
         if (_state.value.light !is LightControl.Flash) return
-        val flash = when (controls.value.flash) {
-            FlashMode.Off -> FlashMode.Auto
-            FlashMode.Auto -> FlashMode.On
-            FlashMode.On -> FlashMode.Off
-        }
+        val flash =
+            when (controls.value.flash) {
+                FlashMode.Off -> FlashMode.Auto
+                FlashMode.Auto -> FlashMode.On
+                FlashMode.On -> FlashMode.Off
+            }
         controls.update { it.copy(flash = flash) }
         camera.setFlash(flash)
     }
@@ -355,7 +365,10 @@ internal class DefaultCameraComponent(
 
     // Kept inside the viewfinder: a tap on its very edge can land a hair outside it, and the seam's
     // contract is fractions of the preview.
-    override fun focusAt(x: Float, y: Float) = camera.focusAt(x.coerceIn(0f, 1f), y.coerceIn(0f, 1f))
+    override fun focusAt(
+        x: Float,
+        y: Float,
+    ) = camera.focusAt(x.coerceIn(0f, 1f), y.coerceIn(0f, 1f))
 
     override fun requestPermission() {
         scope.launch { camera.requestPermission() }

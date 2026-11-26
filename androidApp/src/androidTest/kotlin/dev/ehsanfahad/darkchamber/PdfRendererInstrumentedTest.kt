@@ -37,10 +37,11 @@ import java.io.File
  */
 @RunWith(AndroidJUnit4::class)
 class PdfRendererInstrumentedTest {
-    private val koin = koinApplication {
-        androidContext(ApplicationProvider.getApplicationContext<Context>())
-        modules(platformModule())
-    }
+    private val koin =
+        koinApplication {
+            androidContext(ApplicationProvider.getApplicationContext<Context>())
+            modules(platformModule())
+        }
 
     private val renderer = koin.koin.get<VaultPdfRenderer>()
 
@@ -50,7 +51,11 @@ class PdfRendererInstrumentedTest {
     }
 
     private fun fixture(name: String): ByteArray =
-        InstrumentationRegistry.getInstrumentation().context.assets.open("pdf/$name").use { it.readBytes() }
+        InstrumentationRegistry
+            .getInstrumentation()
+            .context.assets
+            .open("pdf/$name")
+            .use { it.readBytes() }
 
     /** Fills a buffer the way the vault does — in pieces, through its sink. */
     private fun filled(name: String): VaultPdfBuffer {
@@ -73,7 +78,10 @@ class PdfRendererInstrumentedTest {
      * calibrated space and the renderer converts them, so pure red arrives as `#FF2600` — exact values
      * are the colour pipeline's, not ours. White (an undrawn page) or black would fail every channel.
      */
-    private fun assertDominant(channel: String, pixel: Int) {
+    private fun assertDominant(
+        channel: String,
+        pixel: Int,
+    ) {
         val rgb = mapOf("red" to Color.red(pixel), "green" to Color.green(pixel), "blue" to Color.blue(pixel))
         val strong = rgb.getValue(channel)
         val others = rgb.filterKeys { it != channel }.values
@@ -167,7 +175,15 @@ class PdfRendererInstrumentedTest {
         assertEquals(PdfPageSize(400, 600), document.pageSize(1))
         val page = document.render(1, 200)!!.asAndroidBitmap()
         assertEquals(300, page.height) // 200 × 600 / 400
-        for ((x, y) in listOf(3 to 3, 196 to 3, 3 to 296, 196 to 296, 100 to 150)) assertDominant("green", page.getPixel(x, y))
+        for ((x, y) in listOf(
+            3 to 3,
+            196 to 3,
+            3 to 296,
+            196 to 296,
+            100 to 150,
+        )) {
+            assertDominant("green", page.getPixel(x, y))
+        }
         document.close()
     }
 

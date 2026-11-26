@@ -36,7 +36,10 @@ interface SecureKeyStore {
      * Prompts through [authenticator] (a hardware key that gates use requires auth to encrypt too),
      * so a cancelled prompt → [Outcome.Err] of [VaultError.Auth]; never a throw across the boundary.
      */
-    suspend fun wrap(mk: ByteArray, authenticator: BiometricAuthenticator): Outcome<ByteArray>
+    suspend fun wrap(
+        mk: ByteArray,
+        authenticator: BiometricAuthenticator,
+    ): Outcome<ByteArray>
 
     /**
      * Recover MK from a [blob] produced by [wrap], prompting through [authenticator]. A cancelled
@@ -45,7 +48,10 @@ interface SecureKeyStore {
      * this time without saying it is gone (a device just unlocked) → [VaultError.Auth.Failed], a
      * retry — never a throw across the boundary, never a partial result.
      */
-    suspend fun unwrap(blob: ByteArray, authenticator: BiometricAuthenticator): Outcome<ByteArray>
+    suspend fun unwrap(
+        blob: ByteArray,
+        authenticator: BiometricAuthenticator,
+    ): Outcome<ByteArray>
 
     /** Destroy the platform key (the panic-wipe primitive); idempotent — safe if none exists. */
     fun deleteHardwareKey()

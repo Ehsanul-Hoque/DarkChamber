@@ -98,14 +98,19 @@ class CameraCapabilities(
  * Not a data class: the generated `equals` would compare the array by identity and the generated
  * `toString` would print its contents.
  */
-class CapturedPhoto(val jpeg: ByteArray, val rotationDegrees: Int?) {
+class CapturedPhoto(
+    val jpeg: ByteArray,
+    val rotationDegrees: Int?,
+) {
     /** The size only — never the bytes (hard rule #4). */
     override fun toString(): String = "CapturedPhoto(jpeg=${jpeg.size}B, rotation=$rotationDegrees)"
 }
 
 /** How a capture ended. A failure is an ordinary outcome the screen reports, never an exception. */
 sealed interface CaptureResult {
-    class Captured(val photo: CapturedPhoto) : CaptureResult {
+    class Captured(
+        val photo: CapturedPhoto,
+    ) : CaptureResult {
         override fun toString(): String = "Captured($photo)"
     }
 

@@ -56,8 +56,18 @@ class KeyDerivationTest {
 
     @Test
     fun argon2id_params_have_value_equality() {
-        assertEquals(KdfParams.Argon2id(ByteArray(16) { 7 }, 65536, 3, 2), KdfParams.Argon2id(ByteArray(16) { 7 }, 65536, 3, 2))
-        assertTrue(KdfParams.Argon2id(ByteArray(16) { 7 }, 65536, 3, 2) != KdfParams.Argon2id(ByteArray(16) { 7 }, 65536, 3, 1))
+        assertEquals(
+            KdfParams.Argon2id(ByteArray(16) { 7 }, 65536, 3, 2),
+            KdfParams.Argon2id(ByteArray(16) { 7 }, 65536, 3, 2),
+        )
+        assertTrue(
+            KdfParams.Argon2id(
+                ByteArray(16) { 7 },
+                65536,
+                3,
+                2,
+            ) != KdfParams.Argon2id(ByteArray(16) { 7 }, 65536, 3, 1),
+        )
     }
 
     @Test

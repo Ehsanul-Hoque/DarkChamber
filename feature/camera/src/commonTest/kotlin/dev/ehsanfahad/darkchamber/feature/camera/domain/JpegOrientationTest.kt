@@ -24,7 +24,6 @@ import kotlin.test.assertSame
  * [OrientationFixtures] for how each was made.
  */
 class JpegOrientationTest {
-
     @Test
     fun a_quarter_turn_rewrites_a_big_endian_tag_exactly_as_exiftool_does() {
         assertContentEquals(JFIF_EXIF_MM_6, withOrientation(JFIF_EXIF_MM.copyOf(), rotationDegrees = 90))

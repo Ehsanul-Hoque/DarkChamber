@@ -45,15 +45,19 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /** The Android players: ExoPlayer, reading an item only through its range reader. */
 @UnstableApi
-internal class AndroidVaultPlayerFactory(private val context: Context) : VaultPlayerFactory {
+internal class AndroidVaultPlayerFactory(
+    private val context: Context,
+) : VaultPlayerFactory {
     init {
         // Media3's own log lines can quote a track's format, label included — text from inside the
         // file (hard rule 4). It logs nothing at all.
         Log.setLogLevel(Log.LOG_LEVEL_OFF)
     }
 
-    override fun create(reader: RangeReader, mime: String): VaultPlayer =
-        AndroidVaultPlayer(context.applicationContext, SharedRangeReader(reader), mime)
+    override fun create(
+        reader: RangeReader,
+        mime: String,
+    ): VaultPlayer = AndroidVaultPlayer(context.applicationContext, SharedRangeReader(reader), mime)
 }
 
 /**
@@ -91,98 +95,113 @@ internal class AndroidVaultPlayer(
     // Touched only on [thread].
     private var player: ExoPlayer? = null
 
-    private val listener = object : Player.Listener {
-        override fun onPlaybackStateChanged(playbackState: Int) {
-            if (released.get()) return
-            val exo = player ?: return
-            _state.update {
-                it.copy(
-                    ended = playbackState == Player.STATE_ENDED,
-                    durationMs = exo.duration.takeIf { d -> d != C.TIME_UNSET },
-                    positionMs = exo.currentPosition,
-                )
+    private val listener =
+        object : Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (released.get()) return
+                val exo = player ?: return
+                _state.update {
+                    it.copy(
+                        ended = playbackState == Player.STATE_ENDED,
+                        durationMs = exo.duration.takeIf { d -> d != C.TIME_UNSET },
+                        positionMs = exo.currentPosition,
+                    )
+                }
+            }
+
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                if (released.get()) return
+                _state.update { it.copy(playing = isPlaying) }
+                handler.removeCallbacks(poll) // one poll at a time
+                if (isPlaying) handler.post(poll)
+            }
+
+            override fun onTracksChanged(tracks: Tracks) {
+                if (released.get()) return
+                val found = tracks.groups.map { PlayerMapping.FoundTrack(it.type, it.isSupported(false)) }
+                _state.update { it.copy(tracks = PlayerMapping.tracksOf(found)) }
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                if (released.get()) return
+                _state.update {
+                    it.copy(playing = false, failure = PlayerMapping.failureOf(error.errorCode, shared.failure))
+                }
+            }
+
+            override fun onPlaybackSuppressionReasonChanged(playbackSuppressionReason: Int) {
+                // A call takes the sound: stay paused once it is over (the player would carry on itself).
+                if (PlayerMapping.pausesFor(playbackSuppressionReason)) player?.pause()
+            }
+
+            override fun onVideoSizeChanged(videoSize: VideoSize) {
+                if (videoSize.width == 0 || videoSize.height == 0) return
+                val shown = videoSize.width * videoSize.pixelWidthHeightRatio / videoSize.height
+                val turned = videoSize.unappliedRotationDegrees % 180 != 0
+                aspect.value = if (turned) 1f / shown else shown
             }
         }
-
-        override fun onIsPlayingChanged(isPlaying: Boolean) {
-            if (released.get()) return
-            _state.update { it.copy(playing = isPlaying) }
-            handler.removeCallbacks(poll) // one poll at a time
-            if (isPlaying) handler.post(poll)
-        }
-
-        override fun onTracksChanged(tracks: Tracks) {
-            if (released.get()) return
-            val found = tracks.groups.map { PlayerMapping.FoundTrack(it.type, it.isSupported(false)) }
-            _state.update { it.copy(tracks = PlayerMapping.tracksOf(found)) }
-        }
-
-        override fun onPlayerError(error: PlaybackException) {
-            if (released.get()) return
-            _state.update {
-                it.copy(playing = false, failure = PlayerMapping.failureOf(error.errorCode, shared.failure))
-            }
-        }
-
-        override fun onPlaybackSuppressionReasonChanged(playbackSuppressionReason: Int) {
-            // A call takes the sound: stay paused once it is over (the player would carry on itself).
-            if (PlayerMapping.pausesFor(playbackSuppressionReason)) player?.pause()
-        }
-
-        override fun onVideoSizeChanged(videoSize: VideoSize) {
-            if (videoSize.width == 0 || videoSize.height == 0) return
-            val shown = videoSize.width * videoSize.pixelWidthHeightRatio / videoSize.height
-            val turned = videoSize.unappliedRotationDegrees % 180 != 0
-            aspect.value = if (turned) 1f / shown else shown
-        }
-    }
 
     /** While playing, the position is read four times a second; the player does not report it. */
-    private val poll: Runnable = object : Runnable {
-        override fun run() {
-            val exo = player ?: return
-            if (released.get() || !exo.isPlaying) return
-            _state.update { it.copy(positionMs = exo.currentPosition) }
-            handler.postDelayed(this, POLL_MS)
+    private val poll: Runnable =
+        object : Runnable {
+            override fun run() {
+                val exo = player ?: return
+                if (released.get() || !exo.isPlaying) return
+                _state.update { it.copy(positionMs = exo.currentPosition) }
+                handler.postDelayed(this, POLL_MS)
+            }
         }
-    }
 
     init {
         onPlayerThread {
-            val exo = ExoPlayer.Builder(context, DefaultRenderersFactory(context).setEnableDecoderFallback(true))
-                .setLooper(thread.looper)
-                .setLoadControl(
-                    DefaultLoadControl.Builder()
-                        .setBufferDurationsMs(
-                            PlayerMapping.MIN_BUFFER_MS,
-                            PlayerMapping.MAX_BUFFER_MS,
-                            PlayerMapping.BUFFER_FOR_PLAYBACK_MS,
-                            PlayerMapping.BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS,
-                        )
-                        .build(),
-                )
-                .setTrackSelector(
-                    DefaultTrackSelector(context).apply {
-                        parameters = buildUponParameters()
-                            .setExceedRendererCapabilitiesIfNecessary(false)
-                            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
-                            .build()
-                    },
-                )
-                .setAudioAttributes(
-                    AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(),
-                    /* handleAudioFocus = */ true,
-                )
-                .setHandleAudioBecomingNoisy(true)
-                .setUsePlatformDiagnostics(false)
-                .build()
+            val exo =
+                ExoPlayer
+                    .Builder(context, DefaultRenderersFactory(context).setEnableDecoderFallback(true))
+                    .setLooper(thread.looper)
+                    .setLoadControl(
+                        DefaultLoadControl
+                            .Builder()
+                            .setBufferDurationsMs(
+                                PlayerMapping.MIN_BUFFER_MS,
+                                PlayerMapping.MAX_BUFFER_MS,
+                                PlayerMapping.BUFFER_FOR_PLAYBACK_MS,
+                                PlayerMapping.BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS,
+                            ).build(),
+                    ).setTrackSelector(
+                        DefaultTrackSelector(context).apply {
+                            parameters =
+                                buildUponParameters()
+                                    .setExceedRendererCapabilitiesIfNecessary(false)
+                                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                                    .build()
+                        },
+                    ).setAudioAttributes(
+                        AudioAttributes
+                            .Builder()
+                            .setUsage(
+                                C.USAGE_MEDIA,
+                            ).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+                            .build(),
+                        // handleAudioFocus =
+                        true,
+                    ).setHandleAudioBecomingNoisy(true)
+                    .setUsePlatformDiagnostics(false)
+                    .build()
             exo.addListener(listener)
             exo.setMediaSource(
-                ProgressiveMediaSource.Factory(shared.factory(), DefaultExtractorsFactory())
+                ProgressiveMediaSource
+                    .Factory(shared.factory(), DefaultExtractorsFactory())
                     // A read the vault refused is its verdict; trying again would only decrypt the
                     // same chunk to the same answer and hold the page back.
                     .setLoadErrorHandlingPolicy(VaultLoadErrorPolicy)
-                    .createMediaSource(MediaItem.Builder().setUri(ITEM_URI).setMimeType(mime).build()),
+                    .createMediaSource(
+                        MediaItem
+                            .Builder()
+                            .setUri(ITEM_URI)
+                            .setMimeType(mime)
+                            .build(),
+                    ),
             )
             exo.prepare()
             player = exo
@@ -193,11 +212,12 @@ internal class AndroidVaultPlayer(
 
     override fun pause() = onPlayerThread { player?.pause() }
 
-    override fun seekTo(positionMs: Long) = onPlayerThread {
-        val exo = player ?: return@onPlayerThread
-        exo.seekTo(positionMs)
-        _state.update { it.copy(positionMs = positionMs, ended = false) }
-    }
+    override fun seekTo(positionMs: Long) =
+        onPlayerThread {
+            val exo = player ?: return@onPlayerThread
+            exo.seekTo(positionMs)
+            _state.update { it.copy(positionMs = positionMs, ended = false) }
+        }
 
     override fun setSpeed(speed: Float) = onPlayerThread { player?.setPlaybackSpeed(speed) }
 
@@ -224,37 +244,47 @@ internal class AndroidVaultPlayer(
     }
 
     /** The picture's surface, handed to the player's thread as it comes and goes. */
-    private val surfaces = object : TextureView.SurfaceTextureListener {
-        private var surface: Surface? = null
+    private val surfaces =
+        object : TextureView.SurfaceTextureListener {
+            private var surface: Surface? = null
 
-        override fun onSurfaceTextureAvailable(texture: SurfaceTexture, width: Int, height: Int) {
-            val created = Surface(texture)
-            surface = created
-            onPlayerThread { player?.setVideoSurface(created) }
-        }
-
-        override fun onSurfaceTextureDestroyed(texture: SurfaceTexture): Boolean {
-            val going = surface
-            surface = null
-            // The texture is released on the player's thread once the player has let go of it, so the
-            // main thread does not wait for the decoder; returning false says it is ours to release.
-            val handed = handler.post {
-                player?.clearVideoSurface(going)
-                going?.release()
-                texture.release()
+            override fun onSurfaceTextureAvailable(
+                texture: SurfaceTexture,
+                width: Int,
+                height: Int,
+            ) {
+                val created = Surface(texture)
+                surface = created
+                onPlayerThread { player?.setVideoSurface(created) }
             }
-            if (!handed) {
-                // The player's thread has already ended with the player: nothing holds the surface.
-                going?.release()
-                texture.release()
+
+            override fun onSurfaceTextureDestroyed(texture: SurfaceTexture): Boolean {
+                val going = surface
+                surface = null
+                // The texture is released on the player's thread once the player has let go of it, so the
+                // main thread does not wait for the decoder; returning false says it is ours to release.
+                val handed =
+                    handler.post {
+                        player?.clearVideoSurface(going)
+                        going?.release()
+                        texture.release()
+                    }
+                if (!handed) {
+                    // The player's thread has already ended with the player: nothing holds the surface.
+                    going?.release()
+                    texture.release()
+                }
+                return false
             }
-            return false
+
+            override fun onSurfaceTextureSizeChanged(
+                texture: SurfaceTexture,
+                width: Int,
+                height: Int,
+            ) = Unit
+
+            override fun onSurfaceTextureUpdated(texture: SurfaceTexture) = Unit
         }
-
-        override fun onSurfaceTextureSizeChanged(texture: SurfaceTexture, width: Int, height: Int) = Unit
-
-        override fun onSurfaceTextureUpdated(texture: SurfaceTexture) = Unit
-    }
 
     override fun release() {
         if (!released.compareAndSet(false, true)) return
@@ -275,10 +305,11 @@ internal class AndroidVaultPlayer(
         handler.post { if (!released.get()) block() }
     }
 
-    private fun currentVolume(): Float = PlayerMapping.volumeLevel(
-        audio.getStreamVolume(AudioManager.STREAM_MUSIC),
-        audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC),
-    )
+    private fun currentVolume(): Float =
+        PlayerMapping.volumeLevel(
+            audio.getStreamVolume(AudioManager.STREAM_MUSIC),
+            audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC),
+        )
 
     private companion object {
         const val POLL_MS = 250L

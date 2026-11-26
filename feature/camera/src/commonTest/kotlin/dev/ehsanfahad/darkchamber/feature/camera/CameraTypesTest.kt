@@ -17,7 +17,6 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 class CameraTypesTest {
-
     /**
      * A captured photo is plaintext image content, and anything that prints one — a log line, a
      * failed assertion, a crash report — must print its size and nothing of its bytes (hard rule
@@ -44,7 +43,8 @@ class CameraTypesTest {
     @Test
     fun capabilities_that_differ_only_in_video_quality_are_not_equal() {
         val hd = CameraCapabilities(setOf(Lens.Back, Lens.Front), true, 1f, 8f, setOf(VideoQuality.HD))
-        val uhd = CameraCapabilities(setOf(Lens.Back, Lens.Front), true, 1f, 8f, setOf(VideoQuality.HD, VideoQuality.UHD))
+        val uhd =
+            CameraCapabilities(setOf(Lens.Back, Lens.Front), true, 1f, 8f, setOf(VideoQuality.HD, VideoQuality.UHD))
 
         assertNotEquals(hd, uhd)
         assertEquals(hd, CameraCapabilities(setOf(Lens.Back, Lens.Front), true, 1f, 8f, setOf(VideoQuality.HD)))
@@ -53,31 +53,33 @@ class CameraTypesTest {
     /** The queue tests depend on this: a held capture waits for the test, oldest first. */
     @OptIn(ExperimentalCoroutinesApi::class)
     @Test
-    fun the_fake_holds_captures_until_released_in_order() = runTest {
-        val camera = FakeCameraController()
-        camera.holdCaptures()
+    fun the_fake_holds_captures_until_released_in_order() =
+        runTest {
+            val camera = FakeCameraController()
+            camera.holdCaptures()
 
-        val first = async { camera.capture() }
-        val second = async { camera.capture() }
-        testScheduler.advanceUntilIdle()
-        assertEquals(2, camera.heldCount, "both captures are waiting")
-        assertFalse(first.isCompleted)
+            val first = async { camera.capture() }
+            val second = async { camera.capture() }
+            testScheduler.advanceUntilIdle()
+            assertEquals(2, camera.heldCount, "both captures are waiting")
+            assertFalse(first.isCompleted)
 
-        camera.release(CaptureResult.Captured(CapturedPhoto(byteArrayOf(1), 0)))
-        camera.release(CaptureResult.Failed)
+            camera.release(CaptureResult.Captured(CapturedPhoto(byteArrayOf(1), 0)))
+            camera.release(CaptureResult.Failed)
 
-        val one = assertIs<CaptureResult.Captured>(first.await())
-        assertContentEquals(byteArrayOf(1), one.photo.jpeg, "the oldest capture gets the first answer")
-        assertEquals(CaptureResult.Failed, second.await())
-    }
+            val one = assertIs<CaptureResult.Captured>(first.await())
+            assertContentEquals(byteArrayOf(1), one.photo.jpeg, "the oldest capture gets the first answer")
+            assertEquals(CaptureResult.Failed, second.await())
+        }
 
     @Test
-    fun the_fakes_default_captures_never_share_an_array() = runTest {
-        val camera = FakeCameraController()
-        val a = assertIs<CaptureResult.Captured>(camera.capture()).photo.jpeg
-        val b = assertIs<CaptureResult.Captured>(camera.capture()).photo.jpeg
+    fun the_fakes_default_captures_never_share_an_array() =
+        runTest {
+            val camera = FakeCameraController()
+            val a = assertIs<CaptureResult.Captured>(camera.capture()).photo.jpeg
+            val b = assertIs<CaptureResult.Captured>(camera.capture()).photo.jpeg
 
-        a.fill(0)
-        assertFalse(b.all { it == 0.toByte() }, "zeroing one capture must leave the next untouched")
-    }
+            a.fill(0)
+            assertFalse(b.all { it == 0.toByte() }, "zeroing one capture must leave the next untouched")
+        }
 }

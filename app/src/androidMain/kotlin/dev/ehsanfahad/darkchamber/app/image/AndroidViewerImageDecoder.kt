@@ -24,7 +24,10 @@ import java.io.ByteArrayInputStream
  * - **Leaves [bytes] alone**; the caller zeroes them. The platform decoder's own buffers are its own.
  */
 internal class AndroidViewerImageDecoder : ViewerImageDecoder {
-    override fun decode(bytes: ByteArray, targetLongEdge: Int): ImageBitmap? =
+    override fun decode(
+        bytes: ByteArray,
+        targetLongEdge: Int,
+    ): ImageBitmap? =
         try {
             decodeUpright(bytes, targetLongEdge)?.asImageBitmap()
         } catch (_: Exception) {
@@ -33,7 +36,10 @@ internal class AndroidViewerImageDecoder : ViewerImageDecoder {
             null
         }
 
-    private fun decodeUpright(bytes: ByteArray, targetLongEdge: Int): Bitmap? {
+    private fun decodeUpright(
+        bytes: ByteArray,
+        targetLongEdge: Int,
+    ): Bitmap? {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
         // The long edge is the same before and after a quarter turn, so the stored bounds serve.

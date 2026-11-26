@@ -14,8 +14,7 @@ import kotlinx.io.readByteArray
 
 /** The plaintext byte at absolute position [pos] — a cheap deterministic keystream (position-based,
  *  so a re-opened source reproduces identical bytes for the codec's two-pass read). */
-internal fun streamByte(pos: Long): Byte =
-    ((pos * 6364136223846793005L + 1442695040888963407L) ushr 33).toByte()
+internal fun streamByte(pos: Long): Byte = ((pos * 6364136223846793005L + 1442695040888963407L) ushr 33).toByte()
 
 /** Default streaming volume when no override is supplied — 16 MiB (16 chunks at the 1 MiB default). */
 internal const val DEFAULT_STREAM_BYTES: Long = 16L * 1024 * 1024
@@ -25,9 +24,15 @@ internal const val DEFAULT_STREAM_BYTES: Long = 16L * 1024 * 1024
 expect fun streamTestBytes(): Long
 
 /** A re-openable source that yields [total] deterministic bytes without ever holding them all. */
-internal class GeneratingSource(private val total: Long) : RawSource {
+internal class GeneratingSource(
+    private val total: Long,
+) : RawSource {
     private var pos = 0L
-    override fun readAtMostTo(sink: Buffer, byteCount: Long): Long {
+
+    override fun readAtMostTo(
+        sink: Buffer,
+        byteCount: Long,
+    ): Long {
         if (pos >= total) return -1L
         val n = minOf(byteCount, total - pos).toInt()
         val arr = ByteArray(n) { i -> streamByte(pos + i) }
@@ -40,11 +45,16 @@ internal class GeneratingSource(private val total: Long) : RawSource {
 }
 
 /** A sink that counts and SHA-256-hashes everything written, then discards it (bounded memory). */
-internal class CountingHashingSink(private val hasher: IncrementalHash) : RawSink {
+internal class CountingHashingSink(
+    private val hasher: IncrementalHash,
+) : RawSink {
     var bytes: Long = 0L
         private set
 
-    override fun write(source: Buffer, byteCount: Long) {
+    override fun write(
+        source: Buffer,
+        byteCount: Long,
+    ) {
         val arr = source.readByteArray(byteCount.toInt())
         hasher.update(arr)
         bytes += arr.size

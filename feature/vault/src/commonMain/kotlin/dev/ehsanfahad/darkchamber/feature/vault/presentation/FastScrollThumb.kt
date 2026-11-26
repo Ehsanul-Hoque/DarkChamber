@@ -34,7 +34,12 @@ import dev.ehsanfahad.darkchamber.core.designsystem.prefersReducedMotion
  * same work there.
  */
 @Composable
-internal fun BoxWithConstraintsScope.FastScrollThumb(shown: Boolean, topPx: Int, dragging: Boolean, bubble: String?) {
+internal fun BoxWithConstraintsScope.FastScrollThumb(
+    shown: Boolean,
+    topPx: Int,
+    dragging: Boolean,
+    bubble: String?,
+) {
     val colors = DarkChamberTheme.colors
     val density = LocalDensity.current
     val duration = if (prefersReducedMotion()) 0 else DarkChamberTheme.motion.motionBase
@@ -45,15 +50,16 @@ internal fun BoxWithConstraintsScope.FastScrollThumb(shown: Boolean, topPx: Int,
     val thumbHeightPx = with(density) { THUMB_HEIGHT.roundToPx() }
 
     Box(
-        modifier = Modifier
-            .align(Alignment.TopEnd)
-            .offset { IntOffset(-marginPx, topPx) }
-            .size(THUMB_WIDTH, THUMB_HEIGHT)
-            .graphicsLayer { this.alpha = alpha }
-            // Dark with a light edge: it shows over a white page and over the black between pages.
-            .background(ViewerBars.scrim, DarkChamberTheme.shapes.small)
-            .border(1.dp, colors.textSecondary, DarkChamberTheme.shapes.small)
-            .clearAndSetSemantics {},
+        modifier =
+            Modifier
+                .align(Alignment.TopEnd)
+                .offset { IntOffset(-marginPx, topPx) }
+                .size(THUMB_WIDTH, THUMB_HEIGHT)
+                .graphicsLayer { this.alpha = alpha }
+                // Dark with a light edge: it shows over a white page and over the black between pages.
+                .background(ViewerBars.scrim, DarkChamberTheme.shapes.small)
+                .border(1.dp, colors.textSecondary, DarkChamberTheme.shapes.small)
+                .clearAndSetSemantics {},
     )
     if (dragging && bubble != null) {
         var bubbleHeight by remember { mutableIntStateOf(0) }
@@ -61,13 +67,18 @@ internal fun BoxWithConstraintsScope.FastScrollThumb(shown: Boolean, topPx: Int,
             text = bubble,
             style = DarkChamberTheme.typography.label,
             color = colors.textPrimary,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .offset { IntOffset(-(marginPx + thumbWidthPx + marginPx), topPx + thumbHeightPx / 2 - bubbleHeight / 2) }
-                .onSizeChanged { bubbleHeight = it.height }
-                .background(ViewerBars.scrim, DarkChamberTheme.shapes.medium)
-                .padding(horizontal = DarkChamberTheme.spacing.spaceMd, vertical = DarkChamberTheme.spacing.spaceXs)
-                .clearAndSetSemantics {},
+            modifier =
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .offset {
+                        IntOffset(
+                            -(marginPx + thumbWidthPx + marginPx),
+                            topPx + thumbHeightPx / 2 - bubbleHeight / 2,
+                        )
+                    }.onSizeChanged { bubbleHeight = it.height }
+                    .background(ViewerBars.scrim, DarkChamberTheme.shapes.medium)
+                    .padding(horizontal = DarkChamberTheme.spacing.spaceMd, vertical = DarkChamberTheme.spacing.spaceXs)
+                    .clearAndSetSemantics {},
         )
     }
 }

@@ -48,7 +48,12 @@ class ViewerZoomTest {
         val offset = Offset(30f, -20f)
         val zoom = 1.5f
         val newZoom = 3f
-        fun contentUnder(s: Offset, o: Offset, z: Float) = (s - center - o) / z
+
+        fun contentUnder(
+            s: Offset,
+            o: Offset,
+            z: Float,
+        ) = (s - center - o) / z
 
         val newOffset = ViewerZoom.offsetAfterPinch(offset, zoom, newZoom, centroid, center, pan = Offset.Zero)
 
@@ -83,7 +88,11 @@ class ViewerZoomTest {
         assertClose(Offset(-500f, 0f), ViewerZoom.clampOffset(Offset(-900f, -300f), 2f, content, box))
         // At 4x: 4000 x 3000 — 1500 spare horizontally, 500 vertically.
         assertClose(Offset(1_500f, -500f), ViewerZoom.clampOffset(Offset(2_000f, -800f), 4f, content, box))
-        assertClose(Offset(100f, 200f), ViewerZoom.clampOffset(Offset(100f, 200f), 4f, content, box), "within: untouched")
+        assertClose(
+            Offset(100f, 200f),
+            ViewerZoom.clampOffset(Offset(100f, 200f), 4f, content, box),
+            "within: untouched",
+        )
         assertClose(Offset.Zero, ViewerZoom.clampOffset(Offset(100f, 200f), 1f, content, box), "at fit nothing moves")
     }
 
@@ -94,7 +103,11 @@ class ViewerZoomTest {
         assertFalse(ViewerZoom.pagerMaySwipe(1.01f))
     }
 
-    private fun assertClose(expected: Offset, actual: Offset, what: String = "") {
+    private fun assertClose(
+        expected: Offset,
+        actual: Offset,
+        what: String = "",
+    ) {
         assertTrue(
             kotlin.math.abs(expected.x - actual.x) < 0.01f && kotlin.math.abs(expected.y - actual.y) < 0.01f,
             "$what expected $expected but was $actual",

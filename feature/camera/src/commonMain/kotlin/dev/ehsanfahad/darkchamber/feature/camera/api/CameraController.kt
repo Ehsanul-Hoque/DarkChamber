@@ -114,7 +114,10 @@ interface CameraController {
      * Focus and meter at a point of the preview, given as fractions of its width and height
      * (0..1 each), so the caller never needs to know the preview's pixel size or how it is cropped.
      */
-    fun focusAt(x: Float, y: Float)
+    fun focusAt(
+        x: Float,
+        y: Float,
+    )
 
     /**
      * Take one photo and suspend until the platform hands back its JPEG. Never writes a file. A
@@ -133,7 +136,11 @@ interface CameraController {
      * [ReportedRecording.finishFromPlatform]. The platform may create the file after the caller's own
      * delete at a lock.
      */
-    fun record(file: Path, sizeLimitBytes: Long, withAudio: Boolean): Recording
+    fun record(
+        file: Path,
+        sizeLimitBytes: Long,
+        withAudio: Boolean,
+    ): Recording
 
     /**
      * The live viewfinder, drawn by the platform's own preview view. Draws nothing until [start]

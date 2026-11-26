@@ -21,15 +21,17 @@ internal suspend fun <I, O> FragmentActivity.awaitActivityResult(
     keyPrefix: String,
     contract: ActivityResultContract<I, O>,
     input: I,
-): O = suspendCancellableCoroutine { continuation ->
-    var launcher: ActivityResultLauncher<I>? = null
-    launcher = activityResultRegistry.register(nextPickerRequestKey(keyPrefix), contract) { result: O ->
-        launcher?.unregister()
-        continuation.resume(result)
+): O =
+    suspendCancellableCoroutine { continuation ->
+        var launcher: ActivityResultLauncher<I>? = null
+        launcher =
+            activityResultRegistry.register(nextPickerRequestKey(keyPrefix), contract) { result: O ->
+                launcher?.unregister()
+                continuation.resume(result)
+            }
+        continuation.invokeOnCancellation { launcher.unregister() }
+        launcher.launch(input)
     }
-    continuation.invokeOnCancellation { launcher.unregister() }
-    launcher.launch(input)
-}
 
 /**
  * A registry key that is unique among **live** registrations — `register` throws on one already in

@@ -14,13 +14,18 @@ import kotlinx.io.files.Path
  * so the camera reads and deletes it without a filesystem API of its own, and a lock's or the next
  * launch's purge of `tmp/` covers it unchanged.
  */
-internal class ScratchClips(private val storage: VaultStorage) : ClipFiles {
+internal class ScratchClips(
+    private val storage: VaultStorage,
+) : ClipFiles {
     override fun newClip(container: VideoContainer): ClipFile =
         ScratchClip(storage.newScratchFile(suffix = ".${container.extension}"), container)
 }
 
 /** A [ScratchFile] in the camera's terms. Its path is never logged (hard rule #4). */
-internal class ScratchClip(private val scratch: ScratchFile, override val container: VideoContainer) : ClipFile {
+internal class ScratchClip(
+    private val scratch: ScratchFile,
+    override val container: VideoContainer,
+) : ClipFile {
     override val path: Path get() = scratch.path
 
     override fun open(): RawSource = scratch.open()

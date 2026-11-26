@@ -72,7 +72,10 @@ internal class VideoLane(
      * Hand over a finished clip, to be filed in [albumId] (`null` for unfiled). Returns `false`, and
      * leaves the clip with its caller to delete, only while another clip is still being saved.
      */
-    fun save(clip: ClipFile, albumId: ByteArray?): Boolean {
+    fun save(
+        clip: ClipFile,
+        albumId: ByteArray?,
+    ): Boolean {
         if (_state.value.busy) return false
         _state.update { it.copy(busy = true, progress = null) }
         val size = clip.size()
@@ -80,23 +83,25 @@ internal class VideoLane(
         val destination = albumId?.copyOf()
         // Written on the encrypt's thread, read once the job is complete.
         val result = Result()
-        val job = scope.launch {
-            withContext(ioContext) {
-                // Assigned here rather than as withContext's value: a lock landing after the row
-                // committed cancels withContext on the way out, and would lose the fact that the clip
-                // is in the vault.
-                result.outcome = vault.import(
-                    kind = VaultItemKind.FILE.code,
-                    name = name,
-                    mime = clip.container.mime,
-                    albumId = destination,
-                    isActive = { scope.isActive },
-                    onProgress = { phase, bytes -> if (phase == ImportPhase.ENCRYPTING) report(bytes, size) },
-                    whenAlbumMissing = WhenAlbumMissing.FileUnfiled { result.filedUnfiled = true },
-                    openSource = clip::open,
-                )
+        val job =
+            scope.launch {
+                withContext(ioContext) {
+                    // Assigned here rather than as withContext's value: a lock landing after the row
+                    // committed cancels withContext on the way out, and would lose the fact that the clip
+                    // is in the vault.
+                    result.outcome =
+                        vault.import(
+                            kind = VaultItemKind.FILE.code,
+                            name = name,
+                            mime = clip.container.mime,
+                            albumId = destination,
+                            isActive = { scope.isActive },
+                            onProgress = { phase, bytes -> if (phase == ImportPhase.ENCRYPTING) report(bytes, size) },
+                            whenAlbumMissing = WhenAlbumMissing.FileUnfiled { result.filedUnfiled = true },
+                            openSource = clip::open,
+                        )
+                }
             }
-        }
         // On completion rather than in a finally: a job cancelled before it starts never runs its
         // body, and the file must go either way. Completion comes only after the import has returned,
         // so nothing is deleted from under a read.
@@ -104,39 +109,75 @@ internal class VideoLane(
         return true
     }
 
-    private fun report(bytes: Long, size: Long?) {
+    private fun report(
+        bytes: Long,
+        size: Long?,
+    ) {
         if (size == null || size <= 0) return
         val fraction = (bytes.toDouble() / (2.0 * size)).coerceIn(0.0, 1.0).toFloat()
         _state.update { it.copy(progress = fraction) }
     }
 
-    private fun finish(clip: ClipFile, result: Result) {
+    private fun finish(
+        clip: ClipFile,
+        result: Result,
+    ) {
         clip.delete()
         val outcome = result.outcome
         val onScreen = screenOpen && scope.isActive
-        val notice: VideoNotice? = when {
-            outcome is Outcome.Ok -> {
-                if (result.filedUnfiled) say(NotSavedReason.SavedUnfiled, VideoNotice.SavedUnfiled, onScreen) else null
+        val notice: VideoNotice? =
+            when {
+                outcome is Outcome.Ok -> {
+                    if (result.filedUnfiled) {
+                        say(
+                            NotSavedReason.SavedUnfiled,
+                            VideoNotice.SavedUnfiled,
+                            onScreen,
+                        )
+                    } else {
+                        null
+                    }
+                }
+
+                // Whatever the import answered, it stopped because the session went.
+                !scope.isActive -> {
+                    notSaved.report(NotSavedKind.Video, NotSavedReason.Locked, 1)
+                    null
+                }
+
+                outcome is Outcome.Err && outcome.error == VaultError.Storage.Full -> {
+                    say(NotSavedReason.OutOfSpace, VideoNotice.OutOfSpace, onScreen)
+                }
+
+                else -> {
+                    say(NotSavedReason.CouldNotSave, VideoNotice.SaveFailed, onScreen)
+                }
             }
-            // Whatever the import answered, it stopped because the session went.
-            !scope.isActive -> {
-                notSaved.report(NotSavedKind.Video, NotSavedReason.Locked, 1)
-                null
-            }
-            outcome is Outcome.Err && outcome.error == VaultError.Storage.Full ->
-                say(NotSavedReason.OutOfSpace, VideoNotice.OutOfSpace, onScreen)
-            else -> say(NotSavedReason.CouldNotSave, VideoNotice.SaveFailed, onScreen)
-        }
         _state.update {
             when (outcome) {
-                is Outcome.Ok -> it.copy(busy = false, progress = null, saved = it.saved + 1, lastSavedId = outcome.value, notice = notice)
-                else -> it.copy(busy = false, progress = null, notice = notice)
+                is Outcome.Ok -> {
+                    it.copy(
+                        busy = false,
+                        progress = null,
+                        saved = it.saved + 1,
+                        lastSavedId = outcome.value,
+                        notice = notice,
+                    )
+                }
+
+                else -> {
+                    it.copy(busy = false, progress = null, notice = notice)
+                }
             }
         }
     }
 
     // The screen's notice when there is a screen to show it, the record's line otherwise.
-    private fun say(reason: NotSavedReason, notice: VideoNotice, onScreen: Boolean): VideoNotice? {
+    private fun say(
+        reason: NotSavedReason,
+        notice: VideoNotice,
+        onScreen: Boolean,
+    ): VideoNotice? {
         if (onScreen) return notice
         notSaved.report(NotSavedKind.Video, reason, 1)
         return null

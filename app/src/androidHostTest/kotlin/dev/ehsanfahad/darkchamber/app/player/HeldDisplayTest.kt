@@ -8,11 +8,12 @@ import kotlin.test.assertEquals
 class HeldDisplayTest {
     @Test
     fun a_new_window_is_told_everything_the_player_holds() {
-        val held = HeldDisplay().apply {
-            brightness = 0.3f
-            keepOn = true
-            orientation = ScreenOrientation.Landscape
-        }
+        val held =
+            HeldDisplay().apply {
+                brightness = 0.3f
+                keepOn = true
+                orientation = ScreenOrientation.Landscape
+            }
 
         assertEquals(NewWindow(0.3f, true, ScreenOrientation.Landscape), held.forNewWindow())
     }

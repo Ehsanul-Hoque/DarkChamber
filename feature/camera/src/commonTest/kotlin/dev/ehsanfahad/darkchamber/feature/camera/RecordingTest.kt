@@ -13,21 +13,21 @@ import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
 class RecordingTest {
-
     /**
      * A platform can report more than one ending — CameraX finalizes after an unbind that our
      * teardown already called an abandon — and the lane must act on exactly one, the first. A
      * later "finalized" turning an abandoned clip into a kept one would save what a lock discarded.
      */
     @Test
-    fun the_first_end_reported_is_the_one_a_recording_keeps() = runTest {
-        val recording = ReportedRecording(onStop = {})
+    fun the_first_end_reported_is_the_one_a_recording_keeps() =
+        runTest {
+            val recording = ReportedRecording(onStop = {})
 
-        assertTrue(recording.finish(RecordingEnd.Abandoned))
-        assertFalse(recording.finish(RecordingEnd.Finalized), "a second end is refused")
+            assertTrue(recording.finish(RecordingEnd.Abandoned))
+            assertFalse(recording.finish(RecordingEnd.Finalized), "a second end is refused")
 
-        assertEquals(RecordingEnd.Abandoned, recording.awaitEnd())
-    }
+            assertEquals(RecordingEnd.Abandoned, recording.awaitEnd())
+        }
 
     /**
      * Both platforms create the file lazily, so it can appear after a lock deleted it. An abandoned
@@ -35,37 +35,39 @@ class RecordingTest {
      * ended itself keeps its file, which is the lane's to encrypt.
      */
     @Test
-    fun the_platform_letting_go_of_an_abandoned_recording_discards_its_file() = runTest {
-        var discards = 0
-        val abandoned = ReportedRecording(onStop = {})
-        abandoned.finish(RecordingEnd.Abandoned)
+    fun the_platform_letting_go_of_an_abandoned_recording_discards_its_file() =
+        runTest {
+            var discards = 0
+            val abandoned = ReportedRecording(onStop = {})
+            abandoned.finish(RecordingEnd.Abandoned)
 
-        assertFalse(abandoned.finishFromPlatform(RecordingEnd.Finalized) { discards++ })
-        assertEquals(1, discards)
-        assertEquals(RecordingEnd.Abandoned, abandoned.awaitEnd())
+            assertFalse(abandoned.finishFromPlatform(RecordingEnd.Finalized) { discards++ })
+            assertEquals(1, discards)
+            assertEquals(RecordingEnd.Abandoned, abandoned.awaitEnd())
 
-        val kept = ReportedRecording(onStop = {})
-        assertTrue(kept.finishFromPlatform(RecordingEnd.Finalized) { discards++ })
-        assertEquals(1, discards, "a clip the platform ended is the lane's")
-        assertEquals(RecordingEnd.Finalized, kept.awaitEnd())
+            val kept = ReportedRecording(onStop = {})
+            assertTrue(kept.finishFromPlatform(RecordingEnd.Finalized) { discards++ })
+            assertEquals(1, discards, "a clip the platform ended is the lane's")
+            assertEquals(RecordingEnd.Finalized, kept.awaitEnd())
 
-        val refused = ReportedRecording(onStop = {})
-        refused.finish(RecordingEnd.Failed(RecordingFailure.Other))
-        refused.finishFromPlatform(RecordingEnd.Finalized) { discards++ }
-        assertEquals(1, discards, "only an abandon hands the file back")
-    }
+            val refused = ReportedRecording(onStop = {})
+            refused.finish(RecordingEnd.Failed(RecordingFailure.Other))
+            refused.finishFromPlatform(RecordingEnd.Finalized) { discards++ }
+            assertEquals(1, discards, "only an abandon hands the file back")
+        }
 
     @Test
-    fun awaiting_the_end_suspends_until_the_platform_reports_one() = runTest {
-        val recording = ReportedRecording(onStop = {})
-        val end = async { recording.awaitEnd() }
-        testScheduler.advanceUntilIdle()
-        assertFalse(end.isCompleted)
+    fun awaiting_the_end_suspends_until_the_platform_reports_one() =
+        runTest {
+            val recording = ReportedRecording(onStop = {})
+            val end = async { recording.awaitEnd() }
+            testScheduler.advanceUntilIdle()
+            assertFalse(end.isCompleted)
 
-        recording.finish(RecordingEnd.Failed(RecordingFailure.StorageFull))
+            recording.finish(RecordingEnd.Failed(RecordingFailure.StorageFull))
 
-        assertEquals(RecordingEnd.Failed(RecordingFailure.StorageFull), end.await())
-    }
+            assertEquals(RecordingEnd.Failed(RecordingFailure.StorageFull), end.await())
+        }
 
     /** The status line counts against a limit fixed at start; a late sample would move it after the end. */
     @Test

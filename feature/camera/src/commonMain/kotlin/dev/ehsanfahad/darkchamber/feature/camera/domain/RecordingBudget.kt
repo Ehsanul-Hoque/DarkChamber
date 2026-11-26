@@ -19,7 +19,9 @@ internal const val RECORDING_FLOOR_BYTES: Long = 64_000_000L
 /** What the free space allows a recording, decided before it starts. */
 internal sealed interface RecordingRoom {
     /** Start, and let the platform stop the file at [bytes]. */
-    data class Limit(val bytes: Long) : RecordingRoom
+    data class Limit(
+        val bytes: Long,
+    ) : RecordingRoom
 
     /** Measured, and too little: the limit would be under [RECORDING_FLOOR_BYTES]. */
     data object NotEnough : RecordingRoom
@@ -49,7 +51,10 @@ internal fun recordingRoom(freeBytes: Long?): RecordingRoom {
  * the limit, never the disk's free space, so it reaches zero exactly when the recording stops itself.
  * Never negative, though a platform may overshoot by a frame.
  */
-internal fun roomLeft(limitBytes: Long, recordedBytes: Long): Long = (limitBytes - recordedBytes).coerceAtLeast(0)
+internal fun roomLeft(
+    limitBytes: Long,
+    recordedBytes: Long,
+): Long = (limitBytes - recordedBytes).coerceAtLeast(0)
 
 /** The one line that would help turn sound on, if any. */
 internal enum class MicrophoneHint {
@@ -63,7 +68,10 @@ internal enum class MicrophoneHint {
 }
 
 /** Whether a recording has sound, and what to say when it does not. */
-internal data class RecordingSound(val withAudio: Boolean, val hint: MicrophoneHint)
+internal data class RecordingSound(
+    val withAudio: Boolean,
+    val hint: MicrophoneHint,
+)
 
 /**
  * Sound only when it is wanted and the microphone is granted. A refusal never blocks recording; it
@@ -71,11 +79,25 @@ internal data class RecordingSound(val withAudio: Boolean, val hint: MicrophoneH
  * Settings once it will not. Sound turned off ([soundWanted] false) is a choice: no audio, and no hint
  * about getting back what was just turned off.
  */
-internal fun recordingSound(permission: MicrophonePermission, soundWanted: Boolean): RecordingSound {
+internal fun recordingSound(
+    permission: MicrophonePermission,
+    soundWanted: Boolean,
+): RecordingSound {
     if (!soundWanted) return RecordingSound(withAudio = false, hint = MicrophoneHint.None)
     return when (permission) {
-        MicrophonePermission.Granted -> RecordingSound(withAudio = true, hint = MicrophoneHint.None)
-        MicrophonePermission.NotAsked, MicrophonePermission.Denied -> RecordingSound(withAudio = false, hint = MicrophoneHint.Ask)
-        MicrophonePermission.PermanentlyDenied -> RecordingSound(withAudio = false, hint = MicrophoneHint.Settings)
+        MicrophonePermission.Granted -> {
+            RecordingSound(withAudio = true, hint = MicrophoneHint.None)
+        }
+
+        MicrophonePermission.NotAsked, MicrophonePermission.Denied -> {
+            RecordingSound(
+                withAudio = false,
+                hint = MicrophoneHint.Ask,
+            )
+        }
+
+        MicrophonePermission.PermanentlyDenied -> {
+            RecordingSound(withAudio = false, hint = MicrophoneHint.Settings)
+        }
     }
 }

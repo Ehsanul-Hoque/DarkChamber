@@ -22,7 +22,9 @@ import kotlin.time.Duration.Companion.milliseconds
 internal sealed interface ImportResult {
     data object Imported : ImportResult
 
-    data class Failed(val error: VaultError) : ImportResult
+    data class Failed(
+        val error: VaultError,
+    ) : ImportResult
 
     /**
      * The caller stopped the batch, so this file was not imported and nothing was wrong with it.
@@ -89,16 +91,17 @@ internal class ImportFile(
         onProgress: (ImportPhase, Long) -> Unit = { _, _ -> },
     ): ImportResult {
         return try {
-            val first = try {
-                openAbandonably(picked, isActive)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                // The provider could not produce a stream at all. Reported as the same Io failure
-                // the vault used to return when it performed this open itself, so moving the open
-                // out here does not change what the user is shown.
-                return ImportResult.Failed(VaultError.Io(e))
-            } ?: return ImportResult.Stopped
+            val first =
+                try {
+                    openAbandonably(picked, isActive)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // The provider could not produce a stream at all. Reported as the same Io failure
+                    // the vault used to return when it performed this open itself, so moving the open
+                    // out here does not change what the user is shown.
+                    return ImportResult.Failed(VaultError.Io(e))
+                } ?: return ImportResult.Stopped
 
             // Whether the vault has taken over closing `first`. Hopping onto [ioContext] is a
             // cancellation point, so a lock landing in that hop throws before the vault is ever
@@ -107,39 +110,41 @@ internal class ImportFile(
             // stream already opened against it. A flag rather than closing from the catch, because
             // once the vault owns the source a second close would be a double close.
             var handed = false
-            val outcome = try {
-                withContext(ioContext) {
-                    // Resolved before ownership is handed over, not after: these are provider calls
-                    // and can fail on their own, and a throw with the flag already raised would
-                    // leave the source with nobody responsible for closing it.
-                    val resolved = facts ?: PickedFileFacts(picked.name, picked.mime, picked.size)
-                    handed = true
-                    // Named, not positional: the seam grew a parameter between `isActive` and the
-                    // opener, and a positional call would have passed the opener as the already-open
-                    // source.
-                    vault.import(
-                        name = resolved.name,
-                        mime = resolved.mime,
-                        albumId = albumId,
-                        onProgress = onProgress,
-                        isActive = isActive,
-                        first = first,
-                        openSource = picked::openSource,
-                    )
-                }
-            } catch (e: Throwable) {
-                if (!handed) {
-                    try {
-                        first.close()
-                    } catch (_: Exception) {
-                        // Best-effort, exactly as the grant's own close below is: a failure here must
-                        // not replace the reason we are unwinding.
+            val outcome =
+                try {
+                    withContext(ioContext) {
+                        // Resolved before ownership is handed over, not after: these are provider calls
+                        // and can fail on their own, and a throw with the flag already raised would
+                        // leave the source with nobody responsible for closing it.
+                        val resolved = facts ?: PickedFileFacts(picked.name, picked.mime, picked.size)
+                        handed = true
+                        // Named, not positional: the seam grew a parameter between `isActive` and the
+                        // opener, and a positional call would have passed the opener as the already-open
+                        // source.
+                        vault.import(
+                            name = resolved.name,
+                            mime = resolved.mime,
+                            albumId = albumId,
+                            onProgress = onProgress,
+                            isActive = isActive,
+                            first = first,
+                            openSource = picked::openSource,
+                        )
                     }
+                } catch (e: Throwable) {
+                    if (!handed) {
+                        try {
+                            first.close()
+                        } catch (_: Exception) {
+                            // Best-effort, exactly as the grant's own close below is: a failure here must
+                            // not replace the reason we are unwinding.
+                        }
+                    }
+                    throw e
                 }
-                throw e
-            }
             when (outcome) {
                 is Outcome.Ok -> ImportResult.Imported
+
                 // An error while the caller no longer wants the file is the stop arriving, not a
                 // broken file: the guard throws out of a read and the vault reports it as a failure
                 // because that is all it can see. Deciding which it was belongs here, where the stop
@@ -188,7 +193,10 @@ internal class ImportFile(
      * predicate a lock and a cancel already share, which the vault's guarded source argues should
      * stay singular.
      */
-    private suspend fun openAbandonably(picked: PickedFile, isActive: () -> Boolean): RawSource? {
+    private suspend fun openAbandonably(
+        picked: PickedFile,
+        isActive: () -> Boolean,
+    ): RawSource? {
         val scope = CoroutineScope(ioContext + SupervisorJob())
         val opening = scope.async { picked.openSource() }
         try {
@@ -222,13 +230,17 @@ internal class ImportFile(
      * so exactly one thing ever closes the late source and it does so without reaching for
      * experimental APIs to read a completed value.
      */
-    private fun abandon(scope: CoroutineScope, opening: Deferred<RawSource>) {
+    private fun abandon(
+        scope: CoroutineScope,
+        opening: Deferred<RawSource>,
+    ) {
         scope.launch {
-            val late = try {
-                opening.await()
-            } catch (_: Exception) {
-                null // the open failed on its own; there is nothing to release
-            }
+            val late =
+                try {
+                    opening.await()
+                } catch (_: Exception) {
+                    null // the open failed on its own; there is nothing to release
+                }
             try {
                 late?.close()
             } catch (_: Exception) {

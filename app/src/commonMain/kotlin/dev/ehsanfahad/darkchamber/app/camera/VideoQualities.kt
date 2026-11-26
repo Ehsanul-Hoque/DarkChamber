@@ -9,7 +9,10 @@ import dev.ehsanfahad.darkchamber.feature.camera.api.VideoQuality
  * Two facts rather than the platform's own types, so both controllers share the rule and a test can
  * reach it: CameraX's `Quality` cannot even be loaded off a device.
  */
-internal fun videoQualitiesFor(fullHd: Boolean, ultraHd: Boolean): Set<VideoQuality> =
+internal fun videoQualitiesFor(
+    fullHd: Boolean,
+    ultraHd: Boolean,
+): Set<VideoQuality> =
     buildSet {
         if (fullHd) add(VideoQuality.HD)
         if (ultraHd) add(VideoQuality.UHD)

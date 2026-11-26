@@ -9,7 +9,9 @@ import kotlinx.io.files.Path
  * the manifest already denies OS/cloud backup (`allowBackup=false` + deny-all rules), so
  * the default no-op exclusion hook is correct here.
  */
-class AndroidVaultRootResolver(context: Context) : VaultRootResolver {
+class AndroidVaultRootResolver(
+    context: Context,
+) : VaultRootResolver {
     private val delegate = DirectoryVaultRootResolver(Path(context.filesDir.absolutePath, "vault"))
 
     override fun resolve(): Outcome<Path> = delegate.resolve()

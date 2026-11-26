@@ -24,10 +24,11 @@ import dev.ehsanfahad.darkchamber.core.model.VaultError
  * @param minSeverity floor below which logs are dropped (default [Severity.Info]).
  */
 public fun initLogging(minSeverity: Severity = Severity.Info) {
-    val config: LoggerConfig = StaticConfig(
-        minSeverity = minSeverity,
-        logWriterList = listOf(platformLogWriter()),
-    )
+    val config: LoggerConfig =
+        StaticConfig(
+            minSeverity = minSeverity,
+            logWriterList = listOf(platformLogWriter()),
+        )
     Logger.setLogWriters(config.logWriterList)
     Logger.setMinSeverity(config.minSeverity)
     Logger.setTag("DarkChamber")
@@ -61,7 +62,10 @@ public fun redactCause(error: VaultError): String =
  * caller-supplied token (never content); the error is passed through [redactCause] so no cause
  * message, path, id, or vault content is emitted (hard rule #4).
  */
-public fun logVaultError(stage: String, error: VaultError) {
+public fun logVaultError(
+    stage: String,
+    error: VaultError,
+) {
     Logger.e { "$stage failed: ${redactCause(error)}" }
 }
 
@@ -69,10 +73,15 @@ public fun logVaultError(stage: String, error: VaultError) {
  * A measurement line: `<event>: <name>=<number> …`. Values are numbers by type, so nothing of a
  * vault item can reach it; [event] and the names MUST be fixed, caller-supplied tokens.
  */
-public fun measurementLine(event: String, vararg numbers: Pair<String, Long>): String =
-    "$event: " + numbers.joinToString(" ") { (name, value) -> "$name=$value" }
+public fun measurementLine(
+    event: String,
+    vararg numbers: Pair<String, Long>,
+): String = "$event: " + numbers.joinToString(" ") { (name, value) -> "$name=$value" }
 
 /** Log a [measurementLine] at info severity — counts, sizes and durations for a device check. */
-public fun logMeasurement(event: String, vararg numbers: Pair<String, Long>) {
+public fun logMeasurement(
+    event: String,
+    vararg numbers: Pair<String, Long>,
+) {
     Logger.i { measurementLine(event, *numbers) }
 }

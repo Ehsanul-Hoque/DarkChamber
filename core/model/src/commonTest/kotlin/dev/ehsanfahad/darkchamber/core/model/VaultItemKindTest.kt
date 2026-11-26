@@ -5,7 +5,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertSame
 
 class VaultItemKindTest {
-
     /**
      * These codes are **persisted data** (the `items.kind` column). Renumbering one silently
      * reinterprets every existing row, so the literals are asserted here rather than derived from

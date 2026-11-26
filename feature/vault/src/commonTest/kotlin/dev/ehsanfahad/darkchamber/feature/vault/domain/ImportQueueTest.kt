@@ -12,11 +12,11 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.ImportStage
 import dev.ehsanfahad.darkchamber.feature.vault.api.PickedFile
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
-import kotlinx.io.Buffer
-import kotlinx.io.RawSource
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
+import kotlinx.io.Buffer
+import kotlinx.io.RawSource
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.test.Test
@@ -35,28 +35,31 @@ import kotlin.test.assertTrue
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ImportQueueTest {
-
     // The queue reads a picked file's details off the caller's thread, so it needs a context of its
     // own. Inline by default: these tests are about what the batch does, not where it does it — the
     // one test that cares supplies a dispatcher it can hold.
-    private fun queue(vault: VaultItems, ioContext: CoroutineContext = UnconfinedTestDispatcher()) =
-        ImportQueue(
-            importFile = ImportFile(vault = vault, ioContext = UnconfinedTestDispatcher()),
-            ioContext = ioContext,
-        )
+    private fun queue(
+        vault: VaultItems,
+        ioContext: CoroutineContext = UnconfinedTestDispatcher(),
+    ) = ImportQueue(
+        importFile = ImportFile(vault = vault, ioContext = UnconfinedTestDispatcher()),
+        ioContext = ioContext,
+    )
 
     @Test
-    fun files_are_imported_in_the_order_they_were_picked() = runTest {
-        val vault = FakeVaultItems()
-        val files = listOf(FakePickedFile(name = "a.jpg"), FakePickedFile(name = "b.jpg"), FakePickedFile(name = "c.jpg"))
+    fun files_are_imported_in_the_order_they_were_picked() =
+        runTest {
+            val vault = FakeVaultItems()
+            val files =
+                listOf(FakePickedFile(name = "a.jpg"), FakePickedFile(name = "b.jpg"), FakePickedFile(name = "c.jpg"))
 
-        val summary = queue(vault)(files)
+            val summary = queue(vault)(files)
 
-        assertEquals(listOf("a.jpg", "b.jpg", "c.jpg"), vault.importedNames)
-        assertEquals(3, summary.imported)
-        assertEquals(emptyList(), summary.failed)
-        assertTrue(files.all { it.closed }, "every grant is released")
-    }
+            assertEquals(listOf("a.jpg", "b.jpg", "c.jpg"), vault.importedNames)
+            assertEquals(3, summary.imported)
+            assertEquals(emptyList(), summary.failed)
+            assertTrue(files.all { it.closed }, "every grant is released")
+        }
 
     /**
      * A destination belongs to the pick, so every file in one batch carries the same one — not the
@@ -65,58 +68,63 @@ class ImportQueueTest {
      * itself across two of them.
      */
     @Test
-    fun every_file_in_a_batch_is_filed_into_the_same_album() = runTest {
-        val vault = FakeVaultItems()
-        val album = byteArrayOf(0xA1.toByte())
-        val files = listOf(FakePickedFile(name = "a.jpg"), FakePickedFile(name = "b.jpg"))
+    fun every_file_in_a_batch_is_filed_into_the_same_album() =
+        runTest {
+            val vault = FakeVaultItems()
+            val album = byteArrayOf(0xA1.toByte())
+            val files = listOf(FakePickedFile(name = "a.jpg"), FakePickedFile(name = "b.jpg"))
 
-        queue(vault)(files, albumId = album)
+            queue(vault)(files, albumId = album)
 
-        assertEquals(2, vault.importedAlbums.size, "both files were offered a destination")
-        assertTrue(
-            vault.importedAlbums.all { it.contentEquals(album) },
-            "and it is the same one for each: ${vault.importedAlbums.map { it?.size }}",
-        )
-    }
+            assertEquals(2, vault.importedAlbums.size, "both files were offered a destination")
+            assertTrue(
+                vault.importedAlbums.all { it.contentEquals(album) },
+                "and it is the same one for each: ${vault.importedAlbums.map { it?.size }}",
+            )
+        }
 
     /** No destination is the whole-vault import, and stays the default every existing caller gets. */
     @Test
-    fun a_batch_with_no_album_imports_everything_unfiled() = runTest {
-        val vault = FakeVaultItems()
+    fun a_batch_with_no_album_imports_everything_unfiled() =
+        runTest {
+            val vault = FakeVaultItems()
 
-        queue(vault)(listOf(FakePickedFile(name = "a.jpg")))
+            queue(vault)(listOf(FakePickedFile(name = "a.jpg")))
 
-        assertEquals(listOf<ByteArray?>(null), vault.importedAlbums)
-    }
+            assertEquals(listOf<ByteArray?>(null), vault.importedAlbums)
+        }
 
     /** One unreadable file in fifty must cost the user that file and nothing else. */
     @Test
-    fun a_failed_file_is_recorded_and_the_batch_carries_on() = runTest {
-        val vault = FakeVaultItems(failFor = setOf("broken.jpg"))
-        val files = listOf(
-            FakePickedFile(name = "first.jpg"),
-            FakePickedFile(name = "broken.jpg"),
-            FakePickedFile(name = "last.jpg"),
-        )
+    fun a_failed_file_is_recorded_and_the_batch_carries_on() =
+        runTest {
+            val vault = FakeVaultItems(failFor = setOf("broken.jpg"))
+            val files =
+                listOf(
+                    FakePickedFile(name = "first.jpg"),
+                    FakePickedFile(name = "broken.jpg"),
+                    FakePickedFile(name = "last.jpg"),
+                )
 
-        val summary = queue(vault)(files)
+            val summary = queue(vault)(files)
 
-        assertEquals(listOf("first.jpg", "broken.jpg", "last.jpg"), vault.importedNames, "order intact")
-        assertEquals(2, summary.imported)
-        assertEquals(listOf("broken.jpg"), summary.failed.map { it.name })
-        assertTrue(files.all { it.closed }, "a failure mid-batch leaks no grants")
-    }
+            assertEquals(listOf("first.jpg", "broken.jpg", "last.jpg"), vault.importedNames, "order intact")
+            assertEquals(2, summary.imported)
+            assertEquals(listOf("broken.jpg"), summary.failed.map { it.name })
+            assertTrue(files.all { it.closed }, "a failure mid-batch leaks no grants")
+        }
 
     @Test
-    fun an_empty_pick_is_a_no_op() = runTest {
-        val vault = FakeVaultItems()
+    fun an_empty_pick_is_a_no_op() =
+        runTest {
+            val vault = FakeVaultItems()
 
-        val summary = queue(vault)(emptyList())
+            val summary = queue(vault)(emptyList())
 
-        assertEquals(0, summary.imported)
-        assertEquals(emptyList(), summary.failed)
-        assertEquals(0, vault.importCalls)
-    }
+            assertEquals(0, summary.imported)
+            assertEquals(emptyList(), summary.failed)
+            assertEquals(0, vault.importCalls)
+        }
 
     /**
      * A lock cancels the scope the batch runs on. Cancellation is not a failed file: recording it
@@ -125,33 +133,36 @@ class ImportQueueTest {
      * the import use case only ever closes the one it was handed.
      */
     @Test
-    fun cancellation_propagates_and_releases_every_remaining_grant() = runTest {
-        val files = listOf(
-            FakePickedFile(name = "started.jpg"),
-            FakePickedFile(name = "never.jpg"),
-            FakePickedFile(name = "also-never.jpg"),
-        )
+    fun cancellation_propagates_and_releases_every_remaining_grant() =
+        runTest {
+            val files =
+                listOf(
+                    FakePickedFile(name = "started.jpg"),
+                    FakePickedFile(name = "never.jpg"),
+                    FakePickedFile(name = "also-never.jpg"),
+                )
 
-        assertFailsWith<CancellationException> { queue(CancellingVaultItems())(files) }
+            assertFailsWith<CancellationException> { queue(CancellingVaultItems())(files) }
 
-        assertTrue(files.all { it.closed }, "a cancelled batch must not leak the grants it never used")
-    }
+            assertTrue(files.all { it.closed }, "a cancelled batch must not leak the grants it never used")
+        }
 
     @Test
-    fun progress_reports_each_file_with_a_fraction_when_the_size_is_known() = runTest {
-        // The container reads each payload twice, so the callback runs to 2 * size; the fraction the
-        // caller draws must still run 0 → 1 exactly once.
-        val vault = FakeVaultItems(bytesPerImport = listOf(4L, 8L))
-        val files = listOf(FakePickedFile(name = "clip.mp4", size = 4L))
-        val seen = mutableListOf<ImportProgress>()
+    fun progress_reports_each_file_with_a_fraction_when_the_size_is_known() =
+        runTest {
+            // The container reads each payload twice, so the callback runs to 2 * size; the fraction the
+            // caller draws must still run 0 → 1 exactly once.
+            val vault = FakeVaultItems(bytesPerImport = listOf(4L, 8L))
+            val files = listOf(FakePickedFile(name = "clip.mp4", size = 4L))
+            val seen = mutableListOf<ImportProgress>()
 
-        queue(vault)(files) { seen += it }
+            queue(vault)(files) { seen += it }
 
-        assertEquals(listOf(0, 0, 0), seen.map { it.index }, "one file, always index 0")
-        assertEquals(listOf(1, 1, 1), seen.map { it.total })
-        assertEquals("clip.mp4", seen.first().name)
-        assertEquals(listOf(null, 0.5f, 1f), seen.map { it.fileFraction }, "0 → 1 across both passes")
-    }
+            assertEquals(listOf(0, 0, 0), seen.map { it.index }, "one file, always index 0")
+            assertEquals(listOf(1, 1, 1), seen.map { it.total })
+            assertEquals("clip.mp4", seen.first().name)
+            assertEquals(listOf(null, 0.5f, 1f), seen.map { it.fileFraction }, "0 → 1 across both passes")
+        }
 
     /**
      * Before the first byte is counted there is nothing to draw a bar from, so the file starts
@@ -163,17 +174,18 @@ class ImportQueueTest {
      * is the only thing we actually know. For a local file this state lasts one read.
      */
     @Test
-    fun a_file_that_has_not_started_arriving_has_no_fraction_yet() = runTest {
-        val vault = FakeVaultItems(bytesPerImport = listOf(2L))
-        val files = listOf(FakePickedFile(name = "from-the-cloud.mov", size = 4L))
-        val seen = mutableListOf<ImportProgress>()
+    fun a_file_that_has_not_started_arriving_has_no_fraction_yet() =
+        runTest {
+            val vault = FakeVaultItems(bytesPerImport = listOf(2L))
+            val files = listOf(FakePickedFile(name = "from-the-cloud.mov", size = 4L))
+            val seen = mutableListOf<ImportProgress>()
 
-        queue(vault)(files) { seen += it }
+            queue(vault)(files) { seen += it }
 
-        assertEquals(null, seen.first().fileFraction, "no bytes yet means no fraction, not zero")
-        assertEquals("from-the-cloud.mov", seen.first().name, "it still says which file is running")
-        assertEquals(0.25f, seen.last().fileFraction, "and it becomes determinate once bytes arrive")
-    }
+            assertEquals(null, seen.first().fileFraction, "no bytes yet means no fraction, not zero")
+            assertEquals("from-the-cloud.mov", seen.first().name, "it still says which file is running")
+            assertEquals(0.25f, seen.last().fileFraction, "and it becomes determinate once bytes arrive")
+        }
 
     /**
      * A picked file's name, size and deletable flag are, on Android, cursor queries into the provider
@@ -186,30 +198,31 @@ class ImportQueueTest {
      * cannot tell "this ran elsewhere" from "this ran here".
      */
     @Test
-    fun a_picked_files_details_are_never_read_on_the_callers_thread() = runTest {
-        val io = ManualDispatcher()
-        // Every read is checked against where it happened. A count sampled at one moment would cover
-        // the reads before that moment and say nothing about the rest — which is how the first
-        // version of this test let the deletable flag go on being read here.
-        val file = RecordingPickedFile(onImportDispatcher = { io.isRunning })
-        val batch = launch { queue(FakeVaultItems(), ioContext = io)(listOf(file)) }
+    fun a_picked_files_details_are_never_read_on_the_callers_thread() =
+        runTest {
+            val io = ManualDispatcher()
+            // Every read is checked against where it happened. A count sampled at one moment would cover
+            // the reads before that moment and say nothing about the rest — which is how the first
+            // version of this test let the deletable flag go on being read here.
+            val file = RecordingPickedFile(onImportDispatcher = { io.isRunning })
+            val batch = launch { queue(FakeVaultItems(), ioContext = io)(listOf(file)) }
 
-        // The batch hops onto the import dispatcher more than once per file, so it gets several
-        // turns. Interleaved with the test clock, since each hop resumes back on the caller.
-        repeat(10) {
+            // The batch hops onto the import dispatcher more than once per file, so it gets several
+            // turns. Interleaved with the test clock, since each hop resumes back on the caller.
+            repeat(10) {
+                advanceUntilIdle()
+                io.drain()
+            }
             advanceUntilIdle()
-            io.drain()
-        }
-        advanceUntilIdle()
-        batch.join()
+            batch.join()
 
-        assertTrue(file.columnReads > 0, "the details are read at some point, or this proves nothing")
-        assertEquals(
-            0,
-            file.columnReadsElsewhere,
-            "every read of a picked file must happen on the import dispatcher, not the caller's thread",
-        )
-    }
+            assertTrue(file.columnReads > 0, "the details are read at some point, or this proves nothing")
+            assertEquals(
+                0,
+                file.columnReadsElsewhere,
+                "every read of a picked file must happen on the import dispatcher, not the caller's thread",
+            )
+        }
 
     /**
      * Read once and carried, not read again per report.
@@ -219,127 +232,146 @@ class ImportQueueTest {
      * query per frame.
      */
     @Test
-    fun a_files_details_are_read_once_however_many_times_they_are_reported() = runTest {
-        val file = RecordingPickedFile()
-        val vault = FakeVaultItems(bytesPerImport = listOf(1L, 2L, 3L, 4L, 5L, 6L))
+    fun a_files_details_are_read_once_however_many_times_they_are_reported() =
+        runTest {
+            val file = RecordingPickedFile()
+            val vault = FakeVaultItems(bytesPerImport = listOf(1L, 2L, 3L, 4L, 5L, 6L))
 
-        queue(vault)(listOf(file))
+            queue(vault)(listOf(file))
 
-        // Name, MIME, size, and the deletable flag — four reads for a file that reported progress
-        // six times and was named in every one of them. Not four per frame, and not four per layer:
-        // the snapshot travels with the file instead of the vault re-reading it downstream.
-        assertEquals(4, file.columnReads, "the details are a snapshot, not a property read per frame")
-    }
+            // Name, MIME, size, and the deletable flag — four reads for a file that reported progress
+            // six times and was named in every one of them. Not four per frame, and not four per layer:
+            // the snapshot travels with the file instead of the vault re-reading it downstream.
+            assertEquals(4, file.columnReads, "the details are a snapshot, not a property read per frame")
+        }
 
     /**
      * The stage a file starts in is the fetch, and it is the feature's own: the vault never reports
      * it, because the wait it names happens before the vault is called at all.
      */
     @Test
-    fun a_file_starts_in_the_fetch_stage_with_nothing_to_measure() = runTest {
-        val vault = FakeVaultItems(bytesPerImport = listOf(2L))
-        val files = listOf(FakePickedFile(name = "from-the-cloud.mov", size = 4L))
-        val seen = mutableListOf<ImportProgress>()
+    fun a_file_starts_in_the_fetch_stage_with_nothing_to_measure() =
+        runTest {
+            val vault = FakeVaultItems(bytesPerImport = listOf(2L))
+            val files = listOf(FakePickedFile(name = "from-the-cloud.mov", size = 4L))
+            val seen = mutableListOf<ImportProgress>()
 
-        queue(vault)(files) { seen += it }
+            queue(vault)(files) { seen += it }
 
-        assertEquals(ImportStage.FETCHING, seen.first().stage, "a file begins by waiting for itself")
-        assertEquals(null, seen.first().fileFraction, "nothing has been read, so there is nothing to divide")
-        assertEquals(ImportStage.ENCRYPTING, seen.last().stage, "and the payload reads are the encrypt")
-    }
+            assertEquals(ImportStage.FETCHING, seen.first().stage, "a file begins by waiting for itself")
+            assertEquals(null, seen.first().fileFraction, "nothing has been read, so there is nothing to divide")
+            assertEquals(ImportStage.ENCRYPTING, seen.last().stage, "and the payload reads are the encrypt")
+        }
 
     /**
      * The two measurable stages divide by different numbers, which is the entire reason the stage is
      * carried at all. A copy is one pass over the payload; the container reads it twice.
      */
     @Test
-    fun a_copy_divides_by_the_payload_size_and_the_encrypt_by_twice_it() = runTest {
-        val vault = FakeVaultItems(
-            phaseReports = listOf(
-                ImportPhase.COPYING to 2L,
-                ImportPhase.COPYING to 4L,
-                ImportPhase.ENCRYPTING to 4L,
-                ImportPhase.ENCRYPTING to 8L,
-            ),
-        )
-        val files = listOf(FakePickedFile(name = "one-shot.bin", size = 4L))
-        val seen = mutableListOf<ImportProgress>()
+    fun a_copy_divides_by_the_payload_size_and_the_encrypt_by_twice_it() =
+        runTest {
+            val vault =
+                FakeVaultItems(
+                    phaseReports =
+                        listOf(
+                            ImportPhase.COPYING to 2L,
+                            ImportPhase.COPYING to 4L,
+                            ImportPhase.ENCRYPTING to 4L,
+                            ImportPhase.ENCRYPTING to 8L,
+                        ),
+                )
+            val files = listOf(FakePickedFile(name = "one-shot.bin", size = 4L))
+            val seen = mutableListOf<ImportProgress>()
 
-        queue(vault)(files) { seen += it }
+            queue(vault)(files) { seen += it }
 
-        assertEquals(
-            listOf(ImportStage.FETCHING, ImportStage.COPYING, ImportStage.COPYING, ImportStage.ENCRYPTING, ImportStage.ENCRYPTING),
-            seen.map { it.stage },
-        )
-        // Half the copy, all of the copy, half the encrypt, all of the encrypt. Dividing both by the
-        // same number would report the copy as finishing at 50% or the encrypt as finishing at 200%.
-        assertEquals(listOf(null, 0.5f, 1f, 0.5f, 1f), seen.map { it.fileFraction })
-    }
+            assertEquals(
+                listOf(
+                    ImportStage.FETCHING,
+                    ImportStage.COPYING,
+                    ImportStage.COPYING,
+                    ImportStage.ENCRYPTING,
+                    ImportStage.ENCRYPTING,
+                ),
+                seen.map { it.stage },
+            )
+            // Half the copy, all of the copy, half the encrypt, all of the encrypt. Dividing both by the
+            // same number would report the copy as finishing at 50% or the encrypt as finishing at 200%.
+            assertEquals(listOf(null, 0.5f, 1f, 0.5f, 1f), seen.map { it.fileFraction })
+        }
 
     /** The preview cannot be measured, so the bar goes indeterminate rather than sitting full. */
     @Test
-    fun the_finishing_stage_carries_no_fraction_even_when_the_size_is_known() = runTest {
-        val vault = FakeVaultItems(
-            phaseReports = listOf(ImportPhase.ENCRYPTING to 8L, ImportPhase.PREVIEWING to 0L),
-        )
-        val files = listOf(FakePickedFile(name = "photo.jpg", size = 4L))
-        val seen = mutableListOf<ImportProgress>()
+    fun the_finishing_stage_carries_no_fraction_even_when_the_size_is_known() =
+        runTest {
+            val vault =
+                FakeVaultItems(
+                    phaseReports = listOf(ImportPhase.ENCRYPTING to 8L, ImportPhase.PREVIEWING to 0L),
+                )
+            val files = listOf(FakePickedFile(name = "photo.jpg", size = 4L))
+            val seen = mutableListOf<ImportProgress>()
 
-        queue(vault)(files) { seen += it }
+            queue(vault)(files) { seen += it }
 
-        assertEquals(ImportStage.FINISHING, seen.last().stage, "the vault's preview phase is the finish")
-        assertEquals(null, seen.last().fileFraction, "there is no denominator for the encoder's reads")
-        // And the stage before it did reach full, so the bar completes and then goes indeterminate
-        // rather than appearing to lose progress.
-        assertEquals(1f, seen[seen.size - 2].fileFraction)
-    }
-
-    @Test
-    fun an_empty_file_has_no_fraction_in_any_stage() = runTest {
-        val vault = FakeVaultItems(
-            phaseReports = listOf(ImportPhase.COPYING to 0L, ImportPhase.ENCRYPTING to 0L),
-        )
-        // Zero is the size the platform reported, not a refusal to say — and a fraction of nothing
-        // has no value to take.
-        val files = listOf(FakePickedFile(name = "empty.txt", size = 0L))
-        val seen = mutableListOf<ImportProgress>()
-
-        queue(vault)(files) { seen += it }
-
-        assertTrue(seen.all { it.fileFraction == null }, "an empty file has no fraction, got $seen")
-    }
+            assertEquals(ImportStage.FINISHING, seen.last().stage, "the vault's preview phase is the finish")
+            assertEquals(null, seen.last().fileFraction, "there is no denominator for the encoder's reads")
+            // And the stage before it did reach full, so the bar completes and then goes indeterminate
+            // rather than appearing to lose progress.
+            assertEquals(1f, seen[seen.size - 2].fileFraction)
+        }
 
     @Test
-    fun progress_reports_no_fraction_when_the_platform_gave_no_size() = runTest {
-        val vault = FakeVaultItems(
-            phaseReports = listOf(
-                ImportPhase.COPYING to 4L,
-                ImportPhase.ENCRYPTING to 8L,
-                ImportPhase.PREVIEWING to 0L,
-            ),
-        )
-        val files = listOf(FakePickedFile(name = "remote.mov", size = null))
-        val seen = mutableListOf<ImportProgress>()
+    fun an_empty_file_has_no_fraction_in_any_stage() =
+        runTest {
+            val vault =
+                FakeVaultItems(
+                    phaseReports = listOf(ImportPhase.COPYING to 0L, ImportPhase.ENCRYPTING to 0L),
+                )
+            // Zero is the size the platform reported, not a refusal to say — and a fraction of nothing
+            // has no value to take.
+            val files = listOf(FakePickedFile(name = "empty.txt", size = 0L))
+            val seen = mutableListOf<ImportProgress>()
 
-        queue(vault)(files) { seen += it }
+            queue(vault)(files) { seen += it }
 
-        // Null in every stage, never a guessed denominator: a bar that moves against an invented
-        // total misreports progress (hard rule #6). The caller renders this indeterminate.
-        assertTrue(seen.all { it.fileFraction == null }, "an unsized file has no fraction, got $seen")
-        assertTrue(seen.isNotEmpty(), "it still reports which file is running")
-    }
+            assertTrue(seen.all { it.fileFraction == null }, "an empty file has no fraction, got $seen")
+        }
 
     @Test
-    fun progress_never_goes_backwards_within_a_file() = runTest {
-        val vault = FakeVaultItems(bytesPerImport = listOf(1L, 2L, 3L, 10L))
-        val files = listOf(FakePickedFile(name = "big.bin", size = 5L))
-        val seen = mutableListOf<Float>()
+    fun progress_reports_no_fraction_when_the_platform_gave_no_size() =
+        runTest {
+            val vault =
+                FakeVaultItems(
+                    phaseReports =
+                        listOf(
+                            ImportPhase.COPYING to 4L,
+                            ImportPhase.ENCRYPTING to 8L,
+                            ImportPhase.PREVIEWING to 0L,
+                        ),
+                )
+            val files = listOf(FakePickedFile(name = "remote.mov", size = null))
+            val seen = mutableListOf<ImportProgress>()
 
-        queue(vault)(files) { p -> p.fileFraction?.let { seen += it } }
+            queue(vault)(files) { seen += it }
 
-        seen.zipWithNext { a, b -> assertTrue(b >= a, "fraction went backwards: $a then $b") }
-        assertTrue(seen.last() <= 1f, "an over-reported byte count must not push the bar past full")
-    }
+            // Null in every stage, never a guessed denominator: a bar that moves against an invented
+            // total misreports progress (hard rule #6). The caller renders this indeterminate.
+            assertTrue(seen.all { it.fileFraction == null }, "an unsized file has no fraction, got $seen")
+            assertTrue(seen.isNotEmpty(), "it still reports which file is running")
+        }
+
+    @Test
+    fun progress_never_goes_backwards_within_a_file() =
+        runTest {
+            val vault = FakeVaultItems(bytesPerImport = listOf(1L, 2L, 3L, 10L))
+            val files = listOf(FakePickedFile(name = "big.bin", size = 5L))
+            val seen = mutableListOf<Float>()
+
+            queue(vault)(files) { p -> p.fileFraction?.let { seen += it } }
+
+            seen.zipWithNext { a, b -> assertTrue(b >= a, "fraction went backwards: $a then $b") }
+            assertTrue(seen.last() <= 1f, "an over-reported byte count must not push the bar past full")
+        }
 
     /**
      * Which originals the batch may afterwards offer to delete.
@@ -349,33 +381,36 @@ class ImportQueueTest {
      * — the one case where being wrong costs the user their file rather than a feature.
      */
     @Test
-    fun only_files_that_both_imported_and_can_be_deleted_are_offered() = runTest {
-        val vault = FakeVaultItems(failFor = setOf("broken.jpg"))
-        val landed = FakePickedFile(name = "landed.jpg", deletable = true)
-        val files = listOf(
-            landed,
-            FakePickedFile(name = "read-only.jpg", deletable = false),
-            FakePickedFile(name = "broken.jpg", deletable = true),
-        )
+    fun only_files_that_both_imported_and_can_be_deleted_are_offered() =
+        runTest {
+            val vault = FakeVaultItems(failFor = setOf("broken.jpg"))
+            val landed = FakePickedFile(name = "landed.jpg", deletable = true)
+            val files =
+                listOf(
+                    landed,
+                    FakePickedFile(name = "read-only.jpg", deletable = false),
+                    FakePickedFile(name = "broken.jpg", deletable = true),
+                )
 
-        val summary = queue(vault)(files)
+            val summary = queue(vault)(files)
 
-        assertEquals(listOf("landed.jpg"), summary.deletableOriginals.map { it.name })
-        assertSame(landed, summary.deletableOriginals.single(), "the handle itself, to delete by later")
-        assertTrue(landed.closed, "and it is offered closed — the grant outlives the stream (seam contract)")
-    }
+            assertEquals(listOf("landed.jpg"), summary.deletableOriginals.map { it.name })
+            assertSame(landed, summary.deletableOriginals.single(), "the handle itself, to delete by later")
+            assertTrue(landed.closed, "and it is offered closed — the grant outlives the stream (seam contract)")
+        }
 
     @Test
-    fun a_batch_where_nothing_can_be_deleted_offers_nothing() = runTest {
-        val files = listOf(FakePickedFile(name = "a.jpg"), FakePickedFile(name = "b.jpg"))
+    fun a_batch_where_nothing_can_be_deleted_offers_nothing() =
+        runTest {
+            val files = listOf(FakePickedFile(name = "a.jpg"), FakePickedFile(name = "b.jpg"))
 
-        val summary = queue(FakeVaultItems())(files)
+            val summary = queue(FakeVaultItems())(files)
 
-        // The ordinary case — every photo-library item, every iOS item, most cloud documents. It has
-        // to read as "no offer", never as an empty offer.
-        assertEquals(emptyList(), summary.deletableOriginals)
-        assertEquals(2, summary.imported, "which says nothing about whether the import worked")
-    }
+            // The ordinary case — every photo-library item, every iOS item, most cloud documents. It has
+            // to read as "no offer", never as an empty offer.
+            assertEquals(emptyList(), summary.deletableOriginals)
+            assertEquals(2, summary.imported, "which says nothing about whether the import worked")
+        }
 
     /**
      * Stopping the batch leaves the rest of the selection untouched — both the file that was being
@@ -384,38 +419,42 @@ class ImportQueueTest {
      * stopping a batch does not un-import what it already did.
      */
     @Test
-    fun a_stopped_batch_offers_only_what_it_managed_to_import() = runTest {
-        var active = true
-        val vault = FakeVaultItems(onImport = { name -> if (name == "interrupted.jpg") active = false })
-        val files = listOf(
-            FakePickedFile(name = "landed.jpg", deletable = true),
-            FakePickedFile(name = "interrupted.jpg", deletable = true),
-            FakePickedFile(name = "never-reached.jpg", deletable = true),
-        )
+    fun a_stopped_batch_offers_only_what_it_managed_to_import() =
+        runTest {
+            var active = true
+            val vault = FakeVaultItems(onImport = { name -> if (name == "interrupted.jpg") active = false })
+            val files =
+                listOf(
+                    FakePickedFile(name = "landed.jpg", deletable = true),
+                    FakePickedFile(name = "interrupted.jpg", deletable = true),
+                    FakePickedFile(name = "never-reached.jpg", deletable = true),
+                )
 
-        val summary = queue(vault)(files, isActive = { active })
+            val summary = queue(vault)(files, isActive = { active })
 
-        assertEquals(listOf("landed.jpg"), summary.deletableOriginals.map { it.name })
-        assertEquals(1, summary.imported)
-        // The interrupted file is in neither list — nothing was wrong with it — and it must not be
-        // offered for deletion either, which is the rule this file is here to hold.
-        assertEquals(emptyList(), summary.failed, "a stop is not a failure")
-    }
+            assertEquals(listOf("landed.jpg"), summary.deletableOriginals.map { it.name })
+            assertEquals(1, summary.imported)
+            // The interrupted file is in neither list — nothing was wrong with it — and it must not be
+            // offered for deletion either, which is the rule this file is here to hold.
+            assertEquals(emptyList(), summary.failed, "a stop is not a failure")
+        }
 
     @Test
     fun a_file_name_never_reaches_a_log_line() {
-        val progress = ImportProgress(
-            index = 1,
-            total = 4,
-            name = "tax-return.pdf",
-            stage = ImportStage.ENCRYPTING,
-            fileFraction = 0.5f,
-        )
-        val summary = ImportSummary(
-            imported = 1,
-            failed = listOf(FailedImport("passport.jpg", VaultError.Crypto.IntegrityFailure)),
-            deletableOriginals = listOf(TalkativePickedFile("payslip.pdf")),
-        )
+        val progress =
+            ImportProgress(
+                index = 1,
+                total = 4,
+                name = "tax-return.pdf",
+                stage = ImportStage.ENCRYPTING,
+                fileFraction = 0.5f,
+            )
+        val summary =
+            ImportSummary(
+                imported = 1,
+                failed = listOf(FailedImport("passport.jpg", VaultError.Crypto.IntegrityFailure)),
+                deletableOriginals = listOf(TalkativePickedFile("payslip.pdf")),
+            )
         val facts = PickedFileFacts(name = "medical-report.pdf", mime = "application/pdf", size = 12L)
 
         // Both types carry decrypted vault content, so the generated data-class toString would print
@@ -435,7 +474,9 @@ class ImportQueueTest {
      * implementations simply happen not to. Using an ordinary fake here would prove nothing: its
      * name stays out of the summary by accident rather than because the summary redacts it.
      */
-    private class TalkativePickedFile(override val name: String) : PickedFile {
+    private class TalkativePickedFile(
+        override val name: String,
+    ) : PickedFile {
         override val mime: String = "application/pdf"
         override val size: Long? = null
 

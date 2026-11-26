@@ -40,5 +40,9 @@ enum class NotSavedReason {
 
 /** Where a feature reports what did not make it; the app keeps and shows it. */
 fun interface NotSavedReporter {
-    fun report(kind: NotSavedKind, reason: NotSavedReason, count: Int)
+    fun report(
+        kind: NotSavedKind,
+        reason: NotSavedReason,
+        count: Int,
+    )
 }

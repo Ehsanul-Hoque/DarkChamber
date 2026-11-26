@@ -5,15 +5,15 @@ import com.arkivanov.essenty.backhandler.BackDispatcher
 import com.arkivanov.essenty.lifecycle.LifecycleRegistry
 import com.arkivanov.essenty.lifecycle.destroy
 import com.arkivanov.essenty.lifecycle.resume
-import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.ItemFilter
+import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultError
 import dev.ehsanfahad.darkchamber.core.vault.AlbumSummary
 import dev.ehsanfahad.darkchamber.core.vault.ImportPhase
 import dev.ehsanfahad.darkchamber.core.vault.VaultItemSummary
+import dev.ehsanfahad.darkchamber.feature.vault.ExplodingVaultItems
 import dev.ehsanfahad.darkchamber.feature.vault.FakeFilePicker
 import dev.ehsanfahad.darkchamber.feature.vault.FakePickedFile
-import dev.ehsanfahad.darkchamber.feature.vault.ExplodingVaultItems
 import dev.ehsanfahad.darkchamber.feature.vault.FakeVaultItems
 import dev.ehsanfahad.darkchamber.feature.vault.api.FailedImport
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryError
@@ -42,9 +42,6 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
-import kotlin.time.Duration
-import kotlin.time.Duration.Companion.hours
-import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.io.RawSource
 import kotlin.coroutines.CoroutineContext
 import kotlin.test.Test
@@ -53,10 +50,12 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.hours
+import kotlin.time.Duration.Companion.milliseconds
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class DefaultVaultGalleryComponentTest {
-
     private val lifecycle = LifecycleRegistry().apply { resume() }
 
     /**
@@ -105,79 +104,84 @@ class DefaultVaultGalleryComponentTest {
      * must not open a camera over a selection the user is in the middle of.
      */
     @Test
-    fun opening_the_camera_reports_once_per_tap_and_only_while_offered() = runTest {
-        val vault = FakeVaultItems()
-        vault.summaries.value = listOf(summary(byteArrayOf(1), readableMeta("a.txt", "text/plain")))
-        var opened = 0
-        val imports = FakeImports()
-        val component = component(vault, imports = imports, onOpenCamera = { opened++ })
+    fun opening_the_camera_reports_once_per_tap_and_only_while_offered() =
+        runTest {
+            val vault = FakeVaultItems()
+            vault.summaries.value = listOf(summary(byteArrayOf(1), readableMeta("a.txt", "text/plain")))
+            var opened = 0
+            val imports = FakeImports()
+            val component = component(vault, imports = imports, onOpenCamera = { opened++ })
 
-        component.openCamera()
-        assertEquals(1, opened, "one tap, one report")
+            component.openCamera()
+            assertEquals(1, opened, "one tap, one report")
 
-        component.selectItem(byteArrayOf(1))
-        component.openCamera()
-        assertEquals(1, opened, "not while selecting")
-        component.clearSelection()
+            component.selectItem(byteArrayOf(1))
+            component.openCamera()
+            assertEquals(1, opened, "not while selecting")
+            component.clearSelection()
 
-        imports.emit(ImportState.Running(index = 0, total = 1, name = "a.jpg", fileFraction = 0.5f))
-        component.openCamera()
-        assertEquals(1, opened, "not during a batch")
+            imports.emit(ImportState.Running(index = 0, total = 1, name = "a.jpg", fileFraction = 0.5f))
+            component.openCamera()
+            assertEquals(1, opened, "not during a batch")
 
-        imports.emit(ImportState.Finished(imported = 1, failed = emptyList()))
-        component.openCamera()
-        assertEquals(1, opened, "nor over its summary")
+            imports.emit(ImportState.Finished(imported = 1, failed = emptyList()))
+            component.openCamera()
+            assertEquals(1, opened, "nor over its summary")
 
-        imports.emit(ImportState.Idle)
-        component.openCamera()
-        assertEquals(2, opened, "and again once the add buttons are back")
-    }
-
-    @Test
-    fun the_listing_settles_from_loading_into_items() = runTest {
-        val vault = FakeVaultItems()
-        val component = component(vault)
-
-        // The fake's first emission is the empty list, so the component has already settled.
-        assertFalse(component.state.value.loading, "loading clears on the first emission")
-        assertEquals(emptyList(), component.state.value.items)
-
-        vault.summaries.value = listOf(summary(byteArrayOf(1), readableMeta("a.txt", "text/plain")))
-
-        val items = component.state.value.items
-        assertEquals(1, items.size)
-        assertEquals(GalleryItemMeta.Readable("a.txt", "text/plain"), items.single().meta)
-    }
+            imports.emit(ImportState.Idle)
+            component.openCamera()
+            assertEquals(2, opened, "and again once the add buttons are back")
+        }
 
     @Test
-    fun a_damaged_item_reaches_the_state_rather_than_being_dropped() = runTest {
-        val vault = FakeVaultItems()
-        val component = component(vault)
+    fun the_listing_settles_from_loading_into_items() =
+        runTest {
+            val vault = FakeVaultItems()
+            val component = component(vault)
 
-        vault.summaries.value = listOf(
-            summary(byteArrayOf(1), readableMeta()),
-            summary(byteArrayOf(2), damagedMeta()),
-        )
+            // The fake's first emission is the empty list, so the component has already settled.
+            assertFalse(component.state.value.loading, "loading clears on the first emission")
+            assertEquals(emptyList(), component.state.value.items)
 
-        val items = component.state.value.items
-        assertEquals(2, items.size, "the damaged item is listed")
-        assertEquals(GalleryItemMeta.Unreadable, items[1].meta)
-    }
+            vault.summaries.value = listOf(summary(byteArrayOf(1), readableMeta("a.txt", "text/plain")))
+
+            val items = component.state.value.items
+            assertEquals(1, items.size)
+            assertEquals(GalleryItemMeta.Readable("a.txt", "text/plain"), items.single().meta)
+        }
+
+    @Test
+    fun a_damaged_item_reaches_the_state_rather_than_being_dropped() =
+        runTest {
+            val vault = FakeVaultItems()
+            val component = component(vault)
+
+            vault.summaries.value =
+                listOf(
+                    summary(byteArrayOf(1), readableMeta()),
+                    summary(byteArrayOf(2), damagedMeta()),
+                )
+
+            val items = component.state.value.items
+            assertEquals(2, items.size, "the damaged item is listed")
+            assertEquals(GalleryItemMeta.Unreadable, items[1].meta)
+        }
 
     /**
      * A catalog failure arrives as an exception in the flow (core:vault's documented contract). It
      * must surface as an error, never as a silently empty vault.
      */
     @Test
-    fun a_failing_listing_surfaces_an_error_instead_of_an_empty_vault() = runTest {
-        val component = component(ExplodingVaultItems())
+    fun a_failing_listing_surfaces_an_error_instead_of_an_empty_vault() =
+        runTest {
+            val component = component(ExplodingVaultItems())
 
-        val state = component.state.value
-        assertEquals(GalleryError.ListingFailed, state.error, "a broken catalog is reported, not hidden")
-        assertFalse(state.loading, "the listing settled, unsuccessfully")
-        assertEquals(emptyList(), state.items)
-        assertTrue(state.listingUnreadable, "and the grid knows why it is empty")
-    }
+            val state = component.state.value
+            assertEquals(GalleryError.ListingFailed, state.error, "a broken catalog is reported, not hidden")
+            assertFalse(state.loading, "the listing settled, unsuccessfully")
+            assertEquals(emptyList(), state.items)
+            assertTrue(state.listingUnreadable, "and the grid knows why it is empty")
+        }
 
     /**
      * **Dismissing the banner does not make the vault empty.** The failure ends the flow underneath, so
@@ -186,95 +190,102 @@ class DefaultVaultGalleryComponentTest {
      * copy for that says "Nothing in the vault yet", to someone whose files are all still there.
      */
     @Test
-    fun acknowledging_a_listing_failure_does_not_turn_it_into_an_empty_vault() = runTest {
-        val component = component(ExplodingVaultItems())
+    fun acknowledging_a_listing_failure_does_not_turn_it_into_an_empty_vault() =
+        runTest {
+            val component = component(ExplodingVaultItems())
 
-        component.dismissError()
+            component.dismissError()
 
-        assertNull(component.state.value.error, "the banner is the user's to dismiss")
-        assertTrue(component.state.value.listingUnreadable, "why the grid is empty is not")
-    }
+            assertNull(component.state.value.error, "the banner is the user's to dismiss")
+            assertTrue(component.state.value.listingUnreadable, "why the grid is empty is not")
+        }
 
     @Test
-    fun every_import_intent_is_handed_to_the_batch_rather_than_run_here() = runTest {
-        val imports = FakeImports()
-        val component = component(FakeVaultItems(), imports = imports)
+    fun every_import_intent_is_handed_to_the_batch_rather_than_run_here() =
+        runTest {
+            val imports = FakeImports()
+            val component = component(FakeVaultItems(), imports = imports)
 
-        component.importFiles()
-        component.importPhotos()
-        component.cancelImport()
-        component.acknowledgeImport()
+            component.importFiles()
+            component.importPhotos()
+            component.cancelImport()
+            component.acknowledgeImport()
 
-        // The component does not pick, loop or guard against a double tap: the batch outlives it,
-        // so the batch is what knows whether one is already running.
-        assertEquals(1, imports.fileRequests)
-        assertEquals(1, imports.photoRequests)
-        assertEquals(1, imports.cancels)
-        assertEquals(1, imports.acknowledged)
-    }
+            // The component does not pick, loop or guard against a double tap: the batch outlives it,
+            // so the batch is what knows whether one is already running.
+            assertEquals(1, imports.fileRequests)
+            assertEquals(1, imports.photoRequests)
+            assertEquals(1, imports.cancels)
+            assertEquals(1, imports.acknowledged)
+        }
 
     /**
      * **An import started inside an album lands in it.** The screen's filter is the destination, decided
      * once at construction, so it cannot drift mid-batch.
      */
     @Test
-    fun an_import_started_inside_an_album_is_filed_there() = runTest {
-        val imports = FakeImports()
-        val album = byteArrayOf(3, 3)
-        val component = component(
-            FakeVaultItems(),
-            imports = imports,
-            // A copy, as a navigation config would produce: the id reaching the batch has to be the
-            // album's content, and handing the same instance to both would hide a comparison bug.
-            filter = ItemFilter.Album(album.copyOf()),
-        )
+    fun an_import_started_inside_an_album_is_filed_there() =
+        runTest {
+            val imports = FakeImports()
+            val album = byteArrayOf(3, 3)
+            val component =
+                component(
+                    FakeVaultItems(),
+                    imports = imports,
+                    // A copy, as a navigation config would produce: the id reaching the batch has to be the
+                    // album's content, and handing the same instance to both would hide a comparison bug.
+                    filter = ItemFilter.Album(album.copyOf()),
+                )
 
-        component.importPhotos()
-        component.importFiles()
+            component.importPhotos()
+            component.importFiles()
 
-        assertEquals(listOf<List<Byte>?>(album.toList()), imports.photoDestinations)
-        assertEquals(listOf<List<Byte>?>(album.toList()), imports.fileDestinations)
-    }
+            assertEquals(listOf<List<Byte>?>(album.toList()), imports.photoDestinations)
+            assertEquals(listOf<List<Byte>?>(album.toList()), imports.fileDestinations)
+        }
 
     /** From the whole vault there is no album to land in, so the batch is told so explicitly. */
     @Test
-    fun an_import_started_from_the_whole_vault_is_left_unfiled() = runTest {
-        val imports = FakeImports()
-        val component = component(FakeVaultItems(), imports = imports, filter = ItemFilter.All)
+    fun an_import_started_from_the_whole_vault_is_left_unfiled() =
+        runTest {
+            val imports = FakeImports()
+            val component = component(FakeVaultItems(), imports = imports, filter = ItemFilter.All)
 
-        component.importPhotos()
+            component.importPhotos()
 
-        assertEquals(listOf<List<Byte>?>(null), imports.photoDestinations)
-    }
+            assertEquals(listOf<List<Byte>?>(null), imports.photoDestinations)
+        }
 
     /**
      * Nor does Unfiled file anything: it is a view of the items in no album, so landing there *is*
      * landing nowhere — and an import that filed itself into a reserved id would be inventing an album.
      */
     @Test
-    fun an_import_started_from_unfiled_is_left_unfiled() = runTest {
-        val imports = FakeImports()
-        val component = component(FakeVaultItems(), imports = imports, filter = ItemFilter.Unfiled)
+    fun an_import_started_from_unfiled_is_left_unfiled() =
+        runTest {
+            val imports = FakeImports()
+            val component = component(FakeVaultItems(), imports = imports, filter = ItemFilter.Unfiled)
 
-        component.importPhotos()
+            component.importPhotos()
 
-        assertEquals(listOf<List<Byte>?>(null), imports.photoDestinations)
-    }
+            assertEquals(listOf<List<Byte>?>(null), imports.photoDestinations)
+        }
 
     @Test
-    fun the_running_state_reaches_the_screen_whole() = runTest {
-        val imports = FakeImports()
-        val component = component(FakeVaultItems(), imports = imports)
+    fun the_running_state_reaches_the_screen_whole() =
+        runTest {
+            val imports = FakeImports()
+            val component = component(FakeVaultItems(), imports = imports)
 
-        val running = ImportState.Running(index = 11, total = 50, name = "IMG_0042.HEIC", fileFraction = 0.25f)
-        imports.emit(running)
+            val running = ImportState.Running(index = 11, total = 50, name = "IMG_0042.HEIC", fileFraction = 0.25f)
+            imports.emit(running)
 
-        // Not flattened into flags on the way past: the screen needs the count, the name and the
-        // fraction, and reducing them here would mean inventing a second vocabulary for the same
-        // thing — one of them always a frame behind.
-        assertEquals(running, component.state.value.batch)
-        assertTrue(component.state.value.importing)
-    }
+            // Not flattened into flags on the way past: the screen needs the count, the name and the
+            // fraction, and reducing them here would mean inventing a second vocabulary for the same
+            // thing — one of them always a frame behind.
+            assertEquals(running, component.state.value.batch)
+            assertTrue(component.state.value.importing)
+        }
 
     /**
      * A wait is worth naming only once it has lasted.
@@ -284,53 +295,73 @@ class DefaultVaultGalleryComponentTest {
      * per file — fifty across a batch of twenty-five photos, none of them readable.
      */
     @Test
-    fun a_stage_that_cannot_be_measured_is_not_named_until_it_has_lasted() = runTest {
-        val imports = FakeImports()
-        val component = component(FakeVaultItems(), imports = imports, stageGrace = 400.milliseconds)
+    fun a_stage_that_cannot_be_measured_is_not_named_until_it_has_lasted() =
+        runTest {
+            val imports = FakeImports()
+            val component = component(FakeVaultItems(), imports = imports, stageGrace = 400.milliseconds)
 
-        imports.emit(
-            ImportState.Running(index = 0, total = 1, name = "a.mov", fileFraction = null, stage = ImportStage.FETCHING),
-        )
+            imports.emit(
+                ImportState.Running(
+                    index = 0,
+                    total = 1,
+                    name = "a.mov",
+                    fileFraction = null,
+                    stage = ImportStage.FETCHING,
+                ),
+            )
 
-        // Immediately: the card as it looked before stages existed — the file, the count, an
-        // indeterminate bar, and nothing claimed about why.
-        val silent = component.state.value.batch
-        assertIs<ImportState.Running>(silent)
-        assertNull(silent.stage, "a stage is not named the instant it starts")
-        assertEquals("a.mov", silent.name, "everything else about the card is unaffected")
+            // Immediately: the card as it looked before stages existed — the file, the count, an
+            // indeterminate bar, and nothing claimed about why.
+            val silent = component.state.value.batch
+            assertIs<ImportState.Running>(silent)
+            assertNull(silent.stage, "a stage is not named the instant it starts")
+            assertEquals("a.mov", silent.name, "everything else about the card is unaffected")
 
-        advanceTimeBy(401.milliseconds)
+            advanceTimeBy(401.milliseconds)
 
-        val named = component.state.value.batch
-        assertIs<ImportState.Running>(named)
-        assertEquals(ImportStage.FETCHING, named.stage, "a wait that lasted is explained")
-    }
+            val named = component.state.value.batch
+            assertIs<ImportState.Running>(named)
+            assertEquals(ImportStage.FETCHING, named.stage, "a wait that lasted is explained")
+        }
 
     @Test
-    fun a_stage_that_does_not_last_is_never_named_at_all() = runTest {
-        val imports = FakeImports()
-        val seen = mutableListOf<ImportStage?>()
-        val component = component(FakeVaultItems(), imports = imports, stageGrace = 400.milliseconds)
+    fun a_stage_that_does_not_last_is_never_named_at_all() =
+        runTest {
+            val imports = FakeImports()
+            val seen = mutableListOf<ImportStage?>()
+            val component = component(FakeVaultItems(), imports = imports, stageGrace = 400.milliseconds)
 
-        imports.emit(
-            ImportState.Running(index = 0, total = 1, name = "a.jpg", fileFraction = null, stage = ImportStage.FETCHING),
-        )
-        seen += (component.state.value.batch as ImportState.Running).stage
+            imports.emit(
+                ImportState.Running(
+                    index = 0,
+                    total = 1,
+                    name = "a.jpg",
+                    fileFraction = null,
+                    stage = ImportStage.FETCHING,
+                ),
+            )
+            seen += (component.state.value.batch as ImportState.Running).stage
 
-        // The file arrives well inside the grace, which is what a local file does.
-        advanceTimeBy(50.milliseconds)
-        imports.emit(
-            ImportState.Running(index = 0, total = 1, name = "a.jpg", fileFraction = 0.2f, stage = ImportStage.ENCRYPTING),
-        )
-        seen += (component.state.value.batch as ImportState.Running).stage
+            // The file arrives well inside the grace, which is what a local file does.
+            advanceTimeBy(50.milliseconds)
+            imports.emit(
+                ImportState.Running(
+                    index = 0,
+                    total = 1,
+                    name = "a.jpg",
+                    fileFraction = 0.2f,
+                    stage = ImportStage.ENCRYPTING,
+                ),
+            )
+            seen += (component.state.value.batch as ImportState.Running).stage
 
-        // Long past when the announcement would have been due, had it not been cancelled.
-        advanceTimeBy(1_000.milliseconds)
-        seen += (component.state.value.batch as ImportState.Running).stage
+            // Long past when the announcement would have been due, had it not been cancelled.
+            advanceTimeBy(1_000.milliseconds)
+            seen += (component.state.value.batch as ImportState.Running).stage
 
-        assertFalse(ImportStage.FETCHING in seen, "a wait that did not last is never mentioned, got $seen")
-        assertEquals(ImportStage.ENCRYPTING, seen.last(), "and the stage that superseded it stands")
-    }
+            assertFalse(ImportStage.FETCHING in seen, "a wait that did not last is never mentioned, got $seen")
+            assertEquals(ImportStage.ENCRYPTING, seen.last(), "and the stage that superseded it stands")
+        }
 
     /**
      * A stage already named stays named when the batch starts stopping.
@@ -342,62 +373,78 @@ class DefaultVaultGalleryComponentTest {
      * precisely the long fetch this label was added to explain.
      */
     @Test
-    fun a_stage_already_named_is_not_taken_back_when_the_stop_arrives() = runTest {
-        val imports = FakeImports()
-        val component = component(FakeVaultItems(), imports = imports, stageGrace = 400.milliseconds)
-        val fetching = ImportState.Running(
-            index = 0,
-            total = 1,
-            name = "from-the-cloud.mov",
-            fileFraction = null,
-            stage = ImportStage.FETCHING,
-        )
+    fun a_stage_already_named_is_not_taken_back_when_the_stop_arrives() =
+        runTest {
+            val imports = FakeImports()
+            val component = component(FakeVaultItems(), imports = imports, stageGrace = 400.milliseconds)
+            val fetching =
+                ImportState.Running(
+                    index = 0,
+                    total = 1,
+                    name = "from-the-cloud.mov",
+                    fileFraction = null,
+                    stage = ImportStage.FETCHING,
+                )
 
-        imports.emit(fetching)
-        advanceTimeBy(401.milliseconds)
-        assertEquals(ImportStage.FETCHING, (component.state.value.batch as ImportState.Running).stage)
+            imports.emit(fetching)
+            advanceTimeBy(401.milliseconds)
+            assertEquals(ImportStage.FETCHING, (component.state.value.batch as ImportState.Running).stage)
 
-        imports.emit(fetching.copy(stopping = true))
+            imports.emit(fetching.copy(stopping = true))
 
-        // Synchronously after the stop, with no time advanced: the hold-back would have published a
-        // null here and put the label back 400ms later.
-        val stopping = component.state.value.batch
-        assertIs<ImportState.Running>(stopping)
-        assertTrue(stopping.stopping, "the stop itself is never held back")
-        assertEquals(ImportStage.FETCHING, stopping.stage, "a stage already named is not un-named by the stop")
-    }
-
-    @Test
-    fun a_stage_with_a_bar_to_draw_is_named_at_once() = runTest {
-        val imports = FakeImports()
-        val component = component(FakeVaultItems(), imports = imports, stageGrace = 1.hours)
-
-        imports.emit(
-            ImportState.Running(index = 0, total = 1, name = "a.bin", fileFraction = 0.5f, stage = ImportStage.COPYING),
-        )
-
-        // No grace at all: a moving bar is its own evidence that something is happening, so there is
-        // nothing to hold back and nothing to strobe.
-        val batch = component.state.value.batch
-        assertIs<ImportState.Running>(batch)
-        assertEquals(ImportStage.COPYING, batch.stage, "a measurable stage is not held back")
-    }
+            // Synchronously after the stop, with no time advanced: the hold-back would have published a
+            // null here and put the label back 400ms later.
+            val stopping = component.state.value.batch
+            assertIs<ImportState.Running>(stopping)
+            assertTrue(stopping.stopping, "the stop itself is never held back")
+            assertEquals(ImportStage.FETCHING, stopping.stage, "a stage already named is not un-named by the stop")
+        }
 
     @Test
-    fun the_finishing_stage_takes_the_same_grace_as_the_wait() = runTest {
-        val imports = FakeImports()
-        val component = component(FakeVaultItems(), imports = imports, stageGrace = 400.milliseconds)
+    fun a_stage_with_a_bar_to_draw_is_named_at_once() =
+        runTest {
+            val imports = FakeImports()
+            val component = component(FakeVaultItems(), imports = imports, stageGrace = 1.hours)
 
-        // Every import ends with a preview attempt, including the files that get no preview, so
-        // without the same grace a video would flash a label on its way out.
-        imports.emit(
-            ImportState.Running(index = 0, total = 1, name = "clip.mp4", fileFraction = null, stage = ImportStage.FINISHING),
-        )
-        assertNull((component.state.value.batch as ImportState.Running).stage)
+            imports.emit(
+                ImportState.Running(
+                    index = 0,
+                    total = 1,
+                    name = "a.bin",
+                    fileFraction = 0.5f,
+                    stage = ImportStage.COPYING,
+                ),
+            )
 
-        advanceTimeBy(401.milliseconds)
-        assertEquals(ImportStage.FINISHING, (component.state.value.batch as ImportState.Running).stage)
-    }
+            // No grace at all: a moving bar is its own evidence that something is happening, so there is
+            // nothing to hold back and nothing to strobe.
+            val batch = component.state.value.batch
+            assertIs<ImportState.Running>(batch)
+            assertEquals(ImportStage.COPYING, batch.stage, "a measurable stage is not held back")
+        }
+
+    @Test
+    fun the_finishing_stage_takes_the_same_grace_as_the_wait() =
+        runTest {
+            val imports = FakeImports()
+            val component = component(FakeVaultItems(), imports = imports, stageGrace = 400.milliseconds)
+
+            // Every import ends with a preview attempt, including the files that get no preview, so
+            // without the same grace a video would flash a label on its way out.
+            imports.emit(
+                ImportState.Running(
+                    index = 0,
+                    total = 1,
+                    name = "clip.mp4",
+                    fileFraction = null,
+                    stage = ImportStage.FINISHING,
+                ),
+            )
+            assertNull((component.state.value.batch as ImportState.Running).stage)
+
+            advanceTimeBy(401.milliseconds)
+            assertEquals(ImportStage.FINISHING, (component.state.value.batch as ImportState.Running).stage)
+        }
 
     /**
      * The throttle drops redundant *progress*. A change of stage is not progress — it is a different
@@ -406,32 +453,51 @@ class DefaultVaultGalleryComponentTest {
      * the import has already left.
      */
     @Test
-    fun a_change_of_stage_is_never_held_back_by_the_throttle() = runTest {
-        val imports = FakeImports()
-        // A window no test can outrun, so anything that is not explicitly let through is dropped.
-        val component = component(FakeVaultItems(), imports = imports, progressInterval = 1.hours)
+    fun a_change_of_stage_is_never_held_back_by_the_throttle() =
+        runTest {
+            val imports = FakeImports()
+            // A window no test can outrun, so anything that is not explicitly let through is dropped.
+            val component = component(FakeVaultItems(), imports = imports, progressInterval = 1.hours)
 
-        imports.emit(
-            ImportState.Running(index = 0, total = 1, name = "a.jpg", fileFraction = 0.1f, stage = ImportStage.ENCRYPTING),
-        )
-        imports.emit(
-            ImportState.Running(index = 0, total = 1, name = "a.jpg", fileFraction = 0.9f, stage = ImportStage.ENCRYPTING),
-        )
-        advanceUntilIdle()
+            imports.emit(
+                ImportState.Running(
+                    index = 0,
+                    total = 1,
+                    name = "a.jpg",
+                    fileFraction = 0.1f,
+                    stage = ImportStage.ENCRYPTING,
+                ),
+            )
+            imports.emit(
+                ImportState.Running(
+                    index = 0,
+                    total = 1,
+                    name = "a.jpg",
+                    fileFraction = 0.9f,
+                    stage = ImportStage.ENCRYPTING,
+                ),
+            )
+            advanceUntilIdle()
 
-        val throttled = component.state.value.batch
-        assertIs<ImportState.Running>(throttled)
-        assertEquals(0.1f, throttled.fileFraction, "ordinary progress inside the window is still dropped")
+            val throttled = component.state.value.batch
+            assertIs<ImportState.Running>(throttled)
+            assertEquals(0.1f, throttled.fileFraction, "ordinary progress inside the window is still dropped")
 
-        imports.emit(
-            ImportState.Running(index = 0, total = 1, name = "a.jpg", fileFraction = null, stage = ImportStage.FINISHING),
-        )
-        advanceUntilIdle()
+            imports.emit(
+                ImportState.Running(
+                    index = 0,
+                    total = 1,
+                    name = "a.jpg",
+                    fileFraction = null,
+                    stage = ImportStage.FINISHING,
+                ),
+            )
+            advanceUntilIdle()
 
-        val staged = component.state.value.batch
-        assertIs<ImportState.Running>(staged)
-        assertEquals(ImportStage.FINISHING, staged.stage, "a change of stage is not progress to be dropped")
-    }
+            val staged = component.state.value.batch
+            assertIs<ImportState.Running>(staged)
+            assertEquals(ImportStage.FINISHING, staged.stage, "a change of stage is not progress to be dropped")
+        }
 
     /**
      * A batch reports every buffered read — kilobytes apart — which is far finer than a screen can
@@ -439,26 +505,27 @@ class DefaultVaultGalleryComponentTest {
      * intact for anything else watching it.
      */
     @Test
-    fun progress_updates_are_throttled_but_the_batch_ending_is_never_delayed() = runTest {
-        val imports = FakeImports()
-        // An interval no test can outrun, so every Running after the first is dropped.
-        val component = component(FakeVaultItems(), imports = imports, progressInterval = 1.hours)
+    fun progress_updates_are_throttled_but_the_batch_ending_is_never_delayed() =
+        runTest {
+            val imports = FakeImports()
+            // An interval no test can outrun, so every Running after the first is dropped.
+            val component = component(FakeVaultItems(), imports = imports, progressInterval = 1.hours)
 
-        imports.emit(ImportState.Running(index = 0, total = 3, name = "a.jpg", fileFraction = 0.1f))
-        imports.emit(ImportState.Running(index = 0, total = 3, name = "a.jpg", fileFraction = 0.5f))
-        imports.emit(ImportState.Running(index = 1, total = 3, name = "b.jpg", fileFraction = 0.9f))
+            imports.emit(ImportState.Running(index = 0, total = 3, name = "a.jpg", fileFraction = 0.1f))
+            imports.emit(ImportState.Running(index = 0, total = 3, name = "a.jpg", fileFraction = 0.5f))
+            imports.emit(ImportState.Running(index = 1, total = 3, name = "b.jpg", fileFraction = 0.9f))
 
-        val throttled = component.state.value.batch
-        assertIs<ImportState.Running>(throttled)
-        assertEquals(0.1f, throttled.fileFraction, "later progress inside the window is dropped")
+            val throttled = component.state.value.batch
+            assertIs<ImportState.Running>(throttled)
+            assertEquals(0.1f, throttled.fileFraction, "later progress inside the window is dropped")
 
-        imports.emit(ImportState.Finished(imported = 3, failed = emptyList()))
+            imports.emit(ImportState.Finished(imported = 3, failed = emptyList()))
 
-        // The frames that matter are never held back: a finished batch must not sit behind a
-        // throttle window, or the UI keeps claiming an import is running after it has stopped.
-        assertIs<ImportState.Finished>(component.state.value.batch)
-        assertFalse(component.state.value.importing)
-    }
+            // The frames that matter are never held back: a finished batch must not sit behind a
+            // throttle window, or the UI keeps claiming an import is running after it has stopped.
+            assertIs<ImportState.Finished>(component.state.value.batch)
+            assertFalse(component.state.value.importing)
+        }
 
     /**
      * The throttle exists to drop *progress*, which is redundant between frames. Tapping Stop is not
@@ -467,17 +534,20 @@ class DefaultVaultGalleryComponentTest {
      * screen that has already been pressed.
      */
     @Test
-    fun the_throttle_never_swallows_a_batch_turning_into_stopping() = runTest {
-        val imports = FakeImports()
-        val component = component(FakeVaultItems(), imports = imports, progressInterval = 1.hours)
+    fun the_throttle_never_swallows_a_batch_turning_into_stopping() =
+        runTest {
+            val imports = FakeImports()
+            val component = component(FakeVaultItems(), imports = imports, progressInterval = 1.hours)
 
-        imports.emit(ImportState.Running(index = 0, total = 3, name = "a.jpg", fileFraction = 0.1f))
-        // Inside the throttle window, and the last thing this batch will say for a long time.
-        imports.emit(ImportState.Running(index = 0, total = 3, name = "a.jpg", fileFraction = 0.1f, stopping = true))
+            imports.emit(ImportState.Running(index = 0, total = 3, name = "a.jpg", fileFraction = 0.1f))
+            // Inside the throttle window, and the last thing this batch will say for a long time.
+            imports.emit(
+                ImportState.Running(index = 0, total = 3, name = "a.jpg", fileFraction = 0.1f, stopping = true),
+            )
 
-        val shown = assertIs<ImportState.Running>(component.state.value.batch)
-        assertTrue(shown.stopping, "the stop has to reach the screen even mid-window")
-    }
+            val shown = assertIs<ImportState.Running>(component.state.value.batch)
+            assertTrue(shown.stopping, "the stop has to reach the screen even mid-window")
+        }
 
     /**
      * The picker covers the screen a few hundred milliseconds after it is asked for, so a notice
@@ -489,84 +559,88 @@ class DefaultVaultGalleryComponentTest {
      * materialising what they picked. On iOS that is a per-asset download and can run to seconds.
      */
     @Test
-    fun the_picking_notice_waits_rather_than_flashing_under_the_picker() = runTest {
-        val imports = FakeImports()
-        val component = component(FakeVaultItems(), imports = imports, pickingDelay = 400.milliseconds)
+    fun the_picking_notice_waits_rather_than_flashing_under_the_picker() =
+        runTest {
+            val imports = FakeImports()
+            val component = component(FakeVaultItems(), imports = imports, pickingDelay = 400.milliseconds)
 
-        imports.emit(ImportState.Picking)
+            imports.emit(ImportState.Picking)
 
-        assertIs<ImportState.Idle>(
-            component.state.value.batch,
-            "nothing is shown while the picker is on its way up",
-        )
+            assertIs<ImportState.Idle>(
+                component.state.value.batch,
+                "nothing is shown while the picker is on its way up",
+            )
 
-        advanceTimeBy(401.milliseconds)
-        assertIs<ImportState.Picking>(
-            component.state.value.batch,
-            "a wait long enough to notice does get explained",
-        )
-    }
-
-    @Test
-    fun a_picker_that_opens_promptly_never_shows_the_notice_at_all() = runTest {
-        val imports = FakeImports()
-        val component = component(FakeVaultItems(), imports = imports, pickingDelay = 400.milliseconds)
-
-        // Every state the screen was actually asked to draw. Asserting only where it *ended up*
-        // would pass whether or not the stale notice was drawn on the way there — the batch is
-        // running either way — and the bug being guarded against is entirely in the middle.
-        val shown = mutableListOf<ImportState>()
-        component.state.subscribe { shown += it.batch }
-
-        imports.emit(ImportState.Picking)
-        // The user picked before the notice was due: the batch is already running.
-        imports.emit(ImportState.Running(index = 0, total = 1, name = "a.jpg", fileFraction = null))
-        advanceTimeBy(401.milliseconds)
-
-        assertTrue(
-            shown.none { it is ImportState.Picking },
-            "a superseded notice must be dropped, not merely delayed onto a running batch: $shown",
-        )
-        assertIs<ImportState.Running>(component.state.value.batch)
-    }
+            advanceTimeBy(401.milliseconds)
+            assertIs<ImportState.Picking>(
+                component.state.value.batch,
+                "a wait long enough to notice does get explained",
+            )
+        }
 
     @Test
-    fun a_running_batch_shows_as_importing_and_clears_when_it_ends() = runTest {
-        val imports = FakeImports()
-        val component = component(FakeVaultItems(), imports = imports)
+    fun a_picker_that_opens_promptly_never_shows_the_notice_at_all() =
+        runTest {
+            val imports = FakeImports()
+            val component = component(FakeVaultItems(), imports = imports, pickingDelay = 400.milliseconds)
 
-        imports.emit(ImportState.Picking)
-        assertTrue(component.state.value.importing, "the picker being up is part of importing")
+            // Every state the screen was actually asked to draw. Asserting only where it *ended up*
+            // would pass whether or not the stale notice was drawn on the way there — the batch is
+            // running either way — and the bug being guarded against is entirely in the middle.
+            val shown = mutableListOf<ImportState>()
+            component.state.subscribe { shown += it.batch }
 
-        imports.emit(ImportState.Running(index = 0, total = 2, name = "a.jpg", fileFraction = 0.5f))
-        assertTrue(component.state.value.importing)
+            imports.emit(ImportState.Picking)
+            // The user picked before the notice was due: the batch is already running.
+            imports.emit(ImportState.Running(index = 0, total = 1, name = "a.jpg", fileFraction = null))
+            advanceTimeBy(401.milliseconds)
 
-        imports.emit(ImportState.Finished(imported = 2, failed = emptyList()))
-        assertFalse(component.state.value.importing, "a finished batch is not importing")
-        assertNull(component.state.value.error, "and a clean one raises no banner")
-    }
+            assertTrue(
+                shown.none { it is ImportState.Picking },
+                "a superseded notice must be dropped, not merely delayed onto a running batch: $shown",
+            )
+            assertIs<ImportState.Running>(component.state.value.batch)
+        }
 
     @Test
-    fun a_batch_that_could_not_read_a_file_raises_a_dismissible_banner() = runTest {
-        val imports = FakeImports()
-        val component = component(FakeVaultItems(), imports = imports)
+    fun a_running_batch_shows_as_importing_and_clears_when_it_ends() =
+        runTest {
+            val imports = FakeImports()
+            val component = component(FakeVaultItems(), imports = imports)
 
-        imports.emit(
-            ImportState.Finished(
-                imported = 1,
-                failed = listOf(FailedImport("broken.jpg", VaultError.Io(RuntimeException("unreadable")))),
-            ),
-        )
+            imports.emit(ImportState.Picking)
+            assertTrue(component.state.value.importing, "the picker being up is part of importing")
 
-        assertEquals(GalleryError.ImportFailed, component.state.value.error)
+            imports.emit(ImportState.Running(index = 0, total = 2, name = "a.jpg", fileFraction = 0.5f))
+            assertTrue(component.state.value.importing)
 
-        component.dismissError()
+            imports.emit(ImportState.Finished(imported = 2, failed = emptyList()))
+            assertFalse(component.state.value.importing, "a finished batch is not importing")
+            assertNull(component.state.value.error, "and a clean one raises no banner")
+        }
 
-        assertNull(component.state.value.error, "the banner clears on acknowledgement")
-        // And the summary is acknowledged at the source, so it cannot re-raise the banner the next
-        // time the state re-emits.
-        assertEquals(1, imports.acknowledged)
-    }
+    @Test
+    fun a_batch_that_could_not_read_a_file_raises_a_dismissible_banner() =
+        runTest {
+            val imports = FakeImports()
+            val component = component(FakeVaultItems(), imports = imports)
+
+            imports.emit(
+                ImportState.Finished(
+                    imported = 1,
+                    failed = listOf(FailedImport("broken.jpg", VaultError.Io(RuntimeException("unreadable")))),
+                ),
+            )
+
+            assertEquals(GalleryError.ImportFailed, component.state.value.error)
+
+            component.dismissError()
+
+            assertNull(component.state.value.error, "the banner clears on acknowledgement")
+            // And the summary is acknowledged at the source, so it cannot re-raise the banner the next
+            // time the state re-emits.
+            assertEquals(1, imports.acknowledged)
+        }
 
     /**
      * **Dismissing a filing failure must not acknowledge the batch.** One banner serves three errors
@@ -579,64 +653,74 @@ class DefaultVaultGalleryComponentTest {
      * raises the same banner. Dismissing it took the offer with it.
      */
     @Test
-    fun dismissing_a_filing_failure_leaves_the_finished_batch_alone() = runTest {
-        val imports = FakeImports()
-        val vault = FakeVaultItems(assignFailure = VaultError.Crypto.IntegrityFailure)
-        val album = byteArrayOf(2, 2)
-        vault.albums.value = listOf(
-            AlbumSummary(album.copyOf(), Outcome.Ok("Invoices"), itemCount = 0, coverItemId = null, createdAt = 1L),
-        )
-        val component = component(vault, imports = imports)
-        advanceUntilIdle()
+    fun dismissing_a_filing_failure_leaves_the_finished_batch_alone() =
+        runTest {
+            val imports = FakeImports()
+            val vault = FakeVaultItems(assignFailure = VaultError.Crypto.IntegrityFailure)
+            val album = byteArrayOf(2, 2)
+            vault.albums.value =
+                listOf(
+                    AlbumSummary(
+                        album.copyOf(),
+                        Outcome.Ok("Invoices"),
+                        itemCount = 0,
+                        coverItemId = null,
+                        createdAt = 1L,
+                    ),
+                )
+            val component = component(vault, imports = imports)
+            advanceUntilIdle()
 
-        // A clean batch, finished and waiting to be acknowledged, with originals still deletable.
-        imports.emit(ImportState.Finished(imported = 2, failed = emptyList(), deletableOriginals = 2))
-        assertNull(component.state.value.error, "a clean batch raises no banner of its own")
+            // A clean batch, finished and waiting to be acknowledged, with originals still deletable.
+            imports.emit(ImportState.Finished(imported = 2, failed = emptyList(), deletableOriginals = 2))
+            assertNull(component.state.value.error, "a clean batch raises no banner of its own")
 
-        vault.summaries.value = listOf(summary(byteArrayOf(5), readableMeta()))
-        component.selectItem(byteArrayOf(5))
-        component.startFiling()
-        advanceUntilIdle()
-        component.chooseAlbum(album)
-        advanceUntilIdle()
-        assertEquals(GalleryError.FilingFailed, component.state.value.error, "the move was refused")
+            vault.summaries.value = listOf(summary(byteArrayOf(5), readableMeta()))
+            component.selectItem(byteArrayOf(5))
+            component.startFiling()
+            advanceUntilIdle()
+            component.chooseAlbum(album)
+            advanceUntilIdle()
+            assertEquals(GalleryError.FilingFailed, component.state.value.error, "the move was refused")
 
-        component.dismissError()
+            component.dismissError()
 
-        assertNull(component.state.value.error, "the banner clears")
-        assertEquals(0, imports.acknowledged, "but the batch was never the thing being dismissed")
-        val batch = assertIs<ImportState.Finished>(component.state.value.batch)
-        assertEquals(2, batch.deletableOriginals, "so the offer to delete the originals survives")
-    }
+            assertNull(component.state.value.error, "the banner clears")
+            assertEquals(0, imports.acknowledged, "but the batch was never the thing being dismissed")
+            val batch = assertIs<ImportState.Finished>(component.state.value.batch)
+            assertEquals(2, batch.deletableOriginals, "so the offer to delete the originals survives")
+        }
 
     @Test
-    fun a_cancelled_picker_leaves_no_error_behind() = runTest {
-        val imports = FakeImports()
-        val component = component(FakeVaultItems(), imports = imports)
+    fun a_cancelled_picker_leaves_no_error_behind() =
+        runTest {
+            val imports = FakeImports()
+            val component = component(FakeVaultItems(), imports = imports)
 
-        imports.emit(ImportState.Picking)
-        imports.emit(ImportState.Idle) // an empty pick: the user backed out
+            imports.emit(ImportState.Picking)
+            imports.emit(ImportState.Idle) // an empty pick: the user backed out
 
-        assertNull(component.state.value.error, "a cancelled picker is not a failure")
-        assertFalse(component.state.value.importing)
-    }
+            assertNull(component.state.value.error, "a cancelled picker is not a failure")
+            assertFalse(component.state.value.importing)
+        }
 
     /**
      * The component watches the batch; it does not own it. A screen that is destroyed
      * mid-import — which the album surface makes ordinary — must not take fifty photos down with it.
      */
     @Test
-    fun destroying_the_screen_does_not_end_the_batch() = runTest {
-        val imports = FakeImports()
-        component(FakeVaultItems(), imports = imports)
+    fun destroying_the_screen_does_not_end_the_batch() =
+        runTest {
+            val imports = FakeImports()
+            component(FakeVaultItems(), imports = imports)
 
-        imports.emit(ImportState.Running(index = 0, total = 50, name = "a.jpg", fileFraction = 0f))
-        lifecycle.destroy()
-        imports.emit(ImportState.Running(index = 1, total = 50, name = "b.jpg", fileFraction = 0f))
+            imports.emit(ImportState.Running(index = 0, total = 50, name = "a.jpg", fileFraction = 0f))
+            lifecycle.destroy()
+            imports.emit(ImportState.Running(index = 1, total = 50, name = "b.jpg", fileFraction = 0f))
 
-        assertEquals(0, imports.cancels, "destroying a screen must not cancel an import")
-        assertTrue(imports.state.value is ImportState.Running, "the batch is still going")
-    }
+            assertEquals(0, imports.cancels, "destroying a screen must not cancel an import")
+            assertTrue(imports.state.value is ImportState.Running, "the batch is still going")
+        }
 
     /**
      * **A destroyed screen must leave nothing on the host's back handler.** That handler outlives the
@@ -649,31 +733,33 @@ class DefaultVaultGalleryComponentTest {
      * is the real shape.
      */
     @Test
-    fun destroying_the_component_leaves_nothing_registered_on_the_hosts_back_handler() = runTest {
-        val vault = FakeVaultItems()
-        val component = component(vault)
-        vault.summaries.value = listOf(summary(byteArrayOf(1), readableMeta()))
-        component.selectItem(byteArrayOf(1))
-        assertTrue(backDispatcher.isEnabled, "selecting owns back while it lasts")
+    fun destroying_the_component_leaves_nothing_registered_on_the_hosts_back_handler() =
+        runTest {
+            val vault = FakeVaultItems()
+            val component = component(vault)
+            vault.summaries.value = listOf(summary(byteArrayOf(1), readableMeta()))
+            component.selectItem(byteArrayOf(1))
+            assertTrue(backDispatcher.isEnabled, "selecting owns back while it lasts")
 
-        lifecycle.destroy()
+            lifecycle.destroy()
 
-        assertFalse(
-            backDispatcher.isEnabled,
-            "a torn-down screen must not still be holding the host's back button",
-        )
-    }
+            assertFalse(
+                backDispatcher.isEnabled,
+                "a torn-down screen must not still be holding the host's back button",
+            )
+        }
 
     @Test
-    fun destroying_the_component_stops_its_work() = runTest {
-        val vault = FakeVaultItems()
-        val component = component(vault)
-        lifecycle.destroy()
+    fun destroying_the_component_stops_its_work() =
+        runTest {
+            val vault = FakeVaultItems()
+            val component = component(vault)
+            lifecycle.destroy()
 
-        vault.summaries.value = listOf(summary(byteArrayOf(9), readableMeta()))
+            vault.summaries.value = listOf(summary(byteArrayOf(9), readableMeta()))
 
-        assertEquals(emptyList(), component.state.value.items, "a destroyed component stops collecting")
-    }
+            assertEquals(emptyList(), component.state.value.items, "a destroyed component stops collecting")
+        }
 }
 
 /** A batch a test drives by hand: the component only watches this and forwards intents to it. */
@@ -740,4 +826,3 @@ private class FakeImports : VaultImports {
         keeps++
     }
 }
-

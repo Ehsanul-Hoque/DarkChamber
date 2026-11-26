@@ -23,7 +23,9 @@ sealed interface LockStep {
     data object Create : LockStep
 
     /** Show the recovery key **once** and require an explicit "I saved it" (docs/DESIGN.md §10). */
-    data class Recovery(val recoveryKey: String) : LockStep
+    data class Recovery(
+        val recoveryKey: String,
+    ) : LockStep
 
     /** Optional: enroll biometric unlock. */
     data object EnableBiometric : LockStep
@@ -70,8 +72,11 @@ interface LockedComponent {
     val state: Value<LockState>
 
     fun submitCreate(passphrase: ByteArray)
+
     fun submitPassphraseUnlock(passphrase: ByteArray)
+
     fun startBiometricUnlock()
+
     /**
      * Put the recovery key on the clipboard. Takes no argument on purpose: the key the user is
      * looking at is already in [state], and routing a secret back through a UI callback would be one
@@ -80,8 +85,11 @@ interface LockedComponent {
     fun copyRecoveryKey()
 
     fun confirmRecoverySaved()
+
     fun enableBiometric()
+
     fun skipBiometric()
+
     fun dismissError()
 }
 
@@ -99,8 +107,8 @@ class DefaultLockedComponent(
      */
     private val workContext: CoroutineContext = Dispatchers.Default,
     private val onUnlocked: (VaultBootstrap.OpenVault) -> Unit,
-) : LockedComponent, ComponentContext by componentContext {
-
+) : LockedComponent,
+    ComponentContext by componentContext {
     private val scope = CoroutineScope(mainContext + SupervisorJob())
     private var pendingVault: VaultBootstrap.OpenVault? = null
 
@@ -114,25 +122,33 @@ class DefaultLockedComponent(
     // A quick keystore probe (no catalog) picks create-vs-unlock and whether biometric is offered.
     private fun probeState(): LockState =
         when (val p = bootstrap.probe()) {
-            is Outcome.Ok ->
+            is Outcome.Ok -> {
                 if (!p.value.exists) {
                     LockState(LockStep.Create)
                 } else {
                     LockState(LockStep.Unlock, hasBiometric = p.value.hasHardwareSlot)
                 }
+            }
+
             // Can't tell if a vault exists — offer unlock (createVault would refuse to clobber anyway).
-            is Outcome.Err -> LockState(LockStep.Unlock, error = LockError.ProbeFailed)
+            is Outcome.Err -> {
+                LockState(LockStep.Unlock, error = LockError.ProbeFailed)
+            }
         }
 
-    override fun submitCreate(passphrase: ByteArray) = launchGuarded {
-        when (val r = withContext(workContext) { bootstrap.createVault(passphrase) }) {
-            is Outcome.Ok -> {
-                pendingVault = r.value.vault
-                _state.value = LockState(LockStep.Recovery(r.value.recoveryKey))
+    override fun submitCreate(passphrase: ByteArray) =
+        launchGuarded {
+            when (val r = withContext(workContext) { bootstrap.createVault(passphrase) }) {
+                is Outcome.Ok -> {
+                    pendingVault = r.value.vault
+                    _state.value = LockState(LockStep.Recovery(r.value.recoveryKey))
+                }
+
+                is Outcome.Err -> {
+                    _state.value = _state.value.copy(busy = false, error = LockError.CreateFailed)
+                }
             }
-            is Outcome.Err -> _state.value = _state.value.copy(busy = false, error = LockError.CreateFailed)
         }
-    }
 
     override fun copyRecoveryKey() {
         // Only from the step that is showing a key. Anywhere else there is nothing to copy, and an
@@ -169,19 +185,21 @@ class DefaultLockedComponent(
         pendingVault?.let { finishUnlock(it) }
     }
 
-    override fun submitPassphraseUnlock(passphrase: ByteArray) = launchGuarded {
-        when (val r = withContext(workContext) { bootstrap.unlock(passphrase) }) {
-            is Outcome.Ok -> finishUnlock(r.value)
-            is Outcome.Err -> _state.value = _state.value.copy(busy = false, error = LockError.WrongPassphrase)
+    override fun submitPassphraseUnlock(passphrase: ByteArray) =
+        launchGuarded {
+            when (val r = withContext(workContext) { bootstrap.unlock(passphrase) }) {
+                is Outcome.Ok -> finishUnlock(r.value)
+                is Outcome.Err -> _state.value = _state.value.copy(busy = false, error = LockError.WrongPassphrase)
+            }
         }
-    }
 
-    override fun startBiometricUnlock() = launchGuarded {
-        when (val r = bootstrap.unlockWithBiometric(authenticator)) {
-            is Outcome.Ok -> finishUnlock(r.value)
-            is Outcome.Err -> _state.value = mapUnlockError(r.error)
+    override fun startBiometricUnlock() =
+        launchGuarded {
+            when (val r = bootstrap.unlockWithBiometric(authenticator)) {
+                is Outcome.Ok -> finishUnlock(r.value)
+                is Outcome.Err -> _state.value = mapUnlockError(r.error)
+            }
         }
-    }
 
     override fun dismissError() {
         _state.value = _state.value.copy(error = null)
@@ -197,14 +215,27 @@ class DefaultLockedComponent(
     private fun mapUnlockError(error: VaultError): LockState {
         val cleared = _state.value.copy(busy = false)
         return when (error) {
-            VaultError.Auth.Cancelled -> cleared.copy(error = LockError.BiometricCanceled)
-            VaultError.Auth.Unavailable -> cleared.copy(error = LockError.BiometricUnavailable, forcePassphrase = true)
+            VaultError.Auth.Cancelled -> {
+                cleared.copy(error = LockError.BiometricCanceled)
+            }
+
+            VaultError.Auth.Unavailable -> {
+                cleared.copy(error = LockError.BiometricUnavailable, forcePassphrase = true)
+            }
+
             // The key is there but was refused this time: a retry, not the re-enrollment path.
-            VaultError.Auth.Failed -> cleared.copy(error = LockError.BiometricFailed)
+            VaultError.Auth.Failed -> {
+                cleared.copy(error = LockError.BiometricFailed)
+            }
+
             // §3.3: re-enrolled biometrics killed the hardware key — force passphrase, drop the biometric CTA.
-            VaultError.Crypto.IntegrityFailure ->
+            VaultError.Crypto.IntegrityFailure -> {
                 cleared.copy(error = LockError.HardwareInvalidated, forcePassphrase = true, hasBiometric = false)
-            else -> cleared.copy(error = LockError.BiometricCanceled)
+            }
+
+            else -> {
+                cleared.copy(error = LockError.BiometricCanceled)
+            }
         }
     }
 

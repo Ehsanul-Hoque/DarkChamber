@@ -12,7 +12,10 @@ internal class GateDispatcher : CoroutineDispatcher() {
     private val tasks = ArrayDeque<Runnable>()
     val pending: Int get() = tasks.size
 
-    override fun dispatch(context: CoroutineContext, block: Runnable) {
+    override fun dispatch(
+        context: CoroutineContext,
+        block: Runnable,
+    ) {
         tasks.addLast(block)
     }
 

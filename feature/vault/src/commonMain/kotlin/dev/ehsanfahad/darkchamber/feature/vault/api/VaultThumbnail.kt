@@ -33,7 +33,11 @@ import dev.ehsanfahad.darkchamber.feature.vault.presentation.previewFailedIntegr
  * Decorative otherwise: the caller describes what the picture is.
  */
 @Composable
-fun VaultThumbnail(itemId: ByteArray, imageLoader: ImageLoader, modifier: Modifier = Modifier) {
+fun VaultThumbnail(
+    itemId: ByteArray,
+    imageLoader: ImageLoader,
+    modifier: Modifier = Modifier,
+) {
     SubcomposeAsyncImage(
         // Content-equal across instances, so a recomposition with the same id keeps the image.
         model = VaultThumbnailKey(itemId),

@@ -58,7 +58,11 @@ import platform.posix.memcpy
  */
 internal class IosThumbnailEncoder : ThumbnailEncoder {
     @OptIn(ExperimentalForeignApi::class)
-    override fun encode(mime: String, maxEdgePx: Int, openSource: () -> RawSource): ByteArray? {
+    override fun encode(
+        mime: String,
+        maxEdgePx: Int,
+        openSource: () -> RawSource,
+    ): ByteArray? {
         if (!mime.startsWith(IMAGE_MIME_PREFIX, ignoreCase = true)) return null
 
         val bytes = openSource().buffered().use { it.readByteArray() }
@@ -75,7 +79,11 @@ internal class IosThumbnailEncoder : ThumbnailEncoder {
 
     /** A frame about a second in ([videoFrame]), encoded like a photo's preview. */
     @OptIn(ExperimentalForeignApi::class)
-    override fun encode(mime: String, maxEdgePx: Int, reader: RangeReader): ByteArray? {
+    override fun encode(
+        mime: String,
+        maxEdgePx: Int,
+        reader: RangeReader,
+    ): ByteArray? {
         if (!mime.startsWith(VIDEO_MIME_PREFIX, ignoreCase = true)) return null
         val frame = videoFrame(mime, maxEdgePx, reader) ?: return null
         return try {
@@ -93,11 +101,12 @@ internal class IosThumbnailEncoder : ThumbnailEncoder {
     @OptIn(ExperimentalForeignApi::class)
     private fun CGImageRef.encodeToBytes(): ByteArray? {
         val image = UIImage.imageWithCGImage(this)
-        val data = if (hasAlpha()) {
-            UIImagePNGRepresentation(image)
-        } else {
-            UIImageJPEGRepresentation(image, JPEG_QUALITY)
-        }
+        val data =
+            if (hasAlpha()) {
+                UIImagePNGRepresentation(image)
+            } else {
+                UIImageJPEGRepresentation(image, JPEG_QUALITY)
+            }
         return data?.takeIf { it.length > 0u }?.toByteArray()
     }
 

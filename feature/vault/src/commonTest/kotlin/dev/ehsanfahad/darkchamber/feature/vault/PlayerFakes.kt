@@ -12,12 +12,18 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPlayerFactory
 import kotlinx.coroutines.flow.MutableStateFlow
 
 /** A reader that serves nothing and counts its closes — what "the reader was closed" looks like. */
-internal class FakeRangeReader(override val length: Long = 1_000L) : RangeReader {
+internal class FakeRangeReader(
+    override val length: Long = 1_000L,
+) : RangeReader {
     var closes = 0
         private set
 
-    override fun readAt(position: Long, into: ByteArray, offset: Int, size: Int): Outcome<Int> =
-        Outcome.Ok(RangeReader.END)
+    override fun readAt(
+        position: Long,
+        into: ByteArray,
+        offset: Int,
+        size: Int,
+    ): Outcome<Int> = Outcome.Ok(RangeReader.END)
 
     override fun close() {
         closes++
@@ -28,7 +34,10 @@ internal class FakeRangeReader(override val length: Long = 1_000L) : RangeReader
  * A player that records what it was told, in order, and reports whatever state the test sets. Like a
  * real one, it closes the reader it owns when released.
  */
-internal class FakePlayer(val reader: RangeReader, val mime: String) : VaultPlayer {
+internal class FakePlayer(
+    val reader: RangeReader,
+    val mime: String,
+) : VaultPlayer {
     override val state = MutableStateFlow(PlayerState())
 
     /** Every call, in order: "play", "pause", "seek:42000", "speed:1.5", "volume:0.5", "release". */
@@ -71,7 +80,9 @@ internal class FakePlayer(val reader: RangeReader, val mime: String) : VaultPlay
 }
 
 /** A display that records what it was told, in order, and reports [level] as the brightness. */
-internal class FakePlayerDisplay(var level: Float = 0.6f) : PlayerDisplay {
+internal class FakePlayerDisplay(
+    var level: Float = 0.6f,
+) : PlayerDisplay {
     /** Every call, in order: "brightness:0.4", "brightness:null", "orientation:Landscape", "awake:true". */
     val calls = mutableListOf<String>()
 
@@ -94,5 +105,8 @@ internal class FakePlayerDisplay(var level: Float = 0.6f) : PlayerDisplay {
 internal class FakePlayerFactory : VaultPlayerFactory {
     val made = mutableListOf<FakePlayer>()
 
-    override fun create(reader: RangeReader, mime: String): VaultPlayer = FakePlayer(reader, mime).also { made += it }
+    override fun create(
+        reader: RangeReader,
+        mime: String,
+    ): VaultPlayer = FakePlayer(reader, mime).also { made += it }
 }

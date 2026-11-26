@@ -28,18 +28,19 @@ class VaultAlbumWriteTest {
     fun cleanup() = fx.close()
 
     @Test
-    fun a_created_album_appears_in_the_listing_under_its_name() = runTest {
-        val id = (fx.objects.createAlbum("Receipts") as Outcome.Ok).value
+    fun a_created_album_appears_in_the_listing_under_its_name() =
+        runTest {
+            val id = (fx.objects.createAlbum("Receipts") as Outcome.Ok).value
 
-        fx.objects.observeAlbums().test {
-            val listed = awaitItem().single()
+            fx.objects.observeAlbums().test {
+                val listed = awaitItem().single()
 
-            assertEquals(Outcome.Ok("Receipts"), listed.name)
-            assertTrue(listed.id.contentEquals(id), "the id the create returned is the id in the listing")
-            assertEquals(0, listed.itemCount, "a new album is empty")
-            cancelAndIgnoreRemainingEvents()
+                assertEquals(Outcome.Ok("Receipts"), listed.name)
+                assertTrue(listed.id.contentEquals(id), "the id the create returned is the id in the listing")
+                assertEquals(0, listed.itemCount, "a new album is empty")
+                cancelAndIgnoreRemainingEvents()
+            }
         }
-    }
 
     @Test
     fun a_created_album_gets_a_16_byte_id_from_the_same_source_object_ids_come_from() {
@@ -68,53 +69,56 @@ class VaultAlbumWriteTest {
      * refuse, warn, or deduplicate. Showing the user what exists beats refusing their input.
      */
     @Test
-    fun two_albums_may_share_a_name_and_remain_distinct_by_id() = runTest {
-        val first = (fx.objects.createAlbum("Holiday") as Outcome.Ok).value
-        val second = (fx.objects.createAlbum("Holiday") as Outcome.Ok).value
+    fun two_albums_may_share_a_name_and_remain_distinct_by_id() =
+        runTest {
+            val first = (fx.objects.createAlbum("Holiday") as Outcome.Ok).value
+            val second = (fx.objects.createAlbum("Holiday") as Outcome.Ok).value
 
-        assertFalse(first.contentEquals(second), "same label, different albums")
+            assertFalse(first.contentEquals(second), "same label, different albums")
 
-        fx.objects.observeAlbums().test {
-            val listed = awaitItem()
-            assertEquals(2, listed.size, "both are listed")
-            assertEquals(
-                listOf(Outcome.Ok("Holiday"), Outcome.Ok("Holiday")),
-                listed.map { it.name },
-                "and both under the name the user chose",
-            )
-            cancelAndIgnoreRemainingEvents()
+            fx.objects.observeAlbums().test {
+                val listed = awaitItem()
+                assertEquals(2, listed.size, "both are listed")
+                assertEquals(
+                    listOf(Outcome.Ok("Holiday"), Outcome.Ok("Holiday")),
+                    listed.map { it.name },
+                    "and both under the name the user chose",
+                )
+                cancelAndIgnoreRemainingEvents()
+            }
         }
-    }
 
     /**
      * Filing an item into one of two same-named albums must put it in that one. The name is a label;
      * if anything resolved albums by name this is where it would show.
      */
     @Test
-    fun same_named_albums_hold_their_own_items() = runTest {
-        val first = (fx.objects.createAlbum("Holiday") as Outcome.Ok).value
-        val second = (fx.objects.createAlbum("Holiday") as Outcome.Ok).value
-        fx.importInto(second, "beach.txt")
+    fun same_named_albums_hold_their_own_items() =
+        runTest {
+            val first = (fx.objects.createAlbum("Holiday") as Outcome.Ok).value
+            val second = (fx.objects.createAlbum("Holiday") as Outcome.Ok).value
+            fx.importInto(second, "beach.txt")
 
-        fx.objects.observeAlbums().test {
-            val listed = awaitItem()
-            assertEquals(0, listed.single { it.id.contentEquals(first) }.itemCount)
-            assertEquals(1, listed.single { it.id.contentEquals(second) }.itemCount)
-            cancelAndIgnoreRemainingEvents()
+            fx.objects.observeAlbums().test {
+                val listed = awaitItem()
+                assertEquals(0, listed.single { it.id.contentEquals(first) }.itemCount)
+                assertEquals(1, listed.single { it.id.contentEquals(second) }.itemCount)
+                cancelAndIgnoreRemainingEvents()
+            }
         }
-    }
 
     @Test
-    fun a_rename_changes_the_name_in_the_listing() = runTest {
-        val id = (fx.objects.createAlbum("Recipts") as Outcome.Ok).value
+    fun a_rename_changes_the_name_in_the_listing() =
+        runTest {
+            val id = (fx.objects.createAlbum("Recipts") as Outcome.Ok).value
 
-        assertIs<Outcome.Ok<Unit>>(fx.objects.renameAlbum(id, "Receipts"))
+            assertIs<Outcome.Ok<Unit>>(fx.objects.renameAlbum(id, "Receipts"))
 
-        fx.objects.observeAlbums().test {
-            assertEquals(Outcome.Ok("Receipts"), awaitItem().single().name)
-            cancelAndIgnoreRemainingEvents()
+            fx.objects.observeAlbums().test {
+                assertEquals(Outcome.Ok("Receipts"), awaitItem().single().name)
+                cancelAndIgnoreRemainingEvents()
+            }
         }
-    }
 
     /**
      * The `INSERT OR REPLACE` trap. A rename that rebuilt the row would look correct in the name
@@ -134,19 +138,20 @@ class VaultAlbumWriteTest {
     }
 
     @Test
-    fun a_rename_keeps_the_items_where_they_are() = runTest {
-        val id = (fx.objects.createAlbum("Trip") as Outcome.Ok).value
-        val item = fx.importInto(id, "photo.txt")
+    fun a_rename_keeps_the_items_where_they_are() =
+        runTest {
+            val id = (fx.objects.createAlbum("Trip") as Outcome.Ok).value
+            val item = fx.importInto(id, "photo.txt")
 
-        assertIs<Outcome.Ok<Unit>>(fx.objects.renameAlbum(id, "Trip 2026"))
+            assertIs<Outcome.Ok<Unit>>(fx.objects.renameAlbum(id, "Trip 2026"))
 
-        fx.objects.observeAlbums().test {
-            val listed = awaitItem().single()
-            assertEquals(1, listed.itemCount)
-            assertTrue(listed.coverItemId.contentEquals(item), "renaming is not moving")
-            cancelAndIgnoreRemainingEvents()
+            fx.objects.observeAlbums().test {
+                val listed = awaitItem().single()
+                assertEquals(1, listed.itemCount)
+                assertTrue(listed.coverItemId.contentEquals(item), "renaming is not moving")
+                cancelAndIgnoreRemainingEvents()
+            }
         }
-    }
 
     /**
      * A rename of something that is not there must fail rather than create it. Quietly making the
@@ -187,19 +192,20 @@ class VaultAlbumWriteTest {
 
     /** A name is stored as given: surrounding space is the use case's business, not this layer's. */
     @Test
-    fun a_name_with_content_is_stored_verbatim() = runTest {
-        val id = (fx.objects.createAlbum(" Trip to Köln ") as Outcome.Ok).value
+    fun a_name_with_content_is_stored_verbatim() =
+        runTest {
+            val id = (fx.objects.createAlbum(" Trip to Köln ") as Outcome.Ok).value
 
-        fx.objects.observeAlbums().test {
-            assertEquals(Outcome.Ok(" Trip to Köln "), awaitItem().single().name)
-            cancelAndIgnoreRemainingEvents()
+            fx.objects.observeAlbums().test {
+                assertEquals(Outcome.Ok(" Trip to Köln "), awaitItem().single().name)
+                cancelAndIgnoreRemainingEvents()
+            }
+            assertEquals(
+                Outcome.Ok(AlbumMeta(" Trip to Köln ")),
+                fx.session.openAlbumMeta((fx.catalog.getAlbum(id) as Outcome.Ok).value!!.enc_name),
+                "nothing here trims — that would be a product decision taken in the wrong layer",
+            )
         }
-        assertEquals(
-            Outcome.Ok(AlbumMeta(" Trip to Köln ")),
-            fx.session.openAlbumMeta((fx.catalog.getAlbum(id) as Outcome.Ok).value!!.enc_name),
-            "nothing here trims — that would be a product decision taken in the wrong layer",
-        )
-    }
 
     /** Creating an album touches no item, which is worth stating since the two share a listing. */
     @Test

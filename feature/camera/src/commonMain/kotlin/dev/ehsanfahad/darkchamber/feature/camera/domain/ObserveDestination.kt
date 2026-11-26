@@ -17,8 +17,9 @@ import kotlinx.coroutines.flow.map
  * the catalog's plaintext count. [CaptureVault] offers no item listing at all, so a count taken by
  * opening every row's metadata cannot be written here by accident.
  */
-internal class ObserveDestination(private val vault: CaptureVault) {
-
+internal class ObserveDestination(
+    private val vault: CaptureVault,
+) {
     operator fun invoke(destination: CameraDestination): Flow<DestinationInfo> =
         when (destination) {
             CameraDestination.AllItems -> counted(ItemFilter.All, DestinationTitle.AllItems)
@@ -30,20 +31,27 @@ internal class ObserveDestination(private val vault: CaptureVault) {
      * A listing that fails to read keeps its title and loses its count: zero would claim the
      * destination is empty, and nothing is known about that.
      */
-    private fun counted(filter: ItemFilter, title: DestinationTitle): Flow<DestinationInfo> =
-        vault.observeItemCount(filter)
+    private fun counted(
+        filter: ItemFilter,
+        title: DestinationTitle,
+    ): Flow<DestinationInfo> =
+        vault
+            .observeItemCount(filter)
             .map { DestinationInfo(title, it) }
             .catch { emit(DestinationInfo(title, count = null)) }
 
     private fun album(id: ByteArray): Flow<DestinationInfo> =
-        vault.observeAlbums()
+        vault
+            .observeAlbums()
             .map { albums ->
-                val album = albums.firstOrNull { it.id.contentEquals(id) }
-                    ?: return@map DestinationInfo(DestinationTitle.AlbumGone, count = null)
-                val title = when (val name = album.name) {
-                    is Outcome.Ok -> DestinationTitle.Album(name.value)
-                    is Outcome.Err -> DestinationTitle.UnreadableAlbum
-                }
+                val album =
+                    albums.firstOrNull { it.id.contentEquals(id) }
+                        ?: return@map DestinationInfo(DestinationTitle.AlbumGone, count = null)
+                val title =
+                    when (val name = album.name) {
+                        is Outcome.Ok -> DestinationTitle.Album(name.value)
+                        is Outcome.Err -> DestinationTitle.UnreadableAlbum
+                    }
                 DestinationInfo(title, album.itemCount.toLong())
             }
             // Nothing about the album can be said, its name included — not even that it is gone.
@@ -54,7 +62,10 @@ internal class ObserveDestination(private val vault: CaptureVault) {
  * The destination as the bar draws it. [count] is `null` whenever it is not known — not yet loaded,
  * or unreadable — and never stands in for zero.
  */
-internal data class DestinationInfo(val title: DestinationTitle, val count: Long?)
+internal data class DestinationInfo(
+    val title: DestinationTitle,
+    val count: Long?,
+)
 
 /** What the bar's title says. The words are the formatter's; this is only which case it is. */
 internal sealed interface DestinationTitle {
@@ -66,7 +77,9 @@ internal sealed interface DestinationTitle {
      * An album whose name opened. [name] is decrypted content: compared by value, printed never
      * (hard rule #4).
      */
-    class Album(val name: String) : DestinationTitle {
+    class Album(
+        val name: String,
+    ) : DestinationTitle {
         override fun equals(other: Any?): Boolean = other is Album && name == other.name
 
         override fun hashCode(): Int = name.hashCode()

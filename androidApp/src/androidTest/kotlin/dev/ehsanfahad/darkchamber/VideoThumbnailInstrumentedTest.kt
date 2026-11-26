@@ -55,30 +55,41 @@ import java.io.File
 @RunWith(AndroidJUnit4::class)
 class VideoThumbnailInstrumentedTest {
     private val context: Context = ApplicationProvider.getApplicationContext()
-    private val koin: KoinApplication = koinApplication {
-        androidContext(context)
-        modules(platformModule())
-    }
+    private val koin: KoinApplication =
+        koinApplication {
+            androidContext(context)
+            modules(platformModule())
+        }
     private val encoder = koin.koin.get<ThumbnailEncoder>()
 
     // A vault of the test's own: storage under cacheDir, a catalog file beside it, a cheap key derivation.
     private val vaultDir = File(context.cacheDir, "frame-test-${System.nanoTime()}")
     private val engine = CryptographyKotlinEngine()
-    private val session = VaultSession.createVault(
-        engine,
-        DefaultKeyDerivation(engine),
-        "frame test".encodeToByteArray(),
-        PassphraseKdfProfile.Argon2id(memoryKib = 256, iterations = 1, parallelism = 1),
-    ).session
-    private val catalogDriver = DriverFactory(context, File(vaultDir, "catalog.db").also { it.parentFile?.mkdirs() }.absolutePath).create()
-    private val objects = VaultObjects(
-        session,
-        VaultStorage(Path(File(vaultDir, "root").apply { mkdirs() }.absolutePath)),
-        (CatalogStore.create(catalogDriver) as Outcome.Ok).value,
-        DchmCodec(engine),
-        clock = { 0L },
-        random = { n -> engine.randomBytes(n) },
-    )
+    private val session =
+        VaultSession
+            .createVault(
+                engine,
+                DefaultKeyDerivation(engine),
+                "frame test".encodeToByteArray(),
+                PassphraseKdfProfile.Argon2id(memoryKib = 256, iterations = 1, parallelism = 1),
+            ).session
+    private val catalogDriver =
+        DriverFactory(
+            context,
+            File(vaultDir, "catalog.db")
+                .also {
+                    it.parentFile?.mkdirs()
+                }.absolutePath,
+        ).create()
+    private val objects =
+        VaultObjects(
+            session,
+            VaultStorage(Path(File(vaultDir, "root").apply { mkdirs() }.absolutePath)),
+            (CatalogStore.create(catalogDriver) as Outcome.Ok).value,
+            DchmCodec(engine),
+            clock = { 0L },
+            random = { n -> engine.randomBytes(n) },
+        )
 
     @After
     fun close() {
@@ -96,38 +107,59 @@ class VideoThumbnailInstrumentedTest {
     }
 
     private fun clip(name: String): ByteArray =
-        InstrumentationRegistry.getInstrumentation().context.assets.open("video/$name").use { it.readBytes() }
+        InstrumentationRegistry
+            .getInstrumentation()
+            .context.assets
+            .open("video/$name")
+            .use { it.readBytes() }
 
     // Stores [bytes] as a vault object and opens it for reads by position, as import does for a preview.
     private fun stored(bytes: ByteArray): RangeReader {
-        val id = objects.importObject(kind = 0, name = "clip", mime = "application/octet-stream", chunkSize = 64 * 1024,
-            openSource = { Buffer().apply { write(bytes) } })
+        val id =
+            objects.importObject(
+                kind = 0,
+                name = "clip",
+                mime = "application/octet-stream",
+                chunkSize = 64 * 1024,
+                openSource = { Buffer().apply { write(bytes) } },
+            )
         return (objects.openRange((id as Outcome.Ok).value) as Outcome.Ok).value
     }
 
-    private fun preview(name: String, mime: String = "video/mp4"): Bitmap? {
+    private fun preview(
+        name: String,
+        mime: String = "video/mp4",
+    ): Bitmap? {
         val reader = stored(clip(name))
-        val encoded = try {
-            encoder.encode(mime, 512, reader)
-        } finally {
-            reader.close()
-        } ?: return null
+        val encoded =
+            try {
+                encoder.encode(mime, 512, reader)
+            } finally {
+                reader.close()
+            } ?: return null
         return BitmapFactory.decodeByteArray(encoded, 0, encoded.size)
     }
 
     private fun previewOf(name: String): Bitmap = checkNotNull(preview(name)) { "no preview for $name" }
 
-    private fun Bitmap.at(x: Int, y: Int): Int = getPixel(x.coerceIn(0, width - 1), y.coerceIn(0, height - 1))
+    private fun Bitmap.at(
+        x: Int,
+        y: Int,
+    ): Int = getPixel(x.coerceIn(0, width - 1), y.coerceIn(0, height - 1))
 
-    private fun assertColour(expected: String, pixel: Int) {
+    private fun assertColour(
+        expected: String,
+        pixel: Int,
+    ) {
         val (r, g, b) = Triple(Color.red(pixel), Color.green(pixel), Color.blue(pixel))
-        val seen = when {
-            r > 180 && g < 80 && b < 80 -> "red"
-            g > 100 && r < 80 && b < 80 -> "green"
-            b > 180 && r < 80 && g < 80 -> "blue"
-            r < 40 && g < 40 && b < 40 -> "black"
-            else -> "rgb($r,$g,$b)"
-        }
+        val seen =
+            when {
+                r > 180 && g < 80 && b < 80 -> "red"
+                g > 100 && r < 80 && b < 80 -> "green"
+                b > 180 && r < 80 && g < 80 -> "blue"
+                r < 40 && g < 40 && b < 40 -> "black"
+                else -> "rgb($r,$g,$b)"
+            }
         assertEquals(expected, seen)
     }
 
@@ -204,18 +236,26 @@ class VideoThumbnailInstrumentedTest {
     @Test
     fun a_reader_that_fails_partway_gives_no_preview() {
         val bytes = clip("colour.mp4")
-        val failing = object : RangeReader {
-            override val length: Long = bytes.size.toLong()
-            override fun readAt(position: Long, into: ByteArray, offset: Int, size: Int): Outcome<Int> =
-                if (position < 4096) {
-                    val n = minOf(size.toLong(), length - position).toInt()
-                    bytes.copyInto(into, offset, position.toInt(), position.toInt() + n)
-                    Outcome.Ok(n)
-                } else {
-                    Outcome.Err(VaultError.Crypto.IntegrityFailure)
-                }
-            override fun close() {}
-        }
+        val failing =
+            object : RangeReader {
+                override val length: Long = bytes.size.toLong()
+
+                override fun readAt(
+                    position: Long,
+                    into: ByteArray,
+                    offset: Int,
+                    size: Int,
+                ): Outcome<Int> =
+                    if (position < 4096) {
+                        val n = minOf(size.toLong(), length - position).toInt()
+                        bytes.copyInto(into, offset, position.toInt(), position.toInt() + n)
+                        Outcome.Ok(n)
+                    } else {
+                        Outcome.Err(VaultError.Crypto.IntegrityFailure)
+                    }
+
+                override fun close() {}
+            }
         assertNull(encoder.encode("video/mp4", 512, failing))
     }
 
@@ -229,29 +269,45 @@ class VideoThumbnailInstrumentedTest {
     fun a_read_refused_while_the_frame_decodes_ends_the_preview_after_one_frame_request() {
         val bytes = clip("colour.mp4")
         var total = 0
-        val counting = object : RangeReader {
-            override val length: Long = bytes.size.toLong()
-            override fun readAt(position: Long, into: ByteArray, offset: Int, size: Int): Outcome<Int> {
-                total++
-                val n = minOf(size.toLong(), length - position).toInt()
-                bytes.copyInto(into, offset, position.toInt(), position.toInt() + n)
-                return Outcome.Ok(n)
+        val counting =
+            object : RangeReader {
+                override val length: Long = bytes.size.toLong()
+
+                override fun readAt(
+                    position: Long,
+                    into: ByteArray,
+                    offset: Int,
+                    size: Int,
+                ): Outcome<Int> {
+                    total++
+                    val n = minOf(size.toLong(), length - position).toInt()
+                    bytes.copyInto(into, offset, position.toInt(), position.toInt() + n)
+                    return Outcome.Ok(n)
+                }
+
+                override fun close() {}
             }
-            override fun close() {}
-        }
         checkNotNull(encoder.encode("video/mp4", 512, counting))
         var seen = 0
-        val refusingTheLast = object : RangeReader {
-            override val length: Long = bytes.size.toLong()
-            override fun readAt(position: Long, into: ByteArray, offset: Int, size: Int): Outcome<Int> {
-                seen++
-                if (seen >= total) return Outcome.Err(VaultError.Io(IllegalStateException("stopped")))
-                val n = minOf(size.toLong(), length - position).toInt()
-                bytes.copyInto(into, offset, position.toInt(), position.toInt() + n)
-                return Outcome.Ok(n)
+        val refusingTheLast =
+            object : RangeReader {
+                override val length: Long = bytes.size.toLong()
+
+                override fun readAt(
+                    position: Long,
+                    into: ByteArray,
+                    offset: Int,
+                    size: Int,
+                ): Outcome<Int> {
+                    seen++
+                    if (seen >= total) return Outcome.Err(VaultError.Io(IllegalStateException("stopped")))
+                    val n = minOf(size.toLong(), length - position).toInt()
+                    bytes.copyInto(into, offset, position.toInt(), position.toInt() + n)
+                    return Outcome.Ok(n)
+                }
+
+                override fun close() {}
             }
-            override fun close() {}
-        }
         val started = System.nanoTime()
         assertNull(encoder.encode("video/mp4", 512, refusingTheLast))
         val ms = (System.nanoTime() - started) / 1_000_000

@@ -20,14 +20,14 @@ import dev.ehsanfahad.darkchamber.core.storage.VaultStorage
 import dev.ehsanfahad.darkchamber.core.vault.ThumbnailEncoder
 import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
 import dev.ehsanfahad.darkchamber.feature.vault.api.PhotoPicker
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.io.buffered
-import kotlinx.io.readByteArray
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 import kotlinx.io.files.SystemTemporaryDirectory
+import kotlinx.io.readByteArray
 import kotlinx.io.writeString
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import org.koin.core.Koin
 import org.koin.dsl.koinApplication
 import org.koin.dsl.module
@@ -48,18 +48,20 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class UnlockedComponentTest {
     private val testDir = Path(SystemTemporaryDirectory, "uct-${Random.nextULong()}")
+
     // The session scope builds a VaultObjects that resolves the CryptoEngine root single (as the
     // real graph provides it), so the test Koin registers it too.
-    private val koin: Koin = koinApplication {
-        modules(
-            module {
-                single<CryptoEngine> { CryptographyKotlinEngine() }
-                // Constructing the unlocked subtree constructs the gallery, which needs the picker.
-                single<FilePicker> { FakeFilePicker() }
-                single<PhotoPicker> { FakePhotoPicker() }
-            },
-        )
-    }.koin
+    private val koin: Koin =
+        koinApplication {
+            modules(
+                module {
+                    single<CryptoEngine> { CryptographyKotlinEngine() }
+                    // Constructing the unlocked subtree constructs the gallery, which needs the picker.
+                    single<FilePicker> { FakeFilePicker() }
+                    single<PhotoPicker> { FakePhotoPicker() }
+                },
+            )
+        }.koin
 
     @AfterTest
     fun cleanup() = deleteRecursively(testDir)
@@ -71,15 +73,16 @@ class UnlockedComponentTest {
         val strayScratch = Path(Path(vault.storageRoot, "tmp"), "scratch-stray")
         SystemFileSystem.sink(strayScratch).buffered().use { it.writeString("decrypted-scratch") }
 
-        val component = DefaultUnlockedComponent(
-            componentContext = DefaultComponentContext(LifecycleRegistry().apply { resume() }),
-            vault = vault.open,
-            koin = koin,
-            mainContext = UnconfinedTestDispatcher(),
-            notSavedRecord = NotSavedRecord(),
-            onLock = { locked = true },
-            onLeave = {},
-        )
+        val component =
+            DefaultUnlockedComponent(
+                componentContext = DefaultComponentContext(LifecycleRegistry().apply { resume() }),
+                vault = vault.open,
+                koin = koin,
+                mainContext = UnconfinedTestDispatcher(),
+                notSavedRecord = NotSavedRecord(),
+                onLock = { locked = true },
+                onLeave = {},
+            )
 
         component.lock()
 
@@ -120,15 +123,16 @@ class UnlockedComponentTest {
     @Test
     fun the_subtree_opens_on_the_gallery() {
         val vault = openVault()
-        val component = DefaultUnlockedComponent(
-            componentContext = DefaultComponentContext(LifecycleRegistry().apply { resume() }),
-            vault = vault.open,
-            koin = koin,
-            mainContext = UnconfinedTestDispatcher(),
-            notSavedRecord = NotSavedRecord(),
-            onLock = {},
-            onLeave = {},
-        )
+        val component =
+            DefaultUnlockedComponent(
+                componentContext = DefaultComponentContext(LifecycleRegistry().apply { resume() }),
+                vault = vault.open,
+                koin = koin,
+                mainContext = UnconfinedTestDispatcher(),
+                notSavedRecord = NotSavedRecord(),
+                onLock = {},
+                onLeave = {},
+            )
 
         val stack = component.stack.value
         assertTrue(stack.active.instance is UnlockedChild.Gallery, "the gallery is the active child")
@@ -144,15 +148,16 @@ class UnlockedComponentTest {
     @Test
     fun locking_disposes_the_scope_the_gallery_was_built_from() {
         val vault = openVault()
-        val component = DefaultUnlockedComponent(
-            componentContext = DefaultComponentContext(LifecycleRegistry().apply { resume() }),
-            vault = vault.open,
-            koin = koin,
-            mainContext = UnconfinedTestDispatcher(),
-            notSavedRecord = NotSavedRecord(),
-            onLock = {},
-            onLeave = {},
-        )
+        val component =
+            DefaultUnlockedComponent(
+                componentContext = DefaultComponentContext(LifecycleRegistry().apply { resume() }),
+                vault = vault.open,
+                koin = koin,
+                mainContext = UnconfinedTestDispatcher(),
+                notSavedRecord = NotSavedRecord(),
+                onLock = {},
+                onLeave = {},
+            )
         assertTrue(component.stack.value.active.instance is UnlockedChild.Gallery)
 
         component.lock()
@@ -203,13 +208,14 @@ class UnlockedComponentTest {
         // The lock fires as the *second* file is opened for reading, so one import has completed and
         // one is in flight.
         val third = FakePickedFile(name = "third.bin")
-        val picker = FakeFilePicker(
-            listOf(
-                FakePickedFile(name = "first.bin"),
-                FakePickedFile(name = "second.bin", onOpen = { component.lock() }),
-                third,
-            ),
-        )
+        val picker =
+            FakeFilePicker(
+                listOf(
+                    FakePickedFile(name = "first.bin"),
+                    FakePickedFile(name = "second.bin", onOpen = { component.lock() }),
+                    third,
+                ),
+            )
         component = unlocked(vault, picker = picker)
         val gallery = (component.stack.value.active.instance as UnlockedChild.Gallery).component
 
@@ -228,15 +234,16 @@ class UnlockedComponentTest {
     fun teardown_runs_only_once() {
         var lockCount = 0
         val vault = openVault()
-        val component = DefaultUnlockedComponent(
-            componentContext = DefaultComponentContext(LifecycleRegistry().apply { resume() }),
-            vault = vault.open,
-            koin = koin,
-            mainContext = UnconfinedTestDispatcher(),
-            notSavedRecord = NotSavedRecord(),
-            onLock = { lockCount++ },
-            onLeave = {},
-        )
+        val component =
+            DefaultUnlockedComponent(
+                componentContext = DefaultComponentContext(LifecycleRegistry().apply { resume() }),
+                vault = vault.open,
+                koin = koin,
+                mainContext = UnconfinedTestDispatcher(),
+                notSavedRecord = NotSavedRecord(),
+                onLock = { lockCount++ },
+                onLeave = {},
+            )
 
         component.lock()
         component.lock() // idempotent — the guard prevents a second teardown/signal
@@ -248,7 +255,8 @@ class UnlockedComponentTest {
     fun a_bound_thumbnail_encoder_reaches_the_import() {
         val vault = openVault()
         val encoder = RecordingThumbnailEncoder(ByteArray(16) { 3 })
-        val component = unlocked(vault, picker = FakeFilePicker(listOf(FakePickedFile(name = "a.jpg"))), encoder = encoder)
+        val component =
+            unlocked(vault, picker = FakeFilePicker(listOf(FakePickedFile(name = "a.jpg"))), encoder = encoder)
         val gallery = (component.stack.value.active.instance as UnlockedChild.Gallery).component
 
         gallery.importFiles()
@@ -283,11 +291,17 @@ class UnlockedComponentTest {
         )
     }
 
-    private class RecordingThumbnailEncoder(private val bytes: ByteArray?) : ThumbnailEncoder {
+    private class RecordingThumbnailEncoder(
+        private val bytes: ByteArray?,
+    ) : ThumbnailEncoder {
         var calls = 0
             private set
 
-        override fun encode(mime: String, maxEdgePx: Int, openSource: () -> kotlinx.io.RawSource): ByteArray? {
+        override fun encode(
+            mime: String,
+            maxEdgePx: Int,
+            openSource: () -> kotlinx.io.RawSource,
+        ): ByteArray? {
             calls++
             openSource().buffered().use { it.readByteArray() }
             return bytes
@@ -301,16 +315,17 @@ class UnlockedComponentTest {
         onLock: () -> Unit = {},
     ): DefaultUnlockedComponent {
         // A graph of its own so a test can hand in its own picker; everything else matches `koin`.
-        val graph = koinApplication {
-            modules(
-                module {
-                    single<CryptoEngine> { CryptographyKotlinEngine() }
-                    single<FilePicker> { picker }
-                    single<PhotoPicker> { FakePhotoPicker() }
-                    encoder?.let { bound -> single<ThumbnailEncoder> { bound } }
-                },
-            )
-        }.koin
+        val graph =
+            koinApplication {
+                modules(
+                    module {
+                        single<CryptoEngine> { CryptographyKotlinEngine() }
+                        single<FilePicker> { picker }
+                        single<PhotoPicker> { FakePhotoPicker() }
+                        encoder?.let { bound -> single<ThumbnailEncoder> { bound } }
+                    },
+                )
+            }.koin
         val dispatcher = UnconfinedTestDispatcher()
         return DefaultUnlockedComponent(
             componentContext = DefaultComponentContext(LifecycleRegistry().apply { resume() }),
@@ -331,7 +346,10 @@ class UnlockedComponentTest {
         return SystemFileSystem.list(root).sumOf { dchmCount(it) }
     }
 
-    private class Vault(val open: VaultBootstrap.OpenVault, val storageRoot: Path)
+    private class Vault(
+        val open: VaultBootstrap.OpenVault,
+        val storageRoot: Path,
+    )
 
     private fun openVault(): Vault {
         val engine = CryptographyKotlinEngine()

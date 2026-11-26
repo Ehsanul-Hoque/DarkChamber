@@ -18,7 +18,6 @@ import kotlin.test.assertTrue
  * only be verified on a device.
  */
 class SupportsDeleteTest {
-
     @Test
     fun a_document_that_advertises_deletion_can_be_offered() {
         assertTrue(supportsDelete(isDocument = true, flags = Document.FLAG_SUPPORTS_DELETE))

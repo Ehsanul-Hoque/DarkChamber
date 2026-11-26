@@ -10,7 +10,6 @@ import kotlin.test.assertTrue
  * enforcing nothing, so these cases are the real guarantee that the rules work.
  */
 class ImportPolicyTest {
-
     @Test
     fun `cipher primitives are matched, including wildcards and nested members`() {
         listOf(

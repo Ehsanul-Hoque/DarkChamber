@@ -1,30 +1,14 @@
 package dev.ehsanfahad.darkchamber.app.root
 
 import com.arkivanov.decompose.DefaultComponentContext
-import com.arkivanov.essenty.backhandler.BackDispatcher
 import com.arkivanov.decompose.value.MutableValue
 import com.arkivanov.decompose.value.Value
+import com.arkivanov.essenty.backhandler.BackDispatcher
 import com.arkivanov.essenty.lifecycle.LifecycleRegistry
 import dev.ehsanfahad.darkchamber.app.FakeFilePicker
 import dev.ehsanfahad.darkchamber.app.FakePhotoPicker
-import dev.ehsanfahad.darkchamber.app.system.SystemUiHandoff
-import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
-import dev.ehsanfahad.darkchamber.feature.vault.api.PhotoPicker
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.test.StandardTestDispatcher
-import kotlinx.coroutines.test.TestScope
-import kotlinx.coroutines.test.UnconfinedTestDispatcher
-import kotlinx.coroutines.test.advanceTimeBy
-import kotlinx.coroutines.test.runCurrent
-import kotlinx.coroutines.test.runTest
-import kotlin.coroutines.CoroutineContext
-import kotlin.time.Duration
-import kotlin.time.Duration.Companion.minutes
-import kotlin.time.Duration.Companion.seconds
-import kotlin.time.TestTimeSource
-import org.koin.dsl.koinApplication
-import org.koin.dsl.module
 import dev.ehsanfahad.darkchamber.app.VaultBootstrap
+import dev.ehsanfahad.darkchamber.app.system.SystemUiHandoff
 import dev.ehsanfahad.darkchamber.app.testSqlDriver
 import dev.ehsanfahad.darkchamber.core.crypto.CryptoEngine
 import dev.ehsanfahad.darkchamber.core.crypto.CryptographyKotlinEngine
@@ -36,9 +20,21 @@ import dev.ehsanfahad.darkchamber.core.model.NotSavedKind
 import dev.ehsanfahad.darkchamber.core.model.NotSavedReason
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.storage.VaultStorage
+import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
+import dev.ehsanfahad.darkchamber.feature.vault.api.PhotoPicker
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 import kotlinx.io.files.SystemTemporaryDirectory
+import org.koin.dsl.koinApplication
+import org.koin.dsl.module
+import kotlin.coroutines.CoroutineContext
 import kotlin.random.Random
 import kotlin.random.nextULong
 import kotlin.test.AfterTest
@@ -48,6 +44,10 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TestTimeSource
 
 /**
  * The structural session gate: the root starts Locked; a live vault fed through the locked child's
@@ -57,17 +57,19 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class RootComponentTest {
     private val testDir = Path(SystemTemporaryDirectory, "rct-${Random.nextULong()}")
+
     // The Unlocked session scope builds a VaultObjects that resolves the CryptoEngine root single.
-    private val koin = koinApplication {
-        modules(
-            module {
-                single<CryptoEngine> { CryptographyKotlinEngine() }
-                // The unlocked subtree builds the gallery, which needs the picker seam.
-                single<FilePicker> { FakeFilePicker() }
-                single<PhotoPicker> { FakePhotoPicker() }
-            },
-        )
-    }.koin
+    private val koin =
+        koinApplication {
+            modules(
+                module {
+                    single<CryptoEngine> { CryptographyKotlinEngine() }
+                    // The unlocked subtree builds the gallery, which needs the picker seam.
+                    single<FilePicker> { FakeFilePicker() }
+                    single<PhotoPicker> { FakePhotoPicker() }
+                },
+            )
+        }.koin
 
     // Captures the onUnlocked hook the root wires into the locked child, so the test can drive the
     // gate transition without the real LockedComponent's bootstrap machinery (covered elsewhere).
@@ -103,11 +105,15 @@ class RootComponentTest {
             // With the host's back handler, because the children's contexts are built here rather than
             // handed in: whether back reaches a child at all is this class's behaviour, and nothing
             // that constructs a child directly can show it.
-            componentContext = DefaultComponentContext(
-                lifecycle = LifecycleRegistry(),
-                backHandler = backDispatcher,
-            ),
-            lockedFactory = { _, onUnlocked -> lockedOnUnlocked = onUnlocked; FakeLockedComponent() },
+            componentContext =
+                DefaultComponentContext(
+                    lifecycle = LifecycleRegistry(),
+                    backHandler = backDispatcher,
+                ),
+            lockedFactory = { _, onUnlocked ->
+                lockedOnUnlocked = onUnlocked
+                FakeLockedComponent()
+            },
             unlockedFactory = { ctx, vault, notSaved, onLock ->
                 DefaultUnlockedComponent(
                     ctx,
@@ -128,13 +134,21 @@ class RootComponentTest {
 
     private class FakeLockedComponent : LockedComponent {
         override val state: Value<LockState> = MutableValue(LockState(LockStep.Unlock))
+
         override fun submitCreate(passphrase: ByteArray) = Unit
+
         override fun submitPassphraseUnlock(passphrase: ByteArray) = Unit
+
         override fun startBiometricUnlock() = Unit
+
         override fun copyRecoveryKey() = Unit
+
         override fun confirmRecoverySaved() = Unit
+
         override fun enableBiometric() = Unit
+
         override fun skipBiometric() = Unit
+
         override fun dismissError() = Unit
     }
 
@@ -253,49 +267,52 @@ class RootComponentTest {
     // a private handler nothing will ever call.
 
     @Test
-    fun one_press_at_the_vault_is_swallowed_and_offers_to_leave() = runTest {
-        val root = root(unlockedContext = StandardTestDispatcher(testScheduler))
-        lockedOnUnlocked!!(openVault())
-        val unlocked = unlocked(root)
+    fun one_press_at_the_vault_is_swallowed_and_offers_to_leave() =
+        runTest {
+            val root = root(unlockedContext = StandardTestDispatcher(testScheduler))
+            lockedOnUnlocked!!(openVault())
+            val unlocked = unlocked(root)
 
-        val handled = backDispatcher.back()
+            val handled = backDispatcher.back()
 
-        assertTrue(handled, "the press is answered here rather than falling through to the system")
-        assertEquals(0, leaves, "one press does not leave")
-        assertEquals(1, unlocked.stack.value.items.size, "and nothing popped")
-        assertTrue(unlocked.leaveNotice.value, "the offer is on screen, so the next press is no surprise")
-        assertIs<RootChild.Unlocked>(root.child.value, "the session the press would have cost is still open")
-    }
-
-    @Test
-    fun a_second_press_inside_the_window_leaves_exactly_once() = runTest {
-        val root = root(unlockedContext = StandardTestDispatcher(testScheduler))
-        lockedOnUnlocked!!(openVault())
-        unlocked(root)
-
-        backDispatcher.back()
-        // Part-way through the window rather than in the same instant: a window of zero would still
-        // pass "two presses in a row leave" if the second press were measured at no elapsed time.
-        timeSource += WINDOW / 2
-        backDispatcher.back()
-
-        assertEquals(1, leaves, "the second press leaves, and asks for it once")
-    }
+            assertTrue(handled, "the press is answered here rather than falling through to the system")
+            assertEquals(0, leaves, "one press does not leave")
+            assertEquals(1, unlocked.stack.value.items.size, "and nothing popped")
+            assertTrue(unlocked.leaveNotice.value, "the offer is on screen, so the next press is no surprise")
+            assertIs<RootChild.Unlocked>(root.child.value, "the session the press would have cost is still open")
+        }
 
     @Test
-    fun a_second_press_after_the_window_arms_again_instead_of_leaving() = runTest {
-        val root = root(unlockedContext = StandardTestDispatcher(testScheduler))
-        lockedOnUnlocked!!(openVault())
-        val unlocked = unlocked(root)
+    fun a_second_press_inside_the_window_leaves_exactly_once() =
+        runTest {
+            val root = root(unlockedContext = StandardTestDispatcher(testScheduler))
+            lockedOnUnlocked!!(openVault())
+            unlocked(root)
 
-        backDispatcher.back()
-        elapse(WINDOW * 2)
-        assertFalse(unlocked.leaveNotice.value, "the offer expired on its own")
-        backDispatcher.back()
+            backDispatcher.back()
+            // Part-way through the window rather than in the same instant: a window of zero would still
+            // pass "two presses in a row leave" if the second press were measured at no elapsed time.
+            timeSource += WINDOW / 2
+            backDispatcher.back()
 
-        assertEquals(0, leaves, "a press long after the first is a first press, not a confirmation")
-        assertTrue(unlocked.leaveNotice.value, "so it offers again")
-    }
+            assertEquals(1, leaves, "the second press leaves, and asks for it once")
+        }
+
+    @Test
+    fun a_second_press_after_the_window_arms_again_instead_of_leaving() =
+        runTest {
+            val root = root(unlockedContext = StandardTestDispatcher(testScheduler))
+            lockedOnUnlocked!!(openVault())
+            val unlocked = unlocked(root)
+
+            backDispatcher.back()
+            elapse(WINDOW * 2)
+            assertFalse(unlocked.leaveNotice.value, "the offer expired on its own")
+            backDispatcher.back()
+
+            assertEquals(0, leaves, "a press long after the first is a first press, not a confirmation")
+            assertTrue(unlocked.leaveNotice.value, "so it offers again")
+        }
 
     /**
      * **The decision does not trust the notice.** Taking the notice off screen is a coroutine, and a
@@ -308,32 +325,34 @@ class RootComponentTest {
      * notice's timer has not run at all.
      */
     @Test
-    fun a_press_the_offer_has_outlived_cannot_leave_even_while_the_notice_is_still_up() = runTest {
-        val root = root(unlockedContext = StandardTestDispatcher(testScheduler))
-        lockedOnUnlocked!!(openVault())
-        val unlocked = unlocked(root)
+    fun a_press_the_offer_has_outlived_cannot_leave_even_while_the_notice_is_still_up() =
+        runTest {
+            val root = root(unlockedContext = StandardTestDispatcher(testScheduler))
+            lockedOnUnlocked!!(openVault())
+            val unlocked = unlocked(root)
 
-        backDispatcher.back()
-        timeSource += WINDOW * 2 // time passed; the effect that clears the notice did not run
-        assertTrue(unlocked.leaveNotice.value, "the stale notice is exactly the condition under test")
+            backDispatcher.back()
+            timeSource += WINDOW * 2 // time passed; the effect that clears the notice did not run
+            assertTrue(unlocked.leaveNotice.value, "the stale notice is exactly the condition under test")
 
-        backDispatcher.back()
+            backDispatcher.back()
 
-        assertEquals(0, leaves, "an expired offer is not a confirmation, whatever is on screen")
-    }
+            assertEquals(0, leaves, "an expired offer is not a confirmation, whatever is on screen")
+        }
 
     @Test
-    fun the_notice_clears_itself_once_the_window_passes() = runTest {
-        val root = root(unlockedContext = StandardTestDispatcher(testScheduler))
-        lockedOnUnlocked!!(openVault())
-        val unlocked = unlocked(root)
+    fun the_notice_clears_itself_once_the_window_passes() =
+        runTest {
+            val root = root(unlockedContext = StandardTestDispatcher(testScheduler))
+            lockedOnUnlocked!!(openVault())
+            val unlocked = unlocked(root)
 
-        backDispatcher.back()
-        assertTrue(unlocked.leaveNotice.value)
-        elapse(WINDOW)
+            backDispatcher.back()
+            assertTrue(unlocked.leaveNotice.value)
+            elapse(WINDOW)
 
-        assertFalse(unlocked.leaveNotice.value, "a notice nobody answered does not stay on screen")
-    }
+            assertFalse(unlocked.leaveNotice.value, "a notice nobody answered does not stay on screen")
+        }
 
     /**
      * **Above the root, back still belongs to the navigation animation.** The callback is enabled
@@ -342,23 +361,24 @@ class RootComponentTest {
      * composition. Popping is the component's own entry point, and it still pops exactly one screen.
      */
     @Test
-    fun a_press_on_a_sub_screen_is_not_answered_at_the_root() = runTest {
-        val root = root(unlockedContext = StandardTestDispatcher(testScheduler))
-        lockedOnUnlocked!!(openVault())
-        val unlocked = unlocked(root)
-        unlocked.openAlbums()
+    fun a_press_on_a_sub_screen_is_not_answered_at_the_root() =
+        runTest {
+            val root = root(unlockedContext = StandardTestDispatcher(testScheduler))
+            lockedOnUnlocked!!(openVault())
+            val unlocked = unlocked(root)
+            unlocked.openAlbums()
 
-        val handled = backDispatcher.back()
+            val handled = backDispatcher.back()
 
-        assertFalse(handled, "the root's callback must be disabled while something is stacked on it")
-        assertEquals(0, leaves, "and a press meant for a screen must never leave the app")
-        assertEquals(2, unlocked.stack.value.items.size, "nothing popped, nothing left")
-        assertFalse(unlocked.leaveNotice.value, "and nothing offered to leave")
+            assertFalse(handled, "the root's callback must be disabled while something is stacked on it")
+            assertEquals(0, leaves, "and a press meant for a screen must never leave the app")
+            assertEquals(2, unlocked.stack.value.items.size, "nothing popped, nothing left")
+            assertFalse(unlocked.leaveNotice.value, "and nothing offered to leave")
 
-        unlocked.onBack()
+            unlocked.onBack()
 
-        assertEquals(1, unlocked.stack.value.items.size, "the way back out of a sub-screen still works")
-    }
+            assertEquals(1, unlocked.stack.value.items.size, "the way back out of a sub-screen still works")
+        }
 
     /**
      * **Arriving back at the grid starts unarmed.** A press at the grid, a trip into albums and a
@@ -367,21 +387,22 @@ class RootComponentTest {
      * so only disarming on navigation can make this pass.
      */
     @Test
-    fun coming_back_to_the_vault_from_a_sub_screen_starts_unarmed() = runTest {
-        val root = root(unlockedContext = StandardTestDispatcher(testScheduler))
-        lockedOnUnlocked!!(openVault())
-        val unlocked = unlocked(root)
+    fun coming_back_to_the_vault_from_a_sub_screen_starts_unarmed() =
+        runTest {
+            val root = root(unlockedContext = StandardTestDispatcher(testScheduler))
+            lockedOnUnlocked!!(openVault())
+            val unlocked = unlocked(root)
 
-        backDispatcher.back() // at the grid: the offer stands
-        unlocked.openAlbums()
-        assertFalse(unlocked.leaveNotice.value, "and it goes with the screen it was made on")
-        unlocked.onBack()
+            backDispatcher.back() // at the grid: the offer stands
+            unlocked.openAlbums()
+            assertFalse(unlocked.leaveNotice.value, "and it goes with the screen it was made on")
+            unlocked.onBack()
 
-        backDispatcher.back()
+            backDispatcher.back()
 
-        assertEquals(0, leaves, "back at the grid, this is a first press again")
-        assertTrue(unlocked.leaveNotice.value)
-    }
+            assertEquals(0, leaves, "back at the grid, this is a first press again")
+            assertTrue(unlocked.leaveNotice.value)
+        }
 
     private fun unlocked(root: DefaultRootComponent): UnlockedComponent =
         assertIs<RootChild.Unlocked>(root.child.value).component
@@ -400,84 +421,89 @@ class RootComponentTest {
     // Android. The exemption defers the lock; it never abandons it.
 
     @Test
-    fun backgrounding_during_a_picker_handoff_does_not_lock() = runTest {
-        val root = root(StandardTestDispatcher(testScheduler))
-        lockedOnUnlocked!!(openVault())
+    fun backgrounding_during_a_picker_handoff_does_not_lock() =
+        runTest {
+            val root = root(StandardTestDispatcher(testScheduler))
+            lockedOnUnlocked!!(openVault())
 
-        handoff.begin() // the picker was launched; we are being stopped because of it
-        root.lockIfUnlocked()
+            handoff.begin() // the picker was launched; we are being stopped because of it
+            root.lockIfUnlocked()
 
-        assertIs<RootChild.Unlocked>(root.child.value, "the session must survive the pick")
-        handoff.end()
-    }
-
-    @Test
-    fun returning_from_the_picker_keeps_the_session_and_disarms_the_watchdog() = runTest {
-        val root = root(StandardTestDispatcher(testScheduler))
-        lockedOnUnlocked!!(openVault())
-
-        handoff.begin()
-        root.lockIfUnlocked() // Android onStop, on the way into SAF
-        handoff.end() // the user picked a file
-        root.onForeground() // Android onStart, on the way back
-
-        advanceTimeBy(GRACE * 4) // the watchdog must be gone, not merely deferred
-        runCurrent()
-
-        assertIs<RootChild.Unlocked>(root.child.value, "returning must not lock the vault later")
-    }
+            assertIs<RootChild.Unlocked>(root.child.value, "the session must survive the pick")
+            handoff.end()
+        }
 
     @Test
-    fun an_abandoned_picker_locks_once_the_grace_expires() = runTest {
-        val root = root(StandardTestDispatcher(testScheduler))
-        lockedOnUnlocked!!(openVault())
+    fun returning_from_the_picker_keeps_the_session_and_disarms_the_watchdog() =
+        runTest {
+            val root = root(StandardTestDispatcher(testScheduler))
+            lockedOnUnlocked!!(openVault())
 
-        handoff.begin()
-        root.lockIfUnlocked() // into the picker, and the user walks away
-        advanceTimeBy(GRACE / 2)
-        runCurrent()
-        assertIs<RootChild.Unlocked>(root.child.value, "still inside the grace period")
+            handoff.begin()
+            root.lockIfUnlocked() // Android onStop, on the way into SAF
+            handoff.end() // the user picked a file
+            root.onForeground() // Android onStart, on the way back
 
-        advanceTimeBy(GRACE)
-        runCurrent()
+            advanceTimeBy(GRACE * 4) // the watchdog must be gone, not merely deferred
+            runCurrent()
 
-        assertIs<RootChild.Locked>(
-            root.child.value,
-            "a picker left open must not keep the MasterKey alive indefinitely",
-        )
-    }
+            assertIs<RootChild.Unlocked>(root.child.value, "returning must not lock the vault later")
+        }
 
     @Test
-    fun a_plain_background_still_locks_immediately_while_no_handoff_is_in_flight() = runTest {
-        val root = root(StandardTestDispatcher(testScheduler))
-        lockedOnUnlocked!!(openVault())
+    fun an_abandoned_picker_locks_once_the_grace_expires() =
+        runTest {
+            val root = root(StandardTestDispatcher(testScheduler))
+            lockedOnUnlocked!!(openVault())
 
-        root.lockIfUnlocked() // home button — nothing was handed off
+            handoff.begin()
+            root.lockIfUnlocked() // into the picker, and the user walks away
+            advanceTimeBy(GRACE / 2)
+            runCurrent()
+            assertIs<RootChild.Unlocked>(root.child.value, "still inside the grace period")
 
-        assertIs<RootChild.Locked>(root.child.value, "the exemption must not leak into ordinary backgrounding")
-    }
+            advanceTimeBy(GRACE)
+            runCurrent()
+
+            assertIs<RootChild.Locked>(
+                root.child.value,
+                "a picker left open must not keep the MasterKey alive indefinitely",
+            )
+        }
 
     @Test
-    fun repeated_backgrounding_during_one_pick_leaves_no_orphan_watchdog() = runTest {
-        val root = root(StandardTestDispatcher(testScheduler))
-        lockedOnUnlocked!!(openVault())
+    fun a_plain_background_still_locks_immediately_while_no_handoff_is_in_flight() =
+        runTest {
+            val root = root(StandardTestDispatcher(testScheduler))
+            lockedOnUnlocked!!(openVault())
 
-        handoff.begin()
-        root.lockIfUnlocked() // onStop into the picker
-        advanceTimeBy(GRACE / 4)
-        runCurrent()
-        root.lockIfUnlocked() // a second onStop during the same pick (the provider took over)
-        handoff.end() // the user picked a file
-        root.onForeground() // and came back
+            root.lockIfUnlocked() // home button — nothing was handed off
 
-        advanceTimeBy(GRACE * 4)
-        runCurrent()
+            assertIs<RootChild.Locked>(root.child.value, "the exemption must not leak into ordinary backgrounding")
+        }
 
-        assertIs<RootChild.Unlocked>(
-            root.child.value,
-            "a watchdog armed by an earlier stop must not lock the vault while the user is using it",
-        )
-    }
+    @Test
+    fun repeated_backgrounding_during_one_pick_leaves_no_orphan_watchdog() =
+        runTest {
+            val root = root(StandardTestDispatcher(testScheduler))
+            lockedOnUnlocked!!(openVault())
+
+            handoff.begin()
+            root.lockIfUnlocked() // onStop into the picker
+            advanceTimeBy(GRACE / 4)
+            runCurrent()
+            root.lockIfUnlocked() // a second onStop during the same pick (the provider took over)
+            handoff.end() // the user picked a file
+            root.onForeground() // and came back
+
+            advanceTimeBy(GRACE * 4)
+            runCurrent()
+
+            assertIs<RootChild.Unlocked>(
+                root.child.value,
+                "a watchdog armed by an earlier stop must not lock the vault while the user is using it",
+            )
+        }
 
     // A live vault with a cheap real session (Argon2id m=256KiB/t=1) + temp storage + in-memory catalog.
     private fun openVault(): VaultBootstrap.OpenVault {

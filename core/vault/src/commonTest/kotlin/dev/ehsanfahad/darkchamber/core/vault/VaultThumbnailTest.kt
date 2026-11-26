@@ -81,10 +81,12 @@ class VaultThumbnailTest {
                 chunkSize = 64,
                 openSource = source(payload),
             ) as Outcome.Ok
-            ).value
+        ).value
 
-    private fun metaOf(vo: VaultObjects, id: ByteArray): ObjectMeta =
-        (vo.openMeta(id) as Outcome.Ok).value
+    private fun metaOf(
+        vo: VaultObjects,
+        id: ByteArray,
+    ): ObjectMeta = (vo.openMeta(id) as Outcome.Ok).value
 
     @Test
     fun a_successful_import_stores_the_thumbnail_and_the_key_that_opens_it() {
@@ -101,9 +103,10 @@ class VaultThumbnailTest {
         // the encoder produced. Asserting the bytes — rather than just that a file exists — is what
         // proves the key recorded belongs to the container written.
         val out = Buffer()
-        val opened = session.useDek(key) { raw ->
-            storage.readThumbnail(id) { src -> codec.decryptContainer(raw, id, src, out) }
-        }
+        val opened =
+            session.useDek(key) { raw ->
+                storage.readThumbnail(id) { src -> codec.decryptContainer(raw, id, src, out) }
+            }
         assertTrue(opened is Outcome.Ok, "the recorded key must open the stored thumbnail")
         assertContentEquals(thumbBytes, out.readByteArray())
 
@@ -169,14 +172,15 @@ class VaultThumbnailTest {
         val encoder = FakeThumbnailEncoder(FakeThumbnailEncoder.Mode.Decline)
         val vo = objects(encoder)
 
-        val id = (
-            vo.importObject(
-                kind = 0,
-                name = "notes.txt",
-                mime = "text/plain",
-                chunkSize = 64,
-                openSource = source(payload),
-            ) as Outcome.Ok
+        val id =
+            (
+                vo.importObject(
+                    kind = 0,
+                    name = "notes.txt",
+                    mime = "text/plain",
+                    chunkSize = 64,
+                    openSource = source(payload),
+                ) as Outcome.Ok
             ).value
 
         assertNoThumbnail(vo, id)
@@ -190,27 +194,33 @@ class VaultThumbnailTest {
         // through a decoder after the work behind it was abandoned — the same shape as the
         // unguarded spill copy an earlier review caught.
         var cancelled = false
-        val encoder = object : ThumbnailEncoder {
-            override fun encode(mime: String, maxEdgePx: Int, openSource: () -> RawSource): ByteArray {
-                cancelled = true
-                openSource().use { src ->
-                    val sink = Buffer()
-                    while (src.readAtMostTo(sink, 64L) >= 0L) sink.clear()
+        val encoder =
+            object : ThumbnailEncoder {
+                override fun encode(
+                    mime: String,
+                    maxEdgePx: Int,
+                    openSource: () -> RawSource,
+                ): ByteArray {
+                    cancelled = true
+                    openSource().use { src ->
+                        val sink = Buffer()
+                        while (src.readAtMostTo(sink, 64L) >= 0L) sink.clear()
+                    }
+                    return ByteArray(8) { 1 } // never reached: the guarded source throws first
                 }
-                return ByteArray(8) { 1 } // never reached: the guarded source throws first
             }
-        }
         val vo = objects(encoder)
 
-        val id = (
-            vo.importObject(
-                kind = 0,
-                name = "holiday.jpg",
-                mime = "image/jpeg",
-                chunkSize = 64,
-                isActive = { !cancelled },
-                openSource = source(payload),
-            ) as Outcome.Ok
+        val id =
+            (
+                vo.importObject(
+                    kind = 0,
+                    name = "holiday.jpg",
+                    mime = "image/jpeg",
+                    chunkSize = 64,
+                    isActive = { !cancelled },
+                    openSource = source(payload),
+                ) as Outcome.Ok
             ).value
 
         // The object was already written and its row is what makes the file the user's; a cancel
@@ -226,15 +236,16 @@ class VaultThumbnailTest {
         // would ever clean it up.
         val closedCatalog = (CatalogStore.create(testSqlDriver()) as Outcome.Ok).value.also { it.close() }
         val knownId = ByteArray(16) { 1 }
-        val vo = VaultObjects(
-            session,
-            storage,
-            closedCatalog,
-            codec,
-            clock = { 42L },
-            random = { n -> if (n == 16) knownId.copyOf() else ByteArray(n) { 2 } },
-            thumbnails = FakeThumbnailEncoder(FakeThumbnailEncoder.Mode.Encode),
-        )
+        val vo =
+            VaultObjects(
+                session,
+                storage,
+                closedCatalog,
+                codec,
+                clock = { 42L },
+                random = { n -> if (n == 16) knownId.copyOf() else ByteArray(n) { 2 } },
+                thumbnails = FakeThumbnailEncoder(FakeThumbnailEncoder.Mode.Encode),
+            )
 
         val result = vo.importObject(kind = 0, name = "holiday.jpg", mime = "image/jpeg", openSource = source(payload))
 
@@ -277,7 +288,14 @@ class VaultThumbnailTest {
         // Flip the final byte — the last chunk's GCM tag — and write the container back.
         val bytes = (storage.readThumbnail(id) { it.buffered().readByteArray() } as Outcome.Ok).value
         bytes[bytes.size - 1] = (bytes[bytes.size - 1].toInt() xor 0x01).toByte()
-        assertTrue(storage.writeThumbnail(id) { sink -> sink.buffered().apply { write(bytes); flush() } } is Outcome.Ok)
+        assertTrue(
+            storage.writeThumbnail(id) { sink ->
+                sink.buffered().apply {
+                    write(bytes)
+                    flush()
+                }
+            } is Outcome.Ok,
+        )
 
         val read = vo.openThumbnail(id)
 
@@ -330,7 +348,10 @@ class VaultThumbnailTest {
     }
 
     // The item is fully imported and simply has no preview: bytes readable, no blob, no key.
-    private fun assertNoThumbnail(vo: VaultObjects, id: ByteArray) {
+    private fun assertNoThumbnail(
+        vo: VaultObjects,
+        id: ByteArray,
+    ) {
         val out = Buffer()
         assertTrue(vo.openObject(id, out) is Outcome.Ok, "the file itself must still import")
         assertContentEquals(payload, out.readByteArray())

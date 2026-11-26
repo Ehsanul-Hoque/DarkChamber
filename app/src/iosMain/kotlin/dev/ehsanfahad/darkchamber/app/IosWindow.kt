@@ -20,9 +20,10 @@ import platform.UIKit.UIWindowScene
  */
 internal fun keyWindow(): UIWindow? {
     val scenes = UIApplication.sharedApplication.connectedScenes.filterIsInstance<UIWindowScene>()
-    val ordered = scenes.sortedBy { scene: UIScene ->
-        if (scene.activationState == UISceneActivationStateForegroundActive) 0 else 1
-    }
+    val ordered =
+        scenes.sortedBy { scene: UIScene ->
+            if (scene.activationState == UISceneActivationStateForegroundActive) 0 else 1
+        }
     val windows = ordered.flatMap { scene -> scene.windows.filterIsInstance<UIWindow>() }
 
     return windows.firstOrNull { it.isKeyWindow() }

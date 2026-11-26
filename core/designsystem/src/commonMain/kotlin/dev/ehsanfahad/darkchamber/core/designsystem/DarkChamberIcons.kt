@@ -29,71 +29,72 @@ import androidx.compose.ui.unit.dp
  * composable is the only thing that draws it.
  */
 internal val albumMarkVector: ImageVector by lazy {
-    ImageVector.Builder(
-        name = "AlbumMark",
-        defaultWidth = 24.dp,
-        defaultHeight = 24.dp,
-        viewportWidth = 24f,
-        viewportHeight = 24f,
-    ).apply {
-        @Suppress("CheckReturnValue")
-        path(
-            fill = SolidColor(Color.Black),
-            fillAlpha = 1f,
-            stroke = null,
-            strokeAlpha = 1f,
-            strokeLineWidth = 1f,
-            strokeLineCap = StrokeCap.Butt,
-            strokeLineJoin = StrokeJoin.Bevel,
-            strokeLineMiter = 1f,
-            pathFillType = PathFillType.NonZero,
-        ) {
-            moveTo(9f, 14f)
-            horizontalLineTo(19f)
-            lineTo(15.55f, 9.5f)
-            lineToRelative(-2.3f, 3f)
-            lineToRelative(-1.55f, -2f)
-            lineTo(9f, 14f)
-            close()
-            moveTo(8f, 18f)
-            quadTo(7.18f, 18f, 6.59f, 17.41f)
-            reflectiveQuadTo(6f, 16f)
-            verticalLineTo(4f)
-            quadTo(6f, 3.17f, 6.59f, 2.59f)
-            reflectiveQuadTo(8f, 2f)
-            horizontalLineTo(20f)
-            quadToRelative(0.83f, 0f, 1.41f, 0.59f)
-            reflectiveQuadTo(22f, 4f)
-            verticalLineTo(16f)
-            quadToRelative(0f, 0.82f, -0.59f, 1.41f)
-            reflectiveQuadTo(20f, 18f)
-            horizontalLineTo(8f)
-            close()
-            moveTo(8f, 16f)
-            horizontalLineTo(20f)
-            verticalLineTo(4f)
-            horizontalLineTo(8f)
-            verticalLineTo(16f)
-            close()
-            moveTo(4f, 22f)
-            quadTo(3.18f, 22f, 2.59f, 21.41f)
-            reflectiveQuadTo(2f, 20f)
-            verticalLineTo(6f)
-            horizontalLineTo(4f)
-            verticalLineTo(20f)
-            horizontalLineTo(18f)
-            verticalLineToRelative(2f)
-            horizontalLineTo(4f)
-            close()
-            // Kept exactly as supplied, degenerate though it is — a zero-width line fills nothing.
-            // This is a move, not a redraw: pruning path data would make the icon's appearance
-            // something this commit changed rather than something it carried across.
-            moveTo(8f, 4f)
-            verticalLineTo(16f)
-            verticalLineTo(4f)
-            close()
-        }
-    }.build()
+    ImageVector
+        .Builder(
+            name = "AlbumMark",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+        ).apply {
+            @Suppress("CheckReturnValue")
+            path(
+                fill = SolidColor(Color.Black),
+                fillAlpha = 1f,
+                stroke = null,
+                strokeAlpha = 1f,
+                strokeLineWidth = 1f,
+                strokeLineCap = StrokeCap.Butt,
+                strokeLineJoin = StrokeJoin.Bevel,
+                strokeLineMiter = 1f,
+                pathFillType = PathFillType.NonZero,
+            ) {
+                moveTo(9f, 14f)
+                horizontalLineTo(19f)
+                lineTo(15.55f, 9.5f)
+                lineToRelative(-2.3f, 3f)
+                lineToRelative(-1.55f, -2f)
+                lineTo(9f, 14f)
+                close()
+                moveTo(8f, 18f)
+                quadTo(7.18f, 18f, 6.59f, 17.41f)
+                reflectiveQuadTo(6f, 16f)
+                verticalLineTo(4f)
+                quadTo(6f, 3.17f, 6.59f, 2.59f)
+                reflectiveQuadTo(8f, 2f)
+                horizontalLineTo(20f)
+                quadToRelative(0.83f, 0f, 1.41f, 0.59f)
+                reflectiveQuadTo(22f, 4f)
+                verticalLineTo(16f)
+                quadToRelative(0f, 0.82f, -0.59f, 1.41f)
+                reflectiveQuadTo(20f, 18f)
+                horizontalLineTo(8f)
+                close()
+                moveTo(8f, 16f)
+                horizontalLineTo(20f)
+                verticalLineTo(4f)
+                horizontalLineTo(8f)
+                verticalLineTo(16f)
+                close()
+                moveTo(4f, 22f)
+                quadTo(3.18f, 22f, 2.59f, 21.41f)
+                reflectiveQuadTo(2f, 20f)
+                verticalLineTo(6f)
+                horizontalLineTo(4f)
+                verticalLineTo(20f)
+                horizontalLineTo(18f)
+                verticalLineToRelative(2f)
+                horizontalLineTo(4f)
+                close()
+                // Kept exactly as supplied, degenerate though it is — a zero-width line fills nothing.
+                // This is a move, not a redraw: pruning path data would make the icon's appearance
+                // something this commit changed rather than something it carried across.
+                moveTo(8f, 4f)
+                verticalLineTo(16f)
+                verticalLineTo(4f)
+                close()
+            }
+        }.build()
 }
 
 /**
@@ -132,40 +133,41 @@ fun AlbumMark(
  * re-weight or tint, and on a device it was barely visible. A drawing has a size of its own.
  */
 internal val disclosureCaretVector: ImageVector by lazy {
-    ImageVector.Builder(
-        name = "DisclosureCaret",
-        defaultWidth = 24.dp,
-        defaultHeight = 24.dp,
-        viewportWidth = 24f,
-        viewportHeight = 24f,
-    ).apply {
-        @Suppress("CheckReturnValue")
-        path(
-            fill = SolidColor(Color.Black),
-            fillAlpha = 1f,
-            stroke = null,
-            strokeAlpha = 1f,
-            strokeLineWidth = 1f,
-            strokeLineCap = StrokeCap.Butt,
-            strokeLineJoin = StrokeJoin.Bevel,
-            strokeLineMiter = 1f,
-            pathFillType = PathFillType.NonZero,
-        ) {
-            // Exactly as supplied, from the same icon set the album mark comes from (Material
-            // Symbols rounded — docs/DESIGN.md §9 asks for one set and never a mix). A filled
-            // outline rather than a stroked line, which is why shrinking it below 24 dp costs less
-            // here than it would for a stroke-drawn icon: the chevron's own thickness scales with it
-            // instead of a 2 dp stroke thinning to a hairline.
-            moveTo(12f, 15.4f)
-            lineTo(6f, 9.4f)
-            lineTo(7.4f, 8f)
-            lineTo(12f, 12.6f)
-            lineTo(16.6f, 8f)
-            lineTo(18f, 9.4f)
-            lineToRelative(-6f, 6f)
-            close()
-        }
-    }.build()
+    ImageVector
+        .Builder(
+            name = "DisclosureCaret",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+        ).apply {
+            @Suppress("CheckReturnValue")
+            path(
+                fill = SolidColor(Color.Black),
+                fillAlpha = 1f,
+                stroke = null,
+                strokeAlpha = 1f,
+                strokeLineWidth = 1f,
+                strokeLineCap = StrokeCap.Butt,
+                strokeLineJoin = StrokeJoin.Bevel,
+                strokeLineMiter = 1f,
+                pathFillType = PathFillType.NonZero,
+            ) {
+                // Exactly as supplied, from the same icon set the album mark comes from (Material
+                // Symbols rounded — docs/DESIGN.md §9 asks for one set and never a mix). A filled
+                // outline rather than a stroked line, which is why shrinking it below 24 dp costs less
+                // here than it would for a stroke-drawn icon: the chevron's own thickness scales with it
+                // instead of a 2 dp stroke thinning to a hairline.
+                moveTo(12f, 15.4f)
+                lineTo(6f, 9.4f)
+                lineTo(7.4f, 8f)
+                lineTo(12f, 12.6f)
+                lineTo(16.6f, 8f)
+                lineTo(18f, 9.4f)
+                lineToRelative(-6f, 6f)
+                close()
+            }
+        }.build()
 }
 
 /**
@@ -180,59 +182,60 @@ internal val disclosureCaretVector: ImageVector by lazy {
  * is for. A mark that says only "more" tells a screen reader nothing.
  */
 internal val moreActionsVector: ImageVector by lazy {
-    ImageVector.Builder(
-        name = "MoreActions",
-        defaultWidth = 24.dp,
-        defaultHeight = 24.dp,
-        viewportWidth = 24f,
-        viewportHeight = 24f,
-    ).apply {
-        @Suppress("CheckReturnValue")
-        path(
-            fill = SolidColor(Color.Black),
-            fillAlpha = 1f,
-            stroke = null,
-            strokeAlpha = 1f,
-            strokeLineWidth = 1f,
-            strokeLineCap = StrokeCap.Butt,
-            strokeLineJoin = StrokeJoin.Bevel,
-            strokeLineMiter = 1f,
-            pathFillType = PathFillType.NonZero,
-        ) {
-            // Three round dots, bottom to top, each a closed subpath of four arcs written as
-            // quadratics. Filled outlines again, so the shape holds at the size it is drawn.
-            moveTo(12f, 20f)
-            quadToRelative(-0.82f, 0f, -1.41f, -0.59f)
-            reflectiveQuadTo(10f, 18f)
-            reflectiveQuadToRelative(0.59f, -1.41f)
-            reflectiveQuadTo(12f, 16f)
-            reflectiveQuadToRelative(1.41f, 0.59f)
-            quadTo(14f, 17.18f, 14f, 18f)
-            reflectiveQuadToRelative(-0.59f, 1.41f)
-            reflectiveQuadTo(12f, 20f)
-            close()
-            moveToRelative(0f, -6f)
-            quadToRelative(-0.82f, 0f, -1.41f, -0.59f)
-            reflectiveQuadTo(10f, 12f)
-            reflectiveQuadToRelative(0.59f, -1.41f)
-            reflectiveQuadTo(12f, 10f)
-            reflectiveQuadToRelative(1.41f, 0.59f)
-            quadTo(14f, 11.18f, 14f, 12f)
-            reflectiveQuadToRelative(-0.59f, 1.41f)
-            reflectiveQuadTo(12f, 14f)
-            close()
-            moveTo(12f, 8f)
-            quadTo(11.18f, 8f, 10.59f, 7.41f)
-            reflectiveQuadTo(10f, 6f)
-            reflectiveQuadTo(10.59f, 4.59f)
-            reflectiveQuadTo(12f, 4f)
-            reflectiveQuadToRelative(1.41f, 0.59f)
-            quadTo(14f, 5.18f, 14f, 6f)
-            reflectiveQuadTo(13.41f, 7.41f)
-            reflectiveQuadTo(12f, 8f)
-            close()
-        }
-    }.build()
+    ImageVector
+        .Builder(
+            name = "MoreActions",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+        ).apply {
+            @Suppress("CheckReturnValue")
+            path(
+                fill = SolidColor(Color.Black),
+                fillAlpha = 1f,
+                stroke = null,
+                strokeAlpha = 1f,
+                strokeLineWidth = 1f,
+                strokeLineCap = StrokeCap.Butt,
+                strokeLineJoin = StrokeJoin.Bevel,
+                strokeLineMiter = 1f,
+                pathFillType = PathFillType.NonZero,
+            ) {
+                // Three round dots, bottom to top, each a closed subpath of four arcs written as
+                // quadratics. Filled outlines again, so the shape holds at the size it is drawn.
+                moveTo(12f, 20f)
+                quadToRelative(-0.82f, 0f, -1.41f, -0.59f)
+                reflectiveQuadTo(10f, 18f)
+                reflectiveQuadToRelative(0.59f, -1.41f)
+                reflectiveQuadTo(12f, 16f)
+                reflectiveQuadToRelative(1.41f, 0.59f)
+                quadTo(14f, 17.18f, 14f, 18f)
+                reflectiveQuadToRelative(-0.59f, 1.41f)
+                reflectiveQuadTo(12f, 20f)
+                close()
+                moveToRelative(0f, -6f)
+                quadToRelative(-0.82f, 0f, -1.41f, -0.59f)
+                reflectiveQuadTo(10f, 12f)
+                reflectiveQuadToRelative(0.59f, -1.41f)
+                reflectiveQuadTo(12f, 10f)
+                reflectiveQuadToRelative(1.41f, 0.59f)
+                quadTo(14f, 11.18f, 14f, 12f)
+                reflectiveQuadToRelative(-0.59f, 1.41f)
+                reflectiveQuadTo(12f, 14f)
+                close()
+                moveTo(12f, 8f)
+                quadTo(11.18f, 8f, 10.59f, 7.41f)
+                reflectiveQuadTo(10f, 6f)
+                reflectiveQuadTo(10.59f, 4.59f)
+                reflectiveQuadTo(12f, 4f)
+                reflectiveQuadToRelative(1.41f, 0.59f)
+                quadTo(14f, 5.18f, 14f, 6f)
+                reflectiveQuadTo(13.41f, 7.41f)
+                reflectiveQuadTo(12f, 8f)
+                close()
+            }
+        }.build()
 }
 
 /**

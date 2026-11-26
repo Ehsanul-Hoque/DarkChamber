@@ -52,14 +52,17 @@ class VaultBootstrapTest {
         val created = bootstrap().createVault(PASSPHRASE())
         assertTrue(created is Outcome.Ok, "create failed: $created")
         assertTrue(created.value.recoveryKey.isNotBlank(), "recovery key must be shown")
-        created.value.vault.session.close()
+        created.value.vault.session
+            .close()
         assertTrue(SystemFileSystem.exists(Path(Path(vaultBase, "keys"), "mk.wrapped")), "keystore not persisted")
     }
 
     @Test
     fun create_then_unlock_via_passphrase() {
         bootstrap().createVault(PASSPHRASE()).let {
-            assertTrue(it is Outcome.Ok, "create failed: $it"); it.value.vault.session.close()
+            assertTrue(it is Outcome.Ok, "create failed: $it")
+            it.value.vault.session
+                .close()
         }
         val reopened = bootstrap().unlock(PASSPHRASE())
         assertTrue(reopened is Outcome.Ok, "reopen failed: $reopened")
@@ -69,7 +72,9 @@ class VaultBootstrapTest {
     @Test
     fun unlock_rejects_a_wrong_passphrase() {
         bootstrap().createVault(PASSPHRASE()).let {
-            assertTrue(it is Outcome.Ok); it.value.vault.session.close()
+            assertTrue(it is Outcome.Ok)
+            it.value.vault.session
+                .close()
         }
         val wrong = bootstrap().unlock("not-the-passphrase".encodeToByteArray())
         assertTrue(wrong is Outcome.Err, "wrong passphrase should not unlock")
@@ -80,7 +85,9 @@ class VaultBootstrapTest {
     fun a_wrong_passphrase_does_not_open_the_catalog() {
         // Seed a vault with a real catalog.
         bootstrap().createVault(PASSPHRASE()).let {
-            assertTrue(it is Outcome.Ok); it.value.vault.session.close()
+            assertTrue(it is Outcome.Ok)
+            it.value.vault.session
+                .close()
         }
         // The catalog is opened only after the secret verifies — a wrong passphrase must reject
         // before this provider is ever invoked (else the driver would leak, one per attempt).
@@ -91,49 +98,56 @@ class VaultBootstrapTest {
     }
 
     @Test
-    fun create_enroll_then_unlock_with_biometric_approve() = runTest {
-        val created = bootstrap().createVault(PASSPHRASE())
-        assertTrue(created is Outcome.Ok)
-        val boot = bootstrap()
-        // enroll on a fresh boot over the same root (reads the persisted keystore)
-        val unlocked = boot.unlock(PASSPHRASE())
-        assertTrue(unlocked is Outcome.Ok)
-        assertTrue(boot.enrollBiometric(unlocked.value, approve()) is Outcome.Ok, "enroll failed")
-        unlocked.value.session.close()
+    fun create_enroll_then_unlock_with_biometric_approve() =
+        runTest {
+            val created = bootstrap().createVault(PASSPHRASE())
+            assertTrue(created is Outcome.Ok)
+            val boot = bootstrap()
+            // enroll on a fresh boot over the same root (reads the persisted keystore)
+            val unlocked = boot.unlock(PASSPHRASE())
+            assertTrue(unlocked is Outcome.Ok)
+            assertTrue(boot.enrollBiometric(unlocked.value, approve()) is Outcome.Ok, "enroll failed")
+            unlocked.value.session.close()
 
-        val viaBio = bootstrap().unlockWithBiometric(approve())
-        assertTrue(viaBio is Outcome.Ok, "biometric unlock failed: $viaBio")
-        viaBio.value.session.close()
-        created.value.vault.session.close()
-    }
-
-    @Test
-    fun unlock_with_biometric_denied_is_an_auth_error() = runTest {
-        val created = bootstrap().createVault(PASSPHRASE())
-        assertTrue(created is Outcome.Ok)
-        val boot = bootstrap()
-        val unlocked = boot.unlock(PASSPHRASE())
-        assertTrue(unlocked is Outcome.Ok)
-        assertTrue(boot.enrollBiometric(unlocked.value, approve()) is Outcome.Ok)
-        unlocked.value.session.close()
-
-        val deny = FakeBiometricAuthenticator(FakeBiometricAuthenticator.Mode.Deny)
-        val viaBio = bootstrap().unlockWithBiometric(deny)
-        assertTrue(viaBio is Outcome.Err, "a denied prompt must not unlock")
-        assertTrue(viaBio.error is VaultError.Auth, "a denied prompt is an Auth error")
-        created.value.vault.session.close()
-    }
-
-    @Test
-    fun unlock_with_biometric_without_enrollment_is_malformed() = runTest {
-        bootstrap().createVault(PASSPHRASE()).let {
-            assertTrue(it is Outcome.Ok); it.value.vault.session.close()
+            val viaBio = bootstrap().unlockWithBiometric(approve())
+            assertTrue(viaBio is Outcome.Ok, "biometric unlock failed: $viaBio")
+            viaBio.value.session.close()
+            created.value.vault.session
+                .close()
         }
-        // No hardware slot enrolled — the hardware path has nothing to open.
-        val viaBio = bootstrap().unlockWithBiometric(approve())
-        assertTrue(viaBio is Outcome.Err)
-        assertTrue(viaBio.error is VaultError.Crypto.MalformedContainer)
-    }
+
+    @Test
+    fun unlock_with_biometric_denied_is_an_auth_error() =
+        runTest {
+            val created = bootstrap().createVault(PASSPHRASE())
+            assertTrue(created is Outcome.Ok)
+            val boot = bootstrap()
+            val unlocked = boot.unlock(PASSPHRASE())
+            assertTrue(unlocked is Outcome.Ok)
+            assertTrue(boot.enrollBiometric(unlocked.value, approve()) is Outcome.Ok)
+            unlocked.value.session.close()
+
+            val deny = FakeBiometricAuthenticator(FakeBiometricAuthenticator.Mode.Deny)
+            val viaBio = bootstrap().unlockWithBiometric(deny)
+            assertTrue(viaBio is Outcome.Err, "a denied prompt must not unlock")
+            assertTrue(viaBio.error is VaultError.Auth, "a denied prompt is an Auth error")
+            created.value.vault.session
+                .close()
+        }
+
+    @Test
+    fun unlock_with_biometric_without_enrollment_is_malformed() =
+        runTest {
+            bootstrap().createVault(PASSPHRASE()).let {
+                assertTrue(it is Outcome.Ok)
+                it.value.vault.session
+                    .close()
+            }
+            // No hardware slot enrolled — the hardware path has nothing to open.
+            val viaBio = bootstrap().unlockWithBiometric(approve())
+            assertTrue(viaBio is Outcome.Err)
+            assertTrue(viaBio.error is VaultError.Crypto.MalformedContainer)
+        }
 
     @Test
     fun createVault_aborts_on_the_first_error_a_failing_catalog() {
@@ -143,7 +157,10 @@ class VaultBootstrapTest {
         assertTrue(outcome is Outcome.Err, "a failing catalog must abort the open")
         assertTrue(outcome.error is VaultError.Db)
         // Aborted before any keystore was written — no half-open vault.
-        assertTrue(!SystemFileSystem.exists(Path(Path(vaultBase, "keys"), "mk.wrapped")), "half-open vault left a keystore")
+        assertTrue(
+            !SystemFileSystem.exists(Path(Path(vaultBase, "keys"), "mk.wrapped")),
+            "half-open vault left a keystore",
+        )
     }
 
     /**
@@ -152,25 +169,28 @@ class VaultBootstrapTest {
      * docs/THREAT_MODEL.md promises only ciphertext on a locked or powered-off device.
      */
     @Test
-    fun a_cold_open_purges_leftover_plaintext_scratch() = runTest {
-        bootstrap().createVault(PASSPHRASE()).let {
-            assertTrue(it is Outcome.Ok); it.value.vault.session.close()
+    fun a_cold_open_purges_leftover_plaintext_scratch() =
+        runTest {
+            bootstrap().createVault(PASSPHRASE()).let {
+                assertTrue(it is Outcome.Ok)
+                it.value.vault.session
+                    .close()
+            }
+            // Stand in for a spill that outlived its import because the process was killed.
+            val orphan = Path(Path(vaultBase, "tmp"), "scratch-orphan")
+            SystemFileSystem.sink(orphan).buffered().use { it.writeString("plaintext that must not survive") }
+            assertTrue(SystemFileSystem.exists(orphan))
+
+            assertTrue(bootstrap().probe() is Outcome.Ok, "the lock-screen probe is the launch-time cold open")
+            assertTrue(!SystemFileSystem.exists(orphan), "scratch must not survive a cold open")
+
+            // And the same on the unlock path, which is a cold open too.
+            SystemFileSystem.sink(orphan).buffered().use { it.writeString("still must not survive") }
+            val reopened = bootstrap().unlock(PASSPHRASE())
+            assertTrue(reopened is Outcome.Ok, "reopen failed: $reopened")
+            reopened.value.session.close()
+            assertTrue(!SystemFileSystem.exists(orphan), "scratch must not survive an unlock")
         }
-        // Stand in for a spill that outlived its import because the process was killed.
-        val orphan = Path(Path(vaultBase, "tmp"), "scratch-orphan")
-        SystemFileSystem.sink(orphan).buffered().use { it.writeString("plaintext that must not survive") }
-        assertTrue(SystemFileSystem.exists(orphan))
-
-        assertTrue(bootstrap().probe() is Outcome.Ok, "the lock-screen probe is the launch-time cold open")
-        assertTrue(!SystemFileSystem.exists(orphan), "scratch must not survive a cold open")
-
-        // And the same on the unlock path, which is a cold open too.
-        SystemFileSystem.sink(orphan).buffered().use { it.writeString("still must not survive") }
-        val reopened = bootstrap().unlock(PASSPHRASE())
-        assertTrue(reopened is Outcome.Ok, "reopen failed: $reopened")
-        reopened.value.session.close()
-        assertTrue(!SystemFileSystem.exists(orphan), "scratch must not survive an unlock")
-    }
 
     private fun PASSPHRASE(): ByteArray = "correct-horse-battery".encodeToByteArray()
 

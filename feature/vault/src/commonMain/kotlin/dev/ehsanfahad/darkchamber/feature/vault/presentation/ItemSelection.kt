@@ -20,7 +20,6 @@ import kotlin.jvm.JvmInline
  * gallery owns rather than a navigation child.
  */
 internal class ItemSelection {
-
     private val _state = MutableValue(SelectionState())
     val state: Value<SelectionState> = _state
 
@@ -126,7 +125,9 @@ internal data class SelectionState(
  * anything, and the conversion is easy to forget at one call site out of six.
  */
 @JvmInline
-internal value class ItemKey(private val bytes: List<Byte>) {
+internal value class ItemKey(
+    private val bytes: List<Byte>,
+) {
     fun toByteArray(): ByteArray = bytes.toByteArray()
 }
 

@@ -6,7 +6,10 @@ package dev.ehsanfahad.darkchamber.feature.vault.domain
  */
 internal sealed interface ViewerPosition {
     /** Equal by the id's content and the index: the pager scrolls by index, so a moved item is a change. */
-    class Showing(val id: ByteArray, val index: Int) : ViewerPosition {
+    class Showing(
+        val id: ByteArray,
+        val index: Int,
+    ) : ViewerPosition {
         override fun equals(other: Any?): Boolean =
             other is Showing && other.index == index && other.id.contentEquals(id)
 
@@ -35,7 +38,10 @@ internal fun ViewerPosition.Showing.following(listing: List<ByteArray>): ViewerP
  * The first page: the item that was tapped. If it is already gone by the first listing (shredded in
  * between), the viewer closes — opening on a neighbour would show something nobody asked for.
  */
-internal fun startPosition(startId: ByteArray, listing: List<ByteArray>): ViewerPosition {
+internal fun startPosition(
+    startId: ByteArray,
+    listing: List<ByteArray>,
+): ViewerPosition {
     val index = listing.indexOfFirst { it.contentEquals(startId) }
     return if (index < 0) ViewerPosition.Close else ViewerPosition.Showing(listing[index], index)
 }

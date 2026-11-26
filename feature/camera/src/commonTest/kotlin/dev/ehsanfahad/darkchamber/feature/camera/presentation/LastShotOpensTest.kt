@@ -37,9 +37,19 @@ class LastShotOpensTest {
         capabilities = CameraCapabilities(setOf(Lens.Back), true, 1f, 8f, setOf(VideoQuality.HD)),
         queue = CaptureQueueState(holding = capturing, bound = 3, capturing = capturing),
         mode = if (recording) CaptureMode.Video else CaptureMode.Photo,
-        recorder = RecorderState(
-            active = if (recording) ActiveRecording(1_000, true, MutableStateFlow(RecordingProgress.Zero)) else null,
-        ),
+        recorder =
+            RecorderState(
+                active =
+                    if (recording) {
+                        ActiveRecording(
+                            1_000,
+                            true,
+                            MutableStateFlow(RecordingProgress.Zero),
+                        )
+                    } else {
+                        null
+                    },
+            ),
         lane = VideoLaneState(busy = laneBusy),
         lastShot = if (hasShot) LastShot(byteArrayOf(7), CaptureMode.Photo) else null,
     )

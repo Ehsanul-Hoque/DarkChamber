@@ -8,5 +8,4 @@ import platform.posix.getenv
 // variable (set it in the Xcode test scheme, or `DCHM_STREAM_BYTES=2147483648` for the 2 GiB opt-in
 // run on the simulator). Absent → the default volume.
 @OptIn(ExperimentalForeignApi::class)
-actual fun streamTestBytes(): Long =
-    getenv("DCHM_STREAM_BYTES")?.toKString()?.toLongOrNull() ?: DEFAULT_STREAM_BYTES
+actual fun streamTestBytes(): Long = getenv("DCHM_STREAM_BYTES")?.toKString()?.toLongOrNull() ?: DEFAULT_STREAM_BYTES

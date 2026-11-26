@@ -17,35 +17,40 @@ import kotlin.test.assertTrue
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class PhotoImportTest {
-
     private fun queue(vault: FakeVaultItems) =
         ImportQueue(ImportFile(vault = vault, ioContext = UnconfinedTestDispatcher()))
 
     @Test
-    fun photos_import_through_the_same_queue_as_files() = runTest {
-        val vault = FakeVaultItems()
-        val picker = FakePhotoPicker(
-            listOf(FakePickedFile(name = "IMG_0001.HEIC", mime = "image/heic"), FakePickedFile(name = "IMG_0002.HEIC")),
-        )
+    fun photos_import_through_the_same_queue_as_files() =
+        runTest {
+            val vault = FakeVaultItems()
+            val picker =
+                FakePhotoPicker(
+                    listOf(
+                        FakePickedFile(name = "IMG_0001.HEIC", mime = "image/heic"),
+                        FakePickedFile(name = "IMG_0002.HEIC"),
+                    ),
+                )
 
-        val summary = queue(vault)(picker.pickPhotos())
+            val summary = queue(vault)(picker.pickPhotos())
 
-        assertEquals(2, summary.imported)
-        assertEquals(listOf("IMG_0001.HEIC", "IMG_0002.HEIC"), vault.importedNames)
-        assertEquals(1, picker.calls)
-    }
+            assertEquals(2, summary.imported)
+            assertEquals(listOf("IMG_0001.HEIC", "IMG_0002.HEIC"), vault.importedNames)
+            assertEquals(1, picker.calls)
+        }
 
     @Test
-    fun an_empty_photo_pick_is_a_cancel_and_imports_nothing() = runTest {
-        val vault = FakeVaultItems()
-        val picker = FakePhotoPicker(emptyList())
+    fun an_empty_photo_pick_is_a_cancel_and_imports_nothing() =
+        runTest {
+            val vault = FakeVaultItems()
+            val picker = FakePhotoPicker(emptyList())
 
-        val summary = queue(vault)(picker.pickPhotos())
+            val summary = queue(vault)(picker.pickPhotos())
 
-        assertEquals(0, summary.imported)
-        assertEquals(emptyList(), summary.failed)
-        assertEquals(0, vault.importCalls)
-    }
+            assertEquals(0, summary.imported)
+            assertEquals(emptyList(), summary.failed)
+            assertEquals(0, vault.importCalls)
+        }
 
     /**
      * A photo the platform will not size is the everyday case, not the exception: a picked library
@@ -53,15 +58,16 @@ class PhotoImportTest {
      * fraction rather than be refused or given an invented total (hard rule #6).
      */
     @Test
-    fun a_photo_with_no_size_imports_with_no_fraction() = runTest {
-        val vault = FakeVaultItems(bytesPerImport = listOf(3L, 6L))
-        val picker = FakePhotoPicker(listOf(FakePickedFile(name = "IMG_0003.HEIC", size = null)))
-        val seen = mutableListOf<ImportProgress>()
+    fun a_photo_with_no_size_imports_with_no_fraction() =
+        runTest {
+            val vault = FakeVaultItems(bytesPerImport = listOf(3L, 6L))
+            val picker = FakePhotoPicker(listOf(FakePickedFile(name = "IMG_0003.HEIC", size = null)))
+            val seen = mutableListOf<ImportProgress>()
 
-        val summary = queue(vault)(picker.pickPhotos()) { seen += it }
+            val summary = queue(vault)(picker.pickPhotos()) { seen += it }
 
-        assertEquals(1, summary.imported)
-        assertTrue(seen.isNotEmpty(), "the file is still announced")
-        assertTrue(seen.all { it.fileFraction == null }, "no fraction without a size, got $seen")
-    }
+            assertEquals(1, summary.imported)
+            assertTrue(seen.isNotEmpty(), "the file is still announced")
+            assertTrue(seen.all { it.fileFraction == null }, "no fraction without a size, got $seen")
+        }
 }

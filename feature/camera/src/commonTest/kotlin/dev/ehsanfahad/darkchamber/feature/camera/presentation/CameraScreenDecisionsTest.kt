@@ -16,8 +16,10 @@ import kotlin.test.assertEquals
  * layout because no UI test can see inside one.
  */
 class CameraScreenDecisionsTest {
-
-    private fun state(permission: CameraPermission, availability: CameraAvailability) = CameraState(
+    private fun state(
+        permission: CameraPermission,
+        availability: CameraAvailability,
+    ) = CameraState(
         destination = null,
         permission = permission,
         availability = availability,

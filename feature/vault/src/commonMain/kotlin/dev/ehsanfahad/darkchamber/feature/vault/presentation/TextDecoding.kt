@@ -2,7 +2,6 @@ package dev.ehsanfahad.darkchamber.feature.vault.presentation
 
 /** A verified file's bytes, read as text — or found not to be text. */
 internal sealed interface DecodedText {
-
     /**
      * The whole text, and where each line starts and ends within it, line endings excluded.
      *
@@ -10,7 +9,10 @@ internal sealed interface DecodedText {
      * would otherwise cost far more as objects than its own size, and a screen draws only the lines
      * in view, cutting each out when it is drawn.
      */
-    class Text internal constructor(private val text: String, private val bounds: IntArray) : DecodedText {
+    class Text internal constructor(
+        private val text: String,
+        private val bounds: IntArray,
+    ) : DecodedText {
         val lineCount: Int get() = bounds.size / 2
 
         /** The whole text, line endings and all — what a formatter reads. */
@@ -35,7 +37,6 @@ internal sealed interface DecodedText {
 }
 
 internal object TextDecoding {
-
     /**
      * Reads [bytes] as UTF-16 when they start with its byte-order mark (either order), else as UTF-8
      * (a leading byte-order mark read and dropped). Anything not exactly valid is
@@ -44,12 +45,16 @@ internal object TextDecoding {
      * its zero bytes read as binary. Text of more than [maxLines] lines is [DecodedText.TooManyLines].
      * The caller still owns [bytes] and zeroes them; this never keeps them.
      */
-    fun decode(bytes: ByteArray, maxLines: Int = TEXT_MAX_LINES): DecodedText {
-        val text = when {
-            startsWith(bytes, UTF16_LE_BOM) -> utf16(bytes, littleEndian = true)
-            startsWith(bytes, UTF16_BE_BOM) -> utf16(bytes, littleEndian = false)
-            else -> utf8(bytes)
-        } ?: return DecodedText.NotText
+    fun decode(
+        bytes: ByteArray,
+        maxLines: Int = TEXT_MAX_LINES,
+    ): DecodedText {
+        val text =
+            when {
+                startsWith(bytes, UTF16_LE_BOM) -> utf16(bytes, littleEndian = true)
+                startsWith(bytes, UTF16_BE_BOM) -> utf16(bytes, littleEndian = false)
+                else -> utf8(bytes)
+            } ?: return DecodedText.NotText
         // Valid in every encoding read here, yet no text file holds one; binary files are full of them.
         if (text.indexOf(NUL) >= 0) return DecodedText.NotText
         return pageLines(text, maxLines) ?: DecodedText.TooManyLines
@@ -62,7 +67,10 @@ internal object TextDecoding {
      * [text] made for a whole page — re-indented JSON — split into lines as a decoded file is, or `null`
      * when it has more than [maxLines]: counted before any line is indexed.
      */
-    fun pageLines(text: String, maxLines: Int = TEXT_MAX_LINES): DecodedText.Text? {
+    fun pageLines(
+        text: String,
+        maxLines: Int = TEXT_MAX_LINES,
+    ): DecodedText.Text? {
         val count = countLines(text)
         return if (count > maxLines) null else DecodedText.Text(text, lineBounds(text, count))
     }
@@ -74,7 +82,10 @@ internal object TextDecoding {
      * a file from any platform reads the same. A final ending closes the last line rather than
      * opening an empty one. Counted first ([count]), then filled, so nothing is boxed or copied.
      */
-    private fun lineBounds(text: String, count: Int): IntArray {
+    private fun lineBounds(
+        text: String,
+        count: Int,
+    ): IntArray {
         val bounds = IntArray(2 * count)
         forEachLine(text) { index, start, end ->
             bounds[2 * index] = start
@@ -84,7 +95,10 @@ internal object TextDecoding {
     }
 
     /** Calls [line] for each line in order; answers how many there were. */
-    private inline fun forEachLine(text: String, line: (index: Int, start: Int, end: Int) -> Unit): Int {
+    private inline fun forEachLine(
+        text: String,
+        line: (index: Int, start: Int, end: Int) -> Unit,
+    ): Int {
         var count = 0
         var start = 0
         var i = 0
@@ -115,7 +129,10 @@ internal object TextDecoding {
      * The code units after the two-byte mark, or `null` for an odd byte count or a surrogate without
      * its partner. The scratch array holds the text too, so it is zeroed once the string is made.
      */
-    private fun utf16(bytes: ByteArray, littleEndian: Boolean): String? {
+    private fun utf16(
+        bytes: ByteArray,
+        littleEndian: Boolean,
+    ): String? {
         val body = bytes.size - 2
         if (body % 2 != 0) return null
         val units = CharArray(body / 2)
@@ -133,8 +150,14 @@ internal object TextDecoding {
                         if (i + 1 >= units.size || !units[i + 1].isLowSurrogate()) return null
                         i += 2
                     }
-                    c.isLowSurrogate() -> return null
-                    else -> i += 1
+
+                    c.isLowSurrogate() -> {
+                        return null
+                    }
+
+                    else -> {
+                        i += 1
+                    }
                 }
             }
             return units.concatToString()
@@ -143,8 +166,10 @@ internal object TextDecoding {
         }
     }
 
-    private fun startsWith(bytes: ByteArray, prefix: ByteArray): Boolean =
-        bytes.size >= prefix.size && prefix.indices.all { bytes[it] == prefix[it] }
+    private fun startsWith(
+        bytes: ByteArray,
+        prefix: ByteArray,
+    ): Boolean = bytes.size >= prefix.size && prefix.indices.all { bytes[it] == prefix[it] }
 
     private val NUL = Char(0)
     private const val LF = '\n'

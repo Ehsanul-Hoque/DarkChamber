@@ -11,6 +11,8 @@ import dev.ehsanfahad.darkchamber.feature.camera.api.FreeSpace
  *
  * `null` when the platform cannot say, which refuses to record rather than guess.
  */
-internal class AndroidFreeSpace(private val context: Context) : FreeSpace {
+internal class AndroidFreeSpace(
+    private val context: Context,
+) : FreeSpace {
     override fun availableBytes(): Long? = runCatching { StatFs(context.filesDir.path).availableBytes }.getOrNull()
 }

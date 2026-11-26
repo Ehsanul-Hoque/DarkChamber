@@ -11,7 +11,6 @@ import kotlin.test.assertTrue
  * the next unlock. Counts per kind and reason — nothing else exists in it to keep.
  */
 class NotSavedRecordTest {
-
     @Test
     fun starts_empty() {
         assertTrue(NotSavedRecord().summary.value.isEmpty())

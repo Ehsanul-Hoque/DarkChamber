@@ -15,11 +15,16 @@ import kotlinx.io.RawSource
  */
 internal fun reopenableSource(bytes: ByteArray): () -> RawSource = { ArraySource(bytes) }
 
-private class ArraySource(private val bytes: ByteArray) : RawSource {
+private class ArraySource(
+    private val bytes: ByteArray,
+) : RawSource {
     private var position = 0
     private var closed = false
 
-    override fun readAtMostTo(sink: Buffer, byteCount: Long): Long {
+    override fun readAtMostTo(
+        sink: Buffer,
+        byteCount: Long,
+    ): Long {
         check(!closed) { "source is closed" }
         require(byteCount >= 0) { "byteCount < 0: $byteCount" }
         if (position == bytes.size) return -1L

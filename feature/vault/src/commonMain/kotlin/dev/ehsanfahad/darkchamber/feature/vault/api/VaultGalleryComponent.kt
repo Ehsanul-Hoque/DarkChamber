@@ -279,7 +279,6 @@ data class GalleryState(
  * the redaction sits on the type that carries the text rather than on everything holding it.
  */
 sealed interface GallerySearch {
-
     /** No field, no filter. The state a listing opens in and returns to. */
     data object Closed : GallerySearch
 
@@ -343,7 +342,6 @@ enum class GalleryScope {
  * album that is not there.
  */
 sealed interface AlbumState {
-
     /**
      * It is there. [rename] and [delete] are the two things that can be in progress on it, and they
      * are separate rather than one "current action" because neither can start while the other is
@@ -374,7 +372,6 @@ sealed interface AlbumState {
  * shows exactly one of these at a time, and a bag of flags would let it show two.
  */
 sealed interface Filing {
-
     /**
      * The chooser is open. [albums] is every album the items could go to — **never the one they are
      * already in**, since moving them there is nothing.
@@ -420,7 +417,10 @@ enum class FilingDestination {
  * Deliberately not [AlbumTile] — a chooser row has no cover and no count to draw, and handing it one
  * would invite a tile's worth of decoration onto a list that is answering a question.
  */
-class AlbumChoice(val id: ByteArray, val name: AlbumTileName) {
+class AlbumChoice(
+    val id: ByteArray,
+    val name: AlbumTileName,
+) {
     // Content equality, because [id] is a ByteArray and the generated one would compare it by identity:
     // a chooser list rebuilt from an unchanged catalog would otherwise look like a change.
     override fun equals(other: Any?): Boolean {
@@ -557,7 +557,10 @@ class GalleryItem(
  */
 sealed interface GalleryItemMeta {
     /** The metadata opened and verified. */
-    data class Readable(val name: String, val mime: String) : GalleryItemMeta {
+    data class Readable(
+        val name: String,
+        val mime: String,
+    ) : GalleryItemMeta {
         // Redacted like [GalleryItem]'s: these two fields are decrypted vault content, so the
         // generated data-class toString would print a file name into any log line that renders
         // this value (hard rule #4).
@@ -598,14 +601,20 @@ enum class GalleryError {
  */
 sealed interface SelectionDelete {
     /** The confirmation is open, for [count] items. */
-    data class Asking(val count: Int) : SelectionDelete
+    data class Asking(
+        val count: Int,
+    ) : SelectionDelete
 
     /** Confirmed and under way; it cannot be called back. */
-    data class Deleting(val count: Int) : SelectionDelete
+    data class Deleting(
+        val count: Int,
+    ) : SelectionDelete
 
     /**
      * Done. [count] is how many were actually deleted — an item already gone by the time the write ran
      * is skipped, and reporting the request as the result would claim a delete that did not happen.
      */
-    data class Deleted(val count: Long) : SelectionDelete
+    data class Deleted(
+        val count: Long,
+    ) : SelectionDelete
 }

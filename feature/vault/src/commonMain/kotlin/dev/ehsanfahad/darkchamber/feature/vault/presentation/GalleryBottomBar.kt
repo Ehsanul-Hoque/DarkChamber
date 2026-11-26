@@ -42,17 +42,28 @@ internal fun GalleryState.bottomBar(): GalleryBottomBar {
     val filing = filing
     val deletion = deletion
     return when {
-        filing is Filing.Moving || filing is Filing.Moved -> GalleryBottomBar.FilingReport
+        filing is Filing.Moving || filing is Filing.Moved -> {
+            GalleryBottomBar.FilingReport
+        }
+
         // Ahead of the selection bar for the move's reason: the selection it came from has nothing
         // left to say while it runs, and is gone once it is done. Asking is a dialog over the bar.
-        deletion is SelectionDelete.Deleting || deletion is SelectionDelete.Deleted -> GalleryBottomBar.DeleteReport
-        selection.active -> GalleryBottomBar.Selection
-        else -> when (batch) {
-            is ImportState.Running -> GalleryBottomBar.Progress
-            ImportState.Picking -> GalleryBottomBar.Picking
-            is ImportState.Finished -> GalleryBottomBar.Summary
-            ImportState.PickerUnavailable -> GalleryBottomBar.PickerUnavailable
-            ImportState.Idle -> GalleryBottomBar.Actions
+        deletion is SelectionDelete.Deleting || deletion is SelectionDelete.Deleted -> {
+            GalleryBottomBar.DeleteReport
+        }
+
+        selection.active -> {
+            GalleryBottomBar.Selection
+        }
+
+        else -> {
+            when (batch) {
+                is ImportState.Running -> GalleryBottomBar.Progress
+                ImportState.Picking -> GalleryBottomBar.Picking
+                is ImportState.Finished -> GalleryBottomBar.Summary
+                ImportState.PickerUnavailable -> GalleryBottomBar.PickerUnavailable
+                ImportState.Idle -> GalleryBottomBar.Actions
+            }
         }
     }
 }

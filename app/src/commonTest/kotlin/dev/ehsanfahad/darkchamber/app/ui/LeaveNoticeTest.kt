@@ -13,7 +13,6 @@ import kotlin.test.assertTrue
  * natural, wrong thing to write there (hard rule 6).
  */
 class LeaveNoticeTest {
-
     @Test
     fun it_says_what_the_next_press_does() {
         val text = leaveNoticeText()

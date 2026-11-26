@@ -25,7 +25,6 @@ import kotlin.time.Duration.Companion.seconds
  * later rewrite cannot quietly bring one in.
  */
 class CameraFormatTest {
-
     private val unreadable = "Can't be verified" // what the host hands in; the camera never spells it
 
     @Test
@@ -38,7 +37,10 @@ class CameraFormatTest {
     /** The damaged-name sentence is the one the rest of the app uses, handed in — never a second copy. */
     @Test
     fun an_album_whose_name_will_not_open_reads_as_the_hosts_label() {
-        assertEquals("anything the host says", CameraFormat.title(DestinationTitle.UnreadableAlbum, "anything the host says"))
+        assertEquals(
+            "anything the host says",
+            CameraFormat.title(DestinationTitle.UnreadableAlbum, "anything the host says"),
+        )
     }
 
     /** Nothing is known to name: no title rather than a guess. */
@@ -131,23 +133,45 @@ class CameraFormatTest {
 
     @Test
     fun the_status_says_how_long_how_much_recorded_and_how_much_is_left_of_this_clip() {
-        val status = CameraFormat.recordingStatus(RecordingProgress(1_200_000_000, 2.minutes + 14.seconds), limitBytes = 4_600_000_000)
+        val status =
+            CameraFormat.recordingStatus(
+                RecordingProgress(1_200_000_000, 2.minutes + 14.seconds),
+                limitBytes = 4_600_000_000,
+            )
         assertEquals("02:14 · 1.2 GB recorded · 3.4 GB left", status)
     }
 
     /** "Left" counts down from the limit fixed at start, never the disk's free space, and stops at zero. */
     @Test
     fun the_status_left_is_measured_against_the_limit_and_reaches_zero_at_it() {
-        assertEquals("00:01 · 5 MB recorded · 0 MB left", CameraFormat.recordingStatus(RecordingProgress(5_000_000, 1.seconds), limitBytes = 5_000_000))
-        assertEquals("00:01 · 6 MB recorded · 0 MB left", CameraFormat.recordingStatus(RecordingProgress(6_000_000, 1.seconds), limitBytes = 5_000_000))
+        assertEquals(
+            "00:01 · 5 MB recorded · 0 MB left",
+            CameraFormat.recordingStatus(RecordingProgress(5_000_000, 1.seconds), limitBytes = 5_000_000),
+        )
+        assertEquals(
+            "00:01 · 6 MB recorded · 0 MB left",
+            CameraFormat.recordingStatus(RecordingProgress(6_000_000, 1.seconds), limitBytes = 5_000_000),
+        )
     }
 
     /** Bytes recorded are labelled as recorded: never as the vault's size or the disk's use. */
     @Test
     fun the_status_never_calls_its_numbers_vault_or_disk_usage() {
         for (bytes in listOf(0L, 999_999L, 5_000_000_000L)) {
-            val status = CameraFormat.recordingStatus(RecordingProgress(bytes, 3.minutes), limitBytes = 6_000_000_000).lowercase()
-            for (word in listOf("used", "vault", "free", "storage")) assertFalse(word in status, "\"$status\" says \"$word\"")
+            val status =
+                CameraFormat
+                    .recordingStatus(
+                        RecordingProgress(bytes, 3.minutes),
+                        limitBytes = 6_000_000_000,
+                    ).lowercase()
+            for (word in listOf(
+                "used",
+                "vault",
+                "free",
+                "storage",
+            )) {
+                assertFalse(word in status, "\"$status\" says \"$word\"")
+            }
         }
     }
 
@@ -169,7 +193,10 @@ class CameraFormatTest {
     fun the_recording_notices_say_what_happened() {
         assertEquals("Not enough space to record.", CameraFormat.recorderNotice(RecorderNotice.NotEnoughSpace))
         assertEquals("Too short to save.", CameraFormat.recorderNotice(RecorderNotice.TooShort))
-        assertEquals("Recording stopped — not enough space for a longer clip.", CameraFormat.recorderNotice(RecorderNotice.StoppedAtLimit))
+        assertEquals(
+            "Recording stopped — not enough space for a longer clip.",
+            CameraFormat.recorderNotice(RecorderNotice.StoppedAtLimit),
+        )
         assertEquals("Couldn't record that video.", CameraFormat.recorderNotice(RecorderNotice.RecordingFailed))
     }
 
@@ -234,9 +261,18 @@ class CameraFormatTest {
      */
     @Test
     fun no_line_makes_a_claim_the_code_cannot_keep() {
-        val forbidden = listOf(
-            "silent", "never leave", "never stored", "unencrypted", "wiped", "erased", "cleared", "tamper", "corrupt",
-        )
+        val forbidden =
+            listOf(
+                "silent",
+                "never leave",
+                "never stored",
+                "unencrypted",
+                "wiped",
+                "erased",
+                "cleared",
+                "tamper",
+                "corrupt",
+            )
         for (line in everyLine() + spaceLines()) {
             for (word in forbidden) {
                 assertFalse(word in line.lowercase(), "\"$line\" says \"$word\"")
@@ -263,23 +299,25 @@ class CameraFormatTest {
             RecorderNotice.entries.map { CameraNotice.Recording(it) } +
             VideoNotice.entries.map { CameraNotice.Saving(it) }
 
-    private val spaceNotices: Set<CameraNotice> = setOf(
-        CameraNotice.Photo(CameraMessage.OutOfSpace),
-        CameraNotice.Saving(VideoNotice.OutOfSpace),
-        CameraNotice.Recording(RecorderNotice.NotEnoughSpace),
-        CameraNotice.Recording(RecorderNotice.SpaceUnknown),
-        CameraNotice.Recording(RecorderNotice.StoppedAtLimit),
-    )
+    private val spaceNotices: Set<CameraNotice> =
+        setOf(
+            CameraNotice.Photo(CameraMessage.OutOfSpace),
+            CameraNotice.Saving(VideoNotice.OutOfSpace),
+            CameraNotice.Recording(RecorderNotice.NotEnoughSpace),
+            CameraNotice.Recording(RecorderNotice.SpaceUnknown),
+            CameraNotice.Recording(RecorderNotice.StoppedAtLimit),
+        )
 
     /** The notice line says exactly what each source's own line says — one wording per event. */
     @Test
     fun the_notice_line_uses_each_sources_own_words() {
         for (notice in allNotices) {
-            val expected = when (notice) {
-                is CameraNotice.Photo -> CameraFormat.message(notice.message)
-                is CameraNotice.Recording -> CameraFormat.recorderNotice(notice.notice)
-                is CameraNotice.Saving -> CameraFormat.videoNotice(notice.notice)
-            }
+            val expected =
+                when (notice) {
+                    is CameraNotice.Photo -> CameraFormat.message(notice.message)
+                    is CameraNotice.Recording -> CameraFormat.recorderNotice(notice.notice)
+                    is CameraNotice.Saving -> CameraFormat.videoNotice(notice.notice)
+                }
             assertEquals(expected, CameraFormat.notice(notice))
         }
     }
@@ -294,42 +332,64 @@ class CameraFormatTest {
     }
 
     // The lines that may name space, each for a cause the code knows.
-    private fun spaceLines(): List<String> = listOf(
-        CameraFormat.message(CameraMessage.OutOfSpace),
-        CameraFormat.videoNotice(VideoNotice.OutOfSpace),
-        CameraFormat.recorderNotice(RecorderNotice.NotEnoughSpace),
-        CameraFormat.recorderNotice(RecorderNotice.SpaceUnknown),
-        CameraFormat.recorderNotice(RecorderNotice.StoppedAtLimit),
-    )
+    private fun spaceLines(): List<String> =
+        listOf(
+            CameraFormat.message(CameraMessage.OutOfSpace),
+            CameraFormat.videoNotice(VideoNotice.OutOfSpace),
+            CameraFormat.recorderNotice(RecorderNotice.NotEnoughSpace),
+            CameraFormat.recorderNotice(RecorderNotice.SpaceUnknown),
+            CameraFormat.recorderNotice(RecorderNotice.StoppedAtLimit),
+        )
 
-    private fun everyLine(): List<String> = buildList {
-        for (title in listOf(DestinationTitle.AllItems, DestinationTitle.Unfiled, DestinationTitle.UnreadableAlbum)) {
-            add(CameraFormat.title(title, unreadable)!!)
-        }
-        for (n in listOf(0L, 1L, 5L)) add(CameraFormat.count(n)!!)
-        (CameraMessage.entries - CameraMessage.OutOfSpace).forEach { add(CameraFormat.message(it)) }
-        CameraExplainer.entries.mapNotNull { CameraFormat.explainer(it) }.forEach { add(it.text); it.action?.let(::add) }
-        FlashMode.entries.forEach { add(CameraFormat.flashDescription(it)) }
-        for (kind in ShutterKind.entries) {
-            for (enabled in listOf(true, false)) {
-                for (waiting in listOf(true, false)) add(CameraFormat.shutterDescription(Shutter(kind, enabled, waiting)))
+    private fun everyLine(): List<String> =
+        buildList {
+            for (title in listOf(
+                DestinationTitle.AllItems,
+                DestinationTitle.Unfiled,
+                DestinationTitle.UnreadableAlbum,
+            )) {
+                add(CameraFormat.title(title, unreadable)!!)
             }
+            for (n in listOf(0L, 1L, 5L)) add(CameraFormat.count(n)!!)
+            (CameraMessage.entries - CameraMessage.OutOfSpace).forEach { add(CameraFormat.message(it)) }
+            CameraExplainer.entries.mapNotNull { CameraFormat.explainer(it) }.forEach {
+                add(it.text)
+                it.action?.let(::add)
+            }
+            FlashMode.entries.forEach { add(CameraFormat.flashDescription(it)) }
+            for (kind in ShutterKind.entries) {
+                for (enabled in listOf(true, false)) {
+                    for (waiting in listOf(
+                        true,
+                        false,
+                    )) {
+                        add(CameraFormat.shutterDescription(Shutter(kind, enabled, waiting)))
+                    }
+                }
+            }
+            add(CameraFormat.recordingStatus(RecordingProgress(1_234_567_890, 65.minutes), limitBytes = 9_000_000_000))
+            MicrophoneHint.entries.mapNotNull { CameraFormat.microphoneHint(it) }.forEach {
+                add(it.text)
+                it.action?.let(::add)
+            }
+            (
+                RecorderNotice.entries -
+                    setOf(RecorderNotice.NotEnoughSpace, RecorderNotice.SpaceUnknown, RecorderNotice.StoppedAtLimit)
+            ).forEach { add(CameraFormat.recorderNotice(it)) }
+            (VideoNotice.entries - VideoNotice.OutOfSpace).forEach { add(CameraFormat.videoNotice(it)) }
+            listOf(true, false).forEach { add(CameraFormat.torchDescription(it)) }
+            VideoQuality.entries.forEach {
+                add(CameraFormat.qualityLabel(it))
+                add(CameraFormat.qualityDescription(it))
+            }
+            CaptureMode.entries.forEach { add(CameraFormat.modeLabel(it)) }
+            add(CameraFormat.noSoundDescription())
+            listOf(true, false).forEach { add(CameraFormat.soundDescription(MicrophoneToggle(it))) }
+            add(CameraFormat.flipDescription())
+            add(CameraFormat.closeDescription())
+            CaptureMode.entries.forEach { add(CameraFormat.lastShotDescription(LastShot(byteArrayOf(1), it))) }
+            add(CameraFormat.lastShotDescription(null))
+            listOf(null, 0.5f).forEach { add(CameraFormat.savingDescription(it)) }
+            (allNotices - spaceNotices).forEach { add(CameraFormat.notice(it)) }
         }
-        add(CameraFormat.recordingStatus(RecordingProgress(1_234_567_890, 65.minutes), limitBytes = 9_000_000_000))
-        MicrophoneHint.entries.mapNotNull { CameraFormat.microphoneHint(it) }.forEach { add(it.text); it.action?.let(::add) }
-        (RecorderNotice.entries - setOf(RecorderNotice.NotEnoughSpace, RecorderNotice.SpaceUnknown, RecorderNotice.StoppedAtLimit))
-            .forEach { add(CameraFormat.recorderNotice(it)) }
-        (VideoNotice.entries - VideoNotice.OutOfSpace).forEach { add(CameraFormat.videoNotice(it)) }
-        listOf(true, false).forEach { add(CameraFormat.torchDescription(it)) }
-        VideoQuality.entries.forEach { add(CameraFormat.qualityLabel(it)); add(CameraFormat.qualityDescription(it)) }
-        CaptureMode.entries.forEach { add(CameraFormat.modeLabel(it)) }
-        add(CameraFormat.noSoundDescription())
-        listOf(true, false).forEach { add(CameraFormat.soundDescription(MicrophoneToggle(it))) }
-        add(CameraFormat.flipDescription())
-        add(CameraFormat.closeDescription())
-        CaptureMode.entries.forEach { add(CameraFormat.lastShotDescription(LastShot(byteArrayOf(1), it))) }
-        add(CameraFormat.lastShotDescription(null))
-        listOf(null, 0.5f).forEach { add(CameraFormat.savingDescription(it)) }
-        (allNotices - spaceNotices).forEach { add(CameraFormat.notice(it)) }
-    }
 }

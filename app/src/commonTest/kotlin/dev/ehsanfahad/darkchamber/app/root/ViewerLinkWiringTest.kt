@@ -61,21 +61,26 @@ class ViewerLinkWiringTest {
     @AfterTest
     fun cleanup() = deleteRecursively(testDir)
 
-    private val opener = object : LinkOpener {
-        override suspend fun open(address: String): LinkOpened {
-            handed += address
-            return answer
+    private val opener =
+        object : LinkOpener {
+            override suspend fun open(address: String): LinkOpened {
+                handed += address
+                return answer
+            }
         }
-    }
 
-    private fun graph(withOpener: Boolean): Module = module {
-        single<CryptoEngine> { engine }
-        single<FilePicker> { FakeFilePicker() }
-        single<PhotoPicker> { FakePhotoPicker() }
-        if (withOpener) single<LinkOpener> { opener }
-    }
+    private fun graph(withOpener: Boolean): Module =
+        module {
+            single<CryptoEngine> { engine }
+            single<FilePicker> { FakeFilePicker() }
+            single<PhotoPicker> { FakePhotoPicker() }
+            if (withOpener) single<LinkOpener> { opener }
+        }
 
-    private fun TestScope.component(open: VaultBootstrap.OpenVault, withOpener: Boolean = true): DefaultUnlockedComponent {
+    private fun TestScope.component(
+        open: VaultBootstrap.OpenVault,
+        withOpener: Boolean = true,
+    ): DefaultUnlockedComponent {
         val dispatcher = UnconfinedTestDispatcher(testScheduler)
         return DefaultUnlockedComponent(
             componentContext = DefaultComponentContext(lifecycle = lifecycle, backHandler = BackDispatcher()),
@@ -99,13 +104,17 @@ class ViewerLinkWiringTest {
         get() = assertIs<UnlockedChild.Viewer>(stack.value.active.instance).component
 
     /** The viewer open on a Markdown file, as a link is tapped from one. */
-    private fun TestScope.viewerOnMarkdown(open: VaultBootstrap.OpenVault, withOpener: Boolean = true): Pair<DefaultUnlockedComponent, VaultViewerComponent> {
-        val imported = vaultObjects(open).importObject(
-            kind = VaultItemKind.FILE.code,
-            name = "notes.md",
-            mime = "text/markdown",
-            openSource = { Buffer().apply { write("[site](https://example.com)\n".encodeToByteArray()) } },
-        )
+    private fun TestScope.viewerOnMarkdown(
+        open: VaultBootstrap.OpenVault,
+        withOpener: Boolean = true,
+    ): Pair<DefaultUnlockedComponent, VaultViewerComponent> {
+        val imported =
+            vaultObjects(open).importObject(
+                kind = VaultItemKind.FILE.code,
+                name = "notes.md",
+                mime = "text/markdown",
+                openSource = { Buffer().apply { write("[site](https://example.com)\n".encodeToByteArray()) } },
+            )
         val component = component(open, withOpener)
         component.gallery.tapItem((imported as Outcome.Ok).value.copyOf())
         component.viewer.viewportMeasured(1_000, 2_000)
@@ -113,43 +122,46 @@ class ViewerLinkWiringTest {
     }
 
     @Test
-    fun a_link_the_browser_took_locks_the_real_session() = runTest {
-        val open = openVault()
-        val (_, viewer) = viewerOnMarkdown(open)
+    fun a_link_the_browser_took_locks_the_real_session() =
+        runTest {
+            val open = openVault()
+            val (_, viewer) = viewerOnMarkdown(open)
 
-        viewer.openLink("https://example.com")
+            viewer.openLink("https://example.com")
 
-        assertEquals(listOf("https://example.com"), handed, "the graph's opener had it")
-        assertEquals(1, gateTold, "the gate was told, once")
-        assertFalse(open.session.isOpen, "the key is gone: it was the subtree's own lock")
-    }
-
-    @Test
-    fun a_link_nothing_took_leaves_the_session_open() = runTest {
-        answer = LinkOpened.NotOpened
-        val open = openVault()
-        val (_, viewer) = viewerOnMarkdown(open)
-
-        viewer.openLink("https://example.com")
-
-        assertEquals(listOf("https://example.com"), handed, "the graph's opener was asked")
-        assertEquals(0, gateTold)
-        assertTrue(open.session.isOpen)
-        assertEquals(ViewerNotice.LinkNotOpened, viewer.state.value.notice)
-    }
+            assertEquals(listOf("https://example.com"), handed, "the graph's opener had it")
+            assertEquals(1, gateTold, "the gate was told, once")
+            assertFalse(open.session.isOpen, "the key is gone: it was the subtree's own lock")
+        }
 
     @Test
-    fun without_an_opener_in_the_graph_no_link_opens_and_nothing_locks() = runTest {
-        val open = openVault()
-        val (_, viewer) = viewerOnMarkdown(open, withOpener = false)
+    fun a_link_nothing_took_leaves_the_session_open() =
+        runTest {
+            answer = LinkOpened.NotOpened
+            val open = openVault()
+            val (_, viewer) = viewerOnMarkdown(open)
 
-        viewer.openLink("https://example.com")
+            viewer.openLink("https://example.com")
 
-        assertEquals(emptyList(), handed)
-        assertEquals(0, gateTold)
-        assertTrue(open.session.isOpen)
-        assertEquals(ViewerNotice.LinkNotOpened, viewer.state.value.notice)
-    }
+            assertEquals(listOf("https://example.com"), handed, "the graph's opener was asked")
+            assertEquals(0, gateTold)
+            assertTrue(open.session.isOpen)
+            assertEquals(ViewerNotice.LinkNotOpened, viewer.state.value.notice)
+        }
+
+    @Test
+    fun without_an_opener_in_the_graph_no_link_opens_and_nothing_locks() =
+        runTest {
+            val open = openVault()
+            val (_, viewer) = viewerOnMarkdown(open, withOpener = false)
+
+            viewer.openLink("https://example.com")
+
+            assertEquals(emptyList(), handed)
+            assertEquals(0, gateTold)
+            assertTrue(open.session.isOpen)
+            assertEquals(ViewerNotice.LinkNotOpened, viewer.state.value.notice)
+        }
 
     // ---- the vault -------------------------------------------------------------------------------
 
@@ -165,10 +177,23 @@ class ViewerLinkWiringTest {
 
     private fun TestScope.openVault(): VaultBootstrap.OpenVault {
         val cheap = PassphraseKdfProfile.Argon2id(memoryKib = 256, iterations = 1, parallelism = 1)
-        val session = VaultSession.createVault(engine, DefaultKeyDerivation(engine), "pw".encodeToByteArray(), cheap).session
+        val session =
+            VaultSession
+                .createVault(
+                    engine,
+                    DefaultKeyDerivation(engine),
+                    "pw".encodeToByteArray(),
+                    cheap,
+                ).session
         val root = Path(testDir, "vault-${Random.nextULong()}")
         SystemFileSystem.createDirectories(Path(root, "tmp"))
-        val catalog = (CatalogStore.create(testSqlDriver(), UnconfinedTestDispatcher(testScheduler)) as Outcome.Ok).value
+        val catalog =
+            (
+                CatalogStore.create(
+                    testSqlDriver(),
+                    UnconfinedTestDispatcher(testScheduler),
+                ) as Outcome.Ok
+            ).value
         return VaultBootstrap.OpenVault(session, VaultStorage(root), catalog)
     }
 

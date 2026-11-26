@@ -18,22 +18,22 @@ class AndroidFilePicker(
     private val activity: () -> FragmentActivity?,
     private val handoff: SystemUiHandoff,
 ) : FilePicker {
-
     override suspend fun pickFiles(): List<PickedFile> {
         val host = activity() ?: error("no activity to present the picker from")
 
         // SAF is a separate activity, so launching it *stops* ours. Without this the on-background
         // auto-lock tears the session down mid-pick and the result arrives with nothing to receive
         // it. The exemption covers the round-trip only, and is released on every path.
-        val uris = handoff.during {
-            // OpenMultipleDocuments delivers an empty list on cancel, which is exactly the seam's
-            // "the user backed out" — no separate null case to carry.
-            host.awaitActivityResult(
-                keyPrefix = "darkchamber-import",
-                contract = ActivityResultContracts.OpenMultipleDocuments(),
-                input = arrayOf(ANY_TYPE),
-            )
-        }
+        val uris =
+            handoff.during {
+                // OpenMultipleDocuments delivers an empty list on cancel, which is exactly the seam's
+                // "the user backed out" — no separate null case to carry.
+                host.awaitActivityResult(
+                    keyPrefix = "darkchamber-import",
+                    contract = ActivityResultContracts.OpenMultipleDocuments(),
+                    input = arrayOf(ANY_TYPE),
+                )
+            }
 
         // document = true: OpenMultipleDocuments is ACTION_OPEN_DOCUMENT, so these are document
         // URIs. It is what lets a provider that supports deletion offer to remove the original.

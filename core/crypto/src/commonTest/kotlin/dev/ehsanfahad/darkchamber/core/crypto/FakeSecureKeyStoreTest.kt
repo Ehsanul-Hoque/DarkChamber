@@ -23,59 +23,65 @@ class FakeSecureKeyStoreTest {
     private val approve = FakeBiometricAuthenticator(FakeBiometricAuthenticator.Mode.Approve)
     private val mk = ByteArray(MK_SIZE) { it.toByte() }
 
-    private suspend fun wrap(): ByteArray =
-        (sks.wrap(mk, approve) as Outcome.Ok).value
+    private suspend fun wrap(): ByteArray = (sks.wrap(mk, approve) as Outcome.Ok).value
 
     @Test
-    fun wrap_then_unwrap_recovers_the_master_key() = runTest {
-        val blob = wrap()
-        assertContentEquals(mk, sks.unwrap(blob, approve).getOrNull())
-    }
+    fun wrap_then_unwrap_recovers_the_master_key() =
+        runTest {
+            val blob = wrap()
+            assertContentEquals(mk, sks.unwrap(blob, approve).getOrNull())
+        }
 
     @Test
-    fun each_wrap_uses_a_fresh_nonce_so_blobs_differ() = runTest {
-        assertFalse(wrap().contentEquals(wrap()))
-    }
+    fun each_wrap_uses_a_fresh_nonce_so_blobs_differ() =
+        runTest {
+            assertFalse(wrap().contentEquals(wrap()))
+        }
 
     @Test
-    fun a_tampered_blob_fails_with_integrity_failure() = runTest {
-        val blob = wrap().also { it[it.size - 1] = (it[it.size - 1].toInt() xor 0x01).toByte() }
-        assertEquals(Outcome.Err(VaultError.Crypto.IntegrityFailure), sks.unwrap(blob, approve))
-    }
+    fun a_tampered_blob_fails_with_integrity_failure() =
+        runTest {
+            val blob = wrap().also { it[it.size - 1] = (it[it.size - 1].toInt() xor 0x01).toByte() }
+            assertEquals(Outcome.Err(VaultError.Crypto.IntegrityFailure), sks.unwrap(blob, approve))
+        }
 
     @Test
-    fun delete_makes_a_subsequent_unwrap_fail_with_integrity_failure() = runTest {
-        val blob = wrap()
-        sks.deleteHardwareKey()
-        assertEquals(Outcome.Err(VaultError.Crypto.IntegrityFailure), sks.unwrap(blob, approve))
-    }
+    fun delete_makes_a_subsequent_unwrap_fail_with_integrity_failure() =
+        runTest {
+            val blob = wrap()
+            sks.deleteHardwareKey()
+            assertEquals(Outcome.Err(VaultError.Crypto.IntegrityFailure), sks.unwrap(blob, approve))
+        }
 
     @Test
-    fun delete_is_idempotent() = runTest {
-        sks.deleteHardwareKey()
-        sks.deleteHardwareKey() // second delete must not throw
-        // a fresh wrap still round-trips (delete left the store in a usable state)
-        assertContentEquals(mk, sks.unwrap(wrap(), approve).getOrNull())
-    }
+    fun delete_is_idempotent() =
+        runTest {
+            sks.deleteHardwareKey()
+            sks.deleteHardwareKey() // second delete must not throw
+            // a fresh wrap still round-trips (delete left the store in a usable state)
+            assertContentEquals(mk, sks.unwrap(wrap(), approve).getOrNull())
+        }
 
     @Test
-    fun re_wrap_after_delete_uses_a_new_key_and_still_round_trips() = runTest {
-        val old = wrap()
-        sks.deleteHardwareKey()
-        val fresh = wrap()
-        // the old blob no longer opens under the regenerated key...
-        assertEquals(Outcome.Err(VaultError.Crypto.IntegrityFailure), sks.unwrap(old, approve))
-        // ...but the fresh one does.
-        assertContentEquals(mk, sks.unwrap(fresh, approve).getOrNull())
-    }
+    fun re_wrap_after_delete_uses_a_new_key_and_still_round_trips() =
+        runTest {
+            val old = wrap()
+            sks.deleteHardwareKey()
+            val fresh = wrap()
+            // the old blob no longer opens under the regenerated key...
+            assertEquals(Outcome.Err(VaultError.Crypto.IntegrityFailure), sks.unwrap(old, approve))
+            // ...but the fresh one does.
+            assertContentEquals(mk, sks.unwrap(fresh, approve).getOrNull())
+        }
 
     @Test
-    fun a_cancelled_prompt_propagates_auth_cancelled() = runTest {
-        val deny = FakeBiometricAuthenticator(FakeBiometricAuthenticator.Mode.Deny)
-        assertEquals(Outcome.Err(VaultError.Auth.Cancelled), sks.wrap(mk, deny))
-        val blob = wrap()
-        assertEquals(Outcome.Err(VaultError.Auth.Cancelled), sks.unwrap(blob, deny))
-    }
+    fun a_cancelled_prompt_propagates_auth_cancelled() =
+        runTest {
+            val deny = FakeBiometricAuthenticator(FakeBiometricAuthenticator.Mode.Deny)
+            assertEquals(Outcome.Err(VaultError.Auth.Cancelled), sks.wrap(mk, deny))
+            val blob = wrap()
+            assertEquals(Outcome.Err(VaultError.Auth.Cancelled), sks.unwrap(blob, deny))
+        }
 
     @Test
     fun is_available_reflects_the_constructor_flag() {

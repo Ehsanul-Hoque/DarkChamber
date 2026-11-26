@@ -47,8 +47,7 @@ class CatalogStore private constructor(
         }
 
     /** The item with [id], or `null` if absent. */
-    fun getItem(id: ByteArray): Outcome<Items?> =
-        catchingDb { items.selectItemById(id).executeAsOneOrNull() }
+    fun getItem(id: ByteArray): Outcome<Items?> = catchingDb { items.selectItemById(id).executeAsOneOrNull() }
 
     /** The items [filter] covers, ordered by `created_at`. */
     fun listItems(filter: ItemFilter = ItemFilter.All): Outcome<List<Items>> =
@@ -82,7 +81,10 @@ class CatalogStore private constructor(
      * apart from a clean run: fewer rows than ids means some of them are no longer in the catalog.
      * The count comes from the driver, so asking for it costs nothing.
      */
-    fun updateItemAlbum(ids: List<ByteArray>, albumId: ByteArray?): Outcome<Long> =
+    fun updateItemAlbum(
+        ids: List<ByteArray>,
+        albumId: ByteArray?,
+    ): Outcome<Long> =
         if (ids.isEmpty()) {
             Outcome.Ok(0L)
         } else {
@@ -115,8 +117,7 @@ class CatalogStore private constructor(
      * one and quietly rewrites `=` to `IS`, which would make `null` mean "unfile the already
      * unfiled" rather than the error it is.
      */
-    fun clearAlbumOnItems(albumId: ByteArray): Outcome<Unit> =
-        catchingDb { items.clearAlbumOnItems(albumId) }
+    fun clearAlbumOnItems(albumId: ByteArray): Outcome<Unit> = catchingDb { items.clearAlbumOnItems(albumId) }
 
     /**
      * Remove the item with [id]. Idempotent — an absent id is `Ok`, never a throw.
@@ -125,7 +126,10 @@ class CatalogStore private constructor(
      * [forgetDeletedPages] so the key's bytes are gone from the files as well as from the table.
      */
     fun deleteItem(id: ByteArray): Outcome<Unit> =
-        catchingDb { items.deleteItemById(id); Unit }.afterCommit()
+        catchingDb {
+            items.deleteItemById(id)
+            Unit
+        }.afterCommit()
 
     /**
      * Once a delete has committed, clear the log — and answer with the delete's outcome whatever the
@@ -163,8 +167,7 @@ class CatalogStore private constructor(
         }
 
     /** Number of item rows. */
-    fun countItems(): Outcome<Long> =
-        catchingDb { items.countItems().executeAsOne() }
+    fun countItems(): Outcome<Long> = catchingDb { items.countItems().executeAsOne() }
 
     /**
      * A reactive list of the items [filter] covers, ordered by `created_at`, re-emitting on every
@@ -224,12 +227,10 @@ class CatalogStore private constructor(
         }
 
     /** The album with [id], or `null` if absent. */
-    fun getAlbum(id: ByteArray): Outcome<Albums?> =
-        catchingDb { albums.selectAlbumById(id).executeAsOneOrNull() }
+    fun getAlbum(id: ByteArray): Outcome<Albums?> = catchingDb { albums.selectAlbumById(id).executeAsOneOrNull() }
 
     /** All albums, ordered by `created_at`. */
-    fun listAlbums(): Outcome<List<Albums>> =
-        catchingDb { albums.selectAllAlbums().executeAsList() }
+    fun listAlbums(): Outcome<List<Albums>> = catchingDb { albums.selectAllAlbums().executeAsList() }
 
     /**
      * Live album listing: every album with its item count and the id of the item that represents it.
@@ -247,13 +248,13 @@ class CatalogStore private constructor(
      * return, so the collector maps failures.
      */
     fun observeAlbums(): Flow<List<SelectAlbumsWithCounts>> =
-        albums.selectAlbumsWithCounts()
+        albums
+            .selectAlbumsWithCounts()
             .asFlow()
             .mapToList(dispatcher)
 
     /** Remove the album with [id]. Idempotent — an absent id is `Ok`, never a throw. */
-    fun deleteAlbum(id: ByteArray): Outcome<Unit> =
-        catchingDb { albums.deleteAlbumById(id) }
+    fun deleteAlbum(id: ByteArray): Outcome<Unit> = catchingDb { albums.deleteAlbumById(id) }
 
     private val audit get() = db.audit_logQueries
 
@@ -268,16 +269,14 @@ class CatalogStore private constructor(
         }
 
     /** The most-recent [limit] audit entries, ordered by `timestamp` descending. */
-    fun listAudit(limit: Long): Outcome<List<Audit_log>> =
-        catchingDb { audit.selectRecentAudit(limit).executeAsList() }
+    fun listAudit(limit: Long): Outcome<List<Audit_log>> = catchingDb { audit.selectRecentAudit(limit).executeAsList() }
 
     /**
      * Close the underlying [SqlDriver], releasing its DB connection/handle. Called by the session
      * teardown on lock (the session scope owns the catalog's lifetime). Idempotent-ish: a
      * driver failure maps to [VaultError.Db]; after close the store must not be used again.
      */
-    fun close(): Outcome<Unit> =
-        catchingDb { driver.close() }
+    fun close(): Outcome<Unit> = catchingDb { driver.close() }
 
     companion object {
         /**
@@ -300,14 +299,19 @@ class CatalogStore private constructor(
                         schema.create(driver).value
                         driver.setUserVersion(schema.version)
                     }
+
                     schema.version -> {
                         // Already open at this schema — nothing to do.
                     }
+
                     in 1 until schema.version -> {
                         schema.migrate(driver, current, schema.version).value
                         driver.setUserVersion(schema.version)
                     }
-                    else -> error("catalog user_version=$current newer than supported ${schema.version}")
+
+                    else -> {
+                        error("catalog user_version=$current newer than supported ${schema.version}")
+                    }
                 }
                 Outcome.Ok(CatalogStore(driver, darkChamberDatabase(driver), dispatcher))
             } catch (e: Exception) {

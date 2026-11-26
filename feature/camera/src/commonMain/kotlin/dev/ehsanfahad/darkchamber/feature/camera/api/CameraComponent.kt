@@ -17,7 +17,6 @@ import kotlinx.coroutines.flow.StateFlow
  * other module can implement it.
  */
 abstract class CameraComponent internal constructor() {
-
     /** Where this camera's photos go — the listing it was opened from. Fixed for its lifetime. */
     abstract val destination: CameraDestination
 
@@ -67,7 +66,10 @@ abstract class CameraComponent internal constructor() {
     abstract fun zoomTo(ratio: Float)
 
     /** Focus at a point of the viewfinder, as fractions of its width and height. */
-    abstract fun focusAt(x: Float, y: Float)
+    abstract fun focusAt(
+        x: Float,
+        y: Float,
+    )
 
     /** Ask for the camera permission again — the explainer's "Allow". */
     abstract fun requestPermission()

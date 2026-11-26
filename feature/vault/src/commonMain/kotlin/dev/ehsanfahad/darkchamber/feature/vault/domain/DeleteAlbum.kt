@@ -24,6 +24,5 @@ internal class DeleteAlbum(
     private val vault: VaultItems,
     private val ioContext: CoroutineContext = Dispatchers.Default,
 ) {
-    suspend operator fun invoke(id: ByteArray): Outcome<Unit> =
-        withContext(ioContext) { vault.deleteAlbum(id) }
+    suspend operator fun invoke(id: ByteArray): Outcome<Unit> = withContext(ioContext) { vault.deleteAlbum(id) }
 }

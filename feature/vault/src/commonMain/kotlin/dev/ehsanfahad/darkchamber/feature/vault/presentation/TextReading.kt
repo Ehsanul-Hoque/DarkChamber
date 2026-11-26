@@ -19,7 +19,10 @@ internal enum class TextFont {
  * little early; without it one long line — a minified JSON file is a single line of up to 8 MiB — is
  * one item taller than a layout may be, and the app stops.
  */
-internal class TextRows internal constructor(private val text: DecodedText.Text, private val packed: IntArray) {
+internal class TextRows internal constructor(
+    private val text: DecodedText.Text,
+    private val packed: IntArray,
+) {
     val count: Int get() = packed.size / 3
 
     /** The stored line row [index] belongs to, counted from 0. */
@@ -38,7 +41,10 @@ internal class TextRows internal constructor(private val text: DecodedText.Text,
 /** What a text page draws. */
 internal sealed interface TextView {
     /** One wrapped line per item: the file's lines as stored, or — [indented] — the JSON re-indented. */
-    data class Lines(val indented: Boolean, val font: TextFont) : TextView
+    data class Lines(
+        val indented: Boolean,
+        val font: TextFont,
+    ) : TextView
 
     /** A Markdown file drawn as blocks. */
     data object Markdown : TextView
@@ -55,26 +61,54 @@ internal object TextReading {
      * JSON file [canFormat] shows its formatted view while [formatted] is chosen, and otherwise its
      * lines as written in monospace — the plain view is for seeing the file's own characters.
      */
-    fun view(kind: TextKind, canFormat: Boolean, formatted: Boolean): TextView {
+    fun view(
+        kind: TextKind,
+        canFormat: Boolean,
+        formatted: Boolean,
+    ): TextView {
         val asFormatted = formatted && hasSwitch(kind, canFormat)
         return when (kind) {
-            TextKind.Plain -> TextView.Lines(indented = false, font = TextFont.Reading)
-            TextKind.Code -> TextView.Lines(indented = false, font = TextFont.Mono)
-            TextKind.Markdown -> if (asFormatted) TextView.Markdown else TextView.Lines(indented = false, font = TextFont.Mono)
-            TextKind.Json -> TextView.Lines(indented = asFormatted, font = TextFont.Mono)
+            TextKind.Plain -> {
+                TextView.Lines(indented = false, font = TextFont.Reading)
+            }
+
+            TextKind.Code -> {
+                TextView.Lines(indented = false, font = TextFont.Mono)
+            }
+
+            TextKind.Markdown -> {
+                if (asFormatted) {
+                    TextView.Markdown
+                } else {
+                    TextView.Lines(
+                        indented = false,
+                        font = TextFont.Mono,
+                    )
+                }
+            }
+
+            TextKind.Json -> {
+                TextView.Lines(indented = asFormatted, font = TextFont.Mono)
+            }
         }
     }
 
     /** Whether the Formatted / Plain switch shows: only on a Markdown or JSON file that has a formatted view. */
-    fun hasSwitch(kind: TextKind, canFormat: Boolean): Boolean =
-        canFormat && (kind == TextKind.Markdown || kind == TextKind.Json)
+    fun hasSwitch(
+        kind: TextKind,
+        canFormat: Boolean,
+    ): Boolean = canFormat && (kind == TextKind.Markdown || kind == TextKind.Json)
 
     /**
      * Whether the thumb is had now: the column's height is estimated from the rows laid out so far
      * ([RowHeights]), so whether it is long enough ([worthNow]) can change as more are seen — once shown
      * the thumb stays for the page, and while it is dragged it never goes.
      */
-    fun keepsThumb(shownBefore: Boolean, worthNow: Boolean, dragging: Boolean): Boolean = shownBefore || worthNow || dragging
+    fun keepsThumb(
+        shownBefore: Boolean,
+        worthNow: Boolean,
+        dragging: Boolean,
+    ): Boolean = shownBefore || worthNow || dragging
 
     /**
      * Whether a column is worth a thumb now. Formatted Markdown ([whenScrolls]) has one as soon as it can
@@ -82,8 +116,12 @@ internal object TextReading {
      * screens only late; the other pages, whose height is known before drawing, past five screens
      * ([FastScroll.worthIt]).
      */
-    fun worthAThumb(whenScrolls: Boolean, canScroll: Boolean, contentHeight: Int, viewportHeight: Int): Boolean =
-        if (whenScrolls) canScroll else FastScroll.worthIt(contentHeight, viewportHeight)
+    fun worthAThumb(
+        whenScrolls: Boolean,
+        canScroll: Boolean,
+        contentHeight: Int,
+        viewportHeight: Int,
+    ): Boolean = if (whenScrolls) canScroll else FastScroll.worthIt(contentHeight, viewportHeight)
 
     /**
      * Whether a drag to [fraction] is the whole way down, which goes to the very end of the column — the
@@ -101,7 +139,10 @@ internal object TextReading {
      * plane. Every character is in exactly one row, in order. Counted first, then filled, so the rows
      * of a file of millions of lines are one array of exactly their size, never grown or copied.
      */
-    fun rows(text: DecodedText.Text, maxChars: Int = ROW_MAX_CHARS): TextRows {
+    fun rows(
+        text: DecodedText.Text,
+        maxChars: Int = ROW_MAX_CHARS,
+    ): TextRows {
         // Room for a whole character outside the basic plane, so every cut moves forward.
         require(maxChars >= 2)
         val packed = IntArray(3 * forEachRow(text, maxChars) { _, _, _, _ -> })
@@ -114,7 +155,11 @@ internal object TextReading {
     }
 
     /** Calls [row] for each row of [text] in order; answers how many there were. */
-    private inline fun forEachRow(text: DecodedText.Text, maxChars: Int, row: (index: Int, line: Int, start: Int, end: Int) -> Unit): Int {
+    private inline fun forEachRow(
+        text: DecodedText.Text,
+        maxChars: Int,
+        row: (index: Int, line: Int, start: Int, end: Int) -> Unit,
+    ): Int {
         var count = 0
         for (line in 0 until text.lineCount) {
             var start = text.start(line)
@@ -133,7 +178,11 @@ internal object TextReading {
      * Where a row of [whole] from [start] with room for [maxChars] ends, when more than that remains:
      * after a late space, or at the room's end. Shared with the Markdown page's long blocks.
      */
-    fun cutAt(whole: String, start: Int, maxChars: Int): Int {
+    fun cutAt(
+        whole: String,
+        start: Int,
+        maxChars: Int,
+    ): Int {
         val limit = start + maxChars
         // Only the last quarter is looked at: a search further back would read a minified file's one
         // long line again for every row cut from it.
@@ -149,15 +198,23 @@ internal object TextReading {
      * page continues the text-line spacing, and a cut piece's inner side continues its block, so the
      * lines either side of it sit as far apart as two wrapped lines.
      */
-    fun trim(first: Boolean, last: Boolean): LineHeightStyle.Trim = when {
-        first && last -> LineHeightStyle.Trim.Both
-        first -> LineHeightStyle.Trim.FirstLineTop
-        last -> LineHeightStyle.Trim.LastLineBottom
-        else -> LineHeightStyle.Trim.None
-    }
+    fun trim(
+        first: Boolean,
+        last: Boolean,
+    ): LineHeightStyle.Trim =
+        when {
+            first && last -> LineHeightStyle.Trim.Both
+            first -> LineHeightStyle.Trim.FirstLineTop
+            last -> LineHeightStyle.Trim.LastLineBottom
+            else -> LineHeightStyle.Trim.None
+        }
 
     /** [style] trimmed as [trim] says, nothing else changed. */
-    fun spaced(style: TextStyle, first: Boolean, last: Boolean): TextStyle =
+    fun spaced(
+        style: TextStyle,
+        first: Boolean,
+        last: Boolean,
+    ): TextStyle =
         style.copy(lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Proportional, trim(first, last)))
 
     /** What a screen reader says for a line: nothing for a blank one, which it then passes over. */

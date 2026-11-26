@@ -12,7 +12,6 @@ import kotlin.test.assertFailsWith
  * their preludes, and the totals below equal those containers' real lengths (229, 289 and 220 bytes).
  */
 class ChunkLayoutTest {
-
     @Test
     fun single_chunk_vector_is_one_short_chunk_straight_after_the_header() {
         // 11 bytes at chunk size 16, header_len 186: 16 + 186 = 202, then 11 + 16 = 27 → 229.

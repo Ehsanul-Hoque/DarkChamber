@@ -46,6 +46,7 @@ import platform.Security.errSecInteractionNotAllowed
 import platform.Security.errSecItemNotFound
 import platform.Security.errSecParam
 import platform.Security.errSecSuccess
+import platform.Security.kSecAccessControlBiometryCurrentSet
 import platform.Security.kSecAttrAccessControl
 import platform.Security.kSecAttrAccessibleWhenUnlockedThisDeviceOnly
 import platform.Security.kSecAttrAccount
@@ -57,7 +58,6 @@ import platform.Security.kSecMatchLimitOne
 import platform.Security.kSecReturnData
 import platform.Security.kSecUseAuthenticationContext
 import platform.Security.kSecValueData
-import platform.Security.kSecAccessControlBiometryCurrentSet
 
 /**
  * iOS [SecureKeyStore] actual: stores the MasterKey as a **Keychain** generic-password item gated by
@@ -91,35 +91,41 @@ class IosSecureKeyStore(
 ) : SecureKeyStore {
     override fun isAvailable(): Boolean = true
 
-    override suspend fun wrap(mk: ByteArray, authenticator: BiometricAuthenticator): Outcome<ByteArray> =
+    override suspend fun wrap(
+        mk: ByteArray,
+        authenticator: BiometricAuthenticator,
+    ): Outcome<ByteArray> =
         authenticator.authenticate(AUTH_REQUEST).flatMap { auth ->
             val authContext = auth.handle as? LAContext
             deleteHardwareKey() // clear any prior item so SecItemAdd cannot fail with errSecDuplicateItem
-            val status = memScoped {
-                val serviceRef = cfString(service)
-                val accountRef = cfString(account)
-                val dataRef = cfData(mk)
-                val access = createBiometricAccess()
-                    ?: return@memScoped errSecParam // fail closed: no biometric access control
-                val ctxRef = authContext?.let { CFBridgingRetain(it) }
-                val entries = buildList<Pair<CFStringRef?, COpaquePointer?>> {
-                    add(kSecClass to kSecClassGenericPassword)
-                    add(kSecAttrService to serviceRef)
-                    add(kSecAttrAccount to accountRef)
-                    add(kSecAttrAccessControl to access)
-                    add(kSecValueData to dataRef)
-                    if (ctxRef != null) add(kSecUseAuthenticationContext to ctxRef)
+            val status =
+                memScoped {
+                    val serviceRef = cfString(service)
+                    val accountRef = cfString(account)
+                    val dataRef = cfData(mk)
+                    val access =
+                        createBiometricAccess()
+                            ?: return@memScoped errSecParam // fail closed: no biometric access control
+                    val ctxRef = authContext?.let { CFBridgingRetain(it) }
+                    val entries =
+                        buildList<Pair<CFStringRef?, COpaquePointer?>> {
+                            add(kSecClass to kSecClassGenericPassword)
+                            add(kSecAttrService to serviceRef)
+                            add(kSecAttrAccount to accountRef)
+                            add(kSecAttrAccessControl to access)
+                            add(kSecValueData to dataRef)
+                            if (ctxRef != null) add(kSecUseAuthenticationContext to ctxRef)
+                        }
+                    val query = cfDictionary(*entries.toTypedArray())
+                    val rc = SecItemAdd(query, null)
+                    CFRelease(query)
+                    CFRelease(serviceRef)
+                    CFRelease(accountRef)
+                    CFRelease(dataRef)
+                    CFRelease(access)
+                    if (ctxRef != null) CFRelease(ctxRef)
+                    rc
                 }
-                val query = cfDictionary(*entries.toTypedArray())
-                val rc = SecItemAdd(query, null)
-                CFRelease(query)
-                CFRelease(serviceRef)
-                CFRelease(accountRef)
-                CFRelease(dataRef)
-                CFRelease(access)
-                if (ctxRef != null) CFRelease(ctxRef)
-                rc
-            }
             if (status == errSecSuccess) {
                 Outcome.Ok(byteArrayOf(HARDWARE_BLOB_VERSION)) // opaque marker; secret lives in the Keychain
             } else {
@@ -127,7 +133,10 @@ class IosSecureKeyStore(
             }
         }
 
-    override suspend fun unwrap(blob: ByteArray, authenticator: BiometricAuthenticator): Outcome<ByteArray> {
+    override suspend fun unwrap(
+        blob: ByteArray,
+        authenticator: BiometricAuthenticator,
+    ): Outcome<ByteArray> {
         if (blob.isEmpty()) return Outcome.Err(VaultError.Crypto.IntegrityFailure)
         return authenticator.authenticate(AUTH_REQUEST).flatMap { auth ->
             val authContext = auth.handle as? LAContext
@@ -135,14 +144,15 @@ class IosSecureKeyStore(
                 val serviceRef = cfString(service)
                 val accountRef = cfString(account)
                 val ctxRef = authContext?.let { CFBridgingRetain(it) }
-                val entries = buildList<Pair<CFStringRef?, COpaquePointer?>> {
-                    add(kSecClass to kSecClassGenericPassword)
-                    add(kSecAttrService to serviceRef)
-                    add(kSecAttrAccount to accountRef)
-                    add(kSecReturnData to kCFBooleanTrue)
-                    add(kSecMatchLimit to kSecMatchLimitOne)
-                    if (ctxRef != null) add(kSecUseAuthenticationContext to ctxRef)
-                }
+                val entries =
+                    buildList<Pair<CFStringRef?, COpaquePointer?>> {
+                        add(kSecClass to kSecClassGenericPassword)
+                        add(kSecAttrService to serviceRef)
+                        add(kSecAttrAccount to accountRef)
+                        add(kSecReturnData to kCFBooleanTrue)
+                        add(kSecMatchLimit to kSecMatchLimitOne)
+                        if (ctxRef != null) add(kSecUseAuthenticationContext to ctxRef)
+                    }
                 val query = cfDictionary(*entries.toTypedArray())
                 val result = alloc<CFTypeRefVar>()
                 val status = SecItemCopyMatching(query, result.ptr)
@@ -153,7 +163,15 @@ class IosSecureKeyStore(
                 val dataPtr = result.value
                 if (status != errSecSuccess || dataPtr == null) {
                     if (dataPtr != null) CFRelease(dataPtr)
-                    Outcome.Err(if (status == errSecSuccess) VaultError.Crypto.IntegrityFailure else keychainReadFailure(status))
+                    Outcome.Err(
+                        if (status ==
+                            errSecSuccess
+                        ) {
+                            VaultError.Crypto.IntegrityFailure
+                        } else {
+                            keychainReadFailure(status)
+                        },
+                    )
                 } else {
                     val bytes = cfDataToBytes(dataPtr.reinterpret())
                     CFRelease(dataPtr)
@@ -176,11 +194,12 @@ class IosSecureKeyStore(
         memScoped {
             val serviceRef = cfString(service)
             val accountRef = cfString(account)
-            val query = cfDictionary(
-                kSecClass to kSecClassGenericPassword,
-                kSecAttrService to serviceRef,
-                kSecAttrAccount to accountRef,
-            )
+            val query =
+                cfDictionary(
+                    kSecClass to kSecClassGenericPassword,
+                    kSecAttrService to serviceRef,
+                    kSecAttrAccount to accountRef,
+                )
             val status = SecItemDelete(query)
             CFRelease(query)
             CFRelease(serviceRef)
@@ -230,11 +249,12 @@ class IosSecureKeyStore(
 
         // The iOS authenticator builds/evaluates its own LAContext, so no cryptoHandle is passed in;
         // the returned LAContext (auth.handle) is threaded into the Keychain query. Honest copy (§11).
-        private val AUTH_REQUEST = BiometricRequest(
-            title = "Unlock DarkChamber",
-            subtitle = "Confirm it's you to open your vault",
-            cancelLabel = "Use passphrase",
-        )
+        private val AUTH_REQUEST =
+            BiometricRequest(
+                title = "Unlock DarkChamber",
+                subtitle = "Confirm it's you to open your vault",
+                cancelLabel = "Use passphrase",
+            )
     }
 }
 

@@ -41,7 +41,6 @@ import kotlin.time.Duration
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class GalleryBrowseTest {
-
     private val lifecycle = LifecycleRegistry().apply { resume() }
     private val backDispatcher = BackDispatcher()
 
@@ -68,52 +67,59 @@ class GalleryBrowseTest {
 
     /** Three items whose `createdAt` follows their id, so the newest is the highest id. */
     private fun FakeVaultItems.emit() {
-        summaries.value = listOf(
-            summary(byteArrayOf(1), readableMeta(name = "tax.pdf"), createdAt = 1L),
-            summary(byteArrayOf(2), readableMeta(name = "alps.jpg"), createdAt = 2L),
-            summary(byteArrayOf(3), readableMeta(name = "beach.png"), createdAt = 3L),
-        )
+        summaries.value =
+            listOf(
+                summary(byteArrayOf(1), readableMeta(name = "tax.pdf"), createdAt = 1L),
+                summary(byteArrayOf(2), readableMeta(name = "alps.jpg"), createdAt = 2L),
+                summary(byteArrayOf(3), readableMeta(name = "beach.png"), createdAt = 3L),
+            )
     }
 
     private fun DefaultVaultGalleryComponent.names(): List<String> =
         state.value.items.map { (it.meta as GalleryItemMeta.Readable).name }
 
     @Test
-    fun the_listing_opens_newest_first_with_nothing_searched() = runTest {
-        val vault = FakeVaultItems()
-        val component = component(vault)
-        vault.emit()
+    fun the_listing_opens_newest_first_with_nothing_searched() =
+        runTest {
+            val vault = FakeVaultItems()
+            val component = component(vault)
+            vault.emit()
 
-        assertEquals(GalleryOrder.Newest, component.state.value.order)
-        assertEquals(GallerySearch.Closed, component.state.value.search)
-        assertEquals(listOf("beach.png", "alps.jpg", "tax.pdf"), component.names())
-    }
-
-    @Test
-    fun choosing_an_order_republishes_the_listing_in_it() = runTest {
-        val vault = FakeVaultItems()
-        val component = component(vault)
-        vault.emit()
-
-        component.chooseOrder(GalleryOrder.NameAsc)
-
-        assertEquals(GalleryOrder.NameAsc, component.state.value.order)
-        assertEquals(listOf("alps.jpg", "beach.png", "tax.pdf"), component.names())
-    }
+            assertEquals(GalleryOrder.Newest, component.state.value.order)
+            assertEquals(GallerySearch.Closed, component.state.value.search)
+            assertEquals(listOf("beach.png", "alps.jpg", "tax.pdf"), component.names())
+        }
 
     @Test
-    fun opening_a_search_shows_an_empty_field_and_changes_nothing_yet() = runTest {
-        // Opening is not filtering: the field appears, and the grid underneath it is untouched until
-        // something is typed.
-        val vault = FakeVaultItems()
-        val component = component(vault)
-        vault.emit()
+    fun choosing_an_order_republishes_the_listing_in_it() =
+        runTest {
+            val vault = FakeVaultItems()
+            val component = component(vault)
+            vault.emit()
 
-        component.openSearch()
+            component.chooseOrder(GalleryOrder.NameAsc)
 
-        assertEquals(GallerySearch.Open(query = "", hiddenUnreadable = 0, takesFocus = true), component.state.value.search)
-        assertEquals(3, component.state.value.items.size)
-    }
+            assertEquals(GalleryOrder.NameAsc, component.state.value.order)
+            assertEquals(listOf("alps.jpg", "beach.png", "tax.pdf"), component.names())
+        }
+
+    @Test
+    fun opening_a_search_shows_an_empty_field_and_changes_nothing_yet() =
+        runTest {
+            // Opening is not filtering: the field appears, and the grid underneath it is untouched until
+            // something is typed.
+            val vault = FakeVaultItems()
+            val component = component(vault)
+            vault.emit()
+
+            component.openSearch()
+
+            assertEquals(
+                GallerySearch.Open(query = "", hiddenUnreadable = 0, takesFocus = true),
+                component.state.value.search,
+            )
+            assertEquals(3, component.state.value.items.size)
+        }
 
     /**
      * The field takes focus once, because the user asked for it. After the screen reports it has, a
@@ -121,149 +127,159 @@ class GalleryBrowseTest {
      * or the keyboard comes back up over the item it scrolled to.
      */
     @Test
-    fun once_the_field_has_focus_nothing_asks_for_it_again() = runTest {
-        val vault = FakeVaultItems()
-        val component = component(vault)
-        vault.emit()
+    fun once_the_field_has_focus_nothing_asks_for_it_again() =
+        runTest {
+            val vault = FakeVaultItems()
+            val component = component(vault)
+            vault.emit()
 
-        component.openSearch()
-        component.searchFocused()
-        assertEquals(false, (component.state.value.search as GallerySearch.Open).takesFocus)
+            component.openSearch()
+            component.searchFocused()
+            assertEquals(false, (component.state.value.search as GallerySearch.Open).takesFocus)
 
-        component.editSearch("al")
-        vault.emit() // the listing moves on underneath
-        component.openSearch() // a second tap on the field
+            component.editSearch("al")
+            vault.emit() // the listing moves on underneath
+            component.openSearch() // a second tap on the field
 
-        val search = component.state.value.search as GallerySearch.Open
-        assertEquals(false, search.takesFocus, "typing, a new listing or a re-tap does not ask again")
-        assertEquals("al", search.query, "and what was typed stays")
-    }
-
-    @Test
-    fun a_search_closed_and_opened_again_asks_for_focus_again() = runTest {
-        val vault = FakeVaultItems()
-        val component = component(vault)
-        vault.emit()
-
-        component.openSearch()
-        component.searchFocused()
-        component.closeSearch()
-        component.searchFocused() // nothing open: ignored
-        assertEquals(GallerySearch.Closed, component.state.value.search)
-
-        component.openSearch()
-
-        assertEquals(true, (component.state.value.search as GallerySearch.Open).takesFocus)
-    }
+            val search = component.state.value.search as GallerySearch.Open
+            assertEquals(false, search.takesFocus, "typing, a new listing or a re-tap does not ask again")
+            assertEquals("al", search.query, "and what was typed stays")
+        }
 
     @Test
-    fun typing_narrows_the_published_listing() = runTest {
-        val vault = FakeVaultItems()
-        val component = component(vault)
-        vault.emit()
+    fun a_search_closed_and_opened_again_asks_for_focus_again() =
+        runTest {
+            val vault = FakeVaultItems()
+            val component = component(vault)
+            vault.emit()
 
-        component.openSearch()
-        component.editSearch("al")
+            component.openSearch()
+            component.searchFocused()
+            component.closeSearch()
+            component.searchFocused() // nothing open: ignored
+            assertEquals(GallerySearch.Closed, component.state.value.search)
 
-        assertEquals("al", (component.state.value.search as GallerySearch.Open).query)
-        assertEquals(listOf("alps.jpg"), component.names())
-    }
+            component.openSearch()
 
-    @Test
-    fun a_search_keeps_the_order_that_was_chosen() = runTest {
-        // Both controls apply to the same listing, so the results of a search come back in the order
-        // the user picked rather than the catalog's.
-        val vault = FakeVaultItems()
-        val component = component(vault)
-        vault.emit()
-
-        component.chooseOrder(GalleryOrder.NameDesc)
-        component.openSearch()
-        component.editSearch(".p")
-
-        assertEquals(listOf("tax.pdf", "beach.png"), component.names())
-    }
+            assertEquals(true, (component.state.value.search as GallerySearch.Open).takesFocus)
+        }
 
     @Test
-    fun closing_a_search_restores_the_listing_and_leaves_no_query_behind() = runTest {
-        val vault = FakeVaultItems()
-        val component = component(vault)
-        vault.emit()
+    fun typing_narrows_the_published_listing() =
+        runTest {
+            val vault = FakeVaultItems()
+            val component = component(vault)
+            vault.emit()
 
-        component.openSearch()
-        component.editSearch("al")
-        component.closeSearch()
+            component.openSearch()
+            component.editSearch("al")
 
-        assertEquals(GallerySearch.Closed, component.state.value.search)
-        // The query goes with the field: a filter still running behind a closed search would hide
-        // items with nothing on screen to explain why.
-        assertEquals(3, component.state.value.items.size)
-    }
+            assertEquals("al", (component.state.value.search as GallerySearch.Open).query)
+            assertEquals(listOf("alps.jpg"), component.names())
+        }
 
     @Test
-    fun re_opening_a_search_keeps_what_was_typed() = runTest {
-        // The field *is* the control once search is open, so this can only be a re-tap — and
-        // re-opening must not quietly discard a query the user is still working with.
-        val vault = FakeVaultItems()
-        val component = component(vault)
-        vault.emit()
+    fun a_search_keeps_the_order_that_was_chosen() =
+        runTest {
+            // Both controls apply to the same listing, so the results of a search come back in the order
+            // the user picked rather than the catalog's.
+            val vault = FakeVaultItems()
+            val component = component(vault)
+            vault.emit()
 
-        component.openSearch()
-        component.editSearch("al")
-        component.openSearch()
+            component.chooseOrder(GalleryOrder.NameDesc)
+            component.openSearch()
+            component.editSearch(".p")
 
-        assertEquals("al", (component.state.value.search as GallerySearch.Open).query)
-        assertEquals(listOf("alps.jpg"), component.names())
-    }
-
-    @Test
-    fun typing_while_the_search_is_closed_changes_nothing() = runTest {
-        // Nothing can reach this today, and that is the point: a query held with no field showing it
-        // would filter the grid with no way to see why, or to clear it.
-        val vault = FakeVaultItems()
-        val component = component(vault)
-        vault.emit()
-
-        component.editSearch("al")
-
-        assertEquals(GallerySearch.Closed, component.state.value.search)
-        assertEquals(3, component.state.value.items.size)
-    }
+            assertEquals(listOf("tax.pdf", "beach.png"), component.names())
+        }
 
     @Test
-    fun the_number_of_items_a_search_cannot_read_lands_on_the_open_search() = runTest {
-        // A damaged item has no name to match, so a search has to leave it out — and say that it
-        // did. Dropping it silently would let a search conceal the one row worth looking at.
-        val vault = FakeVaultItems()
-        val component = component(vault)
-        vault.summaries.value = listOf(
-            summary(byteArrayOf(1), readableMeta(name = "alps.jpg")),
-            summary(byteArrayOf(2), damagedMeta()),
-        )
+    fun closing_a_search_restores_the_listing_and_leaves_no_query_behind() =
+        runTest {
+            val vault = FakeVaultItems()
+            val component = component(vault)
+            vault.emit()
 
-        component.openSearch()
-        component.editSearch("al")
+            component.openSearch()
+            component.editSearch("al")
+            component.closeSearch()
 
-        val search = component.state.value.search as GallerySearch.Open
-        assertEquals(1, search.hiddenUnreadable)
-        assertEquals(listOf("alps.jpg"), component.names())
-    }
+            assertEquals(GallerySearch.Closed, component.state.value.search)
+            // The query goes with the field: a filter still running behind a closed search would hide
+            // items with nothing on screen to explain why.
+            assertEquals(3, component.state.value.items.size)
+        }
 
     @Test
-    fun an_open_search_never_prints_what_was_typed() = runTest {
-        // The query is a fragment of a file name the user retyped — decrypted vault content, like
-        // the name itself (hard rule 4). It reaches a log line through the state's own toString.
-        val vault = FakeVaultItems()
-        val component = component(vault)
-        vault.emit()
+    fun re_opening_a_search_keeps_what_was_typed() =
+        runTest {
+            // The field *is* the control once search is open, so this can only be a re-tap — and
+            // re-opening must not quietly discard a query the user is still working with.
+            val vault = FakeVaultItems()
+            val component = component(vault)
+            vault.emit()
 
-        component.openSearch()
-        component.editSearch("alps")
+            component.openSearch()
+            component.editSearch("al")
+            component.openSearch()
 
-        val printed = component.state.value.toString()
-        assertFalse("alps" in printed, "a query must never be printed, was $printed")
-        assertTrue("4 chars" in printed, "but its length is safe to say, was $printed")
-    }
+            assertEquals("al", (component.state.value.search as GallerySearch.Open).query)
+            assertEquals(listOf("alps.jpg"), component.names())
+        }
+
+    @Test
+    fun typing_while_the_search_is_closed_changes_nothing() =
+        runTest {
+            // Nothing can reach this today, and that is the point: a query held with no field showing it
+            // would filter the grid with no way to see why, or to clear it.
+            val vault = FakeVaultItems()
+            val component = component(vault)
+            vault.emit()
+
+            component.editSearch("al")
+
+            assertEquals(GallerySearch.Closed, component.state.value.search)
+            assertEquals(3, component.state.value.items.size)
+        }
+
+    @Test
+    fun the_number_of_items_a_search_cannot_read_lands_on_the_open_search() =
+        runTest {
+            // A damaged item has no name to match, so a search has to leave it out — and say that it
+            // did. Dropping it silently would let a search conceal the one row worth looking at.
+            val vault = FakeVaultItems()
+            val component = component(vault)
+            vault.summaries.value =
+                listOf(
+                    summary(byteArrayOf(1), readableMeta(name = "alps.jpg")),
+                    summary(byteArrayOf(2), damagedMeta()),
+                )
+
+            component.openSearch()
+            component.editSearch("al")
+
+            val search = component.state.value.search as GallerySearch.Open
+            assertEquals(1, search.hiddenUnreadable)
+            assertEquals(listOf("alps.jpg"), component.names())
+        }
+
+    @Test
+    fun an_open_search_never_prints_what_was_typed() =
+        runTest {
+            // The query is a fragment of a file name the user retyped — decrypted vault content, like
+            // the name itself (hard rule 4). It reaches a log line through the state's own toString.
+            val vault = FakeVaultItems()
+            val component = component(vault)
+            vault.emit()
+
+            component.openSearch()
+            component.editSearch("alps")
+
+            val printed = component.state.value.toString()
+            assertFalse("alps" in printed, "a query must never be printed, was $printed")
+            assertTrue("4 chars" in printed, "but its length is safe to say, was $printed")
+        }
 
     /**
      * Taking the offer on a finished batch changes the **view** and nothing else — the card stays up
@@ -274,57 +290,60 @@ class GalleryBrowseTest {
      * browse action, so it must not acknowledge anything.
      */
     @Test
-    fun clearing_the_search_from_the_summary_leaves_the_batch_report_alone() = runTest {
-        val vault = FakeVaultItems()
-        val imports = IdleVaultImports()
-        val component = component(vault, imports)
-        vault.emit()
-        val batch = ImportState.Finished(imported = 2, failed = emptyList(), deletableOriginals = 1)
-        imports.state.value = batch
+    fun clearing_the_search_from_the_summary_leaves_the_batch_report_alone() =
+        runTest {
+            val vault = FakeVaultItems()
+            val imports = IdleVaultImports()
+            val component = component(vault, imports)
+            vault.emit()
+            val batch = ImportState.Finished(imported = 2, failed = emptyList(), deletableOriginals = 1)
+            imports.state.value = batch
 
-        component.openSearch()
-        component.editSearch("al")
-        component.closeSearch()
+            component.openSearch()
+            component.editSearch("al")
+            component.closeSearch()
 
-        assertEquals(GallerySearch.Closed, component.state.value.search)
-        assertEquals(batch, component.state.value.batch, "the summary is not dismissed by browsing")
-        assertEquals(3, component.state.value.items.size)
-    }
-
-    @Test
-    fun showing_newest_first_from_the_summary_changes_only_the_order() = runTest {
-        val vault = FakeVaultItems()
-        val imports = IdleVaultImports()
-        val component = component(vault, imports)
-        vault.emit()
-        val batch = ImportState.Finished(imported = 2, failed = emptyList())
-        imports.state.value = batch
-
-        component.chooseOrder(GalleryOrder.NameAsc)
-        component.chooseOrder(GalleryOrder.Newest)
-
-        assertEquals(GalleryOrder.Newest, component.state.value.order)
-        assertEquals(listOf("beach.png", "alps.jpg", "tax.pdf"), component.names())
-        assertEquals(batch, component.state.value.batch)
-        assertEquals(GallerySearch.Closed, component.state.value.search, "and it does not touch the field")
-    }
+            assertEquals(GallerySearch.Closed, component.state.value.search)
+            assertEquals(batch, component.state.value.batch, "the summary is not dismissed by browsing")
+            assertEquals(3, component.state.value.items.size)
+        }
 
     @Test
-    fun browsing_never_re_reads_the_catalog() = runTest {
-        // The whole performance design of these two controls: the subscription is keyed by the
-        // filter alone, so ordering and searching re-sort rows already in memory instead of
-        // re-running the query and re-opening every row's metadata.
-        val vault = FakeVaultItems()
-        val component = component(vault)
-        vault.emit()
+    fun showing_newest_first_from_the_summary_changes_only_the_order() =
+        runTest {
+            val vault = FakeVaultItems()
+            val imports = IdleVaultImports()
+            val component = component(vault, imports)
+            vault.emit()
+            val batch = ImportState.Finished(imported = 2, failed = emptyList())
+            imports.state.value = batch
 
-        component.chooseOrder(GalleryOrder.NameAsc)
-        component.openSearch()
-        component.editSearch("a")
-        component.editSearch("al")
-        component.chooseOrder(GalleryOrder.Oldest)
-        component.closeSearch()
+            component.chooseOrder(GalleryOrder.NameAsc)
+            component.chooseOrder(GalleryOrder.Newest)
 
-        assertEquals(1, vault.observeCalls, "six browse intents must not re-subscribe")
-    }
+            assertEquals(GalleryOrder.Newest, component.state.value.order)
+            assertEquals(listOf("beach.png", "alps.jpg", "tax.pdf"), component.names())
+            assertEquals(batch, component.state.value.batch)
+            assertEquals(GallerySearch.Closed, component.state.value.search, "and it does not touch the field")
+        }
+
+    @Test
+    fun browsing_never_re_reads_the_catalog() =
+        runTest {
+            // The whole performance design of these two controls: the subscription is keyed by the
+            // filter alone, so ordering and searching re-sort rows already in memory instead of
+            // re-running the query and re-opening every row's metadata.
+            val vault = FakeVaultItems()
+            val component = component(vault)
+            vault.emit()
+
+            component.chooseOrder(GalleryOrder.NameAsc)
+            component.openSearch()
+            component.editSearch("a")
+            component.editSearch("al")
+            component.chooseOrder(GalleryOrder.Oldest)
+            component.closeSearch()
+
+            assertEquals(1, vault.observeCalls, "six browse intents must not re-subscribe")
+        }
 }

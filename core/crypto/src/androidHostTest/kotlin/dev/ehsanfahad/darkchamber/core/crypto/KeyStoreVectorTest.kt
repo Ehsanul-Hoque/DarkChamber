@@ -54,29 +54,56 @@ class KeyStoreVectorTest {
     private val vectorsDir: File =
         File(requireNotNull(System.getProperty("dchm.vectors.dir")) { "dchm.vectors.dir not set" }, "keystore")
 
-    private fun vectors(): List<KeyStoreVector> =
-        json.decodeFromString(File(vectorsDir, "keystore.json").readText())
+    private fun vectors(): List<KeyStoreVector> = json.decodeFromString(File(vectorsDir, "keystore.json").readText())
 
-    private fun KeyStoreVector.passphraseEntry(): WrapEntry = when (passphrase_kdf) {
-        "pbkdf2" -> MasterKeyWrap.wrap(
-            engine, kdf, mk.hexToByteArray(), passphrase_utf8.encodeToByteArray(), Slot.PASSPHRASE,
-            KdfParams.Pbkdf2(pbkdf2_salt!!.hexToByteArray(), pbkdf2_iterations!!), pbkdf2_nonce!!.hexToByteArray(),
+    private fun KeyStoreVector.passphraseEntry(): WrapEntry =
+        when (passphrase_kdf) {
+            "pbkdf2" -> {
+                MasterKeyWrap.wrap(
+                    engine,
+                    kdf,
+                    mk.hexToByteArray(),
+                    passphrase_utf8.encodeToByteArray(),
+                    Slot.PASSPHRASE,
+                    KdfParams.Pbkdf2(pbkdf2_salt!!.hexToByteArray(), pbkdf2_iterations!!),
+                    pbkdf2_nonce!!.hexToByteArray(),
+                )
+            }
+
+            "argon2id" -> {
+                MasterKeyWrap.wrap(
+                    engine,
+                    kdf,
+                    mk.hexToByteArray(),
+                    passphrase_utf8.encodeToByteArray(),
+                    Slot.PASSPHRASE,
+                    KdfParams.Argon2id(
+                        argon2_salt!!.hexToByteArray(),
+                        argon2_memory_kib!!,
+                        argon2_iterations!!,
+                        argon2_parallelism!!,
+                    ),
+                    argon2_nonce!!.hexToByteArray(),
+                )
+            }
+
+            else -> {
+                error("$name: unknown passphrase_kdf '$passphrase_kdf'")
+            }
+        }
+
+    private fun KeyStoreVector.recoveryEntry() =
+        MasterKeyWrap.wrap(
+            engine,
+            kdf,
+            mk.hexToByteArray(),
+            recovery_key.hexToByteArray(),
+            Slot.RECOVERY,
+            KdfParams.Hkdf(hkdf_salt.hexToByteArray(), hkdf_info.encodeToByteArray()),
+            hkdf_nonce.hexToByteArray(),
         )
-        "argon2id" -> MasterKeyWrap.wrap(
-            engine, kdf, mk.hexToByteArray(), passphrase_utf8.encodeToByteArray(), Slot.PASSPHRASE,
-            KdfParams.Argon2id(argon2_salt!!.hexToByteArray(), argon2_memory_kib!!, argon2_iterations!!, argon2_parallelism!!),
-            argon2_nonce!!.hexToByteArray(),
-        )
-        else -> error("$name: unknown passphrase_kdf '$passphrase_kdf'")
-    }
 
-    private fun KeyStoreVector.recoveryEntry() = MasterKeyWrap.wrap(
-        engine, kdf, mk.hexToByteArray(), recovery_key.hexToByteArray(), Slot.RECOVERY,
-        KdfParams.Hkdf(hkdf_salt.hexToByteArray(), hkdf_info.encodeToByteArray()), hkdf_nonce.hexToByteArray(),
-    )
-
-    private fun KeyStoreVector.build() =
-        KeyStoreBlob(format_version, listOf(passphraseEntry(), recoveryEntry()))
+    private fun KeyStoreVector.build() = KeyStoreBlob(format_version, listOf(passphraseEntry(), recoveryEntry()))
 
     @Test
     fun positive_vectors_encode_to_the_committed_bytes_and_unlock_both_slots() {
@@ -99,8 +126,16 @@ class KeyStoreVectorTest {
 
             val pw = blob.wraps.first { it.slot == Slot.PASSPHRASE }
             val rec = blob.wraps.first { it.slot == Slot.RECOVERY }
-            assertContentEquals(v.mk.hexToByteArray(), MasterKeyWrap.unwrap(engine, kdf, pw, v.passphrase_utf8.encodeToByteArray()).getOrNull(), "${v.name}: passphrase slot")
-            assertContentEquals(v.mk.hexToByteArray(), MasterKeyWrap.unwrap(engine, kdf, rec, v.recovery_key.hexToByteArray()).getOrNull(), "${v.name}: recovery slot")
+            assertContentEquals(
+                v.mk.hexToByteArray(),
+                MasterKeyWrap.unwrap(engine, kdf, pw, v.passphrase_utf8.encodeToByteArray()).getOrNull(),
+                "${v.name}: passphrase slot",
+            )
+            assertContentEquals(
+                v.mk.hexToByteArray(),
+                MasterKeyWrap.unwrap(engine, kdf, rec, v.recovery_key.hexToByteArray()).getOrNull(),
+                "${v.name}: recovery slot",
+            )
         }
     }
 

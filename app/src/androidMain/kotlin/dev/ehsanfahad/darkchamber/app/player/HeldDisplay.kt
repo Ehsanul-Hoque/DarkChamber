@@ -29,8 +29,15 @@ internal class HeldDisplay {
  * A lock lands in `onStop`, after `onPause` has cleared the one in front, and what it puts back has to
  * reach the window that comes back — not wait for a window that will never be told.
  */
-internal fun <T : Any> windowToChange(inFront: T?, lastShown: T?, gone: (T) -> Boolean): T? =
-    inFront ?: lastShown?.takeUnless(gone)
+internal fun <T : Any> windowToChange(
+    inFront: T?,
+    lastShown: T?,
+    gone: (T) -> Boolean,
+): T? = inFront ?: lastShown?.takeUnless(gone)
 
 /** What a new window is told; `null` or `false` leaves that part of it alone. */
-internal data class NewWindow(val brightness: Float?, val keepOn: Boolean, val orientation: ScreenOrientation?)
+internal data class NewWindow(
+    val brightness: Float?,
+    val keepOn: Boolean,
+    val orientation: ScreenOrientation?,
+)

@@ -37,20 +37,53 @@ internal object ViewerFormat {
      */
     fun pageMessage(page: ViewerPage): String? =
         when (page) {
-            ViewerPage.Loading, ViewerPage.Picture, is ViewerPage.Media, is ViewerPage.Pdf, is ViewerPage.Text -> null
-            ViewerPage.NotText -> "This file can't be shown as text here. It is unchanged since it was saved."
-            is ViewerPage.NotViewable -> "This file can't be opened here."
-            ViewerPage.TooLarge -> "This file is too large to open here."
-            ViewerPage.CantShow -> "This file can't be shown on this device."
-            ViewerPage.CantPlay -> "This device can't play this file."
-            ViewerPage.PasswordProtected -> "This PDF is locked with a password, which can't be entered here."
-            ViewerPage.Unreadable -> "This PDF can't be read here. It is unchanged since it was saved."
-            ViewerPage.Unverified ->
+            ViewerPage.Loading, ViewerPage.Picture, is ViewerPage.Media, is ViewerPage.Pdf, is ViewerPage.Text -> {
+                null
+            }
+
+            ViewerPage.NotText -> {
+                "This file can't be shown as text here. It is unchanged since it was saved."
+            }
+
+            is ViewerPage.NotViewable -> {
+                "This file can't be opened here."
+            }
+
+            ViewerPage.TooLarge -> {
+                "This file is too large to open here."
+            }
+
+            ViewerPage.CantShow -> {
+                "This file can't be shown on this device."
+            }
+
+            ViewerPage.CantPlay -> {
+                "This device can't play this file."
+            }
+
+            ViewerPage.PasswordProtected -> {
+                "This PDF is locked with a password, which can't be entered here."
+            }
+
+            ViewerPage.Unreadable -> {
+                "This PDF can't be read here. It is unchanged since it was saved."
+            }
+
+            ViewerPage.Unverified -> {
                 "This file couldn't be verified, so none of it is shown. It may have changed since it was saved."
-            ViewerPage.StoppedUnverified ->
+            }
+
+            ViewerPage.StoppedUnverified -> {
                 "This file couldn't be verified from here on, so playback stopped. It may have changed since it was saved."
-            ViewerPage.NeedsUpdate -> "This file was saved by a newer version of DarkChamber. Update the app to open it."
-            ViewerPage.CouldntOpen -> "This file couldn't be opened."
+            }
+
+            ViewerPage.NeedsUpdate -> {
+                "This file was saved by a newer version of DarkChamber. Update the app to open it."
+            }
+
+            ViewerPage.CouldntOpen -> {
+                "This file couldn't be opened."
+            }
         }
 
     /**
@@ -75,12 +108,16 @@ internal object ViewerFormat {
     }
 
     /** Elapsed and total under the seek bar, "0:42 / 1:51"; the elapsed time alone until the total is known. */
-    fun playTimes(positionMs: Long, durationMs: Long?): String =
-        if (durationMs == null) playTime(positionMs) else "${playTime(positionMs)} / ${playTime(durationMs)}"
+    fun playTimes(
+        positionMs: Long,
+        durationMs: Long?,
+    ): String = if (durationMs == null) playTime(positionMs) else "${playTime(positionMs)} / ${playTime(durationMs)}"
 
     /** What the seek bar says it stands at, to a screen reader: "0:42 of 1:51". */
-    fun seekState(positionMs: Long, durationMs: Long?): String =
-        if (durationMs == null) playTime(positionMs) else "${playTime(positionMs)} of ${playTime(durationMs)}"
+    fun seekState(
+        positionMs: Long,
+        durationMs: Long?,
+    ): String = if (durationMs == null) playTime(positionMs) else "${playTime(positionMs)} of ${playTime(durationMs)}"
 
     fun seekLabel(): String = "Position"
 
@@ -89,11 +126,12 @@ internal object ViewerFormat {
         val hundredths = (speed * 100f).roundToInt()
         val whole = hundredths / 100
         val part = hundredths % 100
-        val written = when {
-            part == 0 -> "$whole"
-            part % 10 == 0 -> "$whole.${part / 10}"
-            else -> "$whole.${part.toString().padStart(2, '0')}"
-        }
+        val written =
+            when {
+                part == 0 -> "$whole"
+                part % 10 == 0 -> "$whole.${part / 10}"
+                else -> "$whole.${part.toString().padStart(2, '0')}"
+            }
         return "$written×"
     }
 
@@ -113,8 +151,7 @@ internal object ViewerFormat {
         if (target == ScreenOrientation.Landscape) "Landscape" else "Portrait"
 
     /** The orientation button, to a screen reader. */
-    fun orientationDescription(target: ScreenOrientation): String =
-        "Turn to ${orientationLabel(target).lowercase()}"
+    fun orientationDescription(target: ScreenOrientation): String = "Turn to ${orientationLabel(target).lowercase()}"
 
     /** What a double tap shows as it moves: "+10 s", "−10 s". */
     fun skipFeedback(forward: Boolean): String {
@@ -141,9 +178,15 @@ internal object ViewerFormat {
     fun title(meta: GalleryItemMeta): String = meta.label()
 
     /** "12 of 340" — counted from one, the way a person counts. */
-    fun position(index: Int, count: Int): String = "${index + 1} of $count"
+    fun position(
+        index: Int,
+        count: Int,
+    ): String = "${index + 1} of $count"
 
-    class DetailRow(val label: String, val value: String)
+    class DetailRow(
+        val label: String,
+        val value: String,
+    )
 
     /**
      * The Details sheet, in order. The plaintext columns (size, when added) are always known; the name,
@@ -155,11 +198,16 @@ internal object ViewerFormat {
      * gallery's coarse age on purpose: the exact moment a file entered the vault is not something the
      * screen needs to show.
      */
-    fun details(item: GalleryItem, album: AlbumTileName?, now: Long): List<DetailRow> {
-        val type = when (val meta = item.meta) {
-            is GalleryItemMeta.Readable -> typeName(meta.mime)
-            GalleryItemMeta.Unreadable -> meta.label()
-        }
+    fun details(
+        item: GalleryItem,
+        album: AlbumTileName?,
+        now: Long,
+    ): List<DetailRow> {
+        val type =
+            when (val meta = item.meta) {
+                is GalleryItemMeta.Readable -> typeName(meta.mime)
+                GalleryItemMeta.Unreadable -> meta.label()
+            }
         return listOf(
             DetailRow("Name", item.meta.label()),
             DetailRow("Type", type),
@@ -206,7 +254,10 @@ internal object ViewerFormat {
         }
 
     /** The mark drawn above a page's message. */
-    fun pageBadge(page: ViewerPage, meta: GalleryItemMeta): String =
+    fun pageBadge(
+        page: ViewerPage,
+        meta: GalleryItemMeta,
+    ): String =
         when {
             page is ViewerPage.NotViewable -> page.badge
             page == ViewerPage.Unverified || page == ViewerPage.StoppedUnverified -> WARNING_BADGE
@@ -215,7 +266,10 @@ internal object ViewerFormat {
         }
 
     /** A PDF's page, counted from 1: the indicator's words and each page's spoken name. */
-    fun pdfPage(index: Int, count: Int): String = "Page ${index + 1} of $count"
+    fun pdfPage(
+        index: Int,
+        count: Int,
+    ): String = "Page ${index + 1} of $count"
 
     /**
      * The page indicator's place in the bottom bar for [page], or `null` for no place — anything but a
@@ -231,10 +285,18 @@ internal object ViewerFormat {
      * At a large font it wraps, and only as "Page N" over "of M": the spaces inside each half do not
      * break. What a screen reader hears has plain spaces.
      */
-    fun pdfIndicator(page: ViewerPage, meta: GalleryItemMeta, reading: Int, loadingMs: Long): IndicatorSlot? =
+    fun pdfIndicator(
+        page: ViewerPage,
+        meta: GalleryItemMeta,
+        reading: Int,
+        loadingMs: Long,
+    ): IndicatorSlot? =
         when {
-            !isPdf(meta) -> null
-            page is ViewerPage.Pdf ->
+            !isPdf(meta) -> {
+                null
+            }
+
+            page is ViewerPage.Pdf -> {
                 IndicatorSlot.Shown(
                     PageIndicator(
                         text = "Page$NBSP${reading + 1} of$NBSP${page.pageCount}",
@@ -242,9 +304,19 @@ internal object ViewerFormat {
                         ready = true,
                     ),
                 )
-            page != ViewerPage.Loading -> IndicatorSlot.Held
-            loadingMs < PDF_DASHES_AFTER_MS -> IndicatorSlot.Held
-            else -> IndicatorSlot.Shown(PageIndicator("Page$NBSP– of$NBSP–", "Pages loading", ready = false))
+            }
+
+            page != ViewerPage.Loading -> {
+                IndicatorSlot.Held
+            }
+
+            loadingMs < PDF_DASHES_AFTER_MS -> {
+                IndicatorSlot.Held
+            }
+
+            else -> {
+                IndicatorSlot.Shown(PageIndicator("Page$NBSP– of$NBSP–", "Pages loading", ready = false))
+            }
         }
 
     /** How long a PDF reads before its indicator shows dashes; a quicker one goes straight to its pages. */
@@ -297,7 +369,10 @@ internal object ViewerFormat {
      * Why a jump did not go, shown in the dialog — `null` when it goes. A number no page has is said
      * to be out of the document's range, never moved to the nearest page.
      */
-    fun jumpProblem(jump: PageJump, count: Int): String? =
+    fun jumpProblem(
+        jump: PageJump,
+        count: Int,
+    ): String? =
         when (jump) {
             is PageJump.Go -> null
             PageJump.Empty -> "Type a page number."
@@ -353,13 +428,14 @@ internal object ViewerFormat {
     // than "some bytes" is called a file and left there, rather than dressed up as a format.
     private fun typeName(mime: String): String {
         if (mime == "application/pdf") return "PDF"
-        val family = when (mime.substringBefore('/')) {
-            "image" -> "Image"
-            "video" -> "Video"
-            "audio" -> "Audio"
-            "text" -> "Text"
-            else -> "File"
-        }
+        val family =
+            when (mime.substringBefore('/')) {
+                "image" -> "Image"
+                "video" -> "Video"
+                "audio" -> "Audio"
+                "text" -> "Text"
+                else -> "File"
+            }
         val format = mime.substringAfter('/', missingDelimiterValue = "").substringBefore(';').trim()
         return if (format.isEmpty() || format == "octet-stream") family else "$family · ${format.uppercase()}"
     }
@@ -369,12 +445,18 @@ internal object ViewerFormat {
 }
 
 /** The PDF page indicator: what it shows, what a screen reader says, and whether it is ready to jump. */
-internal data class PageIndicator(val text: String, val spoken: String, val ready: Boolean)
+internal data class PageIndicator(
+    val text: String,
+    val spoken: String,
+    val ready: Boolean,
+)
 
 /** The indicator's place in the bottom bar: kept empty, or showing an indicator. */
 internal sealed interface IndicatorSlot {
     /** The place is kept, with nothing in it and nothing a screen reader lands on: Details and Delete stay put. */
     data object Held : IndicatorSlot
 
-    data class Shown(val indicator: PageIndicator) : IndicatorSlot
+    data class Shown(
+        val indicator: PageIndicator,
+    ) : IndicatorSlot
 }

@@ -4,13 +4,19 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.ScreenOrientation
 
 /** One thing to tell the platform's display. */
 internal sealed interface DisplayCommand {
-    data class Orientation(val orientation: ScreenOrientation) : DisplayCommand
+    data class Orientation(
+        val orientation: ScreenOrientation,
+    ) : DisplayCommand
 
     /** `null` hands the brightness back to the system. */
-    data class Brightness(val level: Float?) : DisplayCommand
+    data class Brightness(
+        val level: Float?,
+    ) : DisplayCommand
 
     /** Hold the screen awake, or let it sleep again. */
-    data class KeepScreenOn(val on: Boolean) : DisplayCommand
+    data class KeepScreenOn(
+        val on: Boolean,
+    ) : DisplayCommand
 }
 
 /**

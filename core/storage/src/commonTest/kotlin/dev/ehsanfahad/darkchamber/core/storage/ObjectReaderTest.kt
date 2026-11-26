@@ -151,11 +151,18 @@ class ObjectReaderTest {
     }
 
     // A platform file that counts closes and can fail its reads — what a real file cannot be made to do.
-    private class ScriptedFile(override val size: Long, private val failure: Exception? = null) : PlatformFile {
+    private class ScriptedFile(
+        override val size: Long,
+        private val failure: Exception? = null,
+    ) : PlatformFile {
         var closes = 0
 
-        override fun read(position: Long, into: ByteArray, offset: Int, length: Int): Int =
-            failure?.let { throw it } ?: length
+        override fun read(
+            position: Long,
+            into: ByteArray,
+            offset: Int,
+            length: Int,
+        ): Int = failure?.let { throw it } ?: length
 
         override fun close() {
             closes++

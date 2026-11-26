@@ -41,24 +41,42 @@ class VaultStreamingTest {
         SystemFileSystem.createDirectories(testDir)
         val storage = VaultStorage(testDir)
         val catalog = (CatalogStore.create(testSqlDriver()) as Outcome.Ok).value
-        val session = VaultSession.createVault(engine, kdf, "correct horse battery".encodeToByteArray(), cheapKdf).session
+        val session =
+            VaultSession
+                .createVault(
+                    engine,
+                    kdf,
+                    "correct horse battery".encodeToByteArray(),
+                    cheapKdf,
+                ).session
         val rng = Random(3)
-        val vo = VaultObjects(session, storage, catalog, DchmCodec(engine), clock = { 0L }, random = { n -> rng.nextBytes(n) })
+        val vo =
+            VaultObjects(session, storage, catalog, DchmCodec(engine), clock = { 0L }, random = { n ->
+                rng.nextBytes(n)
+            })
 
         // The expected plaintext digest, generated the same deterministic way in bounded blocks.
-        val expected = engine.newSha256().also { h ->
-            var pos = 0L
-            val block = ByteArray(1 shl 16)
-            while (pos < size) {
-                val n = minOf(block.size.toLong(), size - pos).toInt()
-                for (i in 0 until n) block[i] = streamByte(pos + i)
-                h.update(block, 0, n)
-                pos += n
-            }
-        }.digest()
+        val expected =
+            engine
+                .newSha256()
+                .also { h ->
+                    var pos = 0L
+                    val block = ByteArray(1 shl 16)
+                    while (pos < size) {
+                        val n = minOf(block.size.toLong(), size - pos).toInt()
+                        for (i in 0 until n) block[i] = streamByte(pos + i)
+                        h.update(block, 0, n)
+                        pos += n
+                    }
+                }.digest()
 
         // Import at the default 1 MiB chunk size, then stream-decrypt into the discarding sink.
-        val id = (vo.importObject(kind = 0, name = "big.bin", mime = "application/octet-stream", openSource = { GeneratingSource(size) }) as Outcome.Ok).value
+        val id =
+            (
+                vo.importObject(kind = 0, name = "big.bin", mime = "application/octet-stream", openSource = {
+                    GeneratingSource(size)
+                }) as Outcome.Ok
+            ).value
         val sink = CountingHashingSink(engine.newSha256())
         assertTrue(vo.openObject(id, sink) is Outcome.Ok, "streaming open failed")
         assertEquals(size, sink.bytes, "decrypted byte count must equal the source size")
@@ -66,5 +84,4 @@ class VaultStreamingTest {
 
         session.close()
     }
-
 }

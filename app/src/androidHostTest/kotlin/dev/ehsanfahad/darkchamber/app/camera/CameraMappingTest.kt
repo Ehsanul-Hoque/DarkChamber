@@ -24,7 +24,6 @@ import kotlin.time.Duration.Companion.milliseconds
  * build a `Context`, a camera or an `ImageProxy`. What is left in the controller is plumbing.
  */
 class CameraMappingTest {
-
     /**
      * Android never says "not asked yet", so the seam keeps whether it has asked in this process and
      * reads the rationale flag, which is true only after a refusal the system will still re-ask.
@@ -91,9 +90,18 @@ class CameraMappingTest {
      */
     @Test
     fun the_microphone_state_comes_from_grant_asked_and_rationale() {
-        assertEquals(MicrophonePermission.Granted, microphonePermissionState(granted = true, asked = true, showRationale = false))
-        assertEquals(MicrophonePermission.NotAsked, microphonePermissionState(granted = false, asked = false, showRationale = false))
-        assertEquals(MicrophonePermission.Denied, microphonePermissionState(granted = false, asked = true, showRationale = true))
+        assertEquals(
+            MicrophonePermission.Granted,
+            microphonePermissionState(granted = true, asked = true, showRationale = false),
+        )
+        assertEquals(
+            MicrophonePermission.NotAsked,
+            microphonePermissionState(granted = false, asked = false, showRationale = false),
+        )
+        assertEquals(
+            MicrophonePermission.Denied,
+            microphonePermissionState(granted = false, asked = true, showRationale = true),
+        )
         assertEquals(
             MicrophonePermission.PermanentlyDenied,
             microphonePermissionState(granted = false, asked = true, showRationale = false),

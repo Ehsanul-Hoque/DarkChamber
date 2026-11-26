@@ -8,6 +8,7 @@ import dev.ehsanfahad.darkchamber.app.FakeFilePicker
 import dev.ehsanfahad.darkchamber.app.FakePhotoPicker
 import dev.ehsanfahad.darkchamber.app.VaultBootstrap
 import dev.ehsanfahad.darkchamber.app.testSqlDriver
+import dev.ehsanfahad.darkchamber.app.ui.crumbFor
 import dev.ehsanfahad.darkchamber.core.crypto.CryptoEngine
 import dev.ehsanfahad.darkchamber.core.crypto.CryptographyKotlinEngine
 import dev.ehsanfahad.darkchamber.core.crypto.DefaultKeyDerivation
@@ -18,7 +19,6 @@ import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultItemKind
 import dev.ehsanfahad.darkchamber.core.storage.VaultStorage
 import dev.ehsanfahad.darkchamber.core.vault.VaultObjects
-import dev.ehsanfahad.darkchamber.app.ui.crumbFor
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumState
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
 import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
@@ -66,15 +66,16 @@ import kotlin.test.assertTrue
 class UnlockedNavigationTest {
     private val testDir = Path(SystemTemporaryDirectory, "unt-${Random.nextULong()}")
 
-    private val koin: Koin = koinApplication {
-        modules(
-            module {
-                single<CryptoEngine> { CryptographyKotlinEngine() }
-                single<FilePicker> { FakeFilePicker() }
-                single<PhotoPicker> { FakePhotoPicker() }
-            },
-        )
-    }.koin
+    private val koin: Koin =
+        koinApplication {
+            modules(
+                module {
+                    single<CryptoEngine> { CryptographyKotlinEngine() }
+                    single<FilePicker> { FakeFilePicker() }
+                    single<PhotoPicker> { FakePhotoPicker() }
+                },
+            )
+        }.koin
 
     private val backDispatcher = BackDispatcher()
 
@@ -94,10 +95,11 @@ class UnlockedNavigationTest {
         ioContext: CoroutineContext = Dispatchers.Default,
     ): DefaultUnlockedComponent =
         DefaultUnlockedComponent(
-            componentContext = DefaultComponentContext(
-                lifecycle = LifecycleRegistry().apply { resume() },
-                backHandler = backDispatcher,
-            ),
+            componentContext =
+                DefaultComponentContext(
+                    lifecycle = LifecycleRegistry().apply { resume() },
+                    backHandler = backDispatcher,
+                ),
             vault = open,
             koin = koin,
             mainContext = mainContext,
@@ -150,32 +152,33 @@ class UnlockedNavigationTest {
      * the filter to "everything" passed it.
      */
     @Test
-    fun opening_an_album_pushes_a_gallery_filtered_to_that_album() = runTest {
-        // One scheduler for the catalog's mapping and the component's own work, driven by this test:
-        // a listing's first emission then arrives when the test says so rather than whenever a
-        // background thread gets to it.
-        val open = openVault(UnconfinedTestDispatcher(testScheduler))
-        val component = component(open, UnconfinedTestDispatcher(testScheduler))
-        val objects = vaultObjects(open)
-        val albumId = (objects.createAlbum("Receipts") as Outcome.Ok).value
-        val filed = importInto(objects, albumId, "filed.txt")
-        importInto(objects, null, "unfiled.txt")
-        component.openAlbums()
-        val albums = assertIs<UnlockedChild.Albums>(component.stack.value.active.instance)
+    fun opening_an_album_pushes_a_gallery_filtered_to_that_album() =
+        runTest {
+            // One scheduler for the catalog's mapping and the component's own work, driven by this test:
+            // a listing's first emission then arrives when the test says so rather than whenever a
+            // background thread gets to it.
+            val open = openVault(UnconfinedTestDispatcher(testScheduler))
+            val component = component(open, UnconfinedTestDispatcher(testScheduler))
+            val objects = vaultObjects(open)
+            val albumId = (objects.createAlbum("Receipts") as Outcome.Ok).value
+            val filed = importInto(objects, albumId, "filed.txt")
+            importInto(objects, null, "unfiled.txt")
+            component.openAlbums()
+            val albums = assertIs<UnlockedChild.Albums>(component.stack.value.active.instance)
 
-        albums.component.openAlbum(albumId)
-        advanceUntilIdle()
+            albums.component.openAlbum(albumId)
+            advanceUntilIdle()
 
-        val child = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance)
-        assertEquals(3, component.stack.value.items.size, "grid, albums, then the filtered grid")
-        // Which listing, not merely "not the home one": the chrome above needs to tell an album from
-        // Unfiled, and the boolean this replaced could not.
-        assertEquals(GalleryScope.Album, child.scope, "an album's own grid, so it offers no albums entry")
+            val child = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance)
+            assertEquals(3, component.stack.value.items.size, "grid, albums, then the filtered grid")
+            // Which listing, not merely "not the home one": the chrome above needs to tell an album from
+            // Unfiled, and the boolean this replaced could not.
+            assertEquals(GalleryScope.Album, child.scope, "an album's own grid, so it offers no albums entry")
 
-        val listed = child.component.state.value.items
-        assertEquals(1, listed.size, "the filtered screen shows the album, not the vault")
-        assertTrue(listed.single().id.contentEquals(filed), "and the id came back out of the config intact")
-    }
+            val listed = child.component.state.value.items
+            assertEquals(1, listed.size, "the filtered screen shows the album, not the vault")
+            assertTrue(listed.single().id.contentEquals(filed), "and the id came back out of the config intact")
+        }
 
     /**
      * Unfiled is reachable, which is the whole reason the filter became three-state: `album_id = ?`
@@ -183,77 +186,83 @@ class UnlockedNavigationTest {
      * filed — which is every item imported before albums existed.
      */
     @Test
-    fun opening_unfiled_pushes_a_gallery_showing_only_the_items_in_no_album() = runTest {
-        val open = openVault(UnconfinedTestDispatcher(testScheduler))
-        val component = component(open, UnconfinedTestDispatcher(testScheduler))
-        val objects = vaultObjects(open)
-        val albumId = (objects.createAlbum("Receipts") as Outcome.Ok).value
-        importInto(objects, albumId, "filed.txt")
-        val loose = importInto(objects, null, "loose.txt")
-        component.openAlbums()
-        val albums = assertIs<UnlockedChild.Albums>(component.stack.value.active.instance)
+    fun opening_unfiled_pushes_a_gallery_showing_only_the_items_in_no_album() =
+        runTest {
+            val open = openVault(UnconfinedTestDispatcher(testScheduler))
+            val component = component(open, UnconfinedTestDispatcher(testScheduler))
+            val objects = vaultObjects(open)
+            val albumId = (objects.createAlbum("Receipts") as Outcome.Ok).value
+            importInto(objects, albumId, "filed.txt")
+            val loose = importInto(objects, null, "loose.txt")
+            component.openAlbums()
+            val albums = assertIs<UnlockedChild.Albums>(component.stack.value.active.instance)
 
-        albums.component.openUnfiled()
-        advanceUntilIdle()
+            albums.component.openUnfiled()
+            advanceUntilIdle()
 
-        val child = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance)
-        assertEquals(GalleryScope.Unfiled, child.scope, "the unfiled listing, so no second way into albums")
-        val listed = child.component.state.value.items
-        assertEquals(1, listed.size, "only what is in no album")
-        assertTrue(listed.single().id.contentEquals(loose))
-        assertEquals(
-            GalleryScope.Unfiled,
-            child.component.state.value.scope,
-            "and it knows which listing it is, so an empty one can say the right thing",
-        )
-    }
+            val child = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance)
+            assertEquals(GalleryScope.Unfiled, child.scope, "the unfiled listing, so no second way into albums")
+            val listed = child.component.state.value.items
+            assertEquals(1, listed.size, "only what is in no album")
+            assertTrue(listed.single().id.contentEquals(loose))
+            assertEquals(
+                GalleryScope.Unfiled,
+                child.component.state.value.scope,
+                "and it knows which listing it is, so an empty one can say the right thing",
+            )
+        }
 
     @Test
-    fun opening_unfiled_twice_is_ignored_rather_than_fatal() = runTest {
-        val open = openVault(UnconfinedTestDispatcher(testScheduler))
-        val component = component(open, UnconfinedTestDispatcher(testScheduler))
-        component.openAlbums()
-        val albums = assertIs<UnlockedChild.Albums>(component.stack.value.active.instance)
+    fun opening_unfiled_twice_is_ignored_rather_than_fatal() =
+        runTest {
+            val open = openVault(UnconfinedTestDispatcher(testScheduler))
+            val component = component(open, UnconfinedTestDispatcher(testScheduler))
+            component.openAlbums()
+            val albums = assertIs<UnlockedChild.Albums>(component.stack.value.active.instance)
 
-        albums.component.openUnfiled()
-        albums.component.openUnfiled()
+            albums.component.openUnfiled()
+            albums.component.openUnfiled()
 
-        assertEquals(3, component.stack.value.items.size, "grid, albums, unfiled — and no duplicate")
-    }
+            assertEquals(3, component.stack.value.items.size, "grid, albums, unfiled — and no duplicate")
+        }
 
     /** Each listing publishes which one it is, because the empty-state copy depends on it. */
     @Test
-    fun the_scope_a_gallery_publishes_matches_the_filter_it_was_built_with() = runTest {
-        val open = openVault(UnconfinedTestDispatcher(testScheduler))
-        val component = component(open, UnconfinedTestDispatcher(testScheduler))
-        val albumId = (vaultObjects(open).createAlbum("Receipts") as Outcome.Ok).value
+    fun the_scope_a_gallery_publishes_matches_the_filter_it_was_built_with() =
+        runTest {
+            val open = openVault(UnconfinedTestDispatcher(testScheduler))
+            val component = component(open, UnconfinedTestDispatcher(testScheduler))
+            val albumId = (vaultObjects(open).createAlbum("Receipts") as Outcome.Ok).value
 
-        val home = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance)
-        assertEquals(GalleryScope.WholeVault, home.component.state.value.scope)
+            val home = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance)
+            assertEquals(GalleryScope.WholeVault, home.component.state.value.scope)
 
-        component.openAlbums()
-        val albums = assertIs<UnlockedChild.Albums>(component.stack.value.active.instance)
-        albums.component.openAlbum(albumId)
-        val inAlbum = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance)
+            component.openAlbums()
+            val albums = assertIs<UnlockedChild.Albums>(component.stack.value.active.instance)
+            albums.component.openAlbum(albumId)
+            val inAlbum = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance)
 
-        assertEquals(GalleryScope.Album, inAlbum.component.state.value.scope)
-    }
+            assertEquals(GalleryScope.Album, inAlbum.component.state.value.scope)
+        }
 
     @Test
-    fun the_home_gallery_still_lists_the_whole_vault() = runTest {
-        val open = openVault(UnconfinedTestDispatcher(testScheduler))
-        val objects = vaultObjects(open)
-        val albumId = (objects.createAlbum("Receipts") as Outcome.Ok).value
-        importInto(objects, albumId, "filed.txt")
-        importInto(objects, null, "unfiled.txt")
+    fun the_home_gallery_still_lists_the_whole_vault() =
+        runTest {
+            val open = openVault(UnconfinedTestDispatcher(testScheduler))
+            val objects = vaultObjects(open)
+            val albumId = (objects.createAlbum("Receipts") as Outcome.Ok).value
+            importInto(objects, albumId, "filed.txt")
+            importInto(objects, null, "unfiled.txt")
 
-        val child = assertIs<UnlockedChild.Gallery>(
-            component(open, UnconfinedTestDispatcher(testScheduler)).stack.value.active.instance,
-        )
-        advanceUntilIdle()
+            val child =
+                assertIs<UnlockedChild.Gallery>(
+                    component(open, UnconfinedTestDispatcher(testScheduler))
+                        .stack.value.active.instance,
+                )
+            advanceUntilIdle()
 
-        assertEquals(2, child.component.state.value.items.size, "filed and unfiled alike")
-    }
+            assertEquals(2, child.component.state.value.items.size, "filed and unfiled alike")
+        }
 
     @Test
     fun two_albums_are_two_different_destinations() {
@@ -371,22 +380,23 @@ class UnlockedNavigationTest {
      * dispatcher, which does not depend on who built the dispatcher.
      */
     @Test
-    fun a_press_while_selecting_ends_the_selection_rather_than_offering_to_leave() = runTest {
-        val open = openVault(UnconfinedTestDispatcher(testScheduler))
-        val component = component(open, UnconfinedTestDispatcher(testScheduler))
-        val id = importInto(vaultObjects(open), null, "one.txt")
-        advanceUntilIdle()
-        val gallery = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance).component
-        gallery.selectItem(id)
-        assertTrue(gallery.state.value.selection.active, "something to come out of")
+    fun a_press_while_selecting_ends_the_selection_rather_than_offering_to_leave() =
+        runTest {
+            val open = openVault(UnconfinedTestDispatcher(testScheduler))
+            val component = component(open, UnconfinedTestDispatcher(testScheduler))
+            val id = importInto(vaultObjects(open), null, "one.txt")
+            advanceUntilIdle()
+            val gallery = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance).component
+            gallery.selectItem(id)
+            assertTrue(gallery.state.value.selection.active, "something to come out of")
 
-        val handled = backDispatcher.back()
+            val handled = backDispatcher.back()
 
-        assertTrue(handled)
-        assertTrue(!gallery.state.value.selection.active, "back left selecting mode")
-        assertEquals(0, leaves, "and did not offer to leave, let alone leave")
-        assertTrue(!component.leaveNotice.value, "nor put a notice on screen about it")
-    }
+            assertTrue(handled)
+            assertTrue(!gallery.state.value.selection.active, "back left selecting mode")
+            assertEquals(0, leaves, "and did not offer to leave, let alone leave")
+            assertTrue(!component.leaveNotice.value, "nor put a notice on screen about it")
+        }
 
     /**
      * What the bar says it is above, on each of the four screens.
@@ -395,30 +405,31 @@ class UnlockedNavigationTest {
      * album's — read from the live state, so it has to be a real component's.
      */
     @Test
-    fun the_bar_names_the_listing_it_is_above() = runTest {
-        val open = openVault(UnconfinedTestDispatcher(testScheduler))
-        val component = component(open, UnconfinedTestDispatcher(testScheduler))
-        val objects = vaultObjects(open)
-        val albumId = (objects.createAlbum("Receipts") as Outcome.Ok).value
+    fun the_bar_names_the_listing_it_is_above() =
+        runTest {
+            val open = openVault(UnconfinedTestDispatcher(testScheduler))
+            val component = component(open, UnconfinedTestDispatcher(testScheduler))
+            val objects = vaultObjects(open)
+            val albumId = (objects.createAlbum("Receipts") as Outcome.Ok).value
 
-        val home = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance)
-        // The vault is the destination, so nothing is added beside its name.
-        assertNull(crumbFor(home, home.component.state.value))
+            val home = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance)
+            // The vault is the destination, so nothing is added beside its name.
+            assertNull(crumbFor(home, home.component.state.value))
 
-        component.openAlbums()
-        val albums = assertIs<UnlockedChild.Albums>(component.stack.value.active.instance)
-        assertEquals("Albums", crumbFor(albums, null), "a sibling of the grid, so it says which it is")
+            component.openAlbums()
+            val albums = assertIs<UnlockedChild.Albums>(component.stack.value.active.instance)
+            assertEquals("Albums", crumbFor(albums, null), "a sibling of the grid, so it says which it is")
 
-        albums.component.openUnfiled()
-        advanceUntilIdle()
-        val unfiled = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance)
-        assertEquals("Unfiled", crumbFor(unfiled, unfiled.component.state.value))
+            albums.component.openUnfiled()
+            advanceUntilIdle()
+            val unfiled = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance)
+            assertEquals("Unfiled", crumbFor(unfiled, unfiled.component.state.value))
 
-        albums.component.openAlbum(albumId)
-        advanceUntilIdle()
-        val inAlbum = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance)
-        assertEquals("Receipts", crumbFor(inAlbum, inAlbum.component.state.value), "the album, by name")
-    }
+            albums.component.openAlbum(albumId)
+            advanceUntilIdle()
+            val inAlbum = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance)
+            assertEquals("Receipts", crumbFor(inAlbum, inAlbum.component.state.value), "the album, by name")
+        }
 
     /**
      * **The album's name is in the bar from the first frame**, not a few frames later.
@@ -433,25 +444,26 @@ class UnlockedNavigationTest {
      * screen's own listing emit inside `openAlbum` and the bar would be right either way.
      */
     @Test
-    fun the_bar_names_an_album_from_the_frame_it_is_opened_in() = runTest {
-        val open = openVault(StandardTestDispatcher(testScheduler))
-        val component = component(open, StandardTestDispatcher(testScheduler))
-        val albumId = (vaultObjects(open).createAlbum("Receipts") as Outcome.Ok).value
+    fun the_bar_names_an_album_from_the_frame_it_is_opened_in() =
+        runTest {
+            val open = openVault(StandardTestDispatcher(testScheduler))
+            val component = component(open, StandardTestDispatcher(testScheduler))
+            val albumId = (vaultObjects(open).createAlbum("Receipts") as Outcome.Ok).value
 
-        component.openAlbums()
-        val albums = assertIs<UnlockedChild.Albums>(component.stack.value.active.instance)
-        // The grid has read the catalog; from here on the scheduler is held.
-        advanceUntilIdle()
+            component.openAlbums()
+            val albums = assertIs<UnlockedChild.Albums>(component.stack.value.active.instance)
+            // The grid has read the catalog; from here on the scheduler is held.
+            advanceUntilIdle()
 
-        albums.component.openAlbum(albumId)
+            albums.component.openAlbum(albumId)
 
-        val child = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance)
-        assertEquals(
-            "Receipts",
-            crumbFor(child, child.component.state.value),
-            "named before its own listing has answered",
-        )
-    }
+            val child = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance)
+            assertEquals(
+                "Receipts",
+                crumbFor(child, child.component.state.value),
+                "named before its own listing has answered",
+            )
+        }
 
     /**
      * **A rename moves the crumb**, which is the reason it is read from live state rather than
@@ -459,47 +471,51 @@ class UnlockedNavigationTest {
      * would be wrong in the one place the user is looking.
      */
     @Test
-    fun renaming_an_album_renames_the_crumb() = runTest {
-        val open = openVault(UnconfinedTestDispatcher(testScheduler))
-        val component = component(
-            open = open,
-            mainContext = UnconfinedTestDispatcher(testScheduler),
-            // The rename is a write, and this test waits for it.
-            ioContext = UnconfinedTestDispatcher(testScheduler),
-        )
-        val albumId = (vaultObjects(open).createAlbum("Receipts") as Outcome.Ok).value
-        component.openAlbums()
-        val albums = assertIs<UnlockedChild.Albums>(component.stack.value.active.instance)
-        albums.component.openAlbum(albumId)
-        advanceUntilIdle()
-        val child = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance)
-        assertEquals("Receipts", crumbFor(child, child.component.state.value))
+    fun renaming_an_album_renames_the_crumb() =
+        runTest {
+            val open = openVault(UnconfinedTestDispatcher(testScheduler))
+            val component =
+                component(
+                    open = open,
+                    mainContext = UnconfinedTestDispatcher(testScheduler),
+                    // The rename is a write, and this test waits for it.
+                    ioContext = UnconfinedTestDispatcher(testScheduler),
+                )
+            val albumId = (vaultObjects(open).createAlbum("Receipts") as Outcome.Ok).value
+            component.openAlbums()
+            val albums = assertIs<UnlockedChild.Albums>(component.stack.value.active.instance)
+            albums.component.openAlbum(albumId)
+            advanceUntilIdle()
+            val child = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance)
+            assertEquals("Receipts", crumbFor(child, child.component.state.value))
 
-        child.component.startAlbumRename()
-        child.component.editAlbumName("Tax")
-        child.component.confirmAlbumRename()
-        advanceUntilIdle()
+            child.component.startAlbumRename()
+            child.component.editAlbumName("Tax")
+            child.component.confirmAlbumRename()
+            advanceUntilIdle()
 
-        assertEquals("Tax", crumbFor(child, child.component.state.value))
-    }
+            assertEquals("Tax", crumbFor(child, child.component.state.value))
+        }
 
     /**
      * An album whose name will not open gets the unverifiable form, never a blank and never a guess
      * — the same words the grid and the heading use, through the one helper that decides them.
      */
     @Test
-    fun an_album_whose_name_will_not_open_still_has_a_crumb() = runTest {
-        val open = openVault(UnconfinedTestDispatcher(testScheduler))
-        val component = component(open, UnconfinedTestDispatcher(testScheduler))
-        val child = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance)
+    fun an_album_whose_name_will_not_open_still_has_a_crumb() =
+        runTest {
+            val open = openVault(UnconfinedTestDispatcher(testScheduler))
+            val component = component(open, UnconfinedTestDispatcher(testScheduler))
+            val child = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance)
 
-        val crumb = crumbFor(
-            child = UnlockedChild.Gallery(child.component, GalleryScope.Album),
-            gallery = GalleryState(album = AlbumState.Present(AlbumTileName.Unreadable)),
-        )
+            val crumb =
+                crumbFor(
+                    child = UnlockedChild.Gallery(child.component, GalleryScope.Album),
+                    gallery = GalleryState(album = AlbumState.Present(AlbumTileName.Unreadable)),
+                )
 
-        assertEquals(AlbumTileName.Unreadable.label(), crumb)
-    }
+            assertEquals(AlbumTileName.Unreadable.label(), crumb)
+        }
 
     /**
      * Two cases say nothing at all, and both are deliberate: an album that is **gone** must not be
@@ -507,18 +523,23 @@ class UnlockedNavigationTest {
      * name that has **not arrived yet** gets no placeholder for the user to watch be replaced.
      */
     @Test
-    fun an_album_with_no_name_to_show_adds_nothing_to_the_bar() = runTest {
-        val open = openVault(UnconfinedTestDispatcher(testScheduler))
-        val component = component(open, UnconfinedTestDispatcher(testScheduler))
-        val gallery = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance).component
-        val child = UnlockedChild.Gallery(gallery, GalleryScope.Album)
+    fun an_album_with_no_name_to_show_adds_nothing_to_the_bar() =
+        runTest {
+            val open = openVault(UnconfinedTestDispatcher(testScheduler))
+            val component = component(open, UnconfinedTestDispatcher(testScheduler))
+            val gallery = assertIs<UnlockedChild.Gallery>(component.stack.value.active.instance).component
+            val child = UnlockedChild.Gallery(gallery, GalleryScope.Album)
 
-        assertNull(crumbFor(child, GalleryState(album = AlbumState.Gone)), "gone, so not named")
-        assertNull(crumbFor(child, GalleryState(album = null)), "not read yet, so nothing claimed")
-    }
+            assertNull(crumbFor(child, GalleryState(album = AlbumState.Gone)), "gone, so not named")
+            assertNull(crumbFor(child, GalleryState(album = null)), "not read yet, so nothing claimed")
+        }
 
     /** One small item, filed or not, so a listing has something to be right or wrong about. */
-    private fun importInto(objects: VaultObjects, albumId: ByteArray?, name: String): ByteArray =
+    private fun importInto(
+        objects: VaultObjects,
+        albumId: ByteArray?,
+        name: String,
+    ): ByteArray =
         (
             objects.importObject(
                 kind = VaultItemKind.FILE.code,
@@ -528,7 +549,7 @@ class UnlockedNavigationTest {
                 chunkSize = 64,
                 openSource = { Buffer().apply { write(byteArrayOf(1, 2, 3)) } },
             ) as Outcome.Ok
-            ).value
+        ).value
 
     private fun vaultObjects(open: VaultBootstrap.OpenVault): VaultObjects {
         val engine = koin.get<CryptoEngine>()
@@ -536,7 +557,9 @@ class UnlockedNavigationTest {
             session = open.session,
             storage = open.storage,
             catalog = open.catalog,
-            codec = dev.ehsanfahad.darkchamber.core.crypto.DchmCodec(engine),
+            codec =
+                dev.ehsanfahad.darkchamber.core.crypto
+                    .DchmCodec(engine),
             clock = { 1_000L },
             random = engine::randomBytes,
         )

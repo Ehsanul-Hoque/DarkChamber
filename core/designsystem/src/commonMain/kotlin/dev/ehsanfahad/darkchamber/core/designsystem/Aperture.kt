@@ -36,12 +36,13 @@ enum class ApertureState {
 }
 
 /** How far the iris is open, 0f (shut) … 1f (fully open). Pure — no composition needed. */
-fun ApertureState.openFraction(): Float = when (this) {
-    ApertureState.Closed -> 0f
-    ApertureState.Open -> 1f
-    ApertureState.Unlocking -> 0.6f
-    ApertureState.Failed -> 0f
-}
+fun ApertureState.openFraction(): Float =
+    when (this) {
+        ApertureState.Closed -> 0f
+        ApertureState.Open -> 1f
+        ApertureState.Unlocking -> 0.6f
+        ApertureState.Failed -> 0f
+    }
 
 /** Non-composable aperture geometry defaults, so sizes are testable without a composition. */
 object ApertureDefaults {
@@ -70,14 +71,17 @@ fun Aperture(
     val motion = DarkChamberTheme.motion
     val open by animateFloatAsState(
         targetValue = state.openFraction(),
-        animationSpec = androidx.compose.animation.core.tween(durationMillis = motion.motionSlow),
+        animationSpec =
+            androidx.compose.animation.core
+                .tween(durationMillis = motion.motionSlow),
         label = "apertureOpen",
     )
 
     Canvas(
-        modifier = modifier
-            .size(size)
-            .semantics { this.contentDescription = contentDescription },
+        modifier =
+            modifier
+                .size(size)
+                .semantics { this.contentDescription = contentDescription },
     ) {
         val diameter = this.size.minDimension
         val center = this.center

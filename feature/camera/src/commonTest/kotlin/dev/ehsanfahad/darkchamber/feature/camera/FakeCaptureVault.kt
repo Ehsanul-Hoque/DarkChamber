@@ -22,7 +22,6 @@ import kotlinx.io.readByteArray
  * vault and what was left in the caller's arrays afterwards.
  */
 internal class FakeCaptureVault : CaptureVault {
-
     class Imported(
         val kind: Int,
         val name: String,
@@ -106,7 +105,10 @@ internal class FakeCaptureVault : CaptureVault {
         whenAlbumMissing: WhenAlbumMissing,
         openSource: () -> RawSource,
     ): Outcome<ByteArray> {
-        val counted = { opens++; openSource() }
+        val counted = {
+            opens++
+            openSource()
+        }
         lastOpenSource = openSource
         duringImport(counted)
         activeAfterImports += isActive()

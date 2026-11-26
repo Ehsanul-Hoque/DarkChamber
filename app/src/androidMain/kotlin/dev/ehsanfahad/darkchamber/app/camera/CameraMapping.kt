@@ -29,7 +29,11 @@ import kotlin.time.Duration.Companion.nanoseconds
  * [showRationale] is true only after a refusal the system will still ask about again, which is
  * exactly when "Allow" is an offer that does something.
  */
-internal fun permissionState(granted: Boolean, asked: Boolean, showRationale: Boolean): CameraPermission =
+internal fun permissionState(
+    granted: Boolean,
+    asked: Boolean,
+    showRationale: Boolean,
+): CameraPermission =
     when {
         granted -> CameraPermission.Granted
         showRationale -> CameraPermission.Denied
@@ -38,7 +42,11 @@ internal fun permissionState(granted: Boolean, asked: Boolean, showRationale: Bo
     }
 
 /** The microphone's answer, read exactly as the camera's is — see [permissionState]. */
-internal fun microphonePermissionState(granted: Boolean, asked: Boolean, showRationale: Boolean): MicrophonePermission =
+internal fun microphonePermissionState(
+    granted: Boolean,
+    asked: Boolean,
+    showRationale: Boolean,
+): MicrophonePermission =
     when (permissionState(granted, asked, showRationale)) {
         CameraPermission.Granted -> MicrophonePermission.Granted
         CameraPermission.Denied -> MicrophonePermission.Denied
@@ -63,15 +71,21 @@ internal fun recordingEndFor(error: Int): RecordingEnd =
         VideoRecordEvent.Finalize.ERROR_SOURCE_INACTIVE,
         VideoRecordEvent.Finalize.ERROR_DURATION_LIMIT_REACHED,
         -> RecordingEnd.Finalized
+
         VideoRecordEvent.Finalize.ERROR_FILE_SIZE_LIMIT_REACHED -> RecordingEnd.FinalizedAtSizeLimit
+
         VideoRecordEvent.Finalize.ERROR_INSUFFICIENT_STORAGE -> RecordingEnd.Failed(RecordingFailure.StorageFull)
+
         VideoRecordEvent.Finalize.ERROR_NO_VALID_DATA -> RecordingEnd.NoFrames
+
         else -> RecordingEnd.Failed(RecordingFailure.Other)
     }
 
 /** CameraX's running count, in the seam's terms. */
-internal fun recordingProgressFor(bytesRecorded: Long, recordedDurationNanos: Long): RecordingProgress =
-    RecordingProgress(bytesRecorded, recordedDurationNanos.nanoseconds)
+internal fun recordingProgressFor(
+    bytesRecorded: Long,
+    recordedDurationNanos: Long,
+): RecordingProgress = RecordingProgress(bytesRecorded, recordedDurationNanos.nanoseconds)
 
 /**
  * The seam's tilt — how far the phone is turned clockwise from upright — from the rotation a capture

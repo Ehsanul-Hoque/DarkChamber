@@ -31,11 +31,12 @@ object KeyStoreCodec {
 
     @OptIn(ExperimentalSerializationApi::class)
     fun decode(bytes: ByteArray): Outcome<KeyStoreBlob> {
-        val blob = try {
-            darkChamberCbor.decodeFromByteArray(KeyStoreBlob.serializer(), bytes)
-        } catch (_: Throwable) {
-            return Outcome.Err(VaultError.Crypto.MalformedContainer)
-        }
+        val blob =
+            try {
+                darkChamberCbor.decodeFromByteArray(KeyStoreBlob.serializer(), bytes)
+            } catch (_: Throwable) {
+                return Outcome.Err(VaultError.Crypto.MalformedContainer)
+            }
 
         // A version below the first real one isn't a version — it's a corrupt/garbage blob.
         if (blob.formatVersion < 1) return Outcome.Err(VaultError.Crypto.MalformedContainer)

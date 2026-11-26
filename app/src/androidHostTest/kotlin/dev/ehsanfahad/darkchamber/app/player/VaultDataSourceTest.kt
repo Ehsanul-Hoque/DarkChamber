@@ -46,7 +46,12 @@ class VaultDataSourceTest {
         override val length: Long = content.size.toLong()
         override val chunksDecrypted: Long = 17L
 
-        override fun readAt(position: Long, into: ByteArray, offset: Int, size: Int): Outcome<Int> {
+        override fun readAt(
+            position: Long,
+            into: ByteArray,
+            offset: Int,
+            size: Int,
+        ): Outcome<Int> {
             if (inFlight.incrementAndGet() > 1) overlapped.set(true)
             try {
                 if (dwellMs > 0) Thread.sleep(dwellMs)
@@ -124,7 +129,8 @@ class VaultDataSourceTest {
     fun an_open_past_the_end_is_the_position_out_of_range_error() {
         val source = VaultDataSource(SharedRangeReader(ScriptedReader()))
 
-        val thrown = assertFailsWith<DataSourceException> { source.start(position = 1_001, length = C.LENGTH_UNSET.toLong()) }
+        val thrown =
+            assertFailsWith<DataSourceException> { source.start(position = 1_001, length = C.LENGTH_UNSET.toLong()) }
         assertEquals(PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE, thrown.reason)
     }
 
@@ -151,11 +157,21 @@ class VaultDataSourceTest {
     @Test
     fun the_reader_reaching_its_end_early_ends_the_input() {
         // A reader that answers END before the length it reported: the source ends, it does not spin.
-        val shared = SharedRangeReader(object : RangeReader {
-            override val length = 1_000L
-            override fun readAt(position: Long, into: ByteArray, offset: Int, size: Int) = Outcome.Ok(RangeReader.END)
-            override fun close() = Unit
-        })
+        val shared =
+            SharedRangeReader(
+                object : RangeReader {
+                    override val length = 1_000L
+
+                    override fun readAt(
+                        position: Long,
+                        into: ByteArray,
+                        offset: Int,
+                        size: Int,
+                    ) = Outcome.Ok(RangeReader.END)
+
+                    override fun close() = Unit
+                },
+            )
         val source = VaultDataSource(shared)
         source.start(position = 0, length = C.LENGTH_UNSET.toLong())
 
@@ -168,10 +184,25 @@ class VaultDataSourceTest {
         // counting it as bytes read and stepping back.
         var first = true
         val reader = ScriptedReader()
-        val shared = SharedRangeReader(object : RangeReader by reader {
-            override fun readAt(position: Long, into: ByteArray, offset: Int, size: Int): Outcome<Int> =
-                if (first) Outcome.Ok(RangeReader.END).also { first = false } else reader.readAt(position, into, offset, size)
-        })
+        val shared =
+            SharedRangeReader(
+                object : RangeReader by reader {
+                    override fun readAt(
+                        position: Long,
+                        into: ByteArray,
+                        offset: Int,
+                        size: Int,
+                    ): Outcome<Int> =
+                        if (first) {
+                            Outcome
+                                .Ok(
+                                    RangeReader.END,
+                                ).also { first = false }
+                        } else {
+                            reader.readAt(position, into, offset, size)
+                        }
+                },
+            )
         val source = VaultDataSource(shared)
         source.start(position = 100, length = 10)
 
@@ -208,11 +239,21 @@ class VaultDataSourceTest {
     @Test
     fun the_first_failure_is_the_one_kept() {
         var error: VaultError = VaultError.Crypto.IntegrityFailure
-        val shared = SharedRangeReader(object : RangeReader {
-            override val length = 1_000L
-            override fun readAt(position: Long, into: ByteArray, offset: Int, size: Int) = Outcome.Err(error)
-            override fun close() = Unit
-        })
+        val shared =
+            SharedRangeReader(
+                object : RangeReader {
+                    override val length = 1_000L
+
+                    override fun readAt(
+                        position: Long,
+                        into: ByteArray,
+                        offset: Int,
+                        size: Int,
+                    ) = Outcome.Err(error)
+
+                    override fun close() = Unit
+                },
+            )
         val source = VaultDataSource(shared)
         source.start(position = 0, length = C.LENGTH_UNSET.toLong())
 
@@ -280,14 +321,15 @@ class VaultDataSourceTest {
         val reader = ScriptedReader(dwellMs = 1)
         val shared = SharedRangeReader(reader)
         val go = CountDownLatch(1)
-        val readers = (0 until 2).map { n ->
-            thread {
-                val source = VaultDataSource(shared)
-                source.start(position = n * 500L, length = 500)
-                go.await()
-                source.readAll(step = 16)
+        val readers =
+            (0 until 2).map { n ->
+                thread {
+                    val source = VaultDataSource(shared)
+                    source.start(position = n * 500L, length = 500)
+                    go.await()
+                    source.readAll(step = 16)
+                }
             }
-        }
         go.countDown()
         readers.forEach { it.join() }
 

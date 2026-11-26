@@ -25,7 +25,12 @@ interface RangeReader : AutoCloseable {
      * than asked — at a chunk boundary, for one — as both platforms' readers allow. A negative
      * argument, or a [size] that does not fit in [into] from [offset], is an `Io` error.
      */
-    fun readAt(position: Long, into: ByteArray, offset: Int, size: Int): Outcome<Int>
+    fun readAt(
+        position: Long,
+        into: ByteArray,
+        offset: Int,
+        size: Int,
+    ): Outcome<Int>
 
     /**
      * How many chunks this reader has decrypted since it opened — a number for measuring how often a
@@ -68,7 +73,12 @@ internal class ChunkRangeReader private constructor(
     override var chunksDecrypted: Long = 0L
         private set
 
-    override fun readAt(position: Long, into: ByteArray, offset: Int, size: Int): Outcome<Int> {
+    override fun readAt(
+        position: Long,
+        into: ByteArray,
+        offset: Int,
+        size: Int,
+    ): Outcome<Int> {
         if (closed) return Outcome.Err(VaultError.Io(IllegalStateException("reader is closed")))
         // Checked before the held chunks are looked at: after a lock, plaintext already in memory must
         // not be handed out either. Nothing held survives the refusal.
@@ -82,10 +92,11 @@ internal class ChunkRangeReader private constructor(
         }
         if (position >= length) return Outcome.Ok(RangeReader.END)
         val index = position / layout.chunkSize
-        val chunk = held.remove(index) ?: when (val decrypted = decrypt(index)) {
-            is Outcome.Err -> return decrypted
-            is Outcome.Ok -> decrypted.value.also { chunksDecrypted++ }
-        }
+        val chunk =
+            held.remove(index) ?: when (val decrypted = decrypt(index)) {
+                is Outcome.Err -> return decrypted
+                is Outcome.Ok -> decrypted.value.also { chunksDecrypted++ }
+            }
         held[index] = chunk // re-inserted, so it is now the most recently used
         while (held.size > MAX_HELD) {
             val eldest = held.keys.first()
@@ -113,16 +124,18 @@ internal class ChunkRangeReader private constructor(
     }
 
     private fun decrypt(index: Long): Outcome<ByteArray> {
-        val stored = when (val read = file.readFully(layout.chunkOffset(index), layout.storedChunkLength(index))) {
-            is Outcome.Err -> return read
-            is Outcome.Ok -> read.value
-        }
+        val stored =
+            when (val read = file.readFully(layout.chunkOffset(index), layout.storedChunkLength(index))) {
+                is Outcome.Err -> return read
+                is Outcome.Ok -> read.value
+            }
         // The key is unwrapped for this one chunk and zeroed by the session as soon as it is used, so
         // no raw key lives in the reader between reads.
         return try {
-            session.useDek(dekWrapped) { dek ->
-                codec.decryptChunk(dek, noncePrefix, fileId, index, isLast = index == layout.chunkCount - 1, stored)
-            }.flatMap { it }
+            session
+                .useDek(dekWrapped) { dek ->
+                    codec.decryptChunk(dek, noncePrefix, fileId, index, isLast = index == layout.chunkCount - 1, stored)
+                }.flatMap { it }
         } catch (e: IllegalStateException) {
             // A lock landed after the check above: the session refuses by throwing.
             release()
@@ -142,25 +155,30 @@ internal class ChunkRangeReader private constructor(
             dekWrapped: ByteArray,
             stillWanted: () -> Boolean,
         ): Outcome<RangeReader> {
-            val opened = try {
-                if (!stillWanted()) throw IllegalStateException("stopped before the open")
-                session.useDek(dekWrapped) { dek ->
-                    codec.openLayout(dek, fileId, file.size) { position, length ->
-                        when (val read = file.readFully(position, length)) {
-                            is Outcome.Err -> throw ReadFailed(read.error)
-                            is Outcome.Ok -> read.value
-                        }
-                    }
-                }.flatMap { it }
-            } catch (e: IllegalStateException) {
-                Outcome.Err(VaultError.Io(OperationStoppedException()))
-            }
+            val opened =
+                try {
+                    if (!stillWanted()) throw IllegalStateException("stopped before the open")
+                    session
+                        .useDek(dekWrapped) { dek ->
+                            codec.openLayout(dek, fileId, file.size) { position, length ->
+                                when (val read = file.readFully(position, length)) {
+                                    is Outcome.Err -> throw ReadFailed(read.error)
+                                    is Outcome.Ok -> read.value
+                                }
+                            }
+                        }.flatMap { it }
+                } catch (e: IllegalStateException) {
+                    Outcome.Err(VaultError.Io(OperationStoppedException()))
+                }
             return when (opened) {
                 is Outcome.Err -> {
                     file.close()
                     Outcome.Err(opened.error.unwrapReadFailure())
                 }
-                is Outcome.Ok -> Outcome.Ok(ChunkRangeReader(session, codec, fileId, dekWrapped, file, opened.value, stillWanted))
+
+                is Outcome.Ok -> {
+                    Outcome.Ok(ChunkRangeReader(session, codec, fileId, dekWrapped, file, opened.value, stillWanted))
+                }
             }
         }
     }
@@ -174,29 +192,44 @@ internal fun VaultError.isDamage(): Boolean =
  * A [RangeReader] that remembers the first damage error any read returned, so the caller learns of it
  * even when whoever was reading — a platform frame grabber — swallowed it.
  */
-internal class DamageWatchingReader(private val delegate: RangeReader) : RangeReader by delegate {
+internal class DamageWatchingReader(
+    private val delegate: RangeReader,
+) : RangeReader by delegate {
     var damage: VaultError? = null
         private set
 
-    override fun readAt(position: Long, into: ByteArray, offset: Int, size: Int): Outcome<Int> =
+    override fun readAt(
+        position: Long,
+        into: ByteArray,
+        offset: Int,
+        size: Int,
+    ): Outcome<Int> =
         delegate.readAt(position, into, offset, size).also { read ->
             if (read is Outcome.Err && damage == null && read.error.isDamage()) damage = read.error
         }
 }
 
 // Carries a storage read's own error out through the codec's read callback, which can only throw.
-private class ReadFailed(val error: VaultError) : Exception()
+private class ReadFailed(
+    val error: VaultError,
+) : Exception()
 
 // The codec reports a throwing read as Io(cause); give back the storage error the read actually had.
 private fun VaultError.unwrapReadFailure(): VaultError = ((this as? VaultError.Io)?.cause as? ReadFailed)?.error ?: this
 
 /** Exactly [length] bytes at [position], looping over short reads; running out early is an `Io`. */
-private fun ObjectReader.readFully(position: Long, length: Int): Outcome<ByteArray> {
+private fun ObjectReader.readFully(
+    position: Long,
+    length: Int,
+): Outcome<ByteArray> {
     val out = ByteArray(length)
     var got = 0
     while (got < length) {
         when (val read = readAt(position + got, out, got, length - got)) {
-            is Outcome.Err -> return read
+            is Outcome.Err -> {
+                return read
+            }
+
             is Outcome.Ok -> {
                 // A read that makes no progress has run out too: below the size taken at open, a file
                 // that has since lost its tail answers 0 from `pread` where `FileChannel` answers -1.

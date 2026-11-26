@@ -19,7 +19,6 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
 import dev.ehsanfahad.darkchamber.feature.vault.api.Filing
 import dev.ehsanfahad.darkchamber.feature.vault.api.FilingDestination
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryError
-import dev.ehsanfahad.darkchamber.feature.vault.api.SelectionDelete
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryOrder
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryScope
@@ -28,6 +27,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.GallerySelection
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryState
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportStage
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportState
+import dev.ehsanfahad.darkchamber.feature.vault.api.SelectionDelete
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultGalleryComponent
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultImports
 import dev.ehsanfahad.darkchamber.feature.vault.domain.AlbumPresence
@@ -53,15 +53,15 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.transformLatest
-import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.launch
 import kotlin.coroutines.CoroutineContext
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.TimeMark
 import kotlin.time.TimeSource
-import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * The gallery's state holder, in the session gate's presentation style
@@ -134,8 +134,8 @@ internal class DefaultVaultGalleryComponent(
     // Where opening an item goes: the viewer, on this listing, in the order and under the search the
     // grid is showing at the tap.
     private val onOpenItem: (id: ByteArray, order: GalleryOrder, query: String) -> Unit = { _, _, _ -> },
-) : VaultGalleryComponent, ComponentContext by componentContext {
-
+) : VaultGalleryComponent,
+    ComponentContext by componentContext {
     /**
      * The album this screen is showing, or `null` on the whole-vault and unfiled listings.
      *
@@ -175,16 +175,17 @@ internal class DefaultVaultGalleryComponent(
     // cancelling that must cancel this too — before the session it runs against is zeroized.
     private val scope = CoroutineScope(mainContext + SupervisorJob(mainContext[Job]))
 
-    private val _state = MutableValue(
-        // The scope is published once, at construction, because that is when it is decided: this
-        // screen's identity is its filter, and changing it is a push rather than a state change.
-        GalleryState(
-            scope = filter.toScope(),
-            // Guarded on the filter rather than trusted from the caller: a name carried to a listing
-            // that is not an album would give a screen with no album a heading and two album actions.
-            album = openedAlbumName?.takeIf { albumId != null }?.let(AlbumState::Present),
-        ),
-    )
+    private val _state =
+        MutableValue(
+            // The scope is published once, at construction, because that is when it is decided: this
+            // screen's identity is its filter, and changing it is a push rather than a state change.
+            GalleryState(
+                scope = filter.toScope(),
+                // Guarded on the filter rather than trusted from the caller: a name carried to a listing
+                // that is not an album would give a screen with no album a heading and two album actions.
+                album = openedAlbumName?.takeIf { albumId != null }?.let(AlbumState::Present),
+            ),
+        )
     override val state: Value<GalleryState> = _state
 
     // Owned here rather than injected: a selection is this screen's own transient mode, and it must
@@ -210,19 +211,21 @@ internal class DefaultVaultGalleryComponent(
         // One subscription rather than a copy after each intent: every path that changes the
         // selection publishes through here, including the live-list intersection, which no intent
         // triggers at all. A copy per intent would be one forgotten call away from a stale count.
-        val subscription = selection.state.subscribe { selected ->
-            selectionBack.isEnabled = selected.active
-            _state.value = _state.value.copy(
-                selection = GallerySelection(active = selected.active, ids = selection.selectedIds()),
-            )
-            // A chooser outlives its selection only as an empty question: everything it would have moved
-            // has gone — cleared by the user, or shredded out of the listing from elsewhere. Closed
-            // here, in the one place every change to the selection passes through.
-            if (!selected.active && _state.value.filing is Filing.Choosing) {
-                closeChooser()
-                publishFiling(null)
+        val subscription =
+            selection.state.subscribe { selected ->
+                selectionBack.isEnabled = selected.active
+                _state.value =
+                    _state.value.copy(
+                        selection = GallerySelection(active = selected.active, ids = selection.selectedIds()),
+                    )
+                // A chooser outlives its selection only as an empty question: everything it would have moved
+                // has gone — cleared by the user, or shredded out of the listing from elsewhere. Closed
+                // here, in the one place every change to the selection passes through.
+                if (!selected.active && _state.value.filing is Filing.Choosing) {
+                    closeChooser()
+                    publishFiling(null)
+                }
             }
-        }
         doOnDestroy(subscription::cancel)
 
         observeGallery(filter, controls)
@@ -234,13 +237,13 @@ internal class DefaultVaultGalleryComponent(
                 // Two fields, because the banner is dismissible and the fact is not: catch ends the
                 // flow, so nothing will arrive after this, and an empty list on its own is
                 // indistinguishable from an empty vault.
-                _state.value = _state.value.copy(
-                    loading = false,
-                    error = GalleryError.ListingFailed,
-                    listingUnreadable = true,
-                )
-            }
-            .onEach(::onListing)
+                _state.value =
+                    _state.value.copy(
+                        loading = false,
+                        error = GalleryError.ListingFailed,
+                        listingUnreadable = true,
+                    )
+            }.onEach(::onListing)
             .launchIn(scope)
 
         // The batch runs on the session, not here: this only watches it. The component can be
@@ -267,8 +270,7 @@ internal class DefaultVaultGalleryComponent(
                 .catch { cause ->
                     logVaultError(ALBUM_STAGE, VaultError.Unexpected(cause))
                     _state.value = _state.value.copy(album = AlbumState.Gone)
-                }
-                .onEach(::onAlbum)
+                }.onEach(::onAlbum)
                 .launchIn(scope)
         }
     }
@@ -316,6 +318,7 @@ internal class DefaultVaultGalleryComponent(
 
     // The coordinator holds the double-tap guard: it is the thing that knows whether a batch is
     // already running, and it stays right whether or not this screen was rebuilt in between.
+
     /**
      * **Imports land where the screen is looking.** Inside an album they are filed as they are created,
      * so the album they appear in is the one they were added from; from the whole vault or from Unfiled
@@ -415,12 +418,13 @@ internal class DefaultVaultGalleryComponent(
         publishFiling(Filing.Choosing())
 
         chooserWork?.cancel()
-        chooserWork = observeAlbums()
-            // A chooser that cannot list the albums is still a chooser: creating one is the way forward
-            // from an empty list, and that is exactly the state a failed listing leaves behind.
-            .catch { cause -> logVaultError(CHOOSER_STAGE, VaultError.Unexpected(cause)) }
-            .onEach(::onChoices)
-            .launchIn(scope)
+        chooserWork =
+            observeAlbums()
+                // A chooser that cannot list the albums is still a chooser: creating one is the way forward
+                // from an empty list, and that is exactly the state a failed listing leaves behind.
+                .catch { cause -> logVaultError(CHOOSER_STAGE, VaultError.Unexpected(cause)) }
+                .onEach(::onChoices)
+                .launchIn(scope)
     }
 
     override fun chooseAlbum(albumId: ByteArray) {
@@ -476,8 +480,14 @@ internal class DefaultVaultGalleryComponent(
 
         scope.launch {
             when (val made = createAlbum(draft.name)) {
-                is CreateAlbumResult.Created -> move(made.id, FilingDestination.Album)
-                is CreateAlbumResult.NameMissing -> failFilingCreate(AlbumDraftProblem.NameMissing)
+                is CreateAlbumResult.Created -> {
+                    move(made.id, FilingDestination.Album)
+                }
+
+                is CreateAlbumResult.NameMissing -> {
+                    failFilingCreate(AlbumDraftProblem.NameMissing)
+                }
+
                 is CreateAlbumResult.Failed -> {
                     // A stage name and an error code; never the album's name (hard rule 4).
                     logVaultError(CREATE_STAGE, made.error)
@@ -517,6 +527,7 @@ internal class DefaultVaultGalleryComponent(
                     selection.clear()
                     _state.value = _state.value.copy(deletion = SelectionDelete.Deleted(done.value))
                 }
+
                 is Outcome.Err -> {
                     logVaultError(ITEMS_DELETE_STAGE, done.error)
                     _state.value = _state.value.copy(deletion = null, error = GalleryError.DeleteFailed)
@@ -547,7 +558,10 @@ internal class DefaultVaultGalleryComponent(
      * finishing: the items have gone where they were sent, and on an album screen they have left the
      * listing entirely, so a selection still holding them would be a selection of things not on screen.
      */
-    private fun move(albumId: ByteArray?, destination: FilingDestination) {
+    private fun move(
+        albumId: ByteArray?,
+        destination: FilingDestination,
+    ) {
         val ids = selection.selectedIds()
         closeChooser()
         publishFiling(Filing.Moving)
@@ -564,6 +578,7 @@ internal class DefaultVaultGalleryComponent(
                         ),
                     )
                 }
+
                 is Outcome.Err -> {
                     logVaultError(FILING_STAGE, done.error)
                     // The selection survives a refusal: nothing moved, so the user's next move is to
@@ -579,11 +594,12 @@ internal class DefaultVaultGalleryComponent(
         val choosing = _state.value.filing as? Filing.Choosing ?: return
         publishFiling(
             choosing.copy(
-                albums = albums
-                    // Never the album being viewed. Moving items into the album they are already in is
-                    // nothing, and offering it invites a tap that reports a move that did not happen.
-                    .filterNot { tile -> albumId?.contentEquals(tile.id) == true }
-                    .map { tile -> AlbumChoice(id = tile.id, name = tile.name) },
+                albums =
+                    albums
+                        // Never the album being viewed. Moving items into the album they are already in is
+                        // nothing, and offering it invites a tap that reports a move that did not happen.
+                        .filterNot { tile -> albumId?.contentEquals(tile.id) == true }
+                        .map { tile -> AlbumChoice(id = tile.id, name = tile.name) },
             ),
         )
     }
@@ -639,8 +655,14 @@ internal class DefaultVaultGalleryComponent(
             when (val done = renameAlbum(id, draft.name)) {
                 // Closed. The new name arrives through the album listing, like every other change to
                 // the catalog — nothing here writes it into the heading.
-                is RenameAlbumResult.Renamed -> closeRename()
-                is RenameAlbumResult.NameMissing -> failRename(AlbumDraftProblem.NameMissing)
+                is RenameAlbumResult.Renamed -> {
+                    closeRename()
+                }
+
+                is RenameAlbumResult.NameMissing -> {
+                    failRename(AlbumDraftProblem.NameMissing)
+                }
+
                 is RenameAlbumResult.Failed -> {
                     // A stage name and an error code. Never the name being set, and never the old one
                     // (hard rule 4).
@@ -685,7 +707,10 @@ internal class DefaultVaultGalleryComponent(
                 // Leave at once. The album listing this screen watches would reach Gone a moment later
                 // anyway, but showing the "no longer here" notice for an album the user just deleted on
                 // purpose would be explaining their own action back to them.
-                is Outcome.Ok -> onLeaveAlbum()
+                is Outcome.Ok -> {
+                    onLeaveAlbum()
+                }
+
                 is Outcome.Err -> {
                     logVaultError(DELETE_STAGE, done.error)
                     failDelete()
@@ -744,16 +769,24 @@ internal class DefaultVaultGalleryComponent(
      * left to rename, and a dialog over the notice would be offering an edit that cannot land.
      */
     private fun onAlbum(presence: AlbumPresence) {
-        _state.value = _state.value.copy(
-            album = when (presence) {
-                is AlbumPresence.Gone -> AlbumState.Gone
-                is AlbumPresence.Present -> when (val current = _state.value.album) {
-                    is AlbumState.Present -> current.copy(name = presence.name)
-                    // First emission, or an album that came back — neither carries an action.
-                    else -> AlbumState.Present(name = presence.name)
-                }
-            },
-        )
+        _state.value =
+            _state.value.copy(
+                album =
+                    when (presence) {
+                        is AlbumPresence.Gone -> {
+                            AlbumState.Gone
+                        }
+
+                        is AlbumPresence.Present -> {
+                            when (val current = _state.value.album) {
+                                is AlbumState.Present -> current.copy(name = presence.name)
+
+                                // First emission, or an album that came back — neither carries an action.
+                                else -> AlbumState.Present(name = presence.name)
+                            }
+                        }
+                    },
+            )
     }
 
     /**
@@ -814,9 +847,13 @@ internal class DefaultVaultGalleryComponent(
                         announced = null
                         emit(value)
                     }
+
                     // Already on screen. Saying it again costs nothing; taking it away costs the
                     // explanation for a wait that is still going on.
-                    stage == announced -> emit(value)
+                    stage == announced -> {
+                        emit(value)
+                    }
+
                     else -> {
                         emit(value.copy(stage = null))
                         delay(after)
@@ -832,43 +869,44 @@ internal class DefaultVaultGalleryComponent(
      * [interval] is enough. A batch ending — or starting, or being cancelled — is never delayed:
      * those are the frames that must land immediately, and there are only ever a handful of them.
      */
-    private fun Flow<ImportState>.throttleProgress(interval: Duration): Flow<ImportState> = flow {
-        var lastRunning: TimeMark? = null
-        var wasStopping = false
-        var lastStage: ImportStage? = null
-        collect { value ->
-            if (value is ImportState.Running) {
-                val previous = lastRunning
-                // The window drops redundant *progress*. A batch turning into stopping is not
-                // progress — it is the user's tap arriving, and it may be the last thing this batch
-                // says for minutes if the platform is inside a blocking read. Held back, it leaves a
-                // Stop button on screen that has already been pressed.
-                val becameStopping = value.stopping != wasStopping
-                // Nor is a change of stage. It is a different thing being done, and the stage the
-                // screen is still showing has an announcement pending behind it: drop the change and
-                // that announcement arrives anyway, labelling the import with a stage it has already
-                // left. A bar that says it is waiting for a file it is busy encrypting is worse than
-                // a bar that says nothing.
-                val changedStage = value.stage != lastStage
-                if (becameStopping || changedStage || previous == null || previous.elapsedNow() >= interval) {
-                    lastRunning = TimeSource.Monotonic.markNow()
-                    wasStopping = value.stopping
-                    // Updated only alongside an emission, which today is indistinguishable from
-                    // updating it on every report: a changed stage always passes, so the last stage
-                    // reported and the last stage shown cannot diverge. Kept here because it is the
-                    // placement that survives the bypass ever being narrowed — not because anything
-                    // currently depends on it, and a test cannot tell the two apart.
-                    lastStage = value.stage
+    private fun Flow<ImportState>.throttleProgress(interval: Duration): Flow<ImportState> =
+        flow {
+            var lastRunning: TimeMark? = null
+            var wasStopping = false
+            var lastStage: ImportStage? = null
+            collect { value ->
+                if (value is ImportState.Running) {
+                    val previous = lastRunning
+                    // The window drops redundant *progress*. A batch turning into stopping is not
+                    // progress — it is the user's tap arriving, and it may be the last thing this batch
+                    // says for minutes if the platform is inside a blocking read. Held back, it leaves a
+                    // Stop button on screen that has already been pressed.
+                    val becameStopping = value.stopping != wasStopping
+                    // Nor is a change of stage. It is a different thing being done, and the stage the
+                    // screen is still showing has an announcement pending behind it: drop the change and
+                    // that announcement arrives anyway, labelling the import with a stage it has already
+                    // left. A bar that says it is waiting for a file it is busy encrypting is worse than
+                    // a bar that says nothing.
+                    val changedStage = value.stage != lastStage
+                    if (becameStopping || changedStage || previous == null || previous.elapsedNow() >= interval) {
+                        lastRunning = TimeSource.Monotonic.markNow()
+                        wasStopping = value.stopping
+                        // Updated only alongside an emission, which today is indistinguishable from
+                        // updating it on every report: a changed stage always passes, so the last stage
+                        // reported and the last stage shown cannot diverge. Kept here because it is the
+                        // placement that survives the bypass ever being narrowed — not because anything
+                        // currently depends on it, and a test cannot tell the two apart.
+                        lastStage = value.stage
+                        emit(value)
+                    }
+                } else {
+                    lastRunning = null
+                    wasStopping = false
+                    lastStage = null
                     emit(value)
                 }
-            } else {
-                lastRunning = null
-                wasStopping = false
-                lastStage = null
-                emit(value)
             }
         }
-    }
 
     private fun onImportState(batch: ImportState) {
         // The batch state goes into GalleryState whole rather than being flattened into flags: the
@@ -878,10 +916,11 @@ internal class DefaultVaultGalleryComponent(
         // and a failed file is one event. The batch logs it once, where the batch ends.
         val failed = (batch as? ImportState.Finished)?.failed.orEmpty()
 
-        _state.value = _state.value.copy(
-            batch = batch,
-            error = if (failed.isEmpty()) _state.value.error else GalleryError.ImportFailed,
-        )
+        _state.value =
+            _state.value.copy(
+                batch = batch,
+                error = if (failed.isEmpty()) _state.value.error else GalleryError.ImportFailed,
+            )
     }
 
     private fun onListing(listing: GalleryListing) {
@@ -894,22 +933,24 @@ internal class DefaultVaultGalleryComponent(
         // A successful emission clears a stale listing error; an import error is the user's to
         // dismiss, so it survives.
         val error = _state.value.error.takeIf { it != GalleryError.ListingFailed }
-        _state.value = _state.value.copy(
-            items = items,
-            loading = false,
-            error = error,
-            // How many items the search left out is a fact about the listing that just arrived, so
-            // it is published with it rather than guessed at when the query changes. Only an open
-            // search has anywhere to say it.
-            search = when (val search = _state.value.search) {
-                is GallerySearch.Open -> search.copy(hiddenUnreadable = listing.hiddenUnreadable)
-                GallerySearch.Closed -> GallerySearch.Closed
-            },
-            // A listing that arrives is a listing that was read. Unreachable today — a catalog failure
-            // ends the flow — but the field means "we could not read it", so the one thing that
-            // disproves it has to clear it.
-            listingUnreadable = false,
-        )
+        _state.value =
+            _state.value.copy(
+                items = items,
+                loading = false,
+                error = error,
+                // How many items the search left out is a fact about the listing that just arrived, so
+                // it is published with it rather than guessed at when the query changes. Only an open
+                // search has anywhere to say it.
+                search =
+                    when (val search = _state.value.search) {
+                        is GallerySearch.Open -> search.copy(hiddenUnreadable = listing.hiddenUnreadable)
+                        GallerySearch.Closed -> GallerySearch.Closed
+                    },
+                // A listing that arrives is a listing that was read. Unreachable today — a catalog failure
+                // ends the flow — but the field means "we could not read it", so the one thing that
+                // disproves it has to clear it.
+                listingUnreadable = false,
+            )
     }
 
     private fun ItemFilter.toScope(): GalleryScope =

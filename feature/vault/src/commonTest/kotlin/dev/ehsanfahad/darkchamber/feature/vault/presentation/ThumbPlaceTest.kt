@@ -8,11 +8,13 @@ import kotlin.test.assertTrue
 
 /** A text page's thumb, pinned where it stands while the column's height estimate is corrected. */
 class ThumbPlaceTest {
-
     private val pin = ThumbAnchor(scrolledPx = 400f, fraction = 0.6f)
 
-    private fun near(expected: Float, actual: Float, what: String = "") =
-        assertTrue(abs(expected - actual) < 1e-3f, "$what expected $expected, was $actual")
+    private fun near(
+        expected: Float,
+        actual: Float,
+        what: String = "",
+    ) = assertTrue(abs(expected - actual) < 1e-3f, "$what expected $expected, was $actual")
 
     @Test
     fun with_no_pin_it_is_the_fraction_of_pixels() {
@@ -55,7 +57,11 @@ class ThumbPlaceTest {
     @Test
     fun a_drag_is_the_inverse_of_the_place() {
         for (scrolled in listOf(0f, 1f, 100f, 399f, 400f, 401f, 550f, 999f, 1000f)) {
-            near(scrolled, ThumbPlace.scrolledAt(ThumbPlace.fraction(scrolled, 1000f, pin), 1000f, pin), "at $scrolled:")
+            near(
+                scrolled,
+                ThumbPlace.scrolledAt(ThumbPlace.fraction(scrolled, 1000f, pin), 1000f, pin),
+                "at $scrolled:",
+            )
         }
     }
 
@@ -71,7 +77,13 @@ class ThumbPlaceTest {
      */
     @Test
     fun a_pin_at_or_past_an_end_is_not_used() {
-        for (anchor in listOf(ThumbAnchor(0f, 0.4f), ThumbAnchor(1000f, 0.4f), ThumbAnchor(1200f, 0.4f), ThumbAnchor(400f, 0f), ThumbAnchor(400f, 1f))) {
+        for (anchor in listOf(
+            ThumbAnchor(0f, 0.4f),
+            ThumbAnchor(1000f, 0.4f),
+            ThumbAnchor(1200f, 0.4f),
+            ThumbAnchor(400f, 0f),
+            ThumbAnchor(400f, 1f),
+        )) {
             near(0.5f, ThumbPlace.fraction(500f, 1000f, anchor), "$anchor:")
             near(500f, ThumbPlace.scrolledAt(0.5f, 1000f, anchor), "$anchor:")
         }
@@ -79,7 +91,10 @@ class ThumbPlaceTest {
 
     @Test
     fun a_shown_thumb_is_pinned_where_it_stood() {
-        assertEquals(ThumbAnchor(scrolledPx = 450f, fraction = 0.6f), ThumbPlace.repin(shown = true, shownBefore = 0.6f, scrolledAfter = 450f))
+        assertEquals(
+            ThumbAnchor(scrolledPx = 450f, fraction = 0.6f),
+            ThumbPlace.repin(shown = true, shownBefore = 0.6f, scrolledAfter = 450f),
+        )
         assertNull(ThumbPlace.repin(shown = false, shownBefore = 0.6f, scrolledAfter = 450f))
     }
 

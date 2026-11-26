@@ -8,21 +8,33 @@ import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 /** A page of a PDF as laid out on screen: its index, its top edge and its height, in pixels. */
-internal data class LaidOutPage(val index: Int, val top: Int, val height: Int)
+internal data class LaidOutPage(
+    val index: Int,
+    val top: Int,
+    val height: Int,
+)
 
 /** A band of the column, top to bottom, in the column's own (unzoomed) pixels. */
-internal data class ColumnBand(val top: Int, val bottom: Int)
+internal data class ColumnBand(
+    val top: Int,
+    val bottom: Int,
+)
 
 /**
  * A drag while zoomed, split: what moves the zoomed column on screen ([offsetY], its new vertical
  * offset), and what is left to scroll it ([scrollBy], in the column's own pixels).
  */
-internal data class PanSplit(val offsetY: Float, val scrollBy: Float)
+internal data class PanSplit(
+    val offsetY: Float,
+    val scrollBy: Float,
+)
 
 /** What the jump-to-page field holds, read. */
 internal sealed interface PageJump {
     /** Go to the page at this zero-based index. */
-    data class Go(val index: Int) : PageJump
+    data class Go(
+        val index: Int,
+    ) : PageJump
 
     data object Empty : PageJump
 
@@ -45,7 +57,11 @@ internal object PdfReading {
      * [viewportBottom] — not the first listed, nor the first whole one. An even split names the
      * earlier page. `null` while nothing is laid out.
      */
-    fun mostOnScreen(pages: List<LaidOutPage>, viewportTop: Int, viewportBottom: Int): Int? {
+    fun mostOnScreen(
+        pages: List<LaidOutPage>,
+        viewportTop: Int,
+        viewportBottom: Int,
+    ): Int? {
         var best: LaidOutPage? = null
         var bestShown = -1
         for (page in pages.sortedBy { it.index }) {
@@ -65,7 +81,10 @@ internal object PdfReading {
      * [PageJump.OutOfRange] — never clamped to the nearest page, which would take the reader somewhere
      * they did not ask for without saying so.
      */
-    fun parseJump(input: String, pageCount: Int): PageJump {
+    fun parseJump(
+        input: String,
+        pageCount: Int,
+    ): PageJump {
         val text = input.trim()
         if (text.isEmpty()) return PageJump.Empty
         if (text.any { !it.isDigit() }) return PageJump.NotANumber
@@ -77,7 +96,10 @@ internal object PdfReading {
      * The pages kept drawn: those on screen and one either side, clipped to the document. A drawn page
      * is a full-width bitmap (about 11 MiB at 1440 px), so nothing further is kept.
      */
-    fun renderWindow(visible: IntRange, pageCount: Int): IntRange {
+    fun renderWindow(
+        visible: IntRange,
+        pageCount: Int,
+    ): IntRange {
         // No pages clips to an empty range by itself; only nothing on screen needs saying.
         if (visible.isEmpty()) return IntRange.EMPTY
         return (visible.first - 1).coerceAtLeast(0)..(visible.last + 1).coerceAtMost(pageCount - 1)
@@ -90,13 +112,22 @@ internal object PdfReading {
      * page at 6240 × 8830, 210 MiB, which Android refuses to draw; a tall page reaches the limit even at
      * fit. At least one pixel.
      */
-    fun renderWidth(shownWidthPx: Int, zoom: Float, screenWidthPx: Int, pageWidthPt: Int, pageHeightPt: Int): Int {
+    fun renderWidth(
+        shownWidthPx: Int,
+        zoom: Float,
+        screenWidthPx: Int,
+        pageWidthPt: Int,
+        pageHeightPt: Int,
+    ): Int {
         val wanted = (shownWidthPx * zoom).roundToInt().coerceAtMost(screenWidthPx * MAX_RENDER_SCREENS)
         return wanted.coerceAtMost(widestWithinPixels(pageWidthPt, pageHeightPt)).coerceAtLeast(1)
     }
 
     /** The widest a page of this shape can be drawn with no more than [MAX_RENDER_PIXELS]. */
-    private fun widestWithinPixels(pageWidthPt: Int, pageHeightPt: Int): Int {
+    private fun widestWithinPixels(
+        pageWidthPt: Int,
+        pageHeightPt: Int,
+    ): Int {
         if (pageWidthPt <= 0 || pageHeightPt <= 0) return Int.MAX_VALUE // no shape to measure
         // The page's height is rounded, so the exact answer can sit a pixel either side of the square
         // root: start just above it and step down to the first width within the limit.
@@ -106,7 +137,11 @@ internal object PdfReading {
     }
 
     /** A page's height when shown [widthPx] wide, keeping its own shape; 0 for a page with no width. */
-    fun pageHeight(widthPx: Int, pageWidthPt: Int, pageHeightPt: Int): Int {
+    fun pageHeight(
+        widthPx: Int,
+        pageWidthPt: Int,
+        pageHeightPt: Int,
+    ): Int {
         if (pageWidthPt <= 0) return 0
         return (widthPx.toLong() * pageHeightPt / pageWidthPt.toDouble()).roundToInt()
     }
@@ -116,7 +151,11 @@ internal object PdfReading {
      * moved by [offsetY] (the [ViewerZoom] model). At fit it is the whole viewport; zoomed, the part
      * under the screen — so the indicator names the page being read, and the pages drawn are those seen.
      */
-    fun seenBand(heightPx: Int, zoom: Float, offsetY: Float): ColumnBand {
+    fun seenBand(
+        heightPx: Int,
+        zoom: Float,
+        offsetY: Float,
+    ): ColumnBand {
         // A screen point s shows the column's point (s - centre - offset) / zoom + centre.
         val centre = heightPx / 2f
         val top = centre - (centre + offsetY) / zoom
@@ -125,7 +164,11 @@ internal object PdfReading {
     }
 
     /** The pages showing any of the band from [top] to [bottom], lowest to highest; empty if none. */
-    fun pagesSeen(pages: List<LaidOutPage>, top: Int, bottom: Int): IntRange {
+    fun pagesSeen(
+        pages: List<LaidOutPage>,
+        top: Int,
+        bottom: Int,
+    ): IntRange {
         val seen = pages.filter { it.top < bottom && it.top + it.height > top }.map { it.index }
         return if (seen.isEmpty()) IntRange.EMPTY else seen.min()..seen.max()
     }
@@ -135,7 +178,12 @@ internal object PdfReading {
      * column as far as [limitY] allows (so the page under the finger follows it to the screen's edge),
      * and whatever is left scrolls the column on — through the pages, at the zoomed speed.
      */
-    fun panThenScroll(offsetY: Float, dy: Float, limitY: Float, zoom: Float): PanSplit {
+    fun panThenScroll(
+        offsetY: Float,
+        dy: Float,
+        limitY: Float,
+        zoom: Float,
+    ): PanSplit {
         val moved = (offsetY + dy).coerceIn(-limitY, limitY)
         // What the move could not take, the other way round: a finger moving down past the overhang
         // shows what is above, so the column scrolls back. (Written so no drag gives -0.)
@@ -146,7 +194,12 @@ internal object PdfReading {
      * A move of [delta] screen pixels on the column zoomed by [zoom] in a [box]: across, the page's
      * overhang is as far as it goes; down, [panThenScroll]. A drag and a fling move by the same rule.
      */
-    fun zoomedStep(offset: Offset, delta: Offset, zoom: Float, box: Size): ZoomedStep {
+    fun zoomedStep(
+        offset: Offset,
+        delta: Offset,
+        zoom: Float,
+        box: Size,
+    ): ZoomedStep {
         val across = ViewerZoom.clampOffset(Offset(offset.x + delta.x, 0f), zoom, box, box).x
         val limitY = (box.height * zoom - box.height) / 2f
         val down = panThenScroll(offset.y, delta.y, limitY, zoom)
@@ -158,7 +211,12 @@ internal object PdfReading {
      * a throw), none slower than [minPxPerSecond], and never faster than [maxPxPerSecond], in the same
      * direction.
      */
-    fun flingVelocity(velocity: Offset, minPxPerSecond: Float, maxPxPerSecond: Float, pinched: Boolean): Offset? {
+    fun flingVelocity(
+        velocity: Offset,
+        minPxPerSecond: Float,
+        maxPxPerSecond: Float,
+        pinched: Boolean,
+    ): Offset? {
         if (pinched) return null
         val speed = velocity.getDistance()
         if (speed < minPxPerSecond) return null
@@ -170,7 +228,13 @@ internal object PdfReading {
      * [after] and scrolled it by [scrolled]: not once the column is back at fit, and not once a step that
      * asked to move moved nothing — the column has reached its end both ways.
      */
-    fun flingGoesOn(zoom: Float, delta: Offset, before: Offset, after: Offset, scrolled: Float): Boolean {
+    fun flingGoesOn(
+        zoom: Float,
+        delta: Offset,
+        before: Offset,
+        after: Offset,
+        scrolled: Float,
+    ): Boolean {
         if (ViewerZoom.pagerMaySwipe(zoom)) return false
         if (delta == Offset.Zero) return true
         return after != before || scrolled != 0f
@@ -178,4 +242,7 @@ internal object PdfReading {
 }
 
 /** One move of the zoomed column: where it now sits on screen, and what is left to scroll it by. */
-internal data class ZoomedStep(val offset: Offset, val scrollBy: Float)
+internal data class ZoomedStep(
+    val offset: Offset,
+    val scrollBy: Float,
+)

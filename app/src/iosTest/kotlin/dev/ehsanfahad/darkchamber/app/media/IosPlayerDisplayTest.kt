@@ -72,7 +72,9 @@ class IosPlayerDisplayTest {
 
     // ---- brightness ------------------------------------------------------------------------------
 
-    private class FakeScreen(override var level: Double) : ScreenBrightness
+    private class FakeScreen(
+        override var level: Double,
+    ) : ScreenBrightness
 
     @Test
     fun the_brightness_read_is_the_screens() {
@@ -140,7 +142,9 @@ class IosPlayerDisplayTest {
 
     // ---- keeping the screen on -------------------------------------------------------------------
 
-    private class FakeIdleTimer(override var disabled: Boolean = false) : IdleTimer
+    private class FakeIdleTimer(
+        override var disabled: Boolean = false,
+    ) : IdleTimer
 
     @Test
     fun keeping_the_screen_on_turns_the_sleep_timer_off_and_back_on() {

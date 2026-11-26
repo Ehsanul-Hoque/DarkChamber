@@ -5,7 +5,6 @@ import kotlin.test.assertEquals
 
 /** A column's height from the items laid out so far, and the item at a point down it. */
 class RowHeightsTest {
-
     @Test
     fun nothing_laid_out_is_nothing_known() {
         val h = RowHeights(10)

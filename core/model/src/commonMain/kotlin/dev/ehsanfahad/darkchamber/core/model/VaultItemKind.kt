@@ -12,7 +12,9 @@ package dev.ehsanfahad.darkchamber.core.model
  * newer-than-us row decodes to something explicit instead of masquerading as a file: zero is
  * deliberately not a real kind, and [fromCode] never throws.
  */
-enum class VaultItemKind(val code: Int) {
+enum class VaultItemKind(
+    val code: Int,
+) {
     /** Not a real kind — the decode fallback for an unrecognised or defaulted `items.kind`. */
     UNKNOWN(0),
 

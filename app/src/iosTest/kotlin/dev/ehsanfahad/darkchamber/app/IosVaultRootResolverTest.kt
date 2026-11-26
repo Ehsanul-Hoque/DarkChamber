@@ -46,7 +46,8 @@ class IosVaultRootResolverTest {
         buildGraph().use { koin ->
             val created = koin.get<VaultBootstrap>().createVault(passphrase())
             assertTrue(created is Outcome.Ok, "iOS create failed: $created")
-            created.value.vault.session.close()
+            created.value.vault.session
+                .close()
         }
         buildGraph().use { koin ->
             val unlocked = koin.get<VaultBootstrap>().unlock(passphrase())
@@ -58,12 +59,15 @@ class IosVaultRootResolverTest {
     private fun passphrase(): ByteArray = "correct-horse-battery".encodeToByteArray()
 
     // A tiny KoinApplication holder so each build is disposed (no leaked container).
-    private class Graph(private val app: org.koin.core.KoinApplication) {
-        inline fun <T> use(block: (org.koin.core.Koin) -> T): T = try {
-            block(app.koin)
-        } finally {
-            app.close()
-        }
+    private class Graph(
+        private val app: org.koin.core.KoinApplication,
+    ) {
+        inline fun <T> use(block: (org.koin.core.Koin) -> T): T =
+            try {
+                block(app.koin)
+            } finally {
+                app.close()
+            }
     }
 
     private fun buildGraph(): Graph = Graph(koinApplication { modules(appModules()) })
@@ -80,10 +84,11 @@ class IosVaultRootResolverTest {
     }
 
     @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
-    private fun isExcludedFromBackup(path: String): Boolean = memScoped {
-        val url = NSURL.fileURLWithPath(path)
-        val holder = alloc<ObjCObjectVar<Any?>>()
-        val ok = url.getResourceValue(holder.ptr, NSURLIsExcludedFromBackupKey, null)
-        if (!ok) false else (holder.value as? NSNumber)?.boolValue ?: false
-    }
+    private fun isExcludedFromBackup(path: String): Boolean =
+        memScoped {
+            val url = NSURL.fileURLWithPath(path)
+            val holder = alloc<ObjCObjectVar<Any?>>()
+            val ok = url.getResourceValue(holder.ptr, NSURLIsExcludedFromBackupKey, null)
+            if (!ok) false else (holder.value as? NSNumber)?.boolValue ?: false
+        }
 }

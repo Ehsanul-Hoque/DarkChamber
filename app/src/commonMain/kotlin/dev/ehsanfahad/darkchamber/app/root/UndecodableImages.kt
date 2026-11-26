@@ -9,5 +9,8 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerImageDecoder
  * modules bind a real one, and a test on each says so.
  */
 internal object UndecodableImages : ViewerImageDecoder {
-    override fun decode(bytes: ByteArray, targetLongEdge: Int): ImageBitmap? = null
+    override fun decode(
+        bytes: ByteArray,
+        targetLongEdge: Int,
+    ): ImageBitmap? = null
 }

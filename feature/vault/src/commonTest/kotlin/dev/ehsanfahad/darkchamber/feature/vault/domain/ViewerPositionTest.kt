@@ -84,9 +84,21 @@ class ViewerPositionTest {
      */
     @Test
     fun two_positions_are_equal_only_for_the_same_item_at_the_same_index() {
-        assertEquals(ViewerPosition.Showing(id(5), 1), ViewerPosition.Showing(id(5), 1), "same item by content, same index")
-        assertNotEquals<ViewerPosition>(ViewerPosition.Showing(id(5), 1), ViewerPosition.Showing(id(5), 3), "a moved item")
-        assertNotEquals<ViewerPosition>(ViewerPosition.Showing(id(5), 1), ViewerPosition.Showing(id(6), 1), "a different item")
+        assertEquals(
+            ViewerPosition.Showing(id(5), 1),
+            ViewerPosition.Showing(id(5), 1),
+            "same item by content, same index",
+        )
+        assertNotEquals<ViewerPosition>(
+            ViewerPosition.Showing(id(5), 1),
+            ViewerPosition.Showing(id(5), 3),
+            "a moved item",
+        )
+        assertNotEquals<ViewerPosition>(
+            ViewerPosition.Showing(id(5), 1),
+            ViewerPosition.Showing(id(6), 1),
+            "a different item",
+        )
     }
 
     @Test

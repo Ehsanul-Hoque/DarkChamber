@@ -1,20 +1,20 @@
 package dev.ehsanfahad.darkchamber.app.di
 
+import coil3.PlatformContext
 import dev.ehsanfahad.darkchamber.app.camera.IosCameraController
 import dev.ehsanfahad.darkchamber.app.image.IosViewerImageDecoder
+import dev.ehsanfahad.darkchamber.app.link.IosLinkOpener
 import dev.ehsanfahad.darkchamber.app.media.IosPlayerDisplay
 import dev.ehsanfahad.darkchamber.app.media.IosVaultPlayerFactory
 import dev.ehsanfahad.darkchamber.app.pdf.IosPdfRenderer
-import dev.ehsanfahad.darkchamber.app.link.IosLinkOpener
+import dev.ehsanfahad.darkchamber.app.thumbnail.IosThumbnailEncoder
+import dev.ehsanfahad.darkchamber.core.vault.ThumbnailEncoder
+import dev.ehsanfahad.darkchamber.feature.camera.api.CameraController
 import dev.ehsanfahad.darkchamber.feature.vault.api.LinkOpener
 import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerDisplay
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPdfRenderer
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPlayerFactory
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerImageDecoder
-import dev.ehsanfahad.darkchamber.app.thumbnail.IosThumbnailEncoder
-import dev.ehsanfahad.darkchamber.feature.camera.api.CameraController
-import dev.ehsanfahad.darkchamber.core.vault.ThumbnailEncoder
-import coil3.PlatformContext
 import org.koin.dsl.koinApplication
 import kotlin.test.Test
 import kotlin.test.assertIs

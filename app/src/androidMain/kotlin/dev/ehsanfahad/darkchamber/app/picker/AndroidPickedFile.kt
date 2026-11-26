@@ -30,7 +30,6 @@ internal class AndroidPickedFile(
      */
     private val document: Boolean,
 ) : PickedFile {
-
     /**
      * Lazy, and queried once for every column, because of *where* the eager version ran.
      *
@@ -90,7 +89,11 @@ internal class AndroidPickedFile(
 }
 
 /** What one column lookup answered. A null field means the provider withheld that one. */
-private class OpenableColumnValues(val displayName: String?, val size: Long?, val flags: Int?)
+private class OpenableColumnValues(
+    val displayName: String?,
+    val size: Long?,
+    val flags: Int?,
+)
 
 /** Nothing known, which is a state every failure path here collapses into. */
 private val NOTHING_REPORTED = OpenableColumnValues(null, null, null)
@@ -105,17 +108,22 @@ private val NOTHING_REPORTED = OpenableColumnValues(null, null, null)
  * is entitled to throw rather than ignore it, and losing the display name over a capability we would
  * merely have *offered* would be a poor trade — hence the catch.
  */
-private fun ContentResolver.queryOpenable(uri: Uri, withFlags: Boolean): OpenableColumnValues {
-    val projection = buildList {
-        add(OpenableColumns.DISPLAY_NAME)
-        add(OpenableColumns.SIZE)
-        if (withFlags) add(Document.COLUMN_FLAGS)
-    }.toTypedArray()
-    val cursor = try {
-        query(uri, projection, null, null, null)
-    } catch (_: Exception) {
-        null
-    }
+private fun ContentResolver.queryOpenable(
+    uri: Uri,
+    withFlags: Boolean,
+): OpenableColumnValues {
+    val projection =
+        buildList {
+            add(OpenableColumns.DISPLAY_NAME)
+            add(OpenableColumns.SIZE)
+            if (withFlags) add(Document.COLUMN_FLAGS)
+        }.toTypedArray()
+    val cursor =
+        try {
+            query(uri, projection, null, null, null)
+        } catch (_: Exception) {
+            null
+        }
     return cursor?.use {
         if (!it.moveToFirst()) return@use NOTHING_REPORTED
         val nameColumn = it.getColumnIndex(OpenableColumns.DISPLAY_NAME)
@@ -139,8 +147,10 @@ private fun ContentResolver.queryOpenable(uri: Uri, withFlags: Boolean): Openabl
  * device — so this is not a local-files-only capability. The flag stays an advertisement either way:
  * `deleteOriginal` reports what happened rather than assuming the call it was offered succeeds.
  */
-internal fun supportsDelete(isDocument: Boolean, flags: Int?): Boolean =
-    isDocument && flags != null && (flags and Document.FLAG_SUPPORTS_DELETE) != 0
+internal fun supportsDelete(
+    isDocument: Boolean,
+    flags: Int?,
+): Boolean = isDocument && flags != null && (flags and Document.FLAG_SUPPORTS_DELETE) != 0
 
 /**
  * What a provider reported for `OpenableColumns.SIZE`, reduced to a size we will show or `null`.

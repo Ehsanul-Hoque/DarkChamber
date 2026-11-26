@@ -23,7 +23,10 @@ internal class RenameAlbum(
     // reason every other one here is: a host test has to be able to drive it to completion.
     private val ioContext: CoroutineContext = Dispatchers.Default,
 ) {
-    suspend operator fun invoke(id: ByteArray, name: String): RenameAlbumResult {
+    suspend operator fun invoke(
+        id: ByteArray,
+        name: String,
+    ): RenameAlbumResult {
         val usable = usableAlbumName(name) ?: return RenameAlbumResult.NameMissing
 
         return when (val done = withContext(ioContext) { vault.renameAlbum(id, usable) }) {
@@ -35,7 +38,6 @@ internal class RenameAlbum(
 
 /** What came of a rename. Three outcomes for the reason [CreateAlbumResult] has three. */
 internal sealed interface RenameAlbumResult {
-
     /** The album answers to the new name. The listing will carry it on its next emission. */
     data object Renamed : RenameAlbumResult
 
@@ -47,5 +49,7 @@ internal sealed interface RenameAlbumResult {
      * than quietly turning into a create. [error] is for the log and for choosing what to say, never
      * for printing, and never beside the name (hard rule 4).
      */
-    class Failed(val error: VaultError) : RenameAlbumResult
+    class Failed(
+        val error: VaultError,
+    ) : RenameAlbumResult
 }

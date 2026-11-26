@@ -23,5 +23,8 @@ import androidx.compose.ui.graphics.ImageBitmap
  * - **Leaves [bytes] alone.** The caller zeroes them once this returns.
  */
 interface ViewerImageDecoder {
-    fun decode(bytes: ByteArray, targetLongEdge: Int): ImageBitmap?
+    fun decode(
+        bytes: ByteArray,
+        targetLongEdge: Int,
+    ): ImageBitmap?
 }

@@ -25,13 +25,15 @@ import kotlin.time.Duration
  * platform stopped at our limit.
  */
 internal object CameraFormat {
-
     /**
      * The bar's title. [unreadableLabel] is the app's one sentence for a name that will not open,
      * handed in by the host so it is never written a second time here. `null` when there is nothing
      * true to name — an album that has left the vault, or a listing that could not be read.
      */
-    fun title(title: DestinationTitle, unreadableLabel: String): String? =
+    fun title(
+        title: DestinationTitle,
+        unreadableLabel: String,
+    ): String? =
         when (title) {
             DestinationTitle.AllItems -> "All items"
             DestinationTitle.Unfiled -> "Unfiled"
@@ -59,11 +61,21 @@ internal object CameraFormat {
      */
     fun message(message: CameraMessage): String =
         when (message) {
-            CameraMessage.AlbumGone ->
+            CameraMessage.AlbumGone -> {
                 "This album isn't in your vault any more. Photos already saved are still there, under Unfiled."
-            CameraMessage.OutOfSpace -> OUT_OF_SPACE
-            CameraMessage.SaveFailed -> "Couldn't save that photo."
-            CameraMessage.CaptureFailed -> "Couldn't take that photo."
+            }
+
+            CameraMessage.OutOfSpace -> {
+                OUT_OF_SPACE
+            }
+
+            CameraMessage.SaveFailed -> {
+                "Couldn't save that photo."
+            }
+
+            CameraMessage.CaptureFailed -> {
+                "Couldn't take that photo."
+            }
         }
 
     /**
@@ -74,16 +86,28 @@ internal object CameraFormat {
      */
     fun explainer(explainer: CameraExplainer): ExplainerCopy? =
         when (explainer) {
-            CameraExplainer.None -> null
-            CameraExplainer.Denied ->
+            CameraExplainer.None -> {
+                null
+            }
+
+            CameraExplainer.Denied -> {
                 ExplainerCopy("DarkChamber needs the camera to take photos.", action = "Allow")
-            CameraExplainer.PermanentlyDenied ->
+            }
+
+            CameraExplainer.PermanentlyDenied -> {
                 ExplainerCopy(
                     "Camera access is turned off for DarkChamber. You can turn it on in Settings — the vault locks while you're there.",
                     action = "Open settings",
                 )
-            CameraExplainer.InUse -> ExplainerCopy("Camera is in use by another app.", action = null)
-            CameraExplainer.Unavailable -> ExplainerCopy("Camera isn't available right now.", action = null)
+            }
+
+            CameraExplainer.InUse -> {
+                ExplainerCopy("Camera is in use by another app.", action = null)
+            }
+
+            CameraExplainer.Unavailable -> {
+                ExplainerCopy("Camera isn't available right now.", action = null)
+            }
         }
 
     /**
@@ -93,11 +117,23 @@ internal object CameraFormat {
      */
     fun shutterDescription(shutter: Shutter): String =
         when (shutter.kind) {
-            ShutterKind.Photo -> "Take photo"
-            ShutterKind.Stop -> "Stop recording"
-            ShutterKind.Record ->
-                if (!shutter.enabled && shutter.waitingOnSave) "Start recording — unavailable until the last video has saved"
-                else "Start recording"
+            ShutterKind.Photo -> {
+                "Take photo"
+            }
+
+            ShutterKind.Stop -> {
+                "Stop recording"
+            }
+
+            ShutterKind.Record -> {
+                if (!shutter.enabled &&
+                    shutter.waitingOnSave
+                ) {
+                    "Start recording — unavailable until the last video has saved"
+                } else {
+                    "Start recording"
+                }
+            }
         }
 
     /** A clock: `mm:ss`, and `h:mm:ss` once a clip passes an hour. Whole seconds, counted up. */
@@ -127,7 +163,10 @@ internal object CameraFormat {
      * zero exactly when the recording stops itself. Bytes are labelled as recorded, never as the
      * vault's size or the disk's use.
      */
-    fun recordingStatus(progress: RecordingProgress, limitBytes: Long): String =
+    fun recordingStatus(
+        progress: RecordingProgress,
+        limitBytes: Long,
+    ): String =
         "${timer(progress.duration)} · ${size(progress.bytesRecorded)} recorded · " +
             "${size(roomLeft(limitBytes, progress.bytesRecorded))} left"
 
@@ -137,12 +176,20 @@ internal object CameraFormat {
      */
     fun microphoneHint(hint: MicrophoneHint): ExplainerCopy? =
         when (hint) {
-            MicrophoneHint.None -> null
-            MicrophoneHint.Ask -> ExplainerCopy("Videos record without sound until you allow the microphone.", action = "Allow")
-            MicrophoneHint.Settings -> ExplainerCopy(
-                "Microphone access is turned off, so videos record without sound. You can turn it on in Settings — the vault locks while you're there.",
-                action = "Open settings",
-            )
+            MicrophoneHint.None -> {
+                null
+            }
+
+            MicrophoneHint.Ask -> {
+                ExplainerCopy("Videos record without sound until you allow the microphone.", action = "Allow")
+            }
+
+            MicrophoneHint.Settings -> {
+                ExplainerCopy(
+                    "Microphone access is turned off, so videos record without sound. You can turn it on in Settings — the vault locks while you're there.",
+                    action = "Open settings",
+                )
+            }
         }
 
     /**
@@ -235,4 +282,7 @@ internal object CameraFormat {
 }
 
 /** An explainer's sentence, and its one action if there is one that would help. */
-internal data class ExplainerCopy(val text: String, val action: String?)
+internal data class ExplainerCopy(
+    val text: String,
+    val action: String?,
+)

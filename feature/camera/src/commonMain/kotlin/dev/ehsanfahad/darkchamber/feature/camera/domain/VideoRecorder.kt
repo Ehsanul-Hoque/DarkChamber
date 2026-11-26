@@ -70,11 +70,12 @@ internal class VideoRecorder(
     /** Start recording. Returns `false`, with a notice when there is one to give, when it cannot. */
     fun start(): Boolean {
         if (closed || take != null || lane.state.value.busy) return false
-        val limit = when (val room = recordingRoom(freeSpace.availableBytes())) {
-            is RecordingRoom.Limit -> room.bytes
-            RecordingRoom.NotEnough -> return refuse(RecorderNotice.NotEnoughSpace)
-            RecordingRoom.Unknown -> return refuse(RecorderNotice.SpaceUnknown)
-        }
+        val limit =
+            when (val room = recordingRoom(freeSpace.availableBytes())) {
+                is RecordingRoom.Limit -> room.bytes
+                RecordingRoom.NotEnough -> return refuse(RecorderNotice.NotEnoughSpace)
+                RecordingRoom.Unknown -> return refuse(RecorderNotice.SpaceUnknown)
+            }
         val sound = recordingSound(camera.microphonePermission.value, soundWanted())
         val clip = clips.newClip(camera.videoContainer)
         val recording = camera.record(clip.path, limit, sound.withAudio)
@@ -117,29 +118,57 @@ internal class VideoRecorder(
         }
     }
 
-    private fun settle(settling: Take, end: RecordingEnd) {
+    private fun settle(
+        settling: Take,
+        end: RecordingEnd,
+    ) {
         settling.settled = true
         take = null
         when (end) {
-            RecordingEnd.Finalized -> handOver(settling.clip, notice = null)
-            RecordingEnd.FinalizedAtSizeLimit -> handOver(settling.clip, notice = RecorderNotice.StoppedAtLimit)
+            RecordingEnd.Finalized -> {
+                handOver(settling.clip, notice = null)
+            }
+
+            RecordingEnd.FinalizedAtSizeLimit -> {
+                handOver(settling.clip, notice = RecorderNotice.StoppedAtLimit)
+            }
+
             // The disk filled before our limit — another app, most likely. Stopping may have left
             // room, so the encrypt gets one attempt; the lane deletes the file at once if it fails.
-            is RecordingEnd.Failed -> when (end.reason) {
-                RecordingFailure.StorageFull -> handOver(settling.clip, notice = null)
-                RecordingFailure.Other -> discard(settling.clip, RecorderNotice.RecordingFailed, NotSavedReason.CouldNotSave)
+            is RecordingEnd.Failed -> {
+                when (end.reason) {
+                    RecordingFailure.StorageFull -> {
+                        handOver(settling.clip, notice = null)
+                    }
+
+                    RecordingFailure.Other -> {
+                        discard(
+                            settling.clip,
+                            RecorderNotice.RecordingFailed,
+                            NotSavedReason.CouldNotSave,
+                        )
+                    }
+                }
             }
-            RecordingEnd.NoFrames -> discard(settling.clip, RecorderNotice.TooShort, NotSavedReason.TooShort)
-            RecordingEnd.Abandoned ->
+
+            RecordingEnd.NoFrames -> {
+                discard(settling.clip, RecorderNotice.TooShort, NotSavedReason.TooShort)
+            }
+
+            RecordingEnd.Abandoned -> {
                 if (settling.timedOut) {
                     discard(settling.clip, RecorderNotice.RecordingFailed, NotSavedReason.CouldNotSave)
                 } else {
                     abandonToLock(settling)
                 }
+            }
         }
     }
 
-    private fun handOver(clip: ClipFile, notice: RecorderNotice?) {
+    private fun handOver(
+        clip: ClipFile,
+        notice: RecorderNotice?,
+    ) {
         // Never refused in practice — start checks the lane — but a refused clip is ours to delete.
         if (!lane.save(clip, albumId)) {
             discard(clip, RecorderNotice.RecordingFailed, NotSavedReason.CouldNotSave)
@@ -148,7 +177,11 @@ internal class VideoRecorder(
         _state.update { RecorderState(notice = if (closed) null else notice) }
     }
 
-    private fun discard(clip: ClipFile, notice: RecorderNotice, reason: NotSavedReason) {
+    private fun discard(
+        clip: ClipFile,
+        notice: RecorderNotice,
+        reason: NotSavedReason,
+    ) {
         clip.delete()
         if (closed) notSaved.report(NotSavedKind.Video, reason, 1)
         _state.update { RecorderState(notice = if (closed) null else notice) }
@@ -168,7 +201,10 @@ internal class VideoRecorder(
     }
 
     /** The recording in progress and its file, until it has been handed over or given up. */
-    private class Take(val clip: ClipFile, val recording: Recording) {
+    private class Take(
+        val clip: ClipFile,
+        val recording: Recording,
+    ) {
         lateinit var watch: Job
         var settled = false
         var timedOut = false

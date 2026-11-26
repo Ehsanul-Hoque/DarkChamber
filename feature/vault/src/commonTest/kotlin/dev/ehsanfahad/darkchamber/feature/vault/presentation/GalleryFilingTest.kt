@@ -48,7 +48,6 @@ import kotlin.time.Duration
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class GalleryFilingTest {
-
     private val lifecycle = LifecycleRegistry().apply { resume() }
 
     private val thisAlbum = byteArrayOf(1, 1)
@@ -83,115 +82,122 @@ class GalleryFilingTest {
      * screen was constructed with. Handing the same instance to both would let an identity comparison
      * pass, and the exclusion below is exactly a comparison of those two ids.
      */
-    private fun album(id: ByteArray, name: String) =
-        AlbumSummary(id.copyOf(), Outcome.Ok(name), itemCount = 0, coverItemId = null, createdAt = 1L)
+    private fun album(
+        id: ByteArray,
+        name: String,
+    ) = AlbumSummary(id.copyOf(), Outcome.Ok(name), itemCount = 0, coverItemId = null, createdAt = 1L)
 
     /** Two items in the listing, both selected — the ordinary starting point for every action here. */
     private fun DefaultVaultGalleryComponent.selectTwo(vault: FakeVaultItems) {
-        vault.summaries.value = listOf(
-            summary(byteArrayOf(5), readableMeta()),
-            summary(byteArrayOf(6), readableMeta()),
-        )
+        vault.summaries.value =
+            listOf(
+                summary(byteArrayOf(5), readableMeta()),
+                summary(byteArrayOf(6), readableMeta()),
+            )
         selectItem(byteArrayOf(5))
         selectItem(byteArrayOf(6))
     }
 
-    private fun DefaultVaultGalleryComponent.choosing(): Filing.Choosing =
-        assertIs<Filing.Choosing>(state.value.filing)
+    private fun DefaultVaultGalleryComponent.choosing(): Filing.Choosing = assertIs<Filing.Choosing>(state.value.filing)
 
     @Test
-    fun the_chooser_lists_the_albums_items_can_move_to() = runTest {
-        val vault = FakeVaultItems()
-        vault.albums.value = listOf(album(otherAlbum, "Invoices"), album(thisAlbum, "Receipts"))
-        val component = component(vault)
-        advanceUntilIdle()
+    fun the_chooser_lists_the_albums_items_can_move_to() =
+        runTest {
+            val vault = FakeVaultItems()
+            vault.albums.value = listOf(album(otherAlbum, "Invoices"), album(thisAlbum, "Receipts"))
+            val component = component(vault)
+            advanceUntilIdle()
 
-        component.selectTwo(vault)
-        component.startFiling()
-        advanceUntilIdle()
+            component.selectTwo(vault)
+            component.startFiling()
+            advanceUntilIdle()
 
-        assertEquals(
-            listOf(AlbumTileName.Readable("Invoices"), AlbumTileName.Readable("Receipts")),
-            component.choosing().albums.map { it.name },
-        )
-    }
+            assertEquals(
+                listOf(AlbumTileName.Readable("Invoices"), AlbumTileName.Readable("Receipts")),
+                component.choosing().albums.map { it.name },
+            )
+        }
 
     /**
      * **Never the album the items are already in.** Moving them there is nothing, and offering it invites
      * a tap that would report a move that did not happen.
      */
     @Test
-    fun the_chooser_leaves_out_the_album_being_viewed() = runTest {
-        val vault = FakeVaultItems()
-        vault.albums.value = listOf(album(thisAlbum, "Receipts"), album(otherAlbum, "Invoices"))
-        val component = component(vault, filter = ItemFilter.Album(thisAlbum))
-        advanceUntilIdle()
+    fun the_chooser_leaves_out_the_album_being_viewed() =
+        runTest {
+            val vault = FakeVaultItems()
+            vault.albums.value = listOf(album(thisAlbum, "Receipts"), album(otherAlbum, "Invoices"))
+            val component = component(vault, filter = ItemFilter.Album(thisAlbum))
+            advanceUntilIdle()
 
-        component.selectTwo(vault)
-        component.startFiling()
-        advanceUntilIdle()
+            component.selectTwo(vault)
+            component.startFiling()
+            advanceUntilIdle()
 
-        assertEquals(
-            listOf(AlbumTileName.Readable("Invoices")),
-            component.choosing().albums.map { it.name },
-            "the album these items are already in is not somewhere to move them",
-        )
-    }
-
-    @Test
-    fun nothing_selected_opens_no_chooser() = runTest {
-        val vault = FakeVaultItems()
-        vault.albums.value = listOf(album(otherAlbum, "Invoices"))
-        val component = component(vault)
-        advanceUntilIdle()
-
-        component.startFiling()
-        advanceUntilIdle()
-
-        assertNull(component.state.value.filing, "there is nothing to move")
-    }
+            assertEquals(
+                listOf(AlbumTileName.Readable("Invoices")),
+                component.choosing().albums.map { it.name },
+                "the album these items are already in is not somewhere to move them",
+            )
+        }
 
     @Test
-    fun choosing_an_album_moves_the_selection_into_it_and_reports_what_happened() = runTest {
-        val vault = FakeVaultItems()
-        vault.albums.value = listOf(album(otherAlbum, "Invoices"))
-        val component = component(vault)
-        advanceUntilIdle()
+    fun nothing_selected_opens_no_chooser() =
+        runTest {
+            val vault = FakeVaultItems()
+            vault.albums.value = listOf(album(otherAlbum, "Invoices"))
+            val component = component(vault)
+            advanceUntilIdle()
 
-        component.selectTwo(vault)
-        component.startFiling()
-        advanceUntilIdle()
-        component.chooseAlbum(otherAlbum)
-        advanceUntilIdle()
+            component.startFiling()
+            advanceUntilIdle()
 
-        assertEquals(
-            listOf(listOf<Byte>(5), listOf<Byte>(6)) to listOf<Byte>(2, 2),
-            vault.assignments.single(),
-            "exactly the selected items, into the chosen album",
-        )
-        val moved = assertIs<Filing.Moved>(component.state.value.filing)
-        assertEquals(2, moved.moved)
-        assertEquals(2, moved.requested)
-        assertEquals(FilingDestination.Album, moved.destination)
-    }
+            assertNull(component.state.value.filing, "there is nothing to move")
+        }
+
+    @Test
+    fun choosing_an_album_moves_the_selection_into_it_and_reports_what_happened() =
+        runTest {
+            val vault = FakeVaultItems()
+            vault.albums.value = listOf(album(otherAlbum, "Invoices"))
+            val component = component(vault)
+            advanceUntilIdle()
+
+            component.selectTwo(vault)
+            component.startFiling()
+            advanceUntilIdle()
+            component.chooseAlbum(otherAlbum)
+            advanceUntilIdle()
+
+            assertEquals(
+                listOf(listOf<Byte>(5), listOf<Byte>(6)) to listOf<Byte>(2, 2),
+                vault.assignments.single(),
+                "exactly the selected items, into the chosen album",
+            )
+            val moved = assertIs<Filing.Moved>(component.state.value.filing)
+            assertEquals(2, moved.moved)
+            assertEquals(2, moved.requested)
+            assertEquals(FilingDestination.Album, moved.destination)
+        }
 
     /** Selecting mode ends with the move: the items have gone where they were sent. */
     @Test
-    fun a_completed_move_leaves_selecting_mode() = runTest {
-        val vault = FakeVaultItems()
-        vault.albums.value = listOf(album(otherAlbum, "Invoices"))
-        val component = component(vault)
-        advanceUntilIdle()
+    fun a_completed_move_leaves_selecting_mode() =
+        runTest {
+            val vault = FakeVaultItems()
+            vault.albums.value = listOf(album(otherAlbum, "Invoices"))
+            val component = component(vault)
+            advanceUntilIdle()
 
-        component.selectTwo(vault)
-        component.startFiling()
-        advanceUntilIdle()
-        component.chooseAlbum(otherAlbum)
-        advanceUntilIdle()
+            component.selectTwo(vault)
+            component.startFiling()
+            advanceUntilIdle()
+            component.chooseAlbum(otherAlbum)
+            advanceUntilIdle()
 
-        assertEquals(false, component.state.value.selection.active, "the mode is over")
-        assertEquals(0, component.state.value.selection.count)
-    }
+            assertEquals(false, component.state.value.selection.active, "the mode is over")
+            assertEquals(0, component.state.value.selection.count)
+        }
 
     /**
      * A partial move is reported with both numbers. The skipped ones are items that left the vault
@@ -199,90 +205,95 @@ class GalleryFilingTest {
      * that did not happen.
      */
     @Test
-    fun a_partial_move_is_reported_honestly() = runTest {
-        val vault = FakeVaultItems(assignedOf = { it - 1 })
-        vault.albums.value = listOf(album(otherAlbum, "Invoices"))
-        val component = component(vault)
-        advanceUntilIdle()
+    fun a_partial_move_is_reported_honestly() =
+        runTest {
+            val vault = FakeVaultItems(assignedOf = { it - 1 })
+            vault.albums.value = listOf(album(otherAlbum, "Invoices"))
+            val component = component(vault)
+            advanceUntilIdle()
 
-        component.selectTwo(vault)
-        component.startFiling()
-        advanceUntilIdle()
-        component.chooseAlbum(otherAlbum)
-        advanceUntilIdle()
+            component.selectTwo(vault)
+            component.startFiling()
+            advanceUntilIdle()
+            component.chooseAlbum(otherAlbum)
+            advanceUntilIdle()
 
-        val moved = assertIs<Filing.Moved>(component.state.value.filing)
-        assertEquals(2, moved.requested)
-        assertEquals(1, moved.moved, "one of them was gone, and the report says so")
-    }
+            val moved = assertIs<Filing.Moved>(component.state.value.filing)
+            assertEquals(2, moved.requested)
+            assertEquals(1, moved.moved, "one of them was gone, and the report says so")
+        }
 
     /** Taking items out of an album is the same write with no destination. */
     @Test
-    fun unfiling_moves_the_selection_out_of_its_album() = runTest {
-        val vault = FakeVaultItems()
-        val component = component(vault, filter = ItemFilter.Album(thisAlbum))
-        advanceUntilIdle()
+    fun unfiling_moves_the_selection_out_of_its_album() =
+        runTest {
+            val vault = FakeVaultItems()
+            val component = component(vault, filter = ItemFilter.Album(thisAlbum))
+            advanceUntilIdle()
 
-        component.selectTwo(vault)
-        component.unfileSelection()
-        advanceUntilIdle()
+            component.selectTwo(vault)
+            component.unfileSelection()
+            advanceUntilIdle()
 
-        assertEquals(null, vault.assignments.single().second, "out of the album, not into another")
-        val moved = assertIs<Filing.Moved>(component.state.value.filing)
-        assertEquals(FilingDestination.Unfiled, moved.destination)
-        assertEquals(false, component.state.value.selection.active)
-    }
+            assertEquals(null, vault.assignments.single().second, "out of the album, not into another")
+            val moved = assertIs<Filing.Moved>(component.state.value.filing)
+            assertEquals(FilingDestination.Unfiled, moved.destination)
+            assertEquals(false, component.state.value.selection.active)
+        }
 
     @Test
-    fun unfiling_nothing_does_nothing() = runTest {
-        val vault = FakeVaultItems()
-        val component = component(vault, filter = ItemFilter.Album(thisAlbum))
-        advanceUntilIdle()
+    fun unfiling_nothing_does_nothing() =
+        runTest {
+            val vault = FakeVaultItems()
+            val component = component(vault, filter = ItemFilter.Album(thisAlbum))
+            advanceUntilIdle()
 
-        component.unfileSelection()
-        advanceUntilIdle()
+            component.unfileSelection()
+            advanceUntilIdle()
 
-        assertTrue(vault.assignments.isEmpty())
-        assertNull(component.state.value.filing)
-    }
+            assertTrue(vault.assignments.isEmpty())
+            assertNull(component.state.value.filing)
+        }
 
     /**
      * A refused move keeps the selection. Nothing moved, so the next move is to try again rather than to
      * pick everything out of a grid a second time.
      */
     @Test
-    fun a_refused_move_is_surfaced_and_the_selection_survives() = runTest {
-        val vault = FakeVaultItems(assignFailure = VaultError.Crypto.IntegrityFailure)
-        vault.albums.value = listOf(album(otherAlbum, "Invoices"))
-        val component = component(vault)
-        advanceUntilIdle()
+    fun a_refused_move_is_surfaced_and_the_selection_survives() =
+        runTest {
+            val vault = FakeVaultItems(assignFailure = VaultError.Crypto.IntegrityFailure)
+            vault.albums.value = listOf(album(otherAlbum, "Invoices"))
+            val component = component(vault)
+            advanceUntilIdle()
 
-        component.selectTwo(vault)
-        component.startFiling()
-        advanceUntilIdle()
-        component.chooseAlbum(otherAlbum)
-        advanceUntilIdle()
+            component.selectTwo(vault)
+            component.startFiling()
+            advanceUntilIdle()
+            component.chooseAlbum(otherAlbum)
+            advanceUntilIdle()
 
-        assertEquals(GalleryError.FilingFailed, component.state.value.error)
-        assertNull(component.state.value.filing, "no report, because nothing moved")
-        assertEquals(2, component.state.value.selection.count, "still selected, ready to retry")
-    }
+            assertEquals(GalleryError.FilingFailed, component.state.value.error)
+            assertNull(component.state.value.filing, "no report, because nothing moved")
+            assertEquals(2, component.state.value.selection.count, "still selected, ready to retry")
+        }
 
     @Test
-    fun the_report_is_dismissable() = runTest {
-        val vault = FakeVaultItems()
-        val component = component(vault, filter = ItemFilter.Album(thisAlbum))
-        advanceUntilIdle()
+    fun the_report_is_dismissable() =
+        runTest {
+            val vault = FakeVaultItems()
+            val component = component(vault, filter = ItemFilter.Album(thisAlbum))
+            advanceUntilIdle()
 
-        component.selectTwo(vault)
-        component.unfileSelection()
-        advanceUntilIdle()
-        assertIs<Filing.Moved>(component.state.value.filing)
+            component.selectTwo(vault)
+            component.unfileSelection()
+            advanceUntilIdle()
+            assertIs<Filing.Moved>(component.state.value.filing)
 
-        component.acknowledgeFiling()
+            component.acknowledgeFiling()
 
-        assertNull(component.state.value.filing)
-    }
+            assertNull(component.state.value.filing)
+        }
 
     /**
      * The report and the selection bar share the bottom of the screen, and the report wins. Starting a
@@ -290,56 +301,59 @@ class GalleryFilingTest {
      * one is taken as having read the report.
      */
     @Test
-    fun starting_a_selection_puts_away_a_finished_move_report() = runTest {
-        val vault = FakeVaultItems()
-        val component = component(vault, filter = ItemFilter.Album(thisAlbum))
-        advanceUntilIdle()
-        component.selectTwo(vault)
-        component.unfileSelection()
-        advanceUntilIdle()
-        assertIs<Filing.Moved>(component.state.value.filing)
-
-        component.selectItem(byteArrayOf(5))
-
-        assertNull(component.state.value.filing, "the report is put away")
-        assertEquals(GalleryBottomBar.Selection, component.state.value.bottomBar(), "and the selection bar shows")
-    }
-
-    /** A move still running is not a report to put away: its card stays until it lands. */
-    @Test
-    fun a_move_under_way_is_not_put_away_by_a_selection() = runTest {
-        val vault = FakeVaultItems()
-        val io = ManualDispatcher()
-        val component = component(vault, filter = ItemFilter.Album(thisAlbum), ioContext = io)
-        advanceUntilIdle()
-        component.selectTwo(vault)
-        component.unfileSelection()
-        runCurrent()
-        try {
-            assertEquals(Filing.Moving, component.state.value.filing)
+    fun starting_a_selection_puts_away_a_finished_move_report() =
+        runTest {
+            val vault = FakeVaultItems()
+            val component = component(vault, filter = ItemFilter.Album(thisAlbum))
+            advanceUntilIdle()
+            component.selectTwo(vault)
+            component.unfileSelection()
+            advanceUntilIdle()
+            assertIs<Filing.Moved>(component.state.value.filing)
 
             component.selectItem(byteArrayOf(5))
 
-            assertEquals(Filing.Moving, component.state.value.filing)
-        } finally {
-            io.drain()
-            advanceUntilIdle()
+            assertNull(component.state.value.filing, "the report is put away")
+            assertEquals(GalleryBottomBar.Selection, component.state.value.bottomBar(), "and the selection bar shows")
         }
-    }
+
+    /** A move still running is not a report to put away: its card stays until it lands. */
+    @Test
+    fun a_move_under_way_is_not_put_away_by_a_selection() =
+        runTest {
+            val vault = FakeVaultItems()
+            val io = ManualDispatcher()
+            val component = component(vault, filter = ItemFilter.Album(thisAlbum), ioContext = io)
+            advanceUntilIdle()
+            component.selectTwo(vault)
+            component.unfileSelection()
+            runCurrent()
+            try {
+                assertEquals(Filing.Moving, component.state.value.filing)
+
+                component.selectItem(byteArrayOf(5))
+
+                assertEquals(Filing.Moving, component.state.value.filing)
+            } finally {
+                io.drain()
+                advanceUntilIdle()
+            }
+        }
 
     /** Only from the chooser: a stray call with no chooser open writes nothing. */
     @Test
-    fun choosing_an_album_outside_the_chooser_does_nothing() = runTest {
-        val vault = FakeVaultItems()
-        val component = component(vault)
-        advanceUntilIdle()
+    fun choosing_an_album_outside_the_chooser_does_nothing() =
+        runTest {
+            val vault = FakeVaultItems()
+            val component = component(vault)
+            advanceUntilIdle()
 
-        component.selectTwo(vault)
-        component.chooseAlbum(otherAlbum)
-        advanceUntilIdle()
+            component.selectTwo(vault)
+            component.chooseAlbum(otherAlbum)
+            advanceUntilIdle()
 
-        assertTrue(vault.assignments.isEmpty())
-    }
+            assertTrue(vault.assignments.isEmpty())
+        }
 
     /**
      * A vault with no albums is the case the create-in-flow exists for: the user has just been asked to
@@ -348,92 +362,96 @@ class GalleryFilingTest {
      * The album is made **and** the selection moves into it, in one step.
      */
     @Test
-    fun an_album_can_be_created_and_filed_into_in_one_step() = runTest {
-        val vault = FakeVaultItems(createResult = Outcome.Ok(byteArrayOf(7, 7)))
-        val component = component(vault)
-        advanceUntilIdle()
+    fun an_album_can_be_created_and_filed_into_in_one_step() =
+        runTest {
+            val vault = FakeVaultItems(createResult = Outcome.Ok(byteArrayOf(7, 7)))
+            val component = component(vault)
+            advanceUntilIdle()
 
-        component.selectTwo(vault)
-        component.startFiling()
-        advanceUntilIdle()
-        assertTrue(component.choosing().albums.isEmpty(), "nothing to choose, which is the premise here")
+            component.selectTwo(vault)
+            component.startFiling()
+            advanceUntilIdle()
+            assertTrue(component.choosing().albums.isEmpty(), "nothing to choose, which is the premise here")
 
-        component.startFilingCreate()
-        component.editFilingAlbumName("  Holiday ")
-        component.confirmFilingCreate()
-        advanceUntilIdle()
+            component.startFilingCreate()
+            component.editFilingAlbumName("  Holiday ")
+            component.confirmFilingCreate()
+            advanceUntilIdle()
 
-        assertEquals(listOf("Holiday"), vault.createdNames, "trimmed, like every other album name")
-        assertEquals(
-            listOf(listOf<Byte>(5), listOf<Byte>(6)) to listOf<Byte>(7, 7),
-            vault.assignments.single(),
-            "into the album that was just made",
-        )
-        assertIs<Filing.Moved>(component.state.value.filing)
-    }
-
-    @Test
-    fun an_empty_name_in_the_chooser_is_refused_without_creating_anything() = runTest {
-        val vault = FakeVaultItems()
-        val component = component(vault)
-        advanceUntilIdle()
-
-        component.selectTwo(vault)
-        component.startFiling()
-        component.startFilingCreate()
-        component.editFilingAlbumName("   ")
-        component.confirmFilingCreate()
-        advanceUntilIdle()
-
-        val creating = assertNotNull(component.choosing().creating, "the field stays open to be fixed")
-        assertEquals(AlbumDraftProblem.NameMissing, creating.problem)
-        assertTrue(vault.createdNames.isEmpty())
-        assertTrue(vault.assignments.isEmpty(), "and nothing was moved anywhere")
-    }
+            assertEquals(listOf("Holiday"), vault.createdNames, "trimmed, like every other album name")
+            assertEquals(
+                listOf(listOf<Byte>(5), listOf<Byte>(6)) to listOf<Byte>(7, 7),
+                vault.assignments.single(),
+                "into the album that was just made",
+            )
+            assertIs<Filing.Moved>(component.state.value.filing)
+        }
 
     @Test
-    fun a_failed_create_in_the_chooser_keeps_the_typed_name() = runTest {
-        val vault = FakeVaultItems(createResult = Outcome.Err(VaultError.Crypto.IntegrityFailure))
-        val component = component(vault)
-        advanceUntilIdle()
+    fun an_empty_name_in_the_chooser_is_refused_without_creating_anything() =
+        runTest {
+            val vault = FakeVaultItems()
+            val component = component(vault)
+            advanceUntilIdle()
 
-        component.selectTwo(vault)
-        component.startFiling()
-        component.startFilingCreate()
-        component.editFilingAlbumName("Holiday")
-        component.confirmFilingCreate()
-        advanceUntilIdle()
+            component.selectTwo(vault)
+            component.startFiling()
+            component.startFilingCreate()
+            component.editFilingAlbumName("   ")
+            component.confirmFilingCreate()
+            advanceUntilIdle()
 
-        val creating = assertNotNull(component.choosing().creating)
-        assertEquals(AlbumDraftProblem.CreateFailed, creating.problem)
-        assertEquals("Holiday", creating.name)
-        assertTrue(vault.assignments.isEmpty(), "no album, so nowhere to move anything")
-    }
+            val creating = assertNotNull(component.choosing().creating, "the field stays open to be fixed")
+            assertEquals(AlbumDraftProblem.NameMissing, creating.problem)
+            assertTrue(vault.createdNames.isEmpty())
+            assertTrue(vault.assignments.isEmpty(), "and nothing was moved anywhere")
+        }
+
+    @Test
+    fun a_failed_create_in_the_chooser_keeps_the_typed_name() =
+        runTest {
+            val vault = FakeVaultItems(createResult = Outcome.Err(VaultError.Crypto.IntegrityFailure))
+            val component = component(vault)
+            advanceUntilIdle()
+
+            component.selectTwo(vault)
+            component.startFiling()
+            component.startFilingCreate()
+            component.editFilingAlbumName("Holiday")
+            component.confirmFilingCreate()
+            advanceUntilIdle()
+
+            val creating = assertNotNull(component.choosing().creating)
+            assertEquals(AlbumDraftProblem.CreateFailed, creating.problem)
+            assertEquals("Holiday", creating.name)
+            assertTrue(vault.assignments.isEmpty(), "no album, so nowhere to move anything")
+        }
 
     /**
      * A double tap on "Create and move" makes one album, not two. Nothing else would catch it: duplicate
      * names are allowed by design.
      */
     @Test
-    fun a_second_create_while_one_is_running_creates_one_album() = runTest {
-        val io = ManualDispatcher()
-        val vault = FakeVaultItems()
-        val component = component(vault, ioContext = io)
-        advanceUntilIdle()
+    fun a_second_create_while_one_is_running_creates_one_album() =
+        runTest {
+            val io = ManualDispatcher()
+            val vault = FakeVaultItems()
+            val component = component(vault, ioContext = io)
+            advanceUntilIdle()
 
-        component.selectTwo(vault)
-        component.startFiling()
-        component.startFilingCreate()
-        component.editFilingAlbumName("Holiday")
-        component.confirmFilingCreate()
-        assertEquals(true, assertNotNull(component.choosing().creating).saving, "the window under test")
+            component.selectTwo(vault)
+            component.startFiling()
+            component.startFilingCreate()
+            component.editFilingAlbumName("Holiday")
+            component.confirmFilingCreate()
+            assertEquals(true, assertNotNull(component.choosing().creating).saving, "the window under test")
 
-        component.confirmFilingCreate()
-        io.drain()
-        advanceUntilIdle()
+            component.confirmFilingCreate()
+            io.drain()
+            advanceUntilIdle()
 
-        assertEquals(listOf("Holiday"), vault.createdNames, "one album, not two")
-    }
+            assertEquals(listOf("Holiday"), vault.createdNames, "one album, not two")
+        }
 
     /**
      * The chooser closes when its selection goes.
@@ -442,21 +460,22 @@ class GalleryFilingTest {
      * listing from elsewhere. Either way a chooser with nothing to move is an empty question.
      */
     @Test
-    fun clearing_the_selection_closes_the_chooser() = runTest {
-        val vault = FakeVaultItems()
-        vault.albums.value = listOf(album(otherAlbum, "Invoices"))
-        val component = component(vault)
-        advanceUntilIdle()
+    fun clearing_the_selection_closes_the_chooser() =
+        runTest {
+            val vault = FakeVaultItems()
+            vault.albums.value = listOf(album(otherAlbum, "Invoices"))
+            val component = component(vault)
+            advanceUntilIdle()
 
-        component.selectTwo(vault)
-        component.startFiling()
-        advanceUntilIdle()
-        assertIs<Filing.Choosing>(component.state.value.filing)
+            component.selectTwo(vault)
+            component.startFiling()
+            advanceUntilIdle()
+            assertIs<Filing.Choosing>(component.state.value.filing)
 
-        component.clearSelection()
+            component.clearSelection()
 
-        assertNull(component.state.value.filing)
-    }
+            assertNull(component.state.value.filing)
+        }
 
     /**
      * **The chooser's listing is live only while the chooser is open.** Every emission of it opens one
@@ -475,37 +494,39 @@ class GalleryFilingTest {
      * and only while the whole-vault grid is the screen being looked at.
      */
     @Test
-    fun the_chooser_only_listens_to_the_album_listing_while_it_is_open() = runTest {
-        val vault = FakeVaultItems()
-        vault.albums.value = listOf(album(otherAlbum, "Invoices"))
-        val component = component(vault)
-        advanceUntilIdle()
-        assertEquals(1, vault.albums.subscriptionCount.value, "the whole-vault listing labels filed items")
+    fun the_chooser_only_listens_to_the_album_listing_while_it_is_open() =
+        runTest {
+            val vault = FakeVaultItems()
+            vault.albums.value = listOf(album(otherAlbum, "Invoices"))
+            val component = component(vault)
+            advanceUntilIdle()
+            assertEquals(1, vault.albums.subscriptionCount.value, "the whole-vault listing labels filed items")
 
-        component.selectTwo(vault)
-        component.startFiling()
-        advanceUntilIdle()
-        assertEquals(2, vault.albums.subscriptionCount.value, "the open chooser keeps its own list current")
+            component.selectTwo(vault)
+            component.startFiling()
+            advanceUntilIdle()
+            assertEquals(2, vault.albums.subscriptionCount.value, "the open chooser keeps its own list current")
 
-        component.cancelFiling()
-        advanceUntilIdle()
-        assertEquals(1, vault.albums.subscriptionCount.value, "and lets go of it when it closes")
-    }
+            component.cancelFiling()
+            advanceUntilIdle()
+            assertEquals(1, vault.albums.subscriptionCount.value, "and lets go of it when it closes")
+        }
 
     @Test
-    fun cancelling_the_chooser_moves_nothing() = runTest {
-        val vault = FakeVaultItems()
-        vault.albums.value = listOf(album(otherAlbum, "Invoices"))
-        val component = component(vault)
-        advanceUntilIdle()
+    fun cancelling_the_chooser_moves_nothing() =
+        runTest {
+            val vault = FakeVaultItems()
+            vault.albums.value = listOf(album(otherAlbum, "Invoices"))
+            val component = component(vault)
+            advanceUntilIdle()
 
-        component.selectTwo(vault)
-        component.startFiling()
-        component.cancelFiling()
-        advanceUntilIdle()
+            component.selectTwo(vault)
+            component.startFiling()
+            component.cancelFiling()
+            advanceUntilIdle()
 
-        assertNull(component.state.value.filing)
-        assertTrue(vault.assignments.isEmpty())
-        assertEquals(2, component.state.value.selection.count, "the selection is still there")
-    }
+            assertNull(component.state.value.filing)
+            assertTrue(vault.assignments.isEmpty())
+            assertEquals(2, component.state.value.selection.count, "the selection is still there")
+        }
 }

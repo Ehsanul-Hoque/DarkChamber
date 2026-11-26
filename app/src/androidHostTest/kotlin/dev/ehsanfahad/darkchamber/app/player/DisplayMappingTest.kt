@@ -10,9 +10,18 @@ import kotlin.test.assertEquals
 class DisplayMappingTest {
     @Test
     fun the_apps_own_orientation_is_the_manifests_portrait_holds_and_landscape_follows_the_sensor() {
-        assertEquals(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED, DisplayMapping.requestedOrientation(ScreenOrientation.AppDefault))
-        assertEquals(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT, DisplayMapping.requestedOrientation(ScreenOrientation.Portrait))
-        assertEquals(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE, DisplayMapping.requestedOrientation(ScreenOrientation.Landscape))
+        assertEquals(
+            ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED,
+            DisplayMapping.requestedOrientation(ScreenOrientation.AppDefault),
+        )
+        assertEquals(
+            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT,
+            DisplayMapping.requestedOrientation(ScreenOrientation.Portrait),
+        )
+        assertEquals(
+            ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE,
+            DisplayMapping.requestedOrientation(ScreenOrientation.Landscape),
+        )
     }
 
     @Test

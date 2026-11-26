@@ -58,7 +58,11 @@ interface ThumbnailEncoder {
      * cheaper signature — bytes in, bytes out — is precisely the one that would have to be broken to
      * add a kind that needs to know what it is looking at before it starts reading.
      */
-    fun encode(mime: String, maxEdgePx: Int, openSource: () -> RawSource): ByteArray?
+    fun encode(
+        mime: String,
+        maxEdgePx: Int,
+        openSource: () -> RawSource,
+    ): ByteArray?
 
     /**
      * The same, for a video: grab a frame through [reader], which reads the **stored** object at any
@@ -72,7 +76,11 @@ interface ThumbnailEncoder {
      *
      * The default declines, which is what an encoder that handles no video should do.
      */
-    fun encode(mime: String, maxEdgePx: Int, reader: RangeReader): ByteArray? = null
+    fun encode(
+        mime: String,
+        maxEdgePx: Int,
+        reader: RangeReader,
+    ): ByteArray? = null
 }
 
 /**
@@ -85,5 +93,9 @@ interface ThumbnailEncoder {
  * decoder declines).
  */
 object NoThumbnails : ThumbnailEncoder {
-    override fun encode(mime: String, maxEdgePx: Int, openSource: () -> RawSource): ByteArray? = null
+    override fun encode(
+        mime: String,
+        maxEdgePx: Int,
+        openSource: () -> RawSource,
+    ): ByteArray? = null
 }

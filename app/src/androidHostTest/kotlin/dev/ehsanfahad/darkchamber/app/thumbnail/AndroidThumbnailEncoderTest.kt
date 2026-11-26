@@ -24,10 +24,11 @@ class AndroidThumbnailEncoderTest {
         var opens = 0
         val encoder = AndroidThumbnailEncoder()
 
-        val result = encoder.encode("application/pdf", maxEdgePx = 512) {
-            opens++
-            Buffer()
-        }
+        val result =
+            encoder.encode("application/pdf", maxEdgePx = 512) {
+                opens++
+                Buffer()
+            }
 
         assertNull(result)
         // Not incidental: most of a vault is not an image, and every one of those imports would
@@ -44,7 +45,12 @@ class AndroidThumbnailEncoderTest {
         // type we cannot draw. The outcome is deliberately ignored — off-device `BitmapFactory`
         // throws, and with default-returning stubs it would answer null — because the assertion is
         // that the bytes reached it at all, which holds either way.
-        runCatching { encoder.encode("IMAGE/JPEG", maxEdgePx = 512) { opens++; Buffer() } }
+        runCatching {
+            encoder.encode("IMAGE/JPEG", maxEdgePx = 512) {
+                opens++
+                Buffer()
+            }
+        }
 
         assertEquals(1, opens, "an image type must reach the decoder")
     }

@@ -22,12 +22,17 @@ import kotlin.test.assertTrue
  */
 class FakeThumbnailEncoderTest {
     /** A source that reports whether it was read to exhaustion and whether it was closed. */
-    private class TrackingSource(private val bytes: ByteArray) : RawSource {
+    private class TrackingSource(
+        private val bytes: ByteArray,
+    ) : RawSource {
         private var pos = 0
         var closed: Boolean = false
             private set
 
-        override fun readAtMostTo(sink: Buffer, byteCount: Long): Long {
+        override fun readAtMostTo(
+            sink: Buffer,
+            byteCount: Long,
+        ): Long {
             if (pos >= bytes.size) return -1L
             val n = minOf(byteCount, (bytes.size - pos).toLong()).toInt()
             sink.write(bytes, pos, pos + n)

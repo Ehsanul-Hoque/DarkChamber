@@ -52,9 +52,13 @@ interface VaultPdfBuffer {
 /** What opening a filled buffer gave. */
 sealed interface PdfOpened {
     /** The document, which now owns the buffer: closing it releases both. */
-    data class Document(val document: VaultPdfDocument) : PdfOpened
+    data class Document(
+        val document: VaultPdfDocument,
+    ) : PdfOpened
 
-    data class Refused(val reason: PdfRefusal) : PdfOpened
+    data class Refused(
+        val reason: PdfRefusal,
+    ) : PdfOpened
 }
 
 /** One open PDF. Closing it releases its buffer. */
@@ -68,7 +72,10 @@ interface VaultPdfDocument {
      * Page [index] drawn [widthPx] pixels wide, keeping its shape, or `null` if this page could not be
      * drawn — the others may still be. Can take a while on a heavy page; never call it on the main thread.
      */
-    fun render(index: Int, widthPx: Int): ImageBitmap?
+    fun render(
+        index: Int,
+        widthPx: Int,
+    ): ImageBitmap?
 
     /**
      * Releases the document, its renderer and its buffer. Safe to call more than once. Waits for a
@@ -78,10 +85,16 @@ interface VaultPdfDocument {
 }
 
 /** A page's size in points. */
-data class PdfPageSize(val widthPt: Int, val heightPt: Int)
+data class PdfPageSize(
+    val widthPt: Int,
+    val heightPt: Int,
+)
 
 /** Where a reader is in a PDF: a page (from 0) and how far down it, in pixels as last laid out. */
-data class PdfPlace(val page: Int = 0, val offsetPx: Int = 0)
+data class PdfPlace(
+    val page: Int = 0,
+    val offsetPx: Int = 0,
+)
 
 /**
  * Why the platform will not show a PDF that read and verified. Told apart by what the platform reports

@@ -28,7 +28,11 @@ internal class SavePhoto(
     private val clock: () -> Long,
     private val nameFor: (epochMillis: Long) -> String = ::photoName,
 ) {
-    operator fun invoke(photo: CapturedPhoto, albumId: ByteArray?, isActive: () -> Boolean): Outcome<ByteArray> {
+    operator fun invoke(
+        photo: CapturedPhoto,
+        albumId: ByteArray?,
+        isActive: () -> Boolean,
+    ): Outcome<ByteArray> {
         val captured = photo.jpeg
         var oriented = captured
         try {

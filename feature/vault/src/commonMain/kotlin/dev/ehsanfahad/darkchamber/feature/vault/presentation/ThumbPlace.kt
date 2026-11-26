@@ -4,7 +4,10 @@ package dev.ehsanfahad.darkchamber.feature.vault.presentation
  * A point the thumb is pinned to: [scrolledPx] down the column, the thumb stood at [fraction] of its track.
  * Holds pixels and a fraction only.
  */
-internal data class ThumbAnchor(val scrolledPx: Float, val fraction: Float)
+internal data class ThumbAnchor(
+    val scrolledPx: Float,
+    val fraction: Float,
+)
 
 /**
  * Where a text page's fast-scroll thumb stands while the column's height is still being estimated.
@@ -18,9 +21,12 @@ internal data class ThumbAnchor(val scrolledPx: Float, val fraction: Float)
  * fraction of pixels.
  */
 internal object ThumbPlace {
-
     /** The thumb's fraction for [scrolled] px down a column that scrolls [maxScroll] px, pinned to [anchor]. */
-    fun fraction(scrolled: Float, maxScroll: Float, anchor: ThumbAnchor?): Float {
+    fun fraction(
+        scrolled: Float,
+        maxScroll: Float,
+        anchor: ThumbAnchor?,
+    ): Float {
         // A column that cannot scroll is at its top when nothing is scrolled, and at its end otherwise.
         if (scrolled <= 0f) return 0f
         if (scrolled >= maxScroll) return 1f
@@ -36,7 +42,11 @@ internal object ThumbPlace {
      * The distance down the column that [fraction] (0..1, as a drag gives it) stands for — the inverse of
      * [fraction]. Both ends fall out of the shares: 0 is the top, 1 the end.
      */
-    fun scrolledAt(fraction: Float, maxScroll: Float, anchor: ThumbAnchor?): Float {
+    fun scrolledAt(
+        fraction: Float,
+        maxScroll: Float,
+        anchor: ThumbAnchor?,
+    ): Float {
         val pin = anchor?.takeIf { usable(it, maxScroll) } ?: return fraction * maxScroll
         return if (fraction < pin.fraction) {
             pin.scrolledPx * fraction / pin.fraction
@@ -49,10 +59,15 @@ internal object ThumbPlace {
      * The pin after an estimate changed: the thumb stays at [shownBefore], the fraction it showed, now at
      * [scrolledAfter] px — the new estimate of how far down it is. A thumb not [shown] keeps no pin.
      */
-    fun repin(shown: Boolean, shownBefore: Float, scrolledAfter: Float): ThumbAnchor? =
-        if (shown) ThumbAnchor(scrolledAfter, shownBefore) else null
+    fun repin(
+        shown: Boolean,
+        shownBefore: Float,
+        scrolledAfter: Float,
+    ): ThumbAnchor? = if (shown) ThumbAnchor(scrolledAfter, shownBefore) else null
 
     /** A pin strictly inside the column and the track; at or past an end there is no rest to share out. */
-    private fun usable(pin: ThumbAnchor, maxScroll: Float): Boolean =
-        pin.scrolledPx > 0f && pin.scrolledPx < maxScroll && pin.fraction > 0f && pin.fraction < 1f
+    private fun usable(
+        pin: ThumbAnchor,
+        maxScroll: Float,
+    ): Boolean = pin.scrolledPx > 0f && pin.scrolledPx < maxScroll && pin.fraction > 0f && pin.fraction < 1f
 }

@@ -16,25 +16,37 @@ import kotlin.math.abs
  */
 internal object PlayerGestures {
     /** The half of a page [width] wide that [x] falls in; the middle line belongs to the right. */
-    fun half(x: Float, width: Float): Half = if (x < width / 2f) Half.Left else Half.Right
+    fun half(
+        x: Float,
+        width: Float,
+    ): Half = if (x < width / 2f) Half.Left else Half.Right
 
     /** A single tap shows or hides the controls on a video page; an audio page's controls stay. */
-    fun onTap(kind: PlayerKind): GestureAction = when (kind) {
-        PlayerKind.Video -> GestureAction.ToggleControls
-        PlayerKind.Audio -> GestureAction.None
-    }
+    fun onTap(kind: PlayerKind): GestureAction =
+        when (kind) {
+            PlayerKind.Video -> GestureAction.ToggleControls
+            PlayerKind.Audio -> GestureAction.None
+        }
 
     /** A double tap moves ten seconds: back on the left half, forward on the right. */
-    fun onDoubleTap(x: Float, area: GestureArea): GestureAction = when (half(x, area.width)) {
-        Half.Left -> GestureAction.Skip(-PlaybackRules.SKIP_MS)
-        Half.Right -> GestureAction.Skip(PlaybackRules.SKIP_MS)
-    }
+    fun onDoubleTap(
+        x: Float,
+        area: GestureArea,
+    ): GestureAction =
+        when (half(x, area.width)) {
+            Half.Left -> GestureAction.Skip(-PlaybackRules.SKIP_MS)
+            Half.Right -> GestureAction.Skip(PlaybackRules.SKIP_MS)
+        }
 
     /** Holding a half plays at half speed on the left and double speed on the right, while held. */
-    fun onHold(x: Float, area: GestureArea): GestureAction = when (half(x, area.width)) {
-        Half.Left -> GestureAction.Hold(HeldSpeed.Slow)
-        Half.Right -> GestureAction.Hold(HeldSpeed.Fast)
-    }
+    fun onHold(
+        x: Float,
+        area: GestureArea,
+    ): GestureAction =
+        when (half(x, area.width)) {
+            Half.Left -> GestureAction.Hold(HeldSpeed.Slow)
+            Half.Right -> GestureAction.Hold(HeldSpeed.Fast)
+        }
 
     /**
      * Who a drag belongs to, decided once from where it started and its first movement:
@@ -45,7 +57,12 @@ internal object PlayerGestures {
      *   if it started between the bars, away from the system's own edge gestures; an audio page has no
      *   brightness. Anything else belongs to nobody, and the pager does not move for it either.
      */
-    fun dragOwner(kind: PlayerKind, start: Offset, firstMove: Offset, area: GestureArea): DragOwner {
+    fun dragOwner(
+        kind: PlayerKind,
+        start: Offset,
+        firstMove: Offset,
+        area: GestureArea,
+    ): DragOwner {
         if (area.seekBar?.contains(start) == true) return DragOwner.SeekBar
         if (abs(firstMove.x) >= abs(firstMove.y)) return DragOwner.Pager
         if (start.y < area.bandTop || start.y >= area.bandBottom) return DragOwner.Nobody
@@ -59,7 +76,11 @@ internal object PlayerGestures {
      * A level (brightness or volume, 0 to 1) after a slide of [dy] pixels: sliding the band's whole
      * height up goes from nothing to full. Screen y grows downward, so up is a negative [dy].
      */
-    fun levelAfterSlide(level: Float, dy: Float, area: GestureArea): Float {
+    fun levelAfterSlide(
+        level: Float,
+        dy: Float,
+        area: GestureArea,
+    ): Float {
         val band = area.bandBottom - area.bandTop
         if (band <= 0f) return level
         return (level - dy / band).coerceIn(0f, 1f)
@@ -85,10 +106,14 @@ internal sealed interface GestureAction {
     data object ToggleControls : GestureAction
 
     /** Move by [byMs]: negative is back. */
-    data class Skip(val byMs: Long) : GestureAction
+    data class Skip(
+        val byMs: Long,
+    ) : GestureAction
 
     /** Run at [speed] until the finger lifts. */
-    data class Hold(val speed: HeldSpeed) : GestureAction
+    data class Hold(
+        val speed: HeldSpeed,
+    ) : GestureAction
 }
 
 internal enum class DragOwner { Pager, Brightness, Volume, SeekBar, Nobody }

@@ -29,7 +29,6 @@ internal class IosPickedFile(
     private val scratch: NSURL? = null,
     displayName: String? = null,
 ) : PickedFile {
-
     /**
      * [displayName] exists for the scratch case: that copy is deliberately given a unique file name
      * so two picks cannot collide, and the user should still see the name their photo actually has.
@@ -104,32 +103,58 @@ internal fun fileSizeOrNull(path: String): Long? =
 internal fun mimeForExtension(extension: String?): String =
     when (extension?.lowercase()) {
         "jpg", "jpeg" -> "image/jpeg"
+
         "png" -> "image/png"
+
         "heic" -> "image/heic"
+
         "gif" -> "image/gif"
+
         "webp" -> "image/webp"
+
         "mp4", "m4v" -> "video/mp4"
+
         "mov" -> "video/quicktime"
+
         "mp3" -> "audio/mpeg"
+
         "m4a" -> "audio/mp4"
+
         "wav" -> "audio/wav"
+
         "pdf" -> "application/pdf"
+
         "md", "markdown", "mdown", "mkd" -> "text/markdown"
+
         "json" -> "application/json"
+
         "html", "htm" -> "text/html"
+
         "xhtml" -> "application/xhtml+xml"
+
         "xml" -> "application/xml"
+
         "csv" -> "text/csv"
+
         "tsv" -> "text/tab-separated-values"
+
         "yaml", "yml" -> "application/yaml"
+
         "toml" -> "application/toml"
+
         "vtt" -> "text/vtt"
+
         "css" -> "text/css"
+
         "js" -> "text/javascript"
+
         "sh" -> "application/x-sh"
+
         "sql" -> "application/sql"
+
         "txt", "text", "ini", "cfg", "conf", "properties", "log", "srt",
         "kt", "kts", "java", "swift", "py", "c", "h", "cpp", "hpp", "cs", "go", "rs", "rb", "php", "gradle",
         -> "text/plain"
+
         else -> "application/octet-stream"
     }

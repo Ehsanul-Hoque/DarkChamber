@@ -25,53 +25,54 @@ import kotlin.test.assertTrue
  * Both orders read as equally sensible in a diff, so both failure directions are injected here.
  */
 class VaultAlbumDeleteTest {
-
     @Test
-    fun deleting_an_album_unfiles_its_items_and_destroys_nothing() = runTest {
-        val fx = AlbumFixture()
-        val id = (fx.objects.createAlbum("Receipts") as Outcome.Ok).value
-        val first = fx.importInto(id, "one.txt")
-        val second = fx.importInto(id, "two.txt")
-
-        assertIs<Outcome.Ok<Unit>>(fx.objects.deleteAlbum(id))
-
-        assertNull((fx.catalog.getAlbum(id) as Outcome.Ok).value, "the album is gone")
-        assertEquals(
-            2,
-            (fx.catalog.listItems(ItemFilter.Unfiled) as Outcome.Ok).value.size,
-            "and both items are unfiled rather than deleted",
-        )
-        // The strongest form of "nothing was destroyed": the items still open. Deleting their rows
-        // would have taken the wrapped DEKs with them, and nothing could reverse that.
-        assertIs<Outcome.Ok<ObjectMeta>>(fx.objects.openMeta(first))
-        assertIs<Outcome.Ok<ObjectMeta>>(fx.objects.openMeta(second))
-        fx.close()
-    }
-
-    @Test
-    fun the_deleted_album_leaves_the_listing_and_its_items_appear_unfiled() = runTest {
-        val fx = AlbumFixture()
-        val id = (fx.objects.createAlbum("Trip") as Outcome.Ok).value
-        fx.importInto(id, "photo.txt")
-
-        fx.objects.observeAlbums().test {
-            assertEquals(1, awaitItem().size, "listed to begin with")
+    fun deleting_an_album_unfiles_its_items_and_destroys_nothing() =
+        runTest {
+            val fx = AlbumFixture()
+            val id = (fx.objects.createAlbum("Receipts") as Outcome.Ok).value
+            val first = fx.importInto(id, "one.txt")
+            val second = fx.importInto(id, "two.txt")
 
             assertIs<Outcome.Ok<Unit>>(fx.objects.deleteAlbum(id))
 
-            // Two writes, so the listing re-emits twice: once when the item is unfiled, once when
-            // the album row goes. The second is the one that matters.
-            assertEquals(0, awaitItem().single().itemCount, "first the album empties")
-            assertEquals(emptyList(), awaitItem(), "then it leaves the grid")
-            cancelAndIgnoreRemainingEvents()
+            assertNull((fx.catalog.getAlbum(id) as Outcome.Ok).value, "the album is gone")
+            assertEquals(
+                2,
+                (fx.catalog.listItems(ItemFilter.Unfiled) as Outcome.Ok).value.size,
+                "and both items are unfiled rather than deleted",
+            )
+            // The strongest form of "nothing was destroyed": the items still open. Deleting their rows
+            // would have taken the wrapped DEKs with them, and nothing could reverse that.
+            assertIs<Outcome.Ok<ObjectMeta>>(fx.objects.openMeta(first))
+            assertIs<Outcome.Ok<ObjectMeta>>(fx.objects.openMeta(second))
+            fx.close()
         }
 
-        fx.objects.observeItems(ItemFilter.Unfiled).test {
-            assertEquals(1, awaitItem().size, "the item is where the user will look for it")
-            cancelAndIgnoreRemainingEvents()
+    @Test
+    fun the_deleted_album_leaves_the_listing_and_its_items_appear_unfiled() =
+        runTest {
+            val fx = AlbumFixture()
+            val id = (fx.objects.createAlbum("Trip") as Outcome.Ok).value
+            fx.importInto(id, "photo.txt")
+
+            fx.objects.observeAlbums().test {
+                assertEquals(1, awaitItem().size, "listed to begin with")
+
+                assertIs<Outcome.Ok<Unit>>(fx.objects.deleteAlbum(id))
+
+                // Two writes, so the listing re-emits twice: once when the item is unfiled, once when
+                // the album row goes. The second is the one that matters.
+                assertEquals(0, awaitItem().single().itemCount, "first the album empties")
+                assertEquals(emptyList(), awaitItem(), "then it leaves the grid")
+                cancelAndIgnoreRemainingEvents()
+            }
+
+            fx.objects.observeItems(ItemFilter.Unfiled).test {
+                assertEquals(1, awaitItem().size, "the item is where the user will look for it")
+                cancelAndIgnoreRemainingEvents()
+            }
+            fx.close()
         }
-        fx.close()
-    }
 
     /**
      * Interrupted **after** the clear and before the row delete — the failure the chosen order is
@@ -79,34 +80,38 @@ class VaultAlbumDeleteTest {
      * again.
      */
     @Test
-    fun interrupted_before_the_album_row_is_deleted_it_leaves_an_empty_album_and_no_orphans() = runTest {
-        val driver = FailingSqlDriver(testSqlDriver(), failOn = deletesAnAlbum)
-        val fx = AlbumFixture(driver = driver)
-        val id = (fx.objects.createAlbum("Receipts") as Outcome.Ok).value
-        fx.importInto(id, "one.txt")
-        fx.importInto(id, "two.txt")
+    fun interrupted_before_the_album_row_is_deleted_it_leaves_an_empty_album_and_no_orphans() =
+        runTest {
+            val driver = FailingSqlDriver(testSqlDriver(), failOn = deletesAnAlbum)
+            val fx = AlbumFixture(driver = driver)
+            val id = (fx.objects.createAlbum("Receipts") as Outcome.Ok).value
+            fx.importInto(id, "one.txt")
+            fx.importInto(id, "two.txt")
 
-        val result = fx.objects.deleteAlbum(id)
+            val result = fx.objects.deleteAlbum(id)
 
-        assertIs<Outcome.Err>(result, "the caller is told the delete did not finish")
-        assertIs<VaultError.Db>(result.error)
-        assertEquals(1, driver.refusals, "the refusal landed on the album-row delete, not the clear")
+            assertIs<Outcome.Err>(result, "the caller is told the delete did not finish")
+            assertIs<VaultError.Db>(result.error)
+            assertEquals(1, driver.refusals, "the refusal landed on the album-row delete, not the clear")
 
-        // The safe residue: the album is still there, holding nothing.
-        assertNotNull((fx.catalog.getAlbum(id) as Outcome.Ok).value, "the album survives, so it can be deleted again")
-        assertEquals(
-            0,
-            (fx.catalog.listItems(ItemFilter.Album(id)) as Outcome.Ok).value.size,
-            "its items already left",
-        )
-        assertEquals(
-            2,
-            (fx.catalog.listItems(ItemFilter.Unfiled) as Outcome.Ok).value.size,
-            "they are unfiled, which is a state every surface can show",
-        )
-        assertNoItemPointsAtAMissingAlbum(fx)
-        fx.close()
-    }
+            // The safe residue: the album is still there, holding nothing.
+            assertNotNull(
+                (fx.catalog.getAlbum(id) as Outcome.Ok).value,
+                "the album survives, so it can be deleted again",
+            )
+            assertEquals(
+                0,
+                (fx.catalog.listItems(ItemFilter.Album(id)) as Outcome.Ok).value.size,
+                "its items already left",
+            )
+            assertEquals(
+                2,
+                (fx.catalog.listItems(ItemFilter.Unfiled) as Outcome.Ok).value.size,
+                "they are unfiled, which is a state every surface can show",
+            )
+            assertNoItemPointsAtAMissingAlbum(fx)
+            fx.close()
+        }
 
     /**
      * Interrupted **on** the clear, which is the first write. Nothing should have happened at all —
@@ -114,27 +119,28 @@ class VaultAlbumDeleteTest {
      * is precisely how items end up pointing at an album that is gone.
      */
     @Test
-    fun interrupted_on_the_clear_it_changes_nothing_and_keeps_the_album_row() = runTest {
-        val driver = FailingSqlDriver(testSqlDriver(), failOn = unfilesItems)
-        val fx = AlbumFixture(driver = driver)
-        val id = (fx.objects.createAlbum("Receipts") as Outcome.Ok).value
-        fx.importInto(id, "one.txt")
+    fun interrupted_on_the_clear_it_changes_nothing_and_keeps_the_album_row() =
+        runTest {
+            val driver = FailingSqlDriver(testSqlDriver(), failOn = unfilesItems)
+            val fx = AlbumFixture(driver = driver)
+            val id = (fx.objects.createAlbum("Receipts") as Outcome.Ok).value
+            fx.importInto(id, "one.txt")
 
-        val result = fx.objects.deleteAlbum(id)
+            val result = fx.objects.deleteAlbum(id)
 
-        assertIs<Outcome.Err>(result)
-        assertNotNull(
-            (fx.catalog.getAlbum(id) as Outcome.Ok).value,
-            "the row delete must not run after a failed clear",
-        )
-        assertEquals(
-            1,
-            (fx.catalog.listItems(ItemFilter.Album(id)) as Outcome.Ok).value.size,
-            "the item is still filed where it was",
-        )
-        assertNoItemPointsAtAMissingAlbum(fx)
-        fx.close()
-    }
+            assertIs<Outcome.Err>(result)
+            assertNotNull(
+                (fx.catalog.getAlbum(id) as Outcome.Ok).value,
+                "the row delete must not run after a failed clear",
+            )
+            assertEquals(
+                1,
+                (fx.catalog.listItems(ItemFilter.Album(id)) as Outcome.Ok).value.size,
+                "the item is still filed where it was",
+            )
+            assertNoItemPointsAtAMissingAlbum(fx)
+            fx.close()
+        }
 
     @Test
     fun deleting_an_empty_album_works_and_deleting_an_absent_one_is_not_an_error() {
@@ -171,9 +177,11 @@ class VaultAlbumDeleteTest {
      */
     private fun assertNoItemPointsAtAMissingAlbum(fx: AlbumFixture) {
         val albumIds = (fx.catalog.listAlbums() as Outcome.Ok).value.map { it.id.toList() }
-        val orphans = (fx.catalog.listItems() as Outcome.Ok).value
-            .mapNotNull { it.album_id?.toList() }
-            .filter { it !in albumIds }
+        val orphans =
+            (fx.catalog.listItems() as Outcome.Ok)
+                .value
+                .mapNotNull { it.album_id?.toList() }
+                .filter { it !in albumIds }
 
         assertEquals(emptyList(), orphans, "no item may point at an album that does not exist")
     }

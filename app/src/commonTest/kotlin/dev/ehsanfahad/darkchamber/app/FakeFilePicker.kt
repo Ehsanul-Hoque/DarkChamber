@@ -12,7 +12,9 @@ import kotlinx.io.RawSource
  * Most gate tests never drive an import and leave it empty — an empty list is a cancel — but the
  * unlocked subtree constructs the gallery and the import batch, so both seams must be resolvable.
  */
-class FakeFilePicker(private val result: List<PickedFile> = emptyList()) : FilePicker {
+class FakeFilePicker(
+    private val result: List<PickedFile> = emptyList(),
+) : FilePicker {
     var calls = 0
         private set
 
@@ -23,7 +25,9 @@ class FakeFilePicker(private val result: List<PickedFile> = emptyList()) : FileP
 }
 
 /** The photo half of the same thing. The real pickers live in `androidMain`/`iosMain`. */
-class FakePhotoPicker(private val result: List<PickedFile> = emptyList()) : PhotoPicker {
+class FakePhotoPicker(
+    private val result: List<PickedFile> = emptyList(),
+) : PhotoPicker {
     var calls = 0
         private set
 

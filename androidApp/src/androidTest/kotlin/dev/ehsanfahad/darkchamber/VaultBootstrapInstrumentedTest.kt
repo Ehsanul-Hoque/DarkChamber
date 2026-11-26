@@ -31,17 +31,20 @@ class VaultBootstrapInstrumentedTest {
         val vaultRoot = File(context.filesDir, "vault")
         vaultRoot.deleteRecursively() // deterministic create path
 
-        val koin = koinApplication {
-            androidContext(context)
-            modules(appModules())
-        }
+        val koin =
+            koinApplication {
+                androidContext(context)
+                modules(appModules())
+            }
         try {
             val bootstrap = koin.koin.get<VaultBootstrap>()
 
             // First run: create the vault (keystore persisted under the backup-denied root).
             val created = bootstrap.createVault("correct-horse-battery".encodeToByteArray())
             assertTrue("createVault failed: $created", created is Outcome.Ok)
-            (created as Outcome.Ok).value.vault.session.close()
+            (created as Outcome.Ok)
+                .value.vault.session
+                .close()
 
             // Reopen on the same root via the persisted keystore (passphrase unlock).
             val unlocked = bootstrap.unlock("correct-horse-battery".encodeToByteArray())
@@ -63,7 +66,12 @@ class VaultBootstrapInstrumentedTest {
     private fun assertNoExternalArtifacts() {
         val externalDirs = listOfNotNull(context.externalCacheDir, context.getExternalFilesDir(null))
         externalDirs.forEach { dir ->
-            val leaked = dir.walkTopDown().filter { it.isFile }.map { it.name }.toList()
+            val leaked =
+                dir
+                    .walkTopDown()
+                    .filter { it.isFile }
+                    .map { it.name }
+                    .toList()
             assertTrue("external storage leaked files: $leaked", leaked.isEmpty())
         }
     }

@@ -20,5 +20,7 @@ tasks.register<Exec>("installGitHooks") {
     description = "Use the repository's tracked git hooks (.githooks/)."
     workingDir = rootDir
     commandLine("git", "config", "core.hooksPath", ".githooks")
-    doLast { println("git hooks: core.hooksPath = .githooks (commit-msg checks each message, pre-commit each doc comment)") }
+    doLast {
+        println("git hooks: core.hooksPath = .githooks (commit-msg checks each message, pre-commit each doc comment)")
+    }
 }

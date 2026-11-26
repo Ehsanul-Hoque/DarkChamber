@@ -27,7 +27,6 @@ import kotlin.coroutines.resume
  * not a cipher primitive (hard rule #2).
  */
 class IosBiometricAuthenticator : BiometricAuthenticator {
-
     // The policy the prompt evaluates: false with no Face/Touch ID, none enrolled, or locked out.
     @OptIn(ExperimentalForeignApi::class)
     override fun canAuthenticate(): Boolean =
@@ -49,13 +48,18 @@ class IosBiometricAuthenticator : BiometricAuthenticator {
             }
         }
 
-    private fun mapError(error: NSError?): VaultError = when (error?.code) {
-        LAErrorUserCancel, LAErrorSystemCancel, LAErrorAppCancel, LAErrorUserFallback ->
-            VaultError.Auth.Cancelled
+    private fun mapError(error: NSError?): VaultError =
+        when (error?.code) {
+            LAErrorUserCancel, LAErrorSystemCancel, LAErrorAppCancel, LAErrorUserFallback -> {
+                VaultError.Auth.Cancelled
+            }
 
-        LAErrorBiometryNotAvailable, LAErrorBiometryNotEnrolled, LAErrorBiometryLockout ->
-            VaultError.Auth.Unavailable
+            LAErrorBiometryNotAvailable, LAErrorBiometryNotEnrolled, LAErrorBiometryLockout -> {
+                VaultError.Auth.Unavailable
+            }
 
-        else -> VaultError.Auth.Cancelled
-    }
+            else -> {
+                VaultError.Auth.Cancelled
+            }
+        }
 }

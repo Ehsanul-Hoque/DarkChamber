@@ -13,15 +13,18 @@ import kotlin.test.assertTrue
 
 /** A Markdown run's styles, and which links may be tapped. */
 class MarkdownTextTest {
-    private val styles = MdRunStyles(
-        code = SpanStyle(color = Color.Green),
-        link = SpanStyle(color = Color.Blue, textDecoration = TextDecoration.Underline),
-        image = SpanStyle(color = Color.Gray),
-    )
+    private val styles =
+        MdRunStyles(
+            code = SpanStyle(color = Color.Green),
+            link = SpanStyle(color = Color.Blue, textDecoration = TextDecoration.Underline),
+            image = SpanStyle(color = Color.Gray),
+        )
     private val tapped = mutableListOf<String>()
 
-    private fun text(vararg spans: MdSpan, sections: Map<String, Int> = emptyMap()) =
-        MarkdownText.annotated(spans.toList(), styles, sections) { tapped += it }
+    private fun text(
+        vararg spans: MdSpan,
+        sections: Map<String, Int> = emptyMap(),
+    ) = MarkdownText.annotated(spans.toList(), styles, sections) { tapped += it }
 
     /** The merged style over [range] of [text]: every span style that covers all of it. */
     private fun AnnotatedString.styleOver(range: IntRange): List<SpanStyle> =
@@ -36,7 +39,14 @@ class MarkdownTextTest {
 
     @Test
     fun each_emphasis_kind_has_its_own_style_only_where_it_is() {
-        val t = text(MdSpan("a"), MdSpan("b", strong = true), MdSpan("c", emphasis = true), MdSpan("d", strike = true), MdSpan("e", code = true))
+        val t =
+            text(
+                MdSpan("a"),
+                MdSpan("b", strong = true),
+                MdSpan("c", emphasis = true),
+                MdSpan("d", strike = true),
+                MdSpan("e", code = true),
+            )
         assertEquals(emptyList(), t.styleOver(0..0))
         assertEquals(listOf(SpanStyle(fontWeight = FontWeight.Bold)), t.styleOver(1..1))
         assertEquals(listOf(SpanStyle(fontStyle = FontStyle.Italic)), t.styleOver(2..2))
@@ -82,7 +92,13 @@ class MarkdownTextTest {
     /** Looking like a link would promise a tap that does nothing. */
     @Test
     fun an_inert_link_is_plain_words() {
-        for (address in listOf("javascript:alert(1)", "mailto:a@example.com", "#nowhere", "relative/path", "https://a.example" + Char(0x5C) + "@b.example/")) {
+        for (address in listOf(
+            "javascript:alert(1)",
+            "mailto:a@example.com",
+            "#nowhere",
+            "relative/path",
+            "https://a.example" + Char(0x5C) + "@b.example/",
+        )) {
             val t = text(MdSpan("x", link = address))
             assertTrue(t.links().isEmpty(), address)
             assertEquals(emptyList(), t.styleOver(0..0), address)
@@ -99,7 +115,10 @@ class MarkdownTextTest {
     @Test
     fun a_link_over_several_runs_hands_over_the_same_address_from_each() {
         val t = text(MdSpan("a", link = "https://e.com"), MdSpan("b", strong = true, link = "https://e.com"))
-        assertEquals(listOf("https://e.com", "https://e.com"), t.links().map { (it.item as LinkAnnotation.Clickable).tag })
+        assertEquals(
+            listOf("https://e.com", "https://e.com"),
+            t.links().map { (it.item as LinkAnnotation.Clickable).tag },
+        )
     }
 
     @Test

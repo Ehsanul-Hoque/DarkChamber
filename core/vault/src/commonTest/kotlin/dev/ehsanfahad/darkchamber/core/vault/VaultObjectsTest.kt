@@ -11,10 +11,10 @@ import dev.ehsanfahad.darkchamber.core.model.VaultError
 import dev.ehsanfahad.darkchamber.core.storage.VaultStorage
 import kotlinx.io.Buffer
 import kotlinx.io.buffered
-import kotlinx.io.readByteArray
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 import kotlinx.io.files.SystemTemporaryDirectory
+import kotlinx.io.readByteArray
 import kotlin.random.Random
 import kotlin.random.nextULong
 import kotlin.test.AfterTest
@@ -46,8 +46,7 @@ class VaultObjectsTest {
         return VaultStorage(testDir)
     }
 
-    private fun newCatalog(): CatalogStore =
-        (CatalogStore.create(testSqlDriver()) as Outcome.Ok).value
+    private fun newCatalog(): CatalogStore = (CatalogStore.create(testSqlDriver()) as Outcome.Ok).value
 
     private fun newSession(): VaultSession =
         VaultSession.createVault(engine, kdf, "correct horse battery".encodeToByteArray(), cheapKdf).session
@@ -58,8 +57,7 @@ class VaultObjectsTest {
         storage: VaultStorage,
         catalog: CatalogStore,
         random: (Int) -> ByteArray = Random(7).let { rng -> { n -> rng.nextBytes(n) } },
-    ): VaultObjects =
-        VaultObjects(session, storage, catalog, DchmCodec(engine), clock = { 42L }, random = random)
+    ): VaultObjects = VaultObjects(session, storage, catalog, DchmCodec(engine), clock = { 42L }, random = random)
 
     private fun source(data: ByteArray): () -> kotlinx.io.RawSource = { Buffer().apply { write(data) } }
 
@@ -68,7 +66,16 @@ class VaultObjectsTest {
         val vo = objects(newSession(), newStorage(), newCatalog())
         for (size in listOf(0, 1, 63, 64, 65, 200)) { // chunkSize 64 → empty, partial, exact, multi
             val data = ByteArray(size) { (it * 7 + 1).toByte() }
-            val id = (vo.importObject(kind = 0, name = "n$size", mime = "application/octet-stream", chunkSize = 64, openSource = source(data)) as Outcome.Ok).value
+            val id =
+                (
+                    vo.importObject(
+                        kind = 0,
+                        name = "n$size",
+                        mime = "application/octet-stream",
+                        chunkSize = 64,
+                        openSource = source(data),
+                    ) as Outcome.Ok
+                ).value
             assertEquals(16, id.size, "file_id must be 16 bytes")
             val out = Buffer()
             assertTrue(vo.openObject(id, out) is Outcome.Ok, "size=$size open failed")
@@ -81,7 +88,16 @@ class VaultObjectsTest {
         val catalog = newCatalog()
         val vo = objects(newSession(), newStorage(), catalog)
         val data = ByteArray(130) { it.toByte() }
-        val id = (vo.importObject(kind = 3, name = "clip.mp4", mime = "video/mp4", chunkSize = 64, openSource = source(data)) as Outcome.Ok).value
+        val id =
+            (
+                vo.importObject(
+                    kind = 3,
+                    name = "clip.mp4",
+                    mime = "video/mp4",
+                    chunkSize = 64,
+                    openSource = source(data),
+                ) as Outcome.Ok
+            ).value
 
         val row = (catalog.getItem(id) as Outcome.Ok).value!!
         assertEquals(130L, row.size, "row size must be the plaintext byte count")
@@ -95,7 +111,16 @@ class VaultObjectsTest {
         val storage = newStorage()
         val catalog = newCatalog()
         val vo = objects(newSession(), storage, catalog)
-        val id = (vo.importObject(kind = 1, name = "vacation.jpg", mime = "image/jpeg", chunkSize = 64, openSource = source(ByteArray(50))) as Outcome.Ok).value
+        val id =
+            (
+                vo.importObject(
+                    kind = 1,
+                    name = "vacation.jpg",
+                    mime = "image/jpeg",
+                    chunkSize = 64,
+                    openSource = source(ByteArray(50)),
+                ) as Outcome.Ok
+            ).value
 
         // Delete the object bytes — openMeta must still succeed, proving it reads only the row.
         assertTrue(storage.deleteObject(id) is Outcome.Ok)
@@ -114,14 +139,26 @@ class VaultObjectsTest {
     fun open_meta_of_a_tampered_enc_meta_is_a_crypto_error() {
         val catalog = newCatalog()
         val vo = objects(newSession(), newStorage(), catalog)
-        val id = (vo.importObject(kind = 0, name = "n", mime = "m", chunkSize = 64, openSource = source(ByteArray(20))) as Outcome.Ok).value
+        val id =
+            (
+                vo.importObject(
+                    kind = 0,
+                    name = "n",
+                    mime = "m",
+                    chunkSize = 64,
+                    openSource = source(ByteArray(20)),
+                ) as Outcome.Ok
+            ).value
 
         val row = (catalog.getItem(id) as Outcome.Ok).value!!
         val tampered = row.enc_meta.copyOf().also { it[it.size - 1] = (it[it.size - 1].toInt() xor 0x01).toByte() }
         assertTrue(catalog.upsertItem(row.copy(enc_meta = tampered)) is Outcome.Ok)
 
         val result = vo.openMeta(id)
-        assertTrue(result is Outcome.Err && result.error is VaultError.Crypto, "tampered enc_meta must be a crypto error, was $result")
+        assertTrue(
+            result is Outcome.Err && result.error is VaultError.Crypto,
+            "tampered enc_meta must be a crypto error, was $result",
+        )
     }
 
     @Test
@@ -137,15 +174,34 @@ class VaultObjectsTest {
         val storage = newStorage()
         val vo = objects(newSession(), storage, newCatalog())
         val data = ByteArray(100) { it.toByte() }
-        val id = (vo.importObject(kind = 0, name = "n", mime = "m", chunkSize = 64, openSource = source(data)) as Outcome.Ok).value
+        val id =
+            (
+                vo.importObject(
+                    kind = 0,
+                    name = "n",
+                    mime = "m",
+                    chunkSize = 64,
+                    openSource = source(data),
+                ) as Outcome.Ok
+            ).value
 
         // Flip the final byte (the last chunk's GCM tag) and write the container back.
         val bytes = (storage.readObject(id) { it.buffered().readByteArray() } as Outcome.Ok).value
         bytes[bytes.size - 1] = (bytes[bytes.size - 1].toInt() xor 0x01).toByte()
-        assertTrue(storage.writeObject(id) { sink -> sink.buffered().apply { write(bytes); flush() } } is Outcome.Ok)
+        assertTrue(
+            storage.writeObject(id) { sink ->
+                sink.buffered().apply {
+                    write(bytes)
+                    flush()
+                }
+            } is Outcome.Ok,
+        )
 
         val result = vo.openObject(id, Buffer())
-        assertTrue(result is Outcome.Err && result.error is VaultError.Crypto.IntegrityFailure, "tamper must be IntegrityFailure, was $result")
+        assertTrue(
+            result is Outcome.Err && result.error is VaultError.Crypto.IntegrityFailure,
+            "tamper must be IntegrityFailure, was $result",
+        )
     }
 
     @Test
@@ -153,7 +209,16 @@ class VaultObjectsTest {
         val storage = newStorage()
         val catalog = newCatalog()
         val vo = objects(newSession(), storage, catalog)
-        val id = (vo.importObject(kind = 0, name = "n", mime = "m", chunkSize = 64, openSource = source(ByteArray(80))) as Outcome.Ok).value
+        val id =
+            (
+                vo.importObject(
+                    kind = 0,
+                    name = "n",
+                    mime = "m",
+                    chunkSize = 64,
+                    openSource = source(ByteArray(80)),
+                ) as Outcome.Ok
+            ).value
 
         assertTrue(vo.shredObject(id) is Outcome.Ok)
         assertEquals(null, (catalog.getItem(id) as Outcome.Ok).value, "the row (and wrapped DEK) must be gone")
@@ -181,8 +246,10 @@ class VaultObjectsTest {
         val vo = VaultObjects(newSession(), storage, catalog, DchmCodec(engine), clock = { 42L }, random = fixed)
 
         val result = vo.importObject(kind = 0, name = "n", mime = "m", openSource = source("hi".encodeToByteArray()))
-        assertTrue(result is Outcome.Err && result.error is VaultError.Db, "a failing catalog must abort the import, was $result")
+        assertTrue(
+            result is Outcome.Err && result.error is VaultError.Db,
+            "a failing catalog must abort the import, was $result",
+        )
         assertFalse(storage.objectExists(knownId), "the orphaned object must be deleted on a row failure")
     }
-
 }

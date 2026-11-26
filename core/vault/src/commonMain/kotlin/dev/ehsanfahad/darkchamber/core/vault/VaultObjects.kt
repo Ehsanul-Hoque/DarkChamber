@@ -19,11 +19,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
-import kotlin.coroutines.CoroutineContext
 import kotlinx.io.Buffer
 import kotlinx.io.RawSink
 import kotlinx.io.RawSource
 import kotlinx.io.readByteArray
+import kotlin.coroutines.CoroutineContext
 
 /**
  * Vault-object operations — the one place `core:crypto` (session/codec), `core:storage` (objects),
@@ -131,25 +131,31 @@ class VaultObjects(
         //
         // A caller that opted in to unfiled gets that from the start instead, and is told once; the
         // second check then has nothing to find.
-        val destinationAlbum: ByteArray? = when (val destination = albumExists(albumId)) {
-            is Outcome.Ok -> albumId
-            is Outcome.Err -> if (
-                whenAlbumMissing is WhenAlbumMissing.FileUnfiled &&
-                destination.error == VaultError.Storage.DestinationMissing
-            ) {
-                whenAlbumMissing.onFiledUnfiled()
-                null
-            } else {
-                if (first != null) {
-                    try {
-                        first.close()
-                    } catch (_: Exception) {
-                        // best-effort: report the destination problem, not a close failure
+        val destinationAlbum: ByteArray? =
+            when (val destination = albumExists(albumId)) {
+                is Outcome.Ok -> {
+                    albumId
+                }
+
+                is Outcome.Err -> {
+                    if (
+                        whenAlbumMissing is WhenAlbumMissing.FileUnfiled &&
+                        destination.error == VaultError.Storage.DestinationMissing
+                    ) {
+                        whenAlbumMissing.onFiledUnfiled()
+                        null
+                    } else {
+                        if (first != null) {
+                            try {
+                                first.close()
+                            } catch (_: Exception) {
+                                // best-effort: report the destination problem, not a close failure
+                            }
+                        }
+                        return destination
                     }
                 }
-                return destination
             }
-        }
 
         // Probe re-openability BEFORE reading anything. The check cannot be done after a failure:
         // by then the only stream a one-shot source will ever give has already been consumed by the
@@ -160,17 +166,19 @@ class VaultObjects(
         // that a re-openable source streams straight into the container and its plaintext never
         // touches disk at all (hard rule #1). A provider that refuses two *concurrent* opens is
         // spilled unnecessarily — slower, still correct.
-        val held = first ?: try {
-            openSource()
-        } catch (e: Exception) {
-            return Outcome.Err(VaultError.Io(e)) // never opened: nothing to spill, nothing to retry
-        }
-        val reopenable = try {
-            openSource().use { }
-            true
-        } catch (_: Exception) {
-            false
-        }
+        val held =
+            first ?: try {
+                openSource()
+            } catch (e: Exception) {
+                return Outcome.Err(VaultError.Io(e)) // never opened: nothing to spill, nothing to retry
+            }
+        val reopenable =
+            try {
+                openSource().use { }
+                true
+            } catch (_: Exception) {
+                false
+            }
 
         if (reopenable) {
             try {
@@ -181,7 +189,17 @@ class VaultObjects(
             // Wrapped for the same reason as the spill path below: a lock can zeroize the session
             // mid-import, and a throw must not escape a function that promises an Outcome.
             return try {
-                storeObject(kind, name, mime, destinationAlbum, whenAlbumMissing, chunkSize, onProgress, isActive, openSource)
+                storeObject(
+                    kind,
+                    name,
+                    mime,
+                    destinationAlbum,
+                    whenAlbumMissing,
+                    chunkSize,
+                    onProgress,
+                    isActive,
+                    openSource,
+                )
             } catch (e: Exception) {
                 Outcome.Err(VaultError.Unexpected(e))
             }
@@ -218,9 +236,18 @@ class VaultObjects(
                         },
                     ) { session.isOpen && isActive() },
                 ) { spilled ->
-                    storeObject(kind, name, mime, destinationAlbum, whenAlbumMissing, chunkSize, onProgress, isActive, spilled)
-                }
-                .flatMap { it }
+                    storeObject(
+                        kind,
+                        name,
+                        mime,
+                        destinationAlbum,
+                        whenAlbumMissing,
+                        chunkSize,
+                        onProgress,
+                        isActive,
+                        spilled,
+                    )
+                }.flatMap { it }
         } catch (e: Exception) {
             try {
                 held.close()
@@ -310,10 +337,23 @@ class VaultObjects(
         //    write (throw the sentinel → storage deletes the temp) and surface that error, not a
         //    generic Io. useDek never sees a throw escape (storage catches it), so its own throw
         //    contract is respected.
-        val size = when (val streamed = streamEncrypt(dekWrapped, fileId, noncePrefix, createdAt, name, mime, chunkSize, openSource)) {
-            is Outcome.Err -> return streamed
-            is Outcome.Ok -> streamed.value
-        }
+        val size =
+            when (
+                val streamed =
+                    streamEncrypt(
+                        dekWrapped,
+                        fileId,
+                        noncePrefix,
+                        createdAt,
+                        name,
+                        mime,
+                        chunkSize,
+                        openSource,
+                    )
+            ) {
+                is Outcome.Err -> return streamed
+                is Outcome.Ok -> streamed.value
+            }
 
         // 2. Generate the preview before the row is written, so the row is written **once** with its
         //    final metadata. A video's comes from the object just written, read by position: a frame
@@ -322,32 +362,37 @@ class VaultObjects(
         //    else is decoded front to back from the source. Null — and nothing left behind — for
         //    everything the platform cannot preview, the ordinary case for most of a vault.
         onPreviewAttempt()
-        val thumbnailKey = if (mime.startsWith(VIDEO_MIME_PREFIX, ignoreCase = true)) {
-            when (val preview = makeVideoThumbnail(fileId, dekWrapped, mime, createdAt, chunkSize, previewWanted)) {
-                is Outcome.Ok -> preview.value
-                is Outcome.Err -> {
-                    // What was just written does not read back: never keep an item the vault already
-                    // knows is damaged. Same cleanup as a failed row write.
-                    storage.deleteObject(fileId)
-                    storage.deleteThumbnail(fileId)
-                    return preview
+        val thumbnailKey =
+            if (mime.startsWith(VIDEO_MIME_PREFIX, ignoreCase = true)) {
+                when (val preview = makeVideoThumbnail(fileId, dekWrapped, mime, createdAt, chunkSize, previewWanted)) {
+                    is Outcome.Ok -> {
+                        preview.value
+                    }
+
+                    is Outcome.Err -> {
+                        // What was just written does not read back: never keep an item the vault already
+                        // knows is damaged. Same cleanup as a failed row write.
+                        storage.deleteObject(fileId)
+                        storage.deleteThumbnail(fileId)
+                        return preview
+                    }
                 }
+            } else {
+                makeThumbnail(fileId, mime, createdAt, chunkSize, openForThumbnail)
             }
-        } else {
-            makeThumbnail(fileId, mime, createdAt, chunkSize, openForThumbnail)
-        }
 
         // 3. Seal the metadata and persist the row. Fail-closed: a row failure removes the object.
         //    Sealing can also *throw* rather than return — a lock zeroizing the MK between the write
         //    and this line is the real case — and object bytes with no row and no DEK are
         //    unrecoverable garbage that would otherwise accumulate, so clean up before rethrowing.
-        val encMeta = try {
-            session.sealMeta(encodeMeta(ObjectMeta(name, mime, thumbnailKey)))
-        } catch (e: Exception) {
-            storage.deleteObject(fileId) // best-effort; no orphan ciphertext without a row
-            storage.deleteThumbnail(fileId) // and no preview of an object that no longer exists
-            throw e
-        }
+        val encMeta =
+            try {
+                session.sealMeta(encodeMeta(ObjectMeta(name, mime, thumbnailKey)))
+            } catch (e: Exception) {
+                storage.deleteObject(fileId) // best-effort; no orphan ciphertext without a row
+                storage.deleteThumbnail(fileId) // and no preview of an object that no longer exists
+                throw e
+            }
 
         //    Still step 3: the destination is re-checked **here**, against the row about to be
         //    written, and not only when the import started. An import of a large video takes
@@ -357,32 +402,42 @@ class VaultObjects(
         //    it either. Cleaned up the same way a failed row write is: object bytes with no row are
         //    unrecoverable garbage — unless the caller opted in to unfiled, in which case the row is
         //    written with no album and the encrypt already paid for is kept.
-        val rowAlbum: ByteArray? = when (val destination = albumExists(albumId)) {
-            is Outcome.Ok -> albumId
-            is Outcome.Err -> if (
-                whenAlbumMissing is WhenAlbumMissing.FileUnfiled &&
-                destination.error == VaultError.Storage.DestinationMissing
-            ) {
-                whenAlbumMissing.onFiledUnfiled()
-                null
-            } else {
-                storage.deleteObject(fileId)
-                storage.deleteThumbnail(fileId)
-                return destination
-            }
-        }
+        val rowAlbum: ByteArray? =
+            when (val destination = albumExists(albumId)) {
+                is Outcome.Ok -> {
+                    albumId
+                }
 
-        val row = Items(
-            id = fileId,
-            album_id = rowAlbum,
-            kind = kind,
-            size = size,
-            created_at = createdAt,
-            enc_meta = encMeta,
-            dek_wrapped = dekWrapped,
-        )
+                is Outcome.Err -> {
+                    if (
+                        whenAlbumMissing is WhenAlbumMissing.FileUnfiled &&
+                        destination.error == VaultError.Storage.DestinationMissing
+                    ) {
+                        whenAlbumMissing.onFiledUnfiled()
+                        null
+                    } else {
+                        storage.deleteObject(fileId)
+                        storage.deleteThumbnail(fileId)
+                        return destination
+                    }
+                }
+            }
+
+        val row =
+            Items(
+                id = fileId,
+                album_id = rowAlbum,
+                kind = kind,
+                size = size,
+                created_at = createdAt,
+                enc_meta = encMeta,
+                dek_wrapped = dekWrapped,
+            )
         return when (val upsert = catalog.upsertItem(row)) {
-            is Outcome.Ok -> Outcome.Ok(fileId)
+            is Outcome.Ok -> {
+                Outcome.Ok(fileId)
+            }
+
             is Outcome.Err -> {
                 storage.deleteObject(fileId) // best-effort; no orphan object without a row
                 storage.deleteThumbnail(fileId) // the key lived in the row that never landed
@@ -454,19 +509,21 @@ class VaultObjects(
         chunkSize: Int,
         previewWanted: () -> Boolean,
     ): Outcome<ByteArray?> {
-        val reader = when (val opened = openRangeOver(fileId, dekWrapped, previewWanted)) {
-            is Outcome.Err -> return if (opened.error.isDamage()) opened else Outcome.Ok(null)
-            is Outcome.Ok -> DamageWatchingReader(opened.value)
-        }
-        val key = try {
-            val preview = thumbnails.encode(mime, THUMBNAIL_MAX_EDGE_PX, reader)
-            if (preview == null || preview.isEmpty()) null else sealThumbnail(fileId, createdAt, chunkSize, preview)
-        } catch (_: Exception) {
-            storage.deleteThumbnail(fileId)
-            null
-        } finally {
-            reader.close()
-        }
+        val reader =
+            when (val opened = openRangeOver(fileId, dekWrapped, previewWanted)) {
+                is Outcome.Err -> return if (opened.error.isDamage()) opened else Outcome.Ok(null)
+                is Outcome.Ok -> DamageWatchingReader(opened.value)
+            }
+        val key =
+            try {
+                val preview = thumbnails.encode(mime, THUMBNAIL_MAX_EDGE_PX, reader)
+                if (preview == null || preview.isEmpty()) null else sealThumbnail(fileId, createdAt, chunkSize, preview)
+            } catch (_: Exception) {
+                storage.deleteThumbnail(fileId)
+                null
+            } finally {
+                reader.close()
+            }
         return reader.damage?.let { Outcome.Err(it) } ?: Outcome.Ok(key)
     }
 
@@ -475,27 +532,35 @@ class VaultObjects(
     // format cares about. The header carries no name (the object's name is already in enc_meta;
     // copying decrypted content into a second container is a second place it can leak) and no MIME
     // (the encoder does not declare what it produced, and the image loader sniffs the bytes).
-    private fun sealThumbnail(fileId: ByteArray, createdAt: Long, chunkSize: Int, preview: ByteArray): ByteArray? {
+    private fun sealThumbnail(
+        fileId: ByteArray,
+        createdAt: Long,
+        chunkSize: Int,
+        preview: ByteArray,
+    ): ByteArray? {
         val dekWrapped = session.generateDek()
         val noncePrefix = random(DchmFormat.NONCE_PREFIX_SIZE)
-        val sealed = session.useDek(dekWrapped) { rawDek ->
-            var enc: Outcome<Long>? = null
-            val write = storage.writeThumbnail(fileId) { sink ->
-                enc = codec.encryptContainer(
-                    rawDek,
-                    noncePrefix,
-                    createdAt,
-                    fileId,
-                    originalName = "",
-                    mime = "",
-                    chunkSize = chunkSize,
-                    openSource = { Buffer().apply { write(preview) } },
-                    sink = sink,
-                )
-                if (enc is Outcome.Err) throw AbortWrite // abort the atomic move; storage deletes the temp
+        val sealed =
+            session.useDek(dekWrapped) { rawDek ->
+                var enc: Outcome<Long>? = null
+                val write =
+                    storage.writeThumbnail(fileId) { sink ->
+                        enc =
+                            codec.encryptContainer(
+                                rawDek,
+                                noncePrefix,
+                                createdAt,
+                                fileId,
+                                originalName = "",
+                                mime = "",
+                                chunkSize = chunkSize,
+                                openSource = { Buffer().apply { write(preview) } },
+                                sink = sink,
+                            )
+                        if (enc is Outcome.Err) throw AbortWrite // abort the atomic move; storage deletes the temp
+                    }
+                write is Outcome.Ok && enc is Outcome.Ok
             }
-            write is Outcome.Ok && enc is Outcome.Ok
-        }
         return if (sealed is Outcome.Ok && sealed.value) {
             dekWrapped
         } else {
@@ -510,16 +575,22 @@ class VaultObjects(
      * `VaultError.Io(NoSuchElementException)`; codec failures propagate exactly
      * (`IntegrityFailure` / `UnsupportedFormatVersion` / `MalformedContainer`).
      */
-    fun openObject(id: ByteArray, sink: RawSink): Outcome<Unit> {
-        val row = when (val got = catalog.getItem(id)) {
-            is Outcome.Err -> return got
-            is Outcome.Ok -> got.value ?: return absent(id)
-        }
+    fun openObject(
+        id: ByteArray,
+        sink: RawSink,
+    ): Outcome<Unit> {
+        val row =
+            when (val got = catalog.getItem(id)) {
+                is Outcome.Err -> return got
+                is Outcome.Ok -> got.value ?: return absent(id)
+            }
         // Triple-nested: useDek(readObject(decryptContainer)); each layer wraps in an Outcome.
         // flatMap { it } collapses one level of nesting, keeping the innermost precise error.
-        return session.useDek(row.dek_wrapped) { rawDek ->
-            storage.readObject(id) { src -> codec.decryptContainer(rawDek, id, src, sink) }
-        }.flatMap { it }.flatMap { it }
+        return session
+            .useDek(row.dek_wrapped) { rawDek ->
+                storage.readObject(id) { src -> codec.decryptContainer(rawDek, id, src, sink) }
+            }.flatMap { it }
+            .flatMap { it }
     }
 
     /**
@@ -529,10 +600,11 @@ class VaultObjects(
      * The caller closes the reader. An unknown id → `VaultError.Io(NoSuchElementException)`.
      */
     fun openRange(id: ByteArray): Outcome<RangeReader> {
-        val row = when (val got = catalog.getItem(id)) {
-            is Outcome.Err -> return got
-            is Outcome.Ok -> got.value ?: return absent(id)
-        }
+        val row =
+            when (val got = catalog.getItem(id)) {
+                is Outcome.Err -> return got
+                is Outcome.Ok -> got.value ?: return absent(id)
+            }
         return openRangeOver(id, row.dek_wrapped, stillWanted = { session.isOpen })
     }
 
@@ -541,11 +613,16 @@ class VaultObjects(
      * written before the row is inserted — with [stillWanted] polled before every read, so a lock or
      * a cancelled import stops the reader rather than letting it finish.
      */
-    internal fun openRangeOver(id: ByteArray, dekWrapped: ByteArray, stillWanted: () -> Boolean): Outcome<RangeReader> {
-        val file = when (val opened = storage.openObjectReader(id)) {
-            is Outcome.Err -> return opened
-            is Outcome.Ok -> opened.value
-        }
+    internal fun openRangeOver(
+        id: ByteArray,
+        dekWrapped: ByteArray,
+        stillWanted: () -> Boolean,
+    ): Outcome<RangeReader> {
+        val file =
+            when (val opened = storage.openObjectReader(id)) {
+                is Outcome.Err -> return opened
+                is Outcome.Ok -> opened.value
+            }
         return ChunkRangeReader.open(session, codec, file, id, dekWrapped, stillWanted)
     }
 
@@ -556,10 +633,11 @@ class VaultObjects(
      * [VaultSession.openMeta] (`IntegrityFailure` / `MalformedContainer`).
      */
     fun openMeta(id: ByteArray): Outcome<ObjectMeta> {
-        val row = when (val got = catalog.getItem(id)) {
-            is Outcome.Err -> return got
-            is Outcome.Ok -> got.value ?: return absent(id)
-        }
+        val row =
+            when (val got = catalog.getItem(id)) {
+                is Outcome.Err -> return got
+                is Outcome.Ok -> got.value ?: return absent(id)
+            }
         return readMeta(row.enc_meta)
     }
 
@@ -586,23 +664,28 @@ class VaultObjects(
      * bytes are perfectly intact.
      */
     fun openThumbnail(id: ByteArray): Outcome<ByteArray?> {
-        val row = when (val got = catalog.getItem(id)) {
-            is Outcome.Err -> return got
-            is Outcome.Ok -> got.value ?: return absent(id)
-        }
-        val wrappedKey = when (val meta = readMeta(row.enc_meta)) {
-            is Outcome.Err -> return meta
-            is Outcome.Ok -> meta.value.thumbnailKey ?: return Outcome.Ok(null)
-        }
+        val row =
+            when (val got = catalog.getItem(id)) {
+                is Outcome.Err -> return got
+                is Outcome.Ok -> got.value ?: return absent(id)
+            }
+        val wrappedKey =
+            when (val meta = readMeta(row.enc_meta)) {
+                is Outcome.Err -> return meta
+                is Outcome.Ok -> meta.value.thumbnailKey ?: return Outcome.Ok(null)
+            }
         // Checked rather than inferred from a read failure: `readThumbnail` reports a missing file
         // as `Io`, which is indistinguishable from a disk that failed mid-read, and one of those is
         // an ordinary state while the other is worth surfacing.
         if (!storage.thumbnailExists(id)) return Outcome.Ok(null)
 
         val out = Buffer()
-        return session.useDek(wrappedKey) { rawDek ->
-            storage.readThumbnail(id) { src -> codec.decryptContainer(rawDek, id, src, out) }
-        }.flatMap { it }.flatMap { it }.map { out.readByteArray() }
+        return session
+            .useDek(wrappedKey) { rawDek ->
+                storage.readThumbnail(id) { src -> codec.decryptContainer(rawDek, id, src, out) }
+            }.flatMap { it }
+            .flatMap { it }
+            .map { out.readByteArray() }
     }
 
     /**
@@ -628,7 +711,8 @@ class VaultObjects(
      * catalog into a silently empty vault, which is exactly the fail-closed rule's target.
      */
     fun observeItems(filter: ItemFilter = ItemFilter.All): Flow<List<VaultItemSummary>> =
-        catalog.observeItems(filter)
+        catalog
+            .observeItems(filter)
             .map { rows -> rows.map(::toSummary) }
             .flowOn(mapContext)
 
@@ -646,8 +730,7 @@ class VaultObjects(
      * `CatalogStore.observeItemCount`'s failure contract — a driver failure arrives as an exception in
      * the flow, never as a zero that would claim the listing is empty.
      */
-    fun observeItemCount(filter: ItemFilter = ItemFilter.All): Flow<Long> =
-        catalog.observeItemCount(filter)
+    fun observeItemCount(filter: ItemFilter = ItemFilter.All): Flow<Long> = catalog.observeItemCount(filter)
 
     /**
      * The listing feeding the album grid: every album with its name opened, its item count and the
@@ -672,7 +755,8 @@ class VaultObjects(
      * to map, rather than becoming a silently empty list of albums.
      */
     fun observeAlbums(): Flow<List<AlbumSummary>> =
-        catalog.observeAlbums()
+        catalog
+            .observeAlbums()
             .map { rows -> rows.map(::toAlbumSummary) }
             .flowOn(mapContext)
 
@@ -695,12 +779,13 @@ class VaultObjects(
     fun createAlbum(name: String): Outcome<ByteArray> {
         requireUsableName(name)
         val id = random(ALBUM_ID_SIZE)
-        val row = Albums(
-            id = id,
-            kek_variant = KEK_VARIANT_MASTER_KEY,
-            enc_name = session.sealAlbumMeta(AlbumMeta(name)),
-            created_at = clock(),
-        )
+        val row =
+            Albums(
+                id = id,
+                kek_variant = KEK_VARIANT_MASTER_KEY,
+                enc_name = session.sealAlbumMeta(AlbumMeta(name)),
+                created_at = clock(),
+            )
         return catalog.upsertAlbum(row).map { id }
     }
 
@@ -716,12 +801,16 @@ class VaultObjects(
      *
      * [name] must not be blank — see [requireUsableName].
      */
-    fun renameAlbum(id: ByteArray, name: String): Outcome<Unit> {
+    fun renameAlbum(
+        id: ByteArray,
+        name: String,
+    ): Outcome<Unit> {
         requireUsableName(name)
-        val existing = when (val got = catalog.getAlbum(id)) {
-            is Outcome.Err -> return got
-            is Outcome.Ok -> got.value ?: return absentAlbum(id)
-        }
+        val existing =
+            when (val got = catalog.getAlbum(id)) {
+                is Outcome.Err -> return got
+                is Outcome.Ok -> got.value ?: return absentAlbum(id)
+            }
         return catalog.upsertAlbum(existing.copy(enc_name = session.sealAlbumMeta(AlbumMeta(name))))
     }
 
@@ -745,8 +834,12 @@ class VaultObjects(
      * A destination album that does not exist **is** an error, because it would leave items filed
      * where no listing can reach them.
      */
-    fun assignItems(ids: List<ByteArray>, albumId: ByteArray?): Outcome<AssignSummary> =
-        catalog.updateItemAlbum(ids, albumId)
+    fun assignItems(
+        ids: List<ByteArray>,
+        albumId: ByteArray?,
+    ): Outcome<AssignSummary> =
+        catalog
+            .updateItemAlbum(ids, albumId)
             .map { moved -> AssignSummary(requested = ids.size, assigned = moved.toInt()) }
 
     /**
@@ -777,8 +870,7 @@ class VaultObjects(
      * An id that is not there is `Ok`: both writes are no-ops, the user's intent is already true, and
      * unlike a shred of an unknown id there is no destruction being falsely reported.
      */
-    fun deleteAlbum(id: ByteArray): Outcome<Unit> =
-        catalog.clearAlbumOnItems(id).flatMap { catalog.deleteAlbum(id) }
+    fun deleteAlbum(id: ByteArray): Outcome<Unit> = catalog.clearAlbumOnItems(id).flatMap { catalog.deleteAlbum(id) }
 
     /**
      * A blank name is a **caller bug, not a user error**, so it is a precondition rather than an
@@ -794,8 +886,7 @@ class VaultObjects(
      * Whitespace counts as blank for the same reason: a name of three spaces is not a name, and
      * storing one produces an album the user cannot identify or describe to anyone.
      */
-    private fun requireUsableName(name: String) =
-        require(name.isNotBlank()) { "album name must not be blank" }
+    private fun requireUsableName(name: String) = require(name.isNotBlank()) { "album name must not be blank" }
 
     private fun toAlbumSummary(row: SelectAlbumsWithCounts): AlbumSummary =
         AlbumSummary(
@@ -869,10 +960,11 @@ class VaultObjects(
      * nothing at all was shredded.
      */
     fun shredObjects(ids: List<ByteArray>): Outcome<Long> {
-        val deleted = when (val rows = catalog.deleteItems(ids)) {
-            is Outcome.Err -> return rows
-            is Outcome.Ok -> rows.value
-        }
+        val deleted =
+            when (val rows = catalog.deleteItems(ids)) {
+                is Outcome.Err -> return rows
+                is Outcome.Ok -> rows.value
+            }
         for (id in ids) {
             storage.deleteObject(id) // best-effort; the DEK is already gone
             storage.deleteThumbnail(id) // its key lived in the row's enc_meta, so it is gone too
@@ -891,25 +983,56 @@ class VaultObjects(
         chunkSize: Int,
         openSource: () -> RawSource,
     ): Outcome<Long> =
-        session.useDek(dekWrapped) { rawDek ->
-            var enc: Outcome<Long>? = null
-            val write: Outcome<Unit> = storage.writeObject(fileId) { sink ->
-                enc = codec.encryptContainer(rawDek, noncePrefix, createdAt, fileId, name, mime, chunkSize, openSource, sink)
-                if (enc is Outcome.Err) throw AbortWrite // abort atomic move; storage deletes the temp
-            }
-            when (val e = enc) {
-                // codec threw before returning (e.g. a precondition); prefer storage's real Io error.
-                null -> when (write) {
-                    is Outcome.Err -> write
-                    is Outcome.Ok -> Outcome.Err(VaultError.Unexpected(IllegalStateException("encrypt did not complete")))
+        session
+            .useDek(dekWrapped) { rawDek ->
+                var enc: Outcome<Long>? = null
+                val write: Outcome<Unit> =
+                    storage.writeObject(fileId) { sink ->
+                        enc =
+                            codec.encryptContainer(
+                                rawDek,
+                                noncePrefix,
+                                createdAt,
+                                fileId,
+                                name,
+                                mime,
+                                chunkSize,
+                                openSource,
+                                sink,
+                            )
+                        if (enc is Outcome.Err) throw AbortWrite // abort atomic move; storage deletes the temp
+                    }
+                when (val e = enc) {
+                    // codec threw before returning (e.g. a precondition); prefer storage's real Io error.
+                    null -> {
+                        when (write) {
+                            is Outcome.Err -> {
+                                write
+                            }
+
+                            is Outcome.Ok -> {
+                                Outcome.Err(
+                                    VaultError.Unexpected(IllegalStateException("encrypt did not complete")),
+                                )
+                            }
+                        }
+                    }
+
+                    is Outcome.Err -> {
+                        e.namingAFullDisk()
+                    }
+
+                    // precise codec error (temp already cleaned up)
+                    is Outcome.Ok -> {
+                        when (write) {
+                            is Outcome.Ok -> e
+
+                            // stored; the measured size
+                            is Outcome.Err -> write // disk failure after codec Ok
+                        }
+                    }
                 }
-                is Outcome.Err -> e.namingAFullDisk() // precise codec error (temp already cleaned up)
-                is Outcome.Ok -> when (write) {
-                    is Outcome.Ok -> e // stored; the measured size
-                    is Outcome.Err -> write // disk failure after codec Ok
-                }
-            }
-        }.flatMap { it } // collapse useDek's wrapper; the inner Outcome<Long> carries the result
+            }.flatMap { it } // collapse useDek's wrapper; the inner Outcome<Long> carries the result
 
     // The codec reports every failure in its read/write loop as a plain Io, including a sink the
     // platform said ran out of space. Recover that one cause — from the platform's own report in the
@@ -931,10 +1054,21 @@ class VaultObjects(
     private fun albumExists(albumId: ByteArray?): Outcome<Unit> {
         if (albumId == null) return Outcome.Ok(Unit)
         return when (val got = catalog.getAlbum(albumId)) {
-            is Outcome.Err -> got
+            is Outcome.Err -> {
+                got
+            }
+
             // Typed rather than an Io: a caller can tell a destination that went away from an object
             // that did, without reading a message.
-            is Outcome.Ok -> if (got.value == null) Outcome.Err(VaultError.Storage.DestinationMissing) else Outcome.Ok(Unit)
+            is Outcome.Ok -> {
+                if (got.value ==
+                    null
+                ) {
+                    Outcome.Err(VaultError.Storage.DestinationMissing)
+                } else {
+                    Outcome.Ok(Unit)
+                }
+            }
         }
     }
 

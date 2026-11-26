@@ -4,17 +4,17 @@ import android.content.Context
 import android.content.ContextWrapper
 import dev.ehsanfahad.darkchamber.app.camera.AndroidCameraController
 import dev.ehsanfahad.darkchamber.app.image.AndroidViewerImageDecoder
+import dev.ehsanfahad.darkchamber.app.link.AndroidLinkOpener
+import dev.ehsanfahad.darkchamber.app.pdf.AndroidPdfRenderer
 import dev.ehsanfahad.darkchamber.app.player.AndroidPlayerDisplay
 import dev.ehsanfahad.darkchamber.app.player.AndroidVaultPlayerFactory
-import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerDisplay
-import dev.ehsanfahad.darkchamber.app.pdf.AndroidPdfRenderer
-import dev.ehsanfahad.darkchamber.app.link.AndroidLinkOpener
-import dev.ehsanfahad.darkchamber.feature.vault.api.LinkOpener
-import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPdfRenderer
-import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPlayerFactory
 import dev.ehsanfahad.darkchamber.app.thumbnail.AndroidThumbnailEncoder
 import dev.ehsanfahad.darkchamber.core.vault.ThumbnailEncoder
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraController
+import dev.ehsanfahad.darkchamber.feature.vault.api.LinkOpener
+import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerDisplay
+import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPdfRenderer
+import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPlayerFactory
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerImageDecoder
 import org.koin.dsl.koinApplication
 import org.koin.dsl.module
@@ -48,9 +48,10 @@ class AndroidPlatformModuleTest {
      */
     @Test
     fun the_platform_module_binds_the_android_camera() {
-        val app = koinApplication {
-            modules(module { single<Context> { ContextWrapper(null) } }, platformModule())
-        }
+        val app =
+            koinApplication {
+                modules(module { single<Context> { ContextWrapper(null) } }, platformModule())
+            }
         try {
             assertIs<AndroidCameraController>(app.koin.get<CameraController>())
         } finally {
@@ -75,9 +76,10 @@ class AndroidPlatformModuleTest {
      */
     @Test
     fun the_platform_module_binds_the_android_player_and_display() {
-        val app = koinApplication {
-            modules(module { single<Context> { ContextWrapper(null) } }, platformModule())
-        }
+        val app =
+            koinApplication {
+                modules(module { single<Context> { ContextWrapper(null) } }, platformModule())
+            }
         try {
             assertIs<AndroidVaultPlayerFactory>(app.koin.getOrNull<VaultPlayerFactory>())
             assertIs<AndroidPlayerDisplay>(app.koin.getOrNull<PlayerDisplay>())

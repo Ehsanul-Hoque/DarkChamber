@@ -16,14 +16,15 @@ kotlin {
         val triple = if (isSim) "arm64-apple-ios13.0-simulator" else "arm64-apple-ios13.0"
         val libDir = layout.buildDirectory.dir("argon2/$targetName")
 
-        val buildArgon2 = tasks.register<Exec>("buildArgon2$targetName") {
-            group = "build"
-            description = "Compile vendored phc-winner-argon2 into libargon2.a for $targetName"
-            inputs.dir(argon2Dir).withPathSensitivity(PathSensitivity.RELATIVE)
-            outputs.dir(libDir)
-            executable = argon2Dir.file("build-argon2.sh").asFile.absolutePath
-            args(sdk, triple, libDir.get().asFile.absolutePath)
-        }
+        val buildArgon2 =
+            tasks.register<Exec>("buildArgon2$targetName") {
+                group = "build"
+                description = "Compile vendored phc-winner-argon2 into libargon2.a for $targetName"
+                inputs.dir(argon2Dir).withPathSensitivity(PathSensitivity.RELATIVE)
+                outputs.dir(libDir)
+                executable = argon2Dir.file("build-argon2.sh").asFile.absolutePath
+                args(sdk, triple, libDir.get().asFile.absolutePath)
+            }
 
         compilations.getByName("main").cinterops.create("argon2") {
             defFile(project.file("src/nativeInterop/cinterop/argon2.def"))
@@ -73,5 +74,9 @@ kotlin {
 tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
     val vectors = rootDir.resolve("docs/format-test-vectors")
     systemProperty("dchm.vectors.dir", vectors.absolutePath)
-    inputs.dir(vectors).withPropertyName("dchmFormatVectors").withPathSensitivity(org.gradle.api.tasks.PathSensitivity.RELATIVE)
+    inputs
+        .dir(
+            vectors,
+        ).withPropertyName("dchmFormatVectors")
+        .withPathSensitivity(org.gradle.api.tasks.PathSensitivity.RELATIVE)
 }

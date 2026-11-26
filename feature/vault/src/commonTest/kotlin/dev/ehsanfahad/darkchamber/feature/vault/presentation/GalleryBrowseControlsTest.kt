@@ -26,14 +26,14 @@ import kotlin.test.assertTrue
  * row were found by asking what sorting would mean on a screen that has no listing.
  */
 class GalleryBrowseControlsTest {
-
-    private val item = GalleryItem(
-        id = byteArrayOf(1),
-        kind = VaultItemKind.FILE,
-        size = 1L,
-        createdAt = 1L,
-        meta = GalleryItemMeta.Readable("a.txt", "text/plain"),
-    )
+    private val item =
+        GalleryItem(
+            id = byteArrayOf(1),
+            kind = VaultItemKind.FILE,
+            size = 1L,
+            createdAt = 1L,
+            meta = GalleryItemMeta.Readable("a.txt", "text/plain"),
+        )
 
     private fun listing() = GalleryState(items = listOf(item), loading = false)
 
@@ -89,10 +89,11 @@ class GalleryBrowseControlsTest {
      */
     @Test
     fun a_search_that_matched_nothing_keeps_the_controls() {
-        val state = listing().copy(
-            items = emptyList(),
-            search = GallerySearch.Open(query = "zz", hiddenUnreadable = 0),
-        )
+        val state =
+            listing().copy(
+                items = emptyList(),
+                search = GallerySearch.Open(query = "zz", hiddenUnreadable = 0),
+            )
 
         assertTrue(state.showsBrowseControls())
     }
@@ -316,12 +317,13 @@ class GalleryBrowseControlsTest {
     @Test
     fun an_emptied_album_under_an_open_field_still_explains_the_album() {
         // Reachable: open the search in an album, type nothing, select everything and remove it.
-        val state = GalleryState(
-            items = emptyList(),
-            loading = false,
-            scope = GalleryScope.Album,
-            search = GallerySearch.Open(query = ""),
-        )
+        val state =
+            GalleryState(
+                items = emptyList(),
+                loading = false,
+                scope = GalleryScope.Album,
+                search = GallerySearch.Open(query = ""),
+            )
 
         val message = state.emptyListingMessage()
 
@@ -331,12 +333,13 @@ class GalleryBrowseControlsTest {
 
     @Test
     fun an_empty_grid_under_a_query_says_the_query_did_it() {
-        val state = GalleryState(
-            items = emptyList(),
-            loading = false,
-            scope = GalleryScope.Album,
-            search = GallerySearch.Open(query = "al"),
-        )
+        val state =
+            GalleryState(
+                items = emptyList(),
+                loading = false,
+                scope = GalleryScope.Album,
+                search = GallerySearch.Open(query = "al"),
+            )
 
         assertEquals(
             GalleryFormat.emptyListing(GalleryScope.Album, unreadable = false, searching = true),
@@ -348,13 +351,14 @@ class GalleryBrowseControlsTest {
     fun a_listing_that_could_not_be_read_outranks_both() {
         // A failed read keeps the last good items on screen, so the honest fixture for "empty *and*
         // failed" is a listing that failed before anything arrived.
-        val state = GalleryState(
-            items = emptyList(),
-            loading = false,
-            scope = GalleryScope.Unfiled,
-            listingUnreadable = true,
-            search = GallerySearch.Open(query = "al"),
-        )
+        val state =
+            GalleryState(
+                items = emptyList(),
+                loading = false,
+                scope = GalleryScope.Unfiled,
+                listingUnreadable = true,
+                search = GallerySearch.Open(query = "al"),
+            )
 
         assertEquals(
             GalleryFormat.emptyListing(GalleryScope.Unfiled, unreadable = true),
@@ -387,10 +391,11 @@ class GalleryBrowseControlsTest {
      */
     @Test
     fun both_at_once_clears_the_search_first() {
-        val state = finished().copy(
-            order = GalleryOrder.NameAsc,
-            search = GallerySearch.Open(query = "al"),
-        )
+        val state =
+            finished().copy(
+                order = GalleryOrder.NameAsc,
+                search = GallerySearch.Open(query = "al"),
+            )
 
         assertEquals(ImportOffer.ClearSearch, state.importOffer())
     }

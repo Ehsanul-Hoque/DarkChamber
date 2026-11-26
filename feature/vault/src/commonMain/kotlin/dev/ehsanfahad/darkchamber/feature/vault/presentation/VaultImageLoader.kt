@@ -33,8 +33,12 @@ import dev.ehsanfahad.darkchamber.feature.vault.domain.VaultItems
  * there is a Konsist rule over production sources rather than only a test over this function: a
  * test can only cover the loader it knows about.
  */
-internal fun vaultImageLoader(context: PlatformContext, items: VaultItems): ImageLoader =
-    ImageLoader.Builder(context)
+internal fun vaultImageLoader(
+    context: PlatformContext,
+    items: VaultItems,
+): ImageLoader =
+    ImageLoader
+        .Builder(context)
         .components {
             // The only source this loader has. Everything it draws comes out of the encrypted
             // store, through the vault's own read path — there is no network fetcher and no file

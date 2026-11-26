@@ -23,13 +23,27 @@ import kotlin.test.fail
 class FormatVectorTest {
     @Serializable
     data class PositiveVector(
-        val name: String, val version: Int, val cipher_id: Int, val dek: String, val nonce_prefix: String,
-        val created_at: Long, val file_id: String, val original_name: String, val mime: String,
-        val chunk_size: Int, val plaintext: String, val container: String,
+        val name: String,
+        val version: Int,
+        val cipher_id: Int,
+        val dek: String,
+        val nonce_prefix: String,
+        val created_at: Long,
+        val file_id: String,
+        val original_name: String,
+        val mime: String,
+        val chunk_size: Int,
+        val plaintext: String,
+        val container: String,
     )
 
     @Serializable
-    data class NegativeVector(val name: String, val from: String, val mutation: String, val expected_error: String)
+    data class NegativeVector(
+        val name: String,
+        val from: String,
+        val mutation: String,
+        val expected_error: String,
+    )
 
     private val json = Json { ignoreUnknownKeys = true }
     private val codec = DchmCodec(CryptographyKotlinEngine())
@@ -48,16 +62,27 @@ class FormatVectorTest {
 
     private fun encode(v: PositiveVector): ByteArray {
         val out = Buffer()
-        val result = codec.encryptContainer(
-            dek = v.dek.hexToByteArray(), noncePrefix = v.nonce_prefix.hexToByteArray(), createdAt = v.created_at,
-            fileId = v.file_id.hexToByteArray(), originalName = v.original_name, mime = v.mime, chunkSize = v.chunk_size,
-            openSource = { Buffer().apply { write(v.plaintext.hexToByteArray()) } }, sink = out,
-        )
+        val result =
+            codec.encryptContainer(
+                dek = v.dek.hexToByteArray(),
+                noncePrefix = v.nonce_prefix.hexToByteArray(),
+                createdAt = v.created_at,
+                fileId = v.file_id.hexToByteArray(),
+                originalName = v.original_name,
+                mime = v.mime,
+                chunkSize = v.chunk_size,
+                openSource = { Buffer().apply { write(v.plaintext.hexToByteArray()) } },
+                sink = out,
+            )
         assertTrue(result is Outcome.Ok, "${v.name}: encode failed: $result")
         return out.readByteArray()
     }
 
-    private fun decode(container: ByteArray, dek: ByteArray, fileId: ByteArray): Outcome<ByteArray> {
+    private fun decode(
+        container: ByteArray,
+        dek: ByteArray,
+        fileId: ByteArray,
+    ): Outcome<ByteArray> {
         val out = Buffer()
         return when (val r = codec.decryptContainer(dek, fileId, Buffer().apply { write(container) }, out)) {
             is Outcome.Ok -> Outcome.Ok(out.readByteArray())
@@ -98,7 +123,15 @@ class FormatVectorTest {
         for (v in all) {
             val container = v.container.hexToByteArray()
             val headerLen = (Prelude.read(container) as Outcome.Ok).value.headerLen
-            val layout = ChunkLayout(headerLen, v.chunk_size, v.plaintext.hexToByteArray().size.toLong())
+            val layout =
+                ChunkLayout(
+                    headerLen,
+                    v.chunk_size,
+                    v.plaintext
+                        .hexToByteArray()
+                        .size
+                        .toLong(),
+                )
             val last = layout.chunkCount - 1
 
             assertEquals(container.size.toLong(), layout.containerLength, v.name)
@@ -112,9 +145,10 @@ class FormatVectorTest {
         for (v in all) {
             val container = v.container.hexToByteArray()
             val plaintext = v.plaintext.hexToByteArray()
-            val result = codec.openLayout(v.dek.hexToByteArray(), v.file_id.hexToByteArray(), container.size.toLong()) { at, n ->
-                container.copyOfRange(at.toInt(), at.toInt() + n)
-            }
+            val result =
+                codec.openLayout(v.dek.hexToByteArray(), v.file_id.hexToByteArray(), container.size.toLong()) { at, n ->
+                    container.copyOfRange(at.toInt(), at.toInt() + n)
+                }
             val opened = (result as? Outcome.Ok)?.value ?: fail("${v.name}: $result")
             val lastStart = ((opened.layout.chunkCount - 1) * v.chunk_size).toInt()
 
@@ -133,33 +167,55 @@ class FormatVectorTest {
         }
     }
 
-    private fun errorOf(name: String): VaultError = when (name) {
-        "IntegrityFailure" -> VaultError.Crypto.IntegrityFailure
-        "UnsupportedFormatVersion" -> VaultError.Crypto.UnsupportedFormatVersion
-        "MalformedContainer" -> VaultError.Crypto.MalformedContainer
-        else -> fail("unknown expected_error $name")
-    }
-
-    private fun mutate(container: ByteArray, mutation: String, chunkSize: Int): ByteArray = when {
-        mutation.startsWith("set_byte@") -> {
-            val (offset, value) = mutation.removePrefix("set_byte@").split("=")
-            container.copyOf().also { it[offset.toInt()] = value.toInt().toByte() }
+    private fun errorOf(name: String): VaultError =
+        when (name) {
+            "IntegrityFailure" -> VaultError.Crypto.IntegrityFailure
+            "UnsupportedFormatVersion" -> VaultError.Crypto.UnsupportedFormatVersion
+            "MalformedContainer" -> VaultError.Crypto.MalformedContainer
+            else -> fail("unknown expected_error $name")
         }
-        mutation == "flip_last_byte" ->
-            container.copyOf().also { it[it.lastIndex] = (it[it.lastIndex].toInt() xor 1).toByte() }
-        mutation == "truncate_one" -> container.copyOf(container.size - 1)
-        mutation == "append_zero" -> container + byteArrayOf(0)
-        mutation == "flip_first_header_byte" ->
-            container.copyOf().also { it[DchmFormat.PRELUDE_SIZE] = (it[DchmFormat.PRELUDE_SIZE].toInt() xor 1).toByte() }
-        mutation == "swap_first_two_chunks" -> {
-            val headerLen = (Prelude.read(container) as Outcome.Ok).value.headerLen
-            val start = DchmFormat.PRELUDE_SIZE + headerLen
-            val block = chunkSize + DchmFormat.GCM_TAG_SIZE
-            container.copyOf().also {
-                container.copyOfRange(start + block, start + 2 * block).copyInto(it, start)
-                container.copyOfRange(start, start + block).copyInto(it, start + block)
+
+    private fun mutate(
+        container: ByteArray,
+        mutation: String,
+        chunkSize: Int,
+    ): ByteArray =
+        when {
+            mutation.startsWith("set_byte@") -> {
+                val (offset, value) = mutation.removePrefix("set_byte@").split("=")
+                container.copyOf().also { it[offset.toInt()] = value.toInt().toByte() }
+            }
+
+            mutation == "flip_last_byte" -> {
+                container.copyOf().also { it[it.lastIndex] = (it[it.lastIndex].toInt() xor 1).toByte() }
+            }
+
+            mutation == "truncate_one" -> {
+                container.copyOf(container.size - 1)
+            }
+
+            mutation == "append_zero" -> {
+                container + byteArrayOf(0)
+            }
+
+            mutation == "flip_first_header_byte" -> {
+                container.copyOf().also {
+                    it[DchmFormat.PRELUDE_SIZE] = (it[DchmFormat.PRELUDE_SIZE].toInt() xor 1).toByte()
+                }
+            }
+
+            mutation == "swap_first_two_chunks" -> {
+                val headerLen = (Prelude.read(container) as Outcome.Ok).value.headerLen
+                val start = DchmFormat.PRELUDE_SIZE + headerLen
+                val block = chunkSize + DchmFormat.GCM_TAG_SIZE
+                container.copyOf().also {
+                    container.copyOfRange(start + block, start + 2 * block).copyInto(it, start)
+                    container.copyOfRange(start, start + block).copyInto(it, start + block)
+                }
+            }
+
+            else -> {
+                fail("unknown mutation $mutation")
             }
         }
-        else -> fail("unknown mutation $mutation")
-    }
 }

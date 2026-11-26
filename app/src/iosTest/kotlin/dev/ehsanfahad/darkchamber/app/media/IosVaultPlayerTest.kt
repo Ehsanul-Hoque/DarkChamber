@@ -95,7 +95,11 @@ class IosVaultPlayerTest {
     @Test
     fun a_format_or_decoder_this_device_lacks_is_the_decoders() {
         for (code in listOf(AVErrorFileFormatNotRecognized, AVErrorDecoderNotFound, AVErrorFormatUnsupported)) {
-            assertEquals(PlayerFailure.Decoder, IosPlayerMapping.failureOf(listOf(ErrorLink(avf, code)), null), "code $code")
+            assertEquals(
+                PlayerFailure.Decoder,
+                IosPlayerMapping.failureOf(listOf(ErrorLink(avf, code)), null),
+                "code $code",
+            )
         }
     }
 
@@ -105,7 +109,10 @@ class IosVaultPlayerTest {
      */
     @Test
     fun a_decoder_that_is_busy_for_now_is_not_a_file_this_device_cannot_play() {
-        assertEquals(PlayerFailure.Other, IosPlayerMapping.failureOf(listOf(ErrorLink(avf, AVErrorDecoderTemporarilyUnavailable)), null))
+        assertEquals(
+            PlayerFailure.Other,
+            IosPlayerMapping.failureOf(listOf(ErrorLink(avf, AVErrorDecoderTemporarilyUnavailable)), null),
+        )
     }
 
     @Test
@@ -117,12 +124,18 @@ class IosVaultPlayerTest {
 
     @Test
     fun the_same_number_in_another_domain_is_not_avfoundations() {
-        assertEquals(PlayerFailure.Other, IosPlayerMapping.failureOf(listOf(ErrorLink(NSOSStatusErrorDomain, AVErrorFileFormatNotRecognized)), null))
+        assertEquals(
+            PlayerFailure.Other,
+            IosPlayerMapping.failureOf(listOf(ErrorLink(NSOSStatusErrorDomain, AVErrorFileFormatNotRecognized)), null),
+        )
     }
 
     @Test
     fun anything_else_names_no_cause() {
-        assertEquals(PlayerFailure.Other, IosPlayerMapping.failureOf(listOf(ErrorLink(avf, AVErrorFailedToParse)), null))
+        assertEquals(
+            PlayerFailure.Other,
+            IosPlayerMapping.failureOf(listOf(ErrorLink(avf, AVErrorFailedToParse)), null),
+        )
         assertEquals(PlayerFailure.Other, IosPlayerMapping.failureOf(listOf(ErrorLink(avf, AVErrorUnknown)), null))
         assertEquals(PlayerFailure.Other, IosPlayerMapping.failureOf(emptyList(), null))
     }
@@ -133,7 +146,12 @@ class IosVaultPlayerTest {
     fun the_tracks_add_up_to_a_picture_and_a_sound_as_on_android() {
         assertEquals(
             PlayerTracks(TrackSupport.Unplayable, TrackSupport.Playable),
-            IosPlayerMapping.tracksOf(listOf(FoundTrack(video = true, audio = false, playable = false), FoundTrack(video = false, audio = true, playable = true))),
+            IosPlayerMapping.tracksOf(
+                listOf(
+                    FoundTrack(video = true, audio = false, playable = false),
+                    FoundTrack(video = false, audio = true, playable = true),
+                ),
+            ),
         )
         assertEquals(PlayerTracks(), IosPlayerMapping.tracksOf(emptyList()))
         assertEquals(
@@ -143,7 +161,9 @@ class IosVaultPlayerTest {
         )
         assertEquals(
             PlayerTracks(TrackSupport.Absent, TrackSupport.Playable),
-            IosPlayerMapping.tracksOf(listOf(FoundTrack(video = false, audio = false, playable = false), FoundTrack(false, true, true))),
+            IosPlayerMapping.tracksOf(
+                listOf(FoundTrack(video = false, audio = false, playable = false), FoundTrack(false, true, true)),
+            ),
             "a track that is neither (subtitles, timecode) counts for neither",
         )
     }
@@ -157,15 +177,26 @@ class IosVaultPlayerTest {
 
     private val root = Path(SystemTemporaryDirectory, "ivp-${Random.nextULong()}")
     private val engine = CryptographyKotlinEngine()
-    private val session = VaultSession.createVault(
-        engine, DefaultKeyDerivation(engine), "player test".encodeToByteArray(),
-        PassphraseKdfProfile.Argon2id(memoryKib = 256, iterations = 1, parallelism = 1),
-    ).session
-    private val objects = run {
-        SystemFileSystem.createDirectories(root)
-        VaultObjects(session, VaultStorage(root), (CatalogStore.create(testSqlDriver()) as Outcome.Ok).value,
-            DchmCodec(engine), clock = { 0L }, random = { n -> engine.randomBytes(n) })
-    }
+    private val session =
+        VaultSession
+            .createVault(
+                engine,
+                DefaultKeyDerivation(engine),
+                "player test".encodeToByteArray(),
+                PassphraseKdfProfile.Argon2id(memoryKib = 256, iterations = 1, parallelism = 1),
+            ).session
+    private val objects =
+        run {
+            SystemFileSystem.createDirectories(root)
+            VaultObjects(
+                session,
+                VaultStorage(root),
+                (CatalogStore.create(testSqlDriver()) as Outcome.Ok).value,
+                DchmCodec(engine),
+                clock = { 0L },
+                random = { n -> engine.randomBytes(n) },
+            )
+        }
     private val players = mutableListOf<IosVaultPlayer>()
 
     @AfterTest
@@ -173,6 +204,7 @@ class IosVaultPlayerTest {
         players.forEach { it.release() }
         spin(0.3)
         session.close()
+
         fun delete(p: Path) {
             if (SystemFileSystem.metadataOrNull(p)?.isDirectory == true) SystemFileSystem.list(p).forEach(::delete)
             SystemFileSystem.delete(p, mustExist = false)
@@ -181,10 +213,18 @@ class IosVaultPlayerTest {
     }
 
     /** Counts its closes, and can fail every read from [failFrom] on, as a damaged chunk would. */
-    private class Watched(private val inner: RangeReader, private val failFrom: Long = Long.MAX_VALUE) : RangeReader by inner {
+    private class Watched(
+        private val inner: RangeReader,
+        private val failFrom: Long = Long.MAX_VALUE,
+    ) : RangeReader by inner {
         var closes = 0
 
-        override fun readAt(position: Long, into: ByteArray, offset: Int, size: Int): Outcome<Int> {
+        override fun readAt(
+            position: Long,
+            into: ByteArray,
+            offset: Int,
+            size: Int,
+        ): Outcome<Int> {
             if (position >= failFrom) return Outcome.Err(VaultError.Crypto.IntegrityFailure)
             val clipped = if (position + size > failFrom) (failFrom - position).toInt() else size
             return inner.readAt(position, into, offset, clipped)
@@ -196,20 +236,38 @@ class IosVaultPlayerTest {
         }
     }
 
-    private fun stored(bytes: ByteArray, failFrom: Long = Long.MAX_VALUE): Watched {
-        val id = objects.importObject(kind = 0, name = "clip", mime = "application/octet-stream", chunkSize = 64 * 1024,
-            openSource = { Buffer().apply { write(bytes) } })
+    private fun stored(
+        bytes: ByteArray,
+        failFrom: Long = Long.MAX_VALUE,
+    ): Watched {
+        val id =
+            objects.importObject(
+                kind = 0,
+                name = "clip",
+                mime = "application/octet-stream",
+                chunkSize = 64 * 1024,
+                openSource = { Buffer().apply { write(bytes) } },
+            )
         return Watched((objects.openRange((id as Outcome.Ok).value) as Outcome.Ok).value, failFrom)
     }
 
-    private fun play(reader: RangeReader, mime: String = "video/mp4") = IosVaultPlayer(reader, mime).also { players += it }
+    private fun play(
+        reader: RangeReader,
+        mime: String = "video/mp4",
+    ) = IosVaultPlayer(reader, mime).also {
+        players +=
+            it
+    }
 
     private fun spin(seconds: Double) {
         NSRunLoop.mainRunLoop.runUntilDate(NSDate.dateWithTimeIntervalSinceNow(seconds))
     }
 
     /** Runs the main run loop until [condition] holds or [seconds] pass; says which. */
-    private fun waitFor(seconds: Double = 15.0, condition: () -> Boolean): Boolean {
+    private fun waitFor(
+        seconds: Double = 15.0,
+        condition: () -> Boolean,
+    ): Boolean {
         val deadline = NSDate.dateWithTimeIntervalSinceNow(seconds)
         while (!condition()) {
             if (deadline.timeIntervalSinceNow < 0) return false

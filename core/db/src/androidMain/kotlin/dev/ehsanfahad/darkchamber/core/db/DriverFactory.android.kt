@@ -22,11 +22,12 @@ actual class DriverFactory(
             schema = DarkChamberDatabase.Schema,
             context = context,
             name = databaseName,
-            callback = object : AndroidSqliteDriver.Callback(DarkChamberDatabase.Schema) {
-                override fun onConfigure(db: SupportSQLiteDatabase) {
-                    super.onConfigure(db)
-                    CatalogPragmas.onEveryConnection.forEach { pragma -> db.query(pragma.sql).close() }
-                }
-            },
+            callback =
+                object : AndroidSqliteDriver.Callback(DarkChamberDatabase.Schema) {
+                    override fun onConfigure(db: SupportSQLiteDatabase) {
+                        super.onConfigure(db)
+                        CatalogPragmas.onEveryConnection.forEach { pragma -> db.query(pragma.sql).close() }
+                    }
+                },
         )
 }

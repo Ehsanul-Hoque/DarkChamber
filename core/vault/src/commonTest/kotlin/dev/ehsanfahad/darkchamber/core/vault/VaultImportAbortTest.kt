@@ -12,10 +12,10 @@ import dev.ehsanfahad.darkchamber.core.storage.VaultStorage
 import kotlinx.io.Buffer
 import kotlinx.io.IOException
 import kotlinx.io.RawSource
-import kotlinx.io.readByteArray
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 import kotlinx.io.files.SystemTemporaryDirectory
+import kotlinx.io.readByteArray
 import kotlin.random.Random
 import kotlin.random.nextULong
 import kotlin.test.AfterTest
@@ -46,15 +46,18 @@ class VaultImportAbortTest {
     private fun newSession(): VaultSession =
         VaultSession.createVault(engine, kdf, "correct horse battery".encodeToByteArray(), cheapKdf).session
 
-    private fun objects(session: VaultSession, storage: VaultStorage, catalog: CatalogStore) =
-        VaultObjects(
-            session = session,
-            storage = storage,
-            catalog = catalog,
-            codec = DchmCodec(engine),
-            clock = { 42L },
-            random = Random(9).let { r -> { n: Int -> r.nextBytes(n) } },
-        )
+    private fun objects(
+        session: VaultSession,
+        storage: VaultStorage,
+        catalog: CatalogStore,
+    ) = VaultObjects(
+        session = session,
+        storage = storage,
+        catalog = catalog,
+        codec = DchmCodec(engine),
+        clock = { 42L },
+        random = Random(9).let { r -> { n: Int -> r.nextBytes(n) } },
+    )
 
     @Test
     fun a_lock_partway_through_aborts_the_import_within_a_chunk() {
@@ -70,13 +73,14 @@ class VaultImportAbortTest {
         val data = ByteArray(512 * 1024) { (it % 251).toByte() }
         val opener = TrippingSourceOpener(data, tripAfterReads = 3) { session.close() }
 
-        val result = vo.importObject(
-            kind = VaultItemKind.FILE.code,
-            name = "interrupted.bin",
-            mime = "application/octet-stream",
-            chunkSize = chunkSize,
-            openSource = opener::open,
-        )
+        val result =
+            vo.importObject(
+                kind = VaultItemKind.FILE.code,
+                name = "interrupted.bin",
+                mime = "application/octet-stream",
+                chunkSize = chunkSize,
+                openSource = opener::open,
+            )
 
         assertIs<Outcome.Err>(result, "a locked session must fail the import, not finish it")
 
@@ -111,14 +115,15 @@ class VaultImportAbortTest {
         val data = ByteArray(512 * 1024) { (it % 251).toByte() }
         val opener = TrippingSourceOpener(data, tripAfterReads = 3) { cancelled = true }
 
-        val result = vo.importObject(
-            kind = VaultItemKind.FILE.code,
-            name = "abandoned.bin",
-            mime = "application/octet-stream",
-            chunkSize = 8192,
-            isActive = { !cancelled },
-            openSource = opener::open,
-        )
+        val result =
+            vo.importObject(
+                kind = VaultItemKind.FILE.code,
+                name = "abandoned.bin",
+                mime = "application/octet-stream",
+                chunkSize = 8192,
+                isActive = { !cancelled },
+                openSource = opener::open,
+            )
 
         assertIs<Outcome.Err>(result, "a cancelled import must not report success")
         assertTrue(session.isOpen, "a cancel is not a lock: the session stays open")
@@ -139,12 +144,13 @@ class VaultImportAbortTest {
         )
 
         // The vault still works: the next file in the batch imports normally.
-        val next = vo.importObject(
-            kind = VaultItemKind.FILE.code,
-            name = "next.bin",
-            mime = "application/octet-stream",
-            openSource = { Buffer().apply { write(ByteArray(64) { it.toByte() }) } },
-        )
+        val next =
+            vo.importObject(
+                kind = VaultItemKind.FILE.code,
+                name = "next.bin",
+                mime = "application/octet-stream",
+                openSource = { Buffer().apply { write(ByteArray(64) { it.toByte() }) } },
+            )
         assertIs<Outcome.Ok<ByteArray>>(next, "a cancel must not poison the session for later files")
         catalog.close()
     }
@@ -161,13 +167,14 @@ class VaultImportAbortTest {
         val data = ByteArray(chunkSize * 40) { (it % 251).toByte() }
         val opener = TrippingSourceOpener(data, tripAfterReads = Int.MAX_VALUE) { }
 
-        val result = vo.importObject(
-            kind = VaultItemKind.FILE.code,
-            name = "complete.bin",
-            mime = "application/octet-stream",
-            chunkSize = chunkSize,
-            openSource = opener::open,
-        )
+        val result =
+            vo.importObject(
+                kind = VaultItemKind.FILE.code,
+                name = "complete.bin",
+                mime = "application/octet-stream",
+                chunkSize = chunkSize,
+                openSource = opener::open,
+            )
 
         assertIs<Outcome.Ok<ByteArray>>(result)
         // The guard must not truncate a healthy import: the stored object still round-trips to the
@@ -199,14 +206,15 @@ class VaultImportAbortTest {
         val data = ByteArray(512 * 1024) { (it % 251).toByte() }
         val opener = TrippingSourceOpener(data, tripAfterReads = 3, maxOpens = 1) { cancelled = true }
 
-        val result = vo.importObject(
-            kind = VaultItemKind.FILE.code,
-            name = "abandoned-one-shot.bin",
-            mime = "application/octet-stream",
-            chunkSize = 8192,
-            isActive = { !cancelled },
-            openSource = opener::open,
-        )
+        val result =
+            vo.importObject(
+                kind = VaultItemKind.FILE.code,
+                name = "abandoned-one-shot.bin",
+                mime = "application/octet-stream",
+                chunkSize = 8192,
+                isActive = { !cancelled },
+                openSource = opener::open,
+            )
 
         assertIs<Outcome.Err>(result, "a cancelled spill must not report success")
         assertTrue(session.isOpen, "a cancel is not a lock")
@@ -256,15 +264,19 @@ private class TrippingSourceOpener(
         return newSource()
     }
 
-    private fun newSource(): RawSource = object : RawSource {
-        private val buffer = Buffer().apply { write(data) }
+    private fun newSource(): RawSource =
+        object : RawSource {
+            private val buffer = Buffer().apply { write(data) }
 
-        override fun readAtMostTo(sink: Buffer, byteCount: Long): Long {
-            reads++
-            if (reads == tripAfterReads) onTrip()
-            return buffer.readAtMostTo(sink, byteCount)
+            override fun readAtMostTo(
+                sink: Buffer,
+                byteCount: Long,
+            ): Long {
+                reads++
+                if (reads == tripAfterReads) onTrip()
+                return buffer.readAtMostTo(sink, byteCount)
+            }
+
+            override fun close() = buffer.close()
         }
-
-        override fun close() = buffer.close()
-    }
 }

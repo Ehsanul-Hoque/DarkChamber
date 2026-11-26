@@ -32,15 +32,16 @@ import kotlinx.io.files.SystemFileSystem
 class FakeCameraController : CameraController {
     override val permission = MutableStateFlow(CameraPermission.Granted)
     override val availability = MutableStateFlow(CameraAvailability.Available)
-    override val capabilities = MutableStateFlow(
-        CameraCapabilities(
-            lenses = setOf(Lens.Back),
-            hasFlash = false,
-            minZoom = 1f,
-            maxZoom = 1f,
-            videoQualities = setOf(VideoQuality.HD),
-        ),
-    )
+    override val capabilities =
+        MutableStateFlow(
+            CameraCapabilities(
+                lenses = setOf(Lens.Back),
+                hasFlash = false,
+                minZoom = 1f,
+                maxZoom = 1f,
+                videoQualities = setOf(VideoQuality.HD),
+            ),
+        )
 
     var starts = 0
         private set
@@ -108,7 +109,11 @@ class FakeCameraController : CameraController {
      * Records as the platform does, into the file it is handed and nowhere else: a small clip is
      * written there at the start, so the save that follows reads a real file.
      */
-    override fun record(file: Path, sizeLimitBytes: Long, withAudio: Boolean): Recording {
+    override fun record(
+        file: Path,
+        sizeLimitBytes: Long,
+        withAudio: Boolean,
+    ): Recording {
         if (!isOpen || mode != CaptureMode.Video || recording?.isEnded == false) return ReportedRecording.refused()
         SystemFileSystem.sink(file).buffered().use { it.write(ByteArray(2_000) { n -> n.toByte() }) }
         lateinit var started: ReportedRecording
@@ -123,7 +128,10 @@ class FakeCameraController : CameraController {
 
     override fun setZoom(ratio: Float) = Unit
 
-    override fun focusAt(x: Float, y: Float) = Unit
+    override fun focusAt(
+        x: Float,
+        y: Float,
+    ) = Unit
 
     override suspend fun capture(): CaptureResult {
         if (!holding) return CaptureResult.Captured(CapturedPhoto(jpeg(), rotationDegrees = 0))

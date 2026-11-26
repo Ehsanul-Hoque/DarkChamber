@@ -16,18 +16,22 @@ import kotlin.test.assertSame
  * command.
  */
 class PlayerIconsTest {
-
-    private class Expected(val vector: ImageVector, val commands: Int, val subpaths: Int)
-
-    private val marks = mapOf(
-        "play_arrow" to Expected(playVector, commands = 12, subpaths = 3),
-        "pause" to Expected(pauseVector, commands = 32, subpaths = 6),
-        "replay" to Expected(replayVector, commands = 29, subpaths = 1),
-        "screen_rotation_alt" to Expected(rotationVector, commands = 30, subpaths = 2),
-        "brightness_medium" to Expected(brightnessVector, commands = 45, subpaths = 4),
-        "volume_up" to Expected(volumeVector, commands = 37, subpaths = 5),
-        "volume_off" to Expected(mutedVector, commands = 53, subpaths = 6),
+    private class Expected(
+        val vector: ImageVector,
+        val commands: Int,
+        val subpaths: Int,
     )
+
+    private val marks =
+        mapOf(
+            "play_arrow" to Expected(playVector, commands = 12, subpaths = 3),
+            "pause" to Expected(pauseVector, commands = 32, subpaths = 6),
+            "replay" to Expected(replayVector, commands = 29, subpaths = 1),
+            "screen_rotation_alt" to Expected(rotationVector, commands = 30, subpaths = 2),
+            "brightness_medium" to Expected(brightnessVector, commands = 45, subpaths = 4),
+            "volume_up" to Expected(volumeVector, commands = 37, subpaths = 5),
+            "volume_off" to Expected(mutedVector, commands = 53, subpaths = 6),
+        )
 
     @Test
     fun each_mark_carries_its_supplied_drawing_exactly() {

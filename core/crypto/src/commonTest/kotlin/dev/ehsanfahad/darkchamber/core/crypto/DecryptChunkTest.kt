@@ -17,18 +17,32 @@ class DecryptChunkTest {
 
     private fun prefix(tag: Int) = ByteArray(8) { i -> if (i == 0) tag.toByte() else i.toByte() }
 
-    private fun encode(data: ByteArray, tag: Int): ByteArray {
+    private fun encode(
+        data: ByteArray,
+        tag: Int,
+    ): ByteArray {
         val out = Buffer()
-        val result = codec.encryptContainer(
-            dek, prefix(tag), 0L, fileId, "n", "m", chunkSize,
-            { Buffer().apply { write(data) } }, out,
-        )
+        val result =
+            codec.encryptContainer(
+                dek,
+                prefix(tag),
+                0L,
+                fileId,
+                "n",
+                "m",
+                chunkSize,
+                { Buffer().apply { write(data) } },
+                out,
+            )
         assertTrue(result is Outcome.Ok)
         return out.readByteArray()
     }
 
     // Byte offset of chunk [index]'s ciphertext block, per the caller formula.
-    private fun chunkOffset(container: ByteArray, index: Int): Int {
+    private fun chunkOffset(
+        container: ByteArray,
+        index: Int,
+    ): Int {
         val headerLen = (Prelude.read(container) as Outcome.Ok).value.headerLen
         return DchmFormat.PRELUDE_SIZE + headerLen + index * (chunkSize + DchmFormat.GCM_TAG_SIZE)
     }

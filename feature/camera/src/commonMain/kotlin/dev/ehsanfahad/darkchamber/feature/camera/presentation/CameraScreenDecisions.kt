@@ -28,7 +28,10 @@ internal fun cameraLayout(screen: IntSize): CameraLayout =
     if (screen.width > screen.height) CameraLayout.Beside else CameraLayout.Below
 
 /** An icon's angle to turn to, and whether to animate getting there. */
-internal data class IconTurn(val degrees: Float, val animated: Boolean)
+internal data class IconTurn(
+    val degrees: Float,
+    val animated: Boolean,
+)
 
 /**
  * Where the turning icons go for the device's [tilt] (0, 90, 180 or 270° clockwise), starting from
@@ -40,7 +43,12 @@ internal data class IconTurn(val degrees: Float, val animated: Boolean)
  * Under reduced motion they snap. In the wide fallback ([CameraLayout.Beside]) the display rotates
  * on its own, so icons are drawn upright and do not turn.
  */
-internal fun iconTurn(current: Float, tilt: Int, layout: CameraLayout, reducedMotion: Boolean): IconTurn {
+internal fun iconTurn(
+    current: Float,
+    tilt: Int,
+    layout: CameraLayout,
+    reducedMotion: Boolean,
+): IconTurn {
     if (layout == CameraLayout.Beside) return IconTurn(0f, animated = false)
     val target = -tilt.toFloat()
     // The difference to the target, brought into -180..180.
@@ -52,7 +60,10 @@ internal fun iconTurn(current: Float, tilt: Int, layout: CameraLayout, reducedMo
  * A tap on the viewfinder as fractions of its width and height — the seam's terms, so the camera
  * never needs the preview's pixel size. `null` before the viewfinder has a size.
  */
-internal fun focusFractions(tap: Offset, size: IntSize): Pair<Float, Float>? {
+internal fun focusFractions(
+    tap: Offset,
+    size: IntSize,
+): Pair<Float, Float>? {
     if (size.width <= 0 || size.height <= 0) return null
     return tap.x / size.width to tap.y / size.height
 }

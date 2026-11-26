@@ -103,8 +103,7 @@ data class AlbumDraft(
      * from `AlbumState.Present`, so printing either of those would carry it too (hard rule #4). The
      * length is withheld as well, since the length of a name is a fact about it.
      */
-    override fun toString(): String =
-        "AlbumDraft(name=<redacted>, problem=$problem, saving=$saving)"
+    override fun toString(): String = "AlbumDraft(name=<redacted>, problem=$problem, saving=$saving)"
 }
 
 /** Why a draft has not become an album. Stated next to the field, not as a banner over the grid. */

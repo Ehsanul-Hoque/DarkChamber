@@ -24,28 +24,34 @@ import kotlinx.coroutines.flow.map
  * new cover while the name and the presence are untouched. Without it, every import would republish
  * an identical heading and, worse, step on a rename dialog's draft state mid-word.
  */
-internal class ObserveAlbum(private val vault: VaultItems) {
-
+internal class ObserveAlbum(
+    private val vault: VaultItems,
+) {
     operator fun invoke(id: ByteArray): Flow<AlbumPresence> =
-        vault.observeAlbums()
+        vault
+            .observeAlbums()
             .map { albums ->
-                val found = albums.firstOrNull { it.id.contentEquals(id) }
-                    ?: return@map AlbumPresence.Gone
+                val found =
+                    albums.firstOrNull { it.id.contentEquals(id) }
+                        ?: return@map AlbumPresence.Gone
                 AlbumPresence.Present(
-                    name = when (val name = found.name) {
-                        is Outcome.Ok -> AlbumTileName.Readable(name.value)
-                        // Mapped, never treated as absence: an album whose name will not open is
-                        // still an album, still holds its items, and must still be deletable.
-                        is Outcome.Err -> AlbumTileName.Unreadable
-                    },
+                    name =
+                        when (val name = found.name) {
+                            is Outcome.Ok -> AlbumTileName.Readable(name.value)
+
+                            // Mapped, never treated as absence: an album whose name will not open is
+                            // still an album, still holds its items, and must still be deletable.
+                            is Outcome.Err -> AlbumTileName.Unreadable
+                        },
                 )
-            }
-            .distinctUntilChanged()
+            }.distinctUntilChanged()
 }
 
 /** Whether the album being looked at is still in the catalog, and what it is called if so. */
 internal sealed interface AlbumPresence {
-    data class Present(val name: AlbumTileName) : AlbumPresence
+    data class Present(
+        val name: AlbumTileName,
+    ) : AlbumPresence
 
     /** No row with that id. Deleted here, deleted elsewhere, or never there at all. */
     data object Gone : AlbumPresence

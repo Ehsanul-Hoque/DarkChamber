@@ -26,28 +26,32 @@ import androidx.compose.ui.unit.dp
  */
 
 /** One 24-unit icon with a single black-filled path, the shape every supplied mark has. */
-internal fun markVector(name: String, pathData: PathBuilder.() -> Unit): ImageVector =
-    ImageVector.Builder(
-        name = name,
-        defaultWidth = 24.dp,
-        defaultHeight = 24.dp,
-        viewportWidth = 24f,
-        viewportHeight = 24f,
-    ).apply {
-        @Suppress("CheckReturnValue")
-        path(
-            fill = SolidColor(Color.Black),
-            fillAlpha = 1f,
-            stroke = null,
-            strokeAlpha = 1f,
-            strokeLineWidth = 1f,
-            strokeLineCap = StrokeCap.Butt,
-            strokeLineJoin = StrokeJoin.Bevel,
-            strokeLineMiter = 1f,
-            pathFillType = PathFillType.NonZero,
-            pathBuilder = pathData,
-        )
-    }.build()
+internal fun markVector(
+    name: String,
+    pathData: PathBuilder.() -> Unit,
+): ImageVector =
+    ImageVector
+        .Builder(
+            name = name,
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+        ).apply {
+            @Suppress("CheckReturnValue")
+            path(
+                fill = SolidColor(Color.Black),
+                fillAlpha = 1f,
+                stroke = null,
+                strokeAlpha = 1f,
+                strokeLineWidth = 1f,
+                strokeLineCap = StrokeCap.Butt,
+                strokeLineJoin = StrokeJoin.Bevel,
+                strokeLineMiter = 1f,
+                pathFillType = PathFillType.NonZero,
+                pathBuilder = pathData,
+            )
+        }.build()
 
 /** Material Symbols "camera": a lens iris, so the way into the camera reads as the aperture family. */
 internal val cameraVector: ImageVector by lazy {

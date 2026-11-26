@@ -11,14 +11,14 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 
 class SavePhotoTest {
-
     private val vault = FakeCaptureVault()
     private val save = SavePhoto(vault, clock = { 1_000L }, nameFor = { "Photo at $it.jpg" })
 
     @Test
     fun a_capture_is_imported_as_a_jpeg_file_into_the_destination_album() {
         val album = byteArrayOf(7, 7)
-        val result = save(CapturedPhoto(OrientationFixtures.JFIF_EXIF_MM.copyOf(), rotationDegrees = 0), album.copyOf()) { true }
+        val result =
+            save(CapturedPhoto(OrientationFixtures.JFIF_EXIF_MM.copyOf(), rotationDegrees = 0), album.copyOf()) { true }
 
         assertIs<Outcome.Ok<ByteArray>>(result)
         val stored = vault.imported.single()
@@ -71,7 +71,11 @@ class SavePhotoTest {
         val jpeg = OrientationFixtures.NO_METADATA.copyOf()
         save(CapturedPhoto(jpeg, rotationDegrees = 90), null) { true }
 
-        assertContentEquals(OrientationFixtures.EXIF_MM_6_INSERTED, vault.imported.single().bytes, "the vault got the longer one")
+        assertContentEquals(
+            OrientationFixtures.EXIF_MM_6_INSERTED,
+            vault.imported.single().bytes,
+            "the vault got the longer one",
+        )
         assertAllZero(jpeg)
         val second = readAll(vault.lastOpenSource!!())
         assertEquals(OrientationFixtures.EXIF_MM_6_INSERTED.size, second.size, "it is the longer array being read")
@@ -88,7 +92,11 @@ class SavePhotoTest {
             val held = open()
             val partial = kotlinx.io.Buffer()
             held.readAtMostTo(partial, 10)
-            assertContentEquals(OrientationFixtures.JFIF_EXIF_MM, readAll(open()), "a second source starts from the start")
+            assertContentEquals(
+                OrientationFixtures.JFIF_EXIF_MM,
+                readAll(open()),
+                "a second source starts from the start",
+            )
             assertContentEquals(
                 OrientationFixtures.JFIF_EXIF_MM.copyOfRange(10, OrientationFixtures.JFIF_EXIF_MM.size),
                 readAll(held),
@@ -101,7 +109,13 @@ class SavePhotoTest {
 
     @Test
     fun our_array_is_zeroed_after_a_failed_import() {
-        vault.nextResult = { Outcome.Err(dev.ehsanfahad.darkchamber.core.model.VaultError.Io(IllegalStateException("disk"))) }
+        vault.nextResult =
+            {
+                Outcome.Err(
+                    dev.ehsanfahad.darkchamber.core.model.VaultError
+                        .Io(IllegalStateException("disk")),
+                )
+            }
         val jpeg = OrientationFixtures.JFIF_EXIF_MM.copyOf()
         assertIs<Outcome.Err>(save(CapturedPhoto(jpeg, 90), null) { true })
         assertAllZero(jpeg)
@@ -118,7 +132,11 @@ class SavePhotoTest {
 
     private fun readAll(source: kotlinx.io.RawSource): ByteArray {
         val buffer = kotlinx.io.Buffer()
-        source.use { do { val n = it.readAtMostTo(buffer, 8192) } while (n >= 0) }
+        source.use {
+            do {
+                val n = it.readAtMostTo(buffer, 8192)
+            } while (n >= 0)
+        }
         return buffer.readByteArray()
     }
 

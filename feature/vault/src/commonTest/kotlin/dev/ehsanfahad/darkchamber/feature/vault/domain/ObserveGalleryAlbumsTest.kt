@@ -26,7 +26,6 @@ import kotlin.test.assertTrue
  * the vault, against a documented decision (docs/ARCHITECTURE.md §5.1).
  */
 class ObserveGalleryAlbumsTest {
-
     private val album = byteArrayOf(9)
 
     private fun albumSummary(
@@ -46,89 +45,95 @@ class ObserveGalleryAlbumsTest {
     private fun filedItem(id: Byte) = summary(byteArrayOf(id), readableMeta(), albumId = album.copyOf())
 
     @Test
-    fun a_filed_item_is_labelled_with_its_albums_name() = runTest {
-        val vault = FakeVaultItems()
-        vault.albums.value = listOf(albumSummary())
-        vault.summaries.value = listOf(filedItem(1))
+    fun a_filed_item_is_labelled_with_its_albums_name() =
+        runTest {
+            val vault = FakeVaultItems()
+            vault.albums.value = listOf(albumSummary())
+            vault.summaries.value = listOf(filedItem(1))
 
-        ObserveGallery(vault).invoke().test {
-            val item = awaitItem().items.single()
-            assertEquals(AlbumTileName.Readable("Trip"), item.album)
-            cancelAndIgnoreRemainingEvents()
+            ObserveGallery(vault).invoke().test {
+                val item = awaitItem().items.single()
+                assertEquals(AlbumTileName.Readable("Trip"), item.album)
+                cancelAndIgnoreRemainingEvents()
+            }
         }
-    }
 
     @Test
-    fun an_unfiled_item_carries_no_label_at_all() = runTest {
-        // An absence is the honest marker for "in no album"; a badge on every tile would be noise on
-        // the common case.
-        val vault = FakeVaultItems()
-        vault.albums.value = listOf(albumSummary())
-        vault.summaries.value = listOf(summary(byteArrayOf(1), readableMeta()))
+    fun an_unfiled_item_carries_no_label_at_all() =
+        runTest {
+            // An absence is the honest marker for "in no album"; a badge on every tile would be noise on
+            // the common case.
+            val vault = FakeVaultItems()
+            vault.albums.value = listOf(albumSummary())
+            vault.summaries.value = listOf(summary(byteArrayOf(1), readableMeta()))
 
-        ObserveGallery(vault).invoke().test {
-            assertNull(awaitItem().items.single().album)
-            cancelAndIgnoreRemainingEvents()
+            ObserveGallery(vault).invoke().test {
+                assertNull(awaitItem().items.single().album)
+                cancelAndIgnoreRemainingEvents()
+            }
         }
-    }
 
     @Test
-    fun an_album_whose_name_will_not_open_labels_its_items_unverifiably() = runTest {
-        val vault = FakeVaultItems()
-        vault.albums.value = listOf(albumSummary(name = Outcome.Err(VaultError.Crypto.IntegrityFailure)))
-        vault.summaries.value = listOf(filedItem(1))
+    fun an_album_whose_name_will_not_open_labels_its_items_unverifiably() =
+        runTest {
+            val vault = FakeVaultItems()
+            vault.albums.value = listOf(albumSummary(name = Outcome.Err(VaultError.Crypto.IntegrityFailure)))
+            vault.summaries.value = listOf(filedItem(1))
 
-        ObserveGallery(vault).invoke().test {
-            // Never a blank and never a guess: the same honest form the album grid uses.
-            assertEquals(AlbumTileName.Unreadable, awaitItem().items.single().album)
-            cancelAndIgnoreRemainingEvents()
+            ObserveGallery(vault).invoke().test {
+                // Never a blank and never a guess: the same honest form the album grid uses.
+                assertEquals(AlbumTileName.Unreadable, awaitItem().items.single().album)
+                cancelAndIgnoreRemainingEvents()
+            }
         }
-    }
 
     @Test
-    fun an_item_whose_album_is_not_in_the_listing_is_simply_unlabelled() = runTest {
-        // An ordinary race: the album was deleted between the two listings emitting. Labelling it
-        // with anything would be inventing a name, and failing the listing would hide every item.
-        val vault = FakeVaultItems()
-        vault.albums.value = emptyList()
-        vault.summaries.value = listOf(filedItem(1))
+    fun an_item_whose_album_is_not_in_the_listing_is_simply_unlabelled() =
+        runTest {
+            // An ordinary race: the album was deleted between the two listings emitting. Labelling it
+            // with anything would be inventing a name, and failing the listing would hide every item.
+            val vault = FakeVaultItems()
+            vault.albums.value = emptyList()
+            vault.summaries.value = listOf(filedItem(1))
 
-        ObserveGallery(vault).invoke().test {
-            assertNull(awaitItem().items.single().album)
-            cancelAndIgnoreRemainingEvents()
+            ObserveGallery(vault).invoke().test {
+                assertNull(awaitItem().items.single().album)
+                cancelAndIgnoreRemainingEvents()
+            }
         }
-    }
 
     @Test
-    fun renaming_an_album_relabels_its_items_without_a_second_item_subscription() = runTest {
-        val vault = FakeVaultItems()
-        vault.albums.value = listOf(albumSummary())
-        vault.summaries.value = listOf(filedItem(1))
+    fun renaming_an_album_relabels_its_items_without_a_second_item_subscription() =
+        runTest {
+            val vault = FakeVaultItems()
+            vault.albums.value = listOf(albumSummary())
+            vault.summaries.value = listOf(filedItem(1))
 
-        ObserveGallery(vault).invoke().test {
-            assertEquals(AlbumTileName.Readable("Trip"), awaitItem().items.single().album)
+            ObserveGallery(vault).invoke().test {
+                assertEquals(AlbumTileName.Readable("Trip"), awaitItem().items.single().album)
 
-            vault.albums.value = listOf(albumSummary(name = Outcome.Ok("Alps")))
+                vault.albums.value = listOf(albumSummary(name = Outcome.Ok("Alps")))
 
-            assertEquals(AlbumTileName.Readable("Alps"), awaitItem().items.single().album)
-            assertEquals(1, vault.observeCalls, "a rename must not re-read the items")
-            cancelAndIgnoreRemainingEvents()
+                assertEquals(AlbumTileName.Readable("Alps"), awaitItem().items.single().album)
+                assertEquals(1, vault.observeCalls, "a rename must not re-read the items")
+                cancelAndIgnoreRemainingEvents()
+            }
         }
-    }
 
     @Test
-    fun the_album_listing_is_not_subscribed_inside_an_album() = runTest {
-        // Inside an album every item is in that album, so the label would repeat the heading on
-        // every tile — and a screen that shows no labels must not pay for the listing that feeds them.
-        val vault = FakeVaultItems()
+    fun the_album_listing_is_not_subscribed_inside_an_album() =
+        runTest {
+            // Inside an album every item is in that album, so the label would repeat the heading on
+            // every tile — and a screen that shows no labels must not pay for the listing that feeds them.
+            val vault = FakeVaultItems()
 
-        ObserveGallery(vault).invoke(filter = ItemFilter.Album(album)).test {
-            awaitItem()
-            cancelAndIgnoreRemainingEvents()
+            ObserveGallery(vault).invoke(filter = ItemFilter.Album(album)).test {
+                awaitItem()
+                cancelAndIgnoreRemainingEvents()
+            }
+
+            assertEquals(0, vault.observeAlbumsCalls, "an album screen must not read the album listing")
         }
-
-        assertEquals(0, vault.observeAlbumsCalls, "an album screen must not read the album listing")
-    }
 
     /**
      * And the items on that screen carry **no label**, which is what the tile's badge relies on to
@@ -136,66 +141,71 @@ class ObserveGalleryAlbumsTest {
      * is where "only on the whole vault" is actually decided.
      */
     @Test
-    fun an_item_inside_an_album_carries_no_label_to_draw() = runTest {
-        val vault = FakeVaultItems()
-        vault.albums.value = listOf(albumSummary())
-        val filter = ItemFilter.Album(album)
-        vault.summariesByFilter[filter] = MutableStateFlow(listOf(filedItem(1)))
+    fun an_item_inside_an_album_carries_no_label_to_draw() =
+        runTest {
+            val vault = FakeVaultItems()
+            vault.albums.value = listOf(albumSummary())
+            val filter = ItemFilter.Album(album)
+            vault.summariesByFilter[filter] = MutableStateFlow(listOf(filedItem(1)))
 
-        ObserveGallery(vault).invoke(filter = filter).test {
-            // The item *is* filed — it carries the album's id — and still gets nothing, because the
-            // heading already says which album this is.
-            assertNull(awaitItem().items.single().album)
-            cancelAndIgnoreRemainingEvents()
-        }
-    }
-
-    @Test
-    fun the_album_listing_is_not_subscribed_in_unfiled() = runTest {
-        val vault = FakeVaultItems()
-
-        ObserveGallery(vault).invoke(filter = ItemFilter.Unfiled).test {
-            awaitItem()
-            cancelAndIgnoreRemainingEvents()
+            ObserveGallery(vault).invoke(filter = filter).test {
+                // The item *is* filed — it carries the album's id — and still gets nothing, because the
+                // heading already says which album this is.
+                assertNull(awaitItem().items.single().album)
+                cancelAndIgnoreRemainingEvents()
+            }
         }
 
-        assertEquals(0, vault.observeAlbumsCalls, "nothing in Unfiled has an album to name")
-    }
+    @Test
+    fun the_album_listing_is_not_subscribed_in_unfiled() =
+        runTest {
+            val vault = FakeVaultItems()
+
+            ObserveGallery(vault).invoke(filter = ItemFilter.Unfiled).test {
+                awaitItem()
+                cancelAndIgnoreRemainingEvents()
+            }
+
+            assertEquals(0, vault.observeAlbumsCalls, "nothing in Unfiled has an album to name")
+        }
 
     @Test
-    fun the_whole_vault_listing_subscribes_to_the_album_listing_once() = runTest {
-        val vault = FakeVaultItems()
-        vault.albums.value = listOf(albumSummary())
+    fun the_whole_vault_listing_subscribes_to_the_album_listing_once() =
+        runTest {
+            val vault = FakeVaultItems()
+            vault.albums.value = listOf(albumSummary())
 
-        ObserveGallery(vault).invoke().test {
-            awaitItem()
+            ObserveGallery(vault).invoke().test {
+                awaitItem()
+                vault.summaries.value = listOf(filedItem(1))
+                awaitItem()
+                vault.summaries.value =
+                    listOf(
+                        filedItem(1),
+                        summary(byteArrayOf(2), readableMeta()),
+                    )
+                awaitItem()
+
+                // Once for the screen, not once per emission and not once per item: the label's cost is
+                // fixed, while the listing it labels grows.
+                assertEquals(1, vault.observeAlbumsCalls)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
+    fun an_items_tostring_never_prints_the_album_name() =
+        runTest {
+            val vault = FakeVaultItems()
+            vault.albums.value = listOf(albumSummary(name = Outcome.Ok("Berlin trip")))
             vault.summaries.value = listOf(filedItem(1))
-            awaitItem()
-            vault.summaries.value = listOf(
-                filedItem(1),
-                summary(byteArrayOf(2), readableMeta()),
-            )
-            awaitItem()
 
-            // Once for the screen, not once per emission and not once per item: the label's cost is
-            // fixed, while the listing it labels grows.
-            assertEquals(1, vault.observeAlbumsCalls)
-            cancelAndIgnoreRemainingEvents()
+            ObserveGallery(vault).invoke().test {
+                val printed = awaitItem().items.single().toString()
+                // An album name is decrypted vault content, like a file name (hard rule 4).
+                assertTrue("Berlin" !in printed, "an album name must never be printed, was $printed")
+                assertTrue("filed" in printed, "but whether an item is filed is safe to say, was $printed")
+                cancelAndIgnoreRemainingEvents()
+            }
         }
-    }
-
-    @Test
-    fun an_items_tostring_never_prints_the_album_name() = runTest {
-        val vault = FakeVaultItems()
-        vault.albums.value = listOf(albumSummary(name = Outcome.Ok("Berlin trip")))
-        vault.summaries.value = listOf(filedItem(1))
-
-        ObserveGallery(vault).invoke().test {
-            val printed = awaitItem().items.single().toString()
-            // An album name is decrypted vault content, like a file name (hard rule 4).
-            assertTrue("Berlin" !in printed, "an album name must never be printed, was $printed")
-            assertTrue("filed" in printed, "but whether an item is filed is safe to say, was $printed")
-            cancelAndIgnoreRemainingEvents()
-        }
-    }
 }

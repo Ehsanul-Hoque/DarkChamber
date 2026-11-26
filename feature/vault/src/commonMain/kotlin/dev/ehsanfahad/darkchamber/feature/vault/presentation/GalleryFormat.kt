@@ -12,7 +12,6 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.ImportStage
  * so the rules — what a size reads as, how coarse an age is — live in one place.
  */
 internal object GalleryFormat {
-
     /**
      * A short type badge for the media slot, standing in for the thumbnail until thumbnails exist.
      * Derived from the MIME family, so an unknown type still gets something honest rather than a
@@ -117,6 +116,7 @@ internal object GalleryFormat {
             // The same words the search control uses for the same act, because it *is* the same act
             // — a second phrasing would read as a second, different thing.
             ImportOffer.ClearSearch -> clearSearch()
+
             ImportOffer.ShowNewestFirst -> "Show newest first"
         }
 
@@ -174,7 +174,11 @@ internal object GalleryFormat {
      * read fails, so both are true at once, and "nothing matches" would blame someone's typing for a
      * vault that did not open.
      */
-    fun emptyListing(scope: GalleryScope, unreadable: Boolean, searching: Boolean = false): String =
+    fun emptyListing(
+        scope: GalleryScope,
+        unreadable: Boolean,
+        searching: Boolean = false,
+    ): String =
         if (unreadable) {
             "Couldn't read what's in your vault."
         } else if (searching) {
@@ -183,10 +187,17 @@ internal object GalleryFormat {
             // Exhaustive on purpose: a fourth scope must be made to answer for itself rather than
             // inheriting whichever branch happened to be last.
             when (scope) {
-                GalleryScope.WholeVault -> "Nothing in the vault yet.\nAdd a file to encrypt it."
-                GalleryScope.Album ->
+                GalleryScope.WholeVault -> {
+                    "Nothing in the vault yet.\nAdd a file to encrypt it."
+                }
+
+                GalleryScope.Album -> {
                     "Nothing in this album yet.\nSelect items in your vault to file them here."
-                GalleryScope.Unfiled -> "Everything is filed.\nNothing is waiting to be sorted."
+                }
+
+                GalleryScope.Unfiled -> {
+                    "Everything is filed.\nNothing is waiting to be sorted."
+                }
             }
         }
 
@@ -239,7 +250,9 @@ internal object GalleryFormat {
     fun albumDraftProblem(problem: AlbumDraftProblem): String =
         when (problem) {
             AlbumDraftProblem.NameMissing -> "Give the album a name first."
+
             AlbumDraftProblem.CreateFailed -> "Couldn't create the album. Nothing was created — try again."
+
             // Not "nothing changed": what is true, and what the user needs, is that the album still
             // answers to the name it had.
             AlbumDraftProblem.RenameFailed -> "Couldn't rename the album. It still has its old name."
@@ -285,17 +298,23 @@ internal object GalleryFormat {
      * The skipped ones are items that left the vault between being selected and being moved, which is
      * why the reason is stated plainly instead of being guessed at.
      */
-    fun movedCount(moved: Int, requested: Int, destination: FilingDestination): String {
-        val where = when (destination) {
-            FilingDestination.Album -> "moved into the album"
-            // Not "removed", and not "deleted": the items are in the vault, outside any album.
-            //
-            // "The album", never "their album" or "its album": this phrase is shared by every count
-            // branch below, so a possessive picked for one of them is wrong in the others — "1 item
-            // taken out of their album" is what a plural possessive produces. There is exactly one
-            // album to refer to in any case, because taking items out is only offered from inside one.
-            FilingDestination.Unfiled -> "taken out of the album"
-        }
+    fun movedCount(
+        moved: Int,
+        requested: Int,
+        destination: FilingDestination,
+    ): String {
+        val where =
+            when (destination) {
+                FilingDestination.Album -> "moved into the album"
+
+                // Not "removed", and not "deleted": the items are in the vault, outside any album.
+                //
+                // "The album", never "their album" or "its album": this phrase is shared by every count
+                // branch below, so a possessive picked for one of them is wrong in the others — "1 item
+                // taken out of their album" is what a plural possessive produces. There is exactly one
+                // album to refer to in any case, because taking items out is only offered from inside one.
+                FilingDestination.Unfiled -> "taken out of the album"
+            }
         return when {
             moved == 0 -> "Nothing was $where."
             moved < requested -> "$moved of $requested $where. The rest are no longer in the vault."
@@ -352,13 +371,24 @@ internal object GalleryFormat {
             // so "This album is empty" here would be a guess dressed as a fact, in the one dialog whose
             // job is to be exactly right about what is at stake. The rule holds at any size, so it is
             // stated without a number.
-            null -> "Everything in this album stays in your vault. It moves to Unfiled, and only the " +
-                "album itself is deleted."
-            0 -> "This album is empty. Only the album is deleted."
-            1 -> "The item in this album stays in your vault. It moves to Unfiled, and only the " +
-                "album itself is deleted."
-            else -> "The $itemCount items in this album stay in your vault. They move to Unfiled, and " +
-                "only the album itself is deleted."
+            null -> {
+                "Everything in this album stays in your vault. It moves to Unfiled, and only the " +
+                    "album itself is deleted."
+            }
+
+            0 -> {
+                "This album is empty. Only the album is deleted."
+            }
+
+            1 -> {
+                "The item in this album stays in your vault. It moves to Unfiled, and only the " +
+                    "album itself is deleted."
+            }
+
+            else -> {
+                "The $itemCount items in this album stay in your vault. They move to Unfiled, and " +
+                    "only the album itself is deleted."
+            }
         }
 
     /**
@@ -483,8 +513,10 @@ internal object GalleryFormat {
      * transfer ends when the stream closes, and a batch with no stage yet has not reached a file.
      * Saying it at any of those would be a warning about a cost that is not being paid.
      */
-    private fun downloadClause(stage: ImportStage?, clause: String): String =
-        if (stage == ImportStage.FETCHING) clause else ""
+    private fun downloadClause(
+        stage: ImportStage?,
+        clause: String,
+    ): String = if (stage == ImportStage.FETCHING) clause else ""
 
     /** Binary units, one decimal above a kibibyte — the sizes a file manager would show. */
     fun size(bytes: Long): String {
@@ -503,7 +535,10 @@ internal object GalleryFormat {
      * A [createdAt] in the future (a clock that moved backwards) reads as "just now" rather than a
      * negative age.
      */
-    fun age(createdAt: Long, now: Long): String {
+    fun age(
+        createdAt: Long,
+        now: Long,
+    ): String {
         val elapsed = (now - createdAt).coerceAtLeast(0L)
         return when {
             elapsed < MINUTE -> "just now"
@@ -516,11 +551,12 @@ internal object GalleryFormat {
     }
 
     /** How a finished batch reads. Plural-aware, because "1 files" is the sort of thing users notice. */
-    fun importedCount(imported: Int): String = when (imported) {
-        0 -> "Nothing was added."
-        1 -> "1 file added to the vault."
-        else -> "$imported files added to the vault."
-    }
+    fun importedCount(imported: Int): String =
+        when (imported) {
+            0 -> "Nothing was added."
+            1 -> "1 file added to the vault."
+            else -> "$imported files added to the vault."
+        }
 
     /**
      * How many did not make it in. Says only that — not why, and not that they were skipped "safely"
@@ -531,12 +567,10 @@ internal object GalleryFormat {
      * created, a destination that disappeared mid-batch fails the file too — and blaming the file for
      * that would send someone looking for corruption that is not there.
      */
-    fun failedCount(failed: Int): String =
-        if (failed == 1) "1 file wasn't added." else "$failed files weren't added."
+    fun failedCount(failed: Int): String = if (failed == 1) "1 file wasn't added." else "$failed files weren't added."
 
     /** The action on the summary. Says how many, because "Delete originals" hides the scale. */
-    fun deleteOriginals(count: Int): String =
-        if (count == 1) "Delete original" else "Delete $count originals"
+    fun deleteOriginals(count: Int): String = if (count == 1) "Delete original" else "Delete $count originals"
 
     /**
      * What came of the deletion — and when a provider refused some, it says so.
@@ -544,12 +578,16 @@ internal object GalleryFormat {
      * "2 of 3" rather than "2" or "3": the first number alone loses that anything was refused, and
      * the second would tell someone a file is gone while it is still sitting in their Downloads.
      */
-    fun deletedOriginals(deleted: Int, requested: Int): String = when {
-        deleted == 0 -> "No originals were deleted."
-        deleted < requested -> "$deleted of $requested originals deleted."
-        deleted == 1 -> "1 original deleted."
-        else -> "$deleted originals deleted."
-    }
+    fun deletedOriginals(
+        deleted: Int,
+        requested: Int,
+    ): String =
+        when {
+            deleted == 0 -> "No originals were deleted."
+            deleted < requested -> "$deleted of $requested originals deleted."
+            deleted == 1 -> "1 original deleted."
+            else -> "$deleted originals deleted."
+        }
 
     /**
      * The disclosure. Non-dismissable on screen, because this is the only place the limits of
@@ -593,8 +631,10 @@ internal object GalleryFormat {
      * announces that beside the name. A type badge reads fine as itself. An item whose details will
      * not open is never asked for a preview, and its name already says what is wrong.
      */
-    fun badgeSpoken(meta: GalleryItemMeta, previewUnverified: Boolean): String? =
-        if (previewUnverified && meta is GalleryItemMeta.Readable) unverifiedPreview() else null
+    fun badgeSpoken(
+        meta: GalleryItemMeta,
+        previewUnverified: Boolean,
+    ): String? = if (previewUnverified && meta is GalleryItemMeta.Readable) unverifiedPreview() else null
 
     private fun oneDecimal(value: Double): String {
         val scaled = (value * 10).toLong()

@@ -3,14 +3,14 @@ package dev.ehsanfahad.darkchamber.feature.vault.presentation
 import dev.ehsanfahad.darkchamber.core.model.VaultItemKind
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
-import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerNotice
-import dev.ehsanfahad.darkchamber.feature.vault.api.TrackNote
-import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerPage
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
 import dev.ehsanfahad.darkchamber.feature.vault.api.PdfPageSize
 import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerKind
 import dev.ehsanfahad.darkchamber.feature.vault.api.ScreenOrientation
 import dev.ehsanfahad.darkchamber.feature.vault.api.TextKind
+import dev.ehsanfahad.darkchamber.feature.vault.api.TrackNote
+import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerNotice
+import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerPage
 import dev.ehsanfahad.darkchamber.feature.vault.api.label
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -25,26 +25,30 @@ import kotlin.test.assertTrue
  * the wording cannot quietly bring an overclaim back.
  */
 class ViewerFormatTest {
-    private val everyMessagePage: List<ViewerPage> = listOf(
-        ViewerPage.NotViewable("PDF"),
-        ViewerPage.TooLarge,
-        ViewerPage.CantShow,
-        ViewerPage.CantPlay,
-        ViewerPage.PasswordProtected,
-        ViewerPage.Unreadable,
-        ViewerPage.NotText,
-        ViewerPage.Unverified,
-        ViewerPage.StoppedUnverified,
-        ViewerPage.NeedsUpdate,
-        ViewerPage.CouldntOpen,
-    )
+    private val everyMessagePage: List<ViewerPage> =
+        listOf(
+            ViewerPage.NotViewable("PDF"),
+            ViewerPage.TooLarge,
+            ViewerPage.CantShow,
+            ViewerPage.CantPlay,
+            ViewerPage.PasswordProtected,
+            ViewerPage.Unreadable,
+            ViewerPage.NotText,
+            ViewerPage.Unverified,
+            ViewerPage.StoppedUnverified,
+            ViewerPage.NeedsUpdate,
+            ViewerPage.CouldntOpen,
+        )
 
     private fun message(page: ViewerPage): String =
         assertNotNull(ViewerFormat.pageMessage(page), "a message for $page").also {
             assertTrue(it.isNotBlank(), "the message for $page says something")
         }
 
-    private fun assertSaysNone(text: String, vararg words: String) {
+    private fun assertSaysNone(
+        text: String,
+        vararg words: String,
+    ) {
         for (word in words) assertFalse(text.contains(word, ignoreCase = true), "\"$text\" must not say \"$word\"")
     }
 
@@ -85,10 +89,16 @@ class ViewerFormatTest {
     @Test
     fun the_pages_for_a_working_file_never_sound_like_damage() {
         for (
-            page in listOf(
-                ViewerPage.NotViewable("PDF"), ViewerPage.TooLarge, ViewerPage.CantShow, ViewerPage.CantPlay,
-                ViewerPage.PasswordProtected, ViewerPage.Unreadable, ViewerPage.NotText, ViewerPage.NeedsUpdate,
-            )
+        page in listOf(
+            ViewerPage.NotViewable("PDF"),
+            ViewerPage.TooLarge,
+            ViewerPage.CantShow,
+            ViewerPage.CantPlay,
+            ViewerPage.PasswordProtected,
+            ViewerPage.Unreadable,
+            ViewerPage.NotText,
+            ViewerPage.NeedsUpdate,
+        )
         ) {
             assertSaysNone(message(page), "damage", "corrupt", "tamper", "verif", "integrity", "broken")
         }
@@ -116,7 +126,17 @@ class ViewerFormatTest {
         val text = message(ViewerPage.Unreadable)
         assertTrue(text.contains("can't be read here", ignoreCase = true), text)
         assertTrue(text.contains("unchanged", ignoreCase = true), text)
-        assertSaysNone(text, "because", "format", "malformed", "invalid", "unsupported", "safe", "intact", "this device")
+        assertSaysNone(
+            text,
+            "because",
+            "format",
+            "malformed",
+            "invalid",
+            "unsupported",
+            "safe",
+            "intact",
+            "this device",
+        )
     }
 
     /**
@@ -167,7 +187,18 @@ class ViewerFormatTest {
         assertEquals("Video can't be shown on this device", noPicture)
         assertEquals("No sound — this device can't play this audio", noSound)
         for (text in listOf(noPicture, noSound)) {
-            assertSaysNone(text, "damage", "corrupt", "tamper", "verif", "integrity", "broken", "vault", "format", "codec")
+            assertSaysNone(
+                text,
+                "damage",
+                "corrupt",
+                "tamper",
+                "verif",
+                "integrity",
+                "broken",
+                "vault",
+                "format",
+                "codec",
+            )
         }
     }
 
@@ -179,7 +210,16 @@ class ViewerFormatTest {
     /** "Couldn't be opened" — and why is not known, so no why. */
     @Test
     fun a_file_that_would_not_open_names_no_cause() {
-        assertSaysNone(message(ViewerPage.CouldntOpen), "because", "damage", "corrupt", "tamper", "missing", "deleted", "space")
+        assertSaysNone(
+            message(ViewerPage.CouldntOpen),
+            "because",
+            "damage",
+            "corrupt",
+            "tamper",
+            "missing",
+            "deleted",
+            "space",
+        )
     }
 
     // --- the bar ----------------------------------------------------------------------------------
@@ -187,7 +227,11 @@ class ViewerFormatTest {
     @Test
     fun the_bar_names_the_item_or_says_its_name_cant_be_verified() {
         assertEquals("beach.jpg", ViewerFormat.title(GalleryItemMeta.Readable("beach.jpg", "image/jpeg")))
-        assertEquals(GalleryItemMeta.Unreadable.label(), ViewerFormat.title(GalleryItemMeta.Unreadable), "the grid's own wording")
+        assertEquals(
+            GalleryItemMeta.Unreadable.label(),
+            ViewerFormat.title(GalleryItemMeta.Unreadable),
+            "the grid's own wording",
+        )
     }
 
     /** One-based, the way a person counts; the pager is zero-based. */
@@ -201,11 +245,16 @@ class ViewerFormatTest {
 
     private val now = 1_800_000_000_000L
 
-    private fun item(meta: GalleryItemMeta, size: Long = 3_565_158, createdAt: Long = now - 3 * 86_400_000L) =
-        GalleryItem(id = byteArrayOf(1), kind = VaultItemKind.FILE, size = size, createdAt = createdAt, meta = meta)
+    private fun item(
+        meta: GalleryItemMeta,
+        size: Long = 3_565_158,
+        createdAt: Long = now - 3 * 86_400_000L,
+    ) = GalleryItem(id = byteArrayOf(1), kind = VaultItemKind.FILE, size = size, createdAt = createdAt, meta = meta)
 
-    private fun rows(item: GalleryItem, album: AlbumTileName?) =
-        ViewerFormat.details(item, album, now).associate { it.label to it.value }
+    private fun rows(
+        item: GalleryItem,
+        album: AlbumTileName?,
+    ) = ViewerFormat.details(item, album, now).associate { it.label to it.value }
 
     @Test
     fun details_list_name_type_size_age_and_album() {
@@ -215,7 +264,11 @@ class ViewerFormatTest {
         assertEquals("beach.jpg", rows["Name"])
         assertEquals("Image · JPEG", rows["Type"])
         assertEquals(GalleryFormat.size(3_565_158), rows["Size"], "the gallery's own size format")
-        assertEquals(GalleryFormat.age(now - 3 * 86_400_000L, now), rows["Added"], "the gallery's coarse age, on purpose")
+        assertEquals(
+            GalleryFormat.age(now - 3 * 86_400_000L, now),
+            rows["Added"],
+            "the gallery's coarse age, on purpose",
+        )
         assertEquals("Trip", rows["Album"])
     }
 
@@ -281,8 +334,18 @@ class ViewerFormatTest {
             assertTrue(text.contains("never open", ignoreCase = true), text)
             assertSaysNone(
                 text,
-                "erase", "wipe", "anyone", "no one", "nobody", "unrecoverable", "forensic",
-                "secure", "trace", "undo", "trash", "bin",
+                "erase",
+                "wipe",
+                "anyone",
+                "no one",
+                "nobody",
+                "unrecoverable",
+                "forensic",
+                "secure",
+                "trace",
+                "undo",
+                "trash",
+                "bin",
             )
         }
     }
@@ -301,13 +364,19 @@ class ViewerFormatTest {
     @Test
     fun a_page_without_a_picture_carries_the_grids_badge() {
         val jpeg = GalleryItemMeta.Readable("a.jpg", "image/jpeg")
-        assertEquals("VID", ViewerFormat.pageBadge(ViewerPage.NotViewable("VID"), GalleryItemMeta.Readable("a.mp4", "video/mp4")))
+        assertEquals(
+            "VID",
+            ViewerFormat.pageBadge(ViewerPage.NotViewable("VID"), GalleryItemMeta.Readable("a.mp4", "video/mp4")),
+        )
         assertEquals(GalleryFormat.typeBadge(jpeg), ViewerFormat.pageBadge(ViewerPage.TooLarge, jpeg))
         assertEquals(GalleryFormat.typeBadge(jpeg), ViewerFormat.pageBadge(ViewerPage.CantShow, jpeg))
         val markdown = GalleryItemMeta.Readable("notes.md", "application/octet-stream")
         assertEquals("TXT", ViewerFormat.pageBadge(ViewerPage.TooLarge, markdown), "the badge follows the text rule")
         assertEquals("!", ViewerFormat.pageBadge(ViewerPage.Unverified, jpeg))
-        assertEquals("!", ViewerFormat.pageBadge(ViewerPage.StoppedUnverified, GalleryItemMeta.Readable("a.mp4", "video/mp4")))
+        assertEquals(
+            "!",
+            ViewerFormat.pageBadge(ViewerPage.StoppedUnverified, GalleryItemMeta.Readable("a.mp4", "video/mp4")),
+        )
         assertEquals("!", ViewerFormat.pageBadge(ViewerPage.CouldntOpen, GalleryItemMeta.Unreadable))
     }
 
@@ -446,17 +515,26 @@ class ViewerFormatTest {
     // ---- the page indicator -------------------------------------------------------------------------
 
     private val pdfMeta = GalleryItemMeta.Readable("report.pdf", "application/pdf")
+
     /** A space a line never breaks at (U+00A0), written as its code so no editor shows it as a space. */
     private val NBSP = Char(0x00A0)
     private val openPdf = ViewerPage.Pdf(pageCount = 12, pageSizes = List(12) { PdfPageSize(595, 842) })
 
     private val waited = ViewerFormat.PDF_DASHES_AFTER_MS
 
-    private fun slot(page: ViewerPage, reading: Int = 0, loadingMs: Long = 0L, meta: GalleryItemMeta = pdfMeta) =
-        ViewerFormat.pdfIndicator(page, meta, reading, loadingMs)
+    private fun slot(
+        page: ViewerPage,
+        reading: Int = 0,
+        loadingMs: Long = 0L,
+        meta: GalleryItemMeta = pdfMeta,
+    ) = ViewerFormat.pdfIndicator(page, meta, reading, loadingMs)
 
     /** The indicator in the slot, failing if the slot is empty or missing. */
-    private fun shown(page: ViewerPage, reading: Int = 0, loadingMs: Long = waited): PageIndicator =
+    private fun shown(
+        page: ViewerPage,
+        reading: Int = 0,
+        loadingMs: Long = waited,
+    ): PageIndicator =
         assertIs<IndicatorSlot.Shown>(slot(page, reading = reading, loadingMs = loadingMs), "$page").indicator
 
     @Test
@@ -491,10 +569,15 @@ class ViewerFormatTest {
      */
     @Test
     fun every_pdf_that_will_not_open_keeps_its_empty_place() {
-        val refused = listOf(
-            ViewerPage.TooLarge, ViewerPage.CantShow, ViewerPage.CouldntOpen,
-            ViewerPage.PasswordProtected, ViewerPage.Unreadable, ViewerPage.Unverified,
-        )
+        val refused =
+            listOf(
+                ViewerPage.TooLarge,
+                ViewerPage.CantShow,
+                ViewerPage.CouldntOpen,
+                ViewerPage.PasswordProtected,
+                ViewerPage.Unreadable,
+                ViewerPage.Unverified,
+            )
         for (page in refused) {
             assertEquals(IndicatorSlot.Held, slot(page), "$page")
             assertEquals(IndicatorSlot.Held, slot(page, loadingMs = waited), "$page after a long wait")
@@ -539,7 +622,9 @@ class ViewerFormatTest {
         val indicator = shown(ViewerPage.Loading)
         assertFalse(indicator.text.any { it.isDigit() }, "\"${indicator.text}\" names no page")
         assertTrue(indicator.text.startsWith("Page"), "\"${indicator.text}\" has the same shape as the open one")
-        assertFalse(indicator.spoken.any { it.isDigit() } || indicator.spoken.contains('–') || indicator.spoken.contains('-'))
+        assertFalse(
+            indicator.spoken.any { it.isDigit() } || indicator.spoken.contains('–') || indicator.spoken.contains('-'),
+        )
         assertTrue(indicator.spoken.isNotBlank())
         assertFalse(indicator.ready)
     }

@@ -10,7 +10,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 
 /** The theme's looks for the kinds of run a Markdown page draws apart from its words' own size. */
-internal class MdRunStyles(val code: SpanStyle, val link: SpanStyle, val image: SpanStyle)
+internal class MdRunStyles(
+    val code: SpanStyle,
+    val link: SpanStyle,
+    val image: SpanStyle,
+)
 
 internal object MarkdownText {
     /**
@@ -21,7 +25,12 @@ internal object MarkdownText {
      * looking like a link would promise a tap that does nothing. Never `LinkAnnotation.Url`, which
      * opens an address by itself.
      */
-    fun annotated(spans: List<MdSpan>, styles: MdRunStyles, sections: Map<String, Int>, onLink: (String) -> Unit): AnnotatedString =
+    fun annotated(
+        spans: List<MdSpan>,
+        styles: MdRunStyles,
+        sections: Map<String, Int>,
+        onLink: (String) -> Unit,
+    ): AnnotatedString =
         buildAnnotatedString {
             for (span in spans) {
                 val text = if (span.image) ViewerFormat.imageText(span.text) else span.text
@@ -35,7 +44,11 @@ internal object MarkdownText {
                 if (span.image) addStyle(styles.image, start, end)
                 val address = span.link ?: continue
                 if (LinkRules.target(address, sections) == LinkTarget.Inert) continue
-                addLink(LinkAnnotation.Clickable(tag = address, styles = TextLinkStyles(styles.link)) { onLink(address) }, start, end)
+                addLink(
+                    LinkAnnotation.Clickable(tag = address, styles = TextLinkStyles(styles.link)) { onLink(address) },
+                    start,
+                    end,
+                )
             }
         }
 }

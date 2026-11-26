@@ -5,18 +5,18 @@ import dev.ehsanfahad.darkchamber.core.model.VaultError
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerPage
 import dev.ehsanfahad.darkchamber.feature.vault.domain.VaultItems
-import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.job
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.io.Buffer
 import kotlinx.io.IOException
 import kotlinx.io.RawSink
 import kotlinx.io.readTo
+import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * The long edge, in pixels, to decode an image at: twice the viewport's long edge. Sharp at fit and
@@ -24,7 +24,10 @@ import kotlinx.io.readTo
  * the full resolution would need tiling, which this viewer does not do. The **long** edge, so turning
  * the phone does not change what is decoded.
  */
-internal fun decodeTarget(viewportWidthPx: Int, viewportHeightPx: Int): Int {
+internal fun decodeTarget(
+    viewportWidthPx: Int,
+    viewportHeightPx: Int,
+): Int {
     require(viewportWidthPx > 0 && viewportHeightPx > 0) { "the viewport has not been measured" }
     return maxOf(viewportWidthPx, viewportHeightPx) * 2
 }
@@ -32,9 +35,13 @@ internal fun decodeTarget(viewportWidthPx: Int, viewportHeightPx: Int): Int {
 /** What loading one viewer page came to: a picture, or a page that says why there is none. */
 internal sealed interface LoadedPage<out T> {
     /** Not a data class: its one field is a picture of vault content, and has no business in a log line. */
-    class Shown<T>(val image: T) : LoadedPage<T>
+    class Shown<T>(
+        val image: T,
+    ) : LoadedPage<T>
 
-    data class Page(val page: ViewerPage) : LoadedPage<Nothing>
+    data class Page(
+        val page: ViewerPage,
+    ) : LoadedPage<Nothing>
 }
 
 /**
@@ -74,7 +81,10 @@ internal class LoadViewerImage<T>(
     private val cap: Long = IMAGE_CAP,
     private val newBuffer: (size: Int) -> ByteArray = { ByteArray(it) },
 ) {
-    suspend fun load(item: GalleryItem, targetLongEdge: Int): LoadedPage<T> {
+    suspend fun load(
+        item: GalleryItem,
+        targetLongEdge: Int,
+    ): LoadedPage<T> {
         when (val plan = openPlan(item.meta, item.size, cap)) {
             is OpenPlan.Show -> return LoadedPage.Page(plan.page)
             OpenPlan.Decode -> Unit
@@ -84,31 +94,41 @@ internal class LoadViewerImage<T>(
 
     private val oneAtATime = Mutex()
 
-    private fun CoroutineScope.readAndDecode(item: GalleryItem, targetLongEdge: Int): LoadedPage<T> {
-        val buffer = try {
-            newBuffer(item.size.toInt())
-        } catch (_: OutOfMemoryError) {
-            return LoadedPage.Page(ViewerPage.TooLarge)
-        }
+    private fun CoroutineScope.readAndDecode(
+        item: GalleryItem,
+        targetLongEdge: Int,
+    ): LoadedPage<T> {
+        val buffer =
+            try {
+                newBuffer(item.size.toInt())
+            } catch (_: OutOfMemoryError) {
+                return LoadedPage.Page(ViewerPage.TooLarge)
+            }
         try {
             val sink = ArraySink(buffer)
-            val read = try {
-                // A lock stops the decrypt within a chunk, not at the end of the file.
-                items.open(item.id, StopsWhenCancelled(coroutineContext.job, sink))
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                // The vault answers with outcomes; a throw is a session closed under the read,
-                // or a "never happens". Either way the page names no cause it cannot know.
-                Outcome.Err(VaultError.Unexpected(e))
-            }
+            val read =
+                try {
+                    // A lock stops the decrypt within a chunk, not at the end of the file.
+                    items.open(item.id, StopsWhenCancelled(coroutineContext.job, sink))
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // The vault answers with outcomes; a throw is a session closed under the read,
+                    // or a "never happens". Either way the page names no cause it cannot know.
+                    Outcome.Err(VaultError.Unexpected(e))
+                }
             return when (read) {
-                is Outcome.Err -> LoadedPage.Page(pageForOpenFailure(read.error))
-                is Outcome.Ok -> if (sink.written != buffer.size) {
-                    LoadedPage.Page(ViewerPage.CouldntOpen)
-                } else {
-                    ensureActive() // a lock during the read: drop it rather than decode a picture nobody will see
-                    decodeOrDecline(buffer, targetLongEdge)
+                is Outcome.Err -> {
+                    LoadedPage.Page(pageForOpenFailure(read.error))
+                }
+
+                is Outcome.Ok -> {
+                    if (sink.written != buffer.size) {
+                        LoadedPage.Page(ViewerPage.CouldntOpen)
+                    } else {
+                        ensureActive() // a lock during the read: drop it rather than decode a picture nobody will see
+                        decodeOrDecline(buffer, targetLongEdge)
+                    }
                 }
             }
         } finally {
@@ -116,23 +136,32 @@ internal class LoadViewerImage<T>(
         }
     }
 
-    private fun decodeOrDecline(bytes: ByteArray, targetLongEdge: Int): LoadedPage<T> {
-        val image = try {
-            decode(bytes, targetLongEdge)
-        } catch (_: OutOfMemoryError) {
-            return LoadedPage.Page(ViewerPage.TooLarge)
-        } catch (e: Exception) {
-            null // the seam promises not to throw; one that does has declined, not crashed the viewer
-        }
+    private fun decodeOrDecline(
+        bytes: ByteArray,
+        targetLongEdge: Int,
+    ): LoadedPage<T> {
+        val image =
+            try {
+                decode(bytes, targetLongEdge)
+            } catch (_: OutOfMemoryError) {
+                return LoadedPage.Page(ViewerPage.TooLarge)
+            } catch (e: Exception) {
+                null // the seam promises not to throw; one that does has declined, not crashed the viewer
+            }
         return if (image != null) LoadedPage.Shown(image) else LoadedPage.Page(ViewerPage.CantShow)
     }
 
     /** Collects a decrypted object into [into], which is sized for it, and refuses a byte more. */
-    private class ArraySink(private val into: ByteArray) : RawSink {
+    private class ArraySink(
+        private val into: ByteArray,
+    ) : RawSink {
         var written = 0
             private set
 
-        override fun write(source: Buffer, byteCount: Long) {
+        override fun write(
+            source: Buffer,
+            byteCount: Long,
+        ) {
             if (byteCount > into.size - written) throw IOException("the object is larger than its recorded size")
             val count = byteCount.toInt()
             source.readTo(into, written, written + count)

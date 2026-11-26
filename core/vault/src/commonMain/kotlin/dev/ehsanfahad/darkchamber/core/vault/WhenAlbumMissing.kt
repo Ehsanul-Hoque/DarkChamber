@@ -21,5 +21,7 @@ sealed interface WhenAlbumMissing {
      * For a caller whose payload is expensive and cannot be had again — a recording, minutes of
      * someone's time — where losing it would be worse than filing it somewhere it was not aimed.
      */
-    class FileUnfiled(val onFiledUnfiled: () -> Unit) : WhenAlbumMissing
+    class FileUnfiled(
+        val onFiledUnfiled: () -> Unit,
+    ) : WhenAlbumMissing
 }

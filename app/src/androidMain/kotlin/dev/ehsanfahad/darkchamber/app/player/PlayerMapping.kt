@@ -30,20 +30,24 @@ internal object PlayerMapping {
      * The player's error codes that mean this device's decoders, or its file readers, cannot handle the
      * item's format — not that anything failed to read.
      */
-    val DECODER_CODES: Set<Int> = setOf(
-        PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
-        PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
-        PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
-        PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES,
-        PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
-    )
+    val DECODER_CODES: Set<Int> =
+        setOf(
+            PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+            PlaybackException.ERROR_CODE_DECODER_QUERY_FAILED,
+            PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
+            PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES,
+            PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
+        )
 
     /**
      * Where a stop came from. A read the vault refused is the vault's own verdict and wins over
      * whatever the player made of it; a format this device cannot decode, with no refused read behind
      * it, is the decoder's; anything else names no cause.
      */
-    fun failureOf(errorCode: Int, readerFailure: VaultError?): PlayerFailure =
+    fun failureOf(
+        errorCode: Int,
+        readerFailure: VaultError?,
+    ): PlayerFailure =
         when {
             readerFailure != null -> PlayerFailure.Reader(readerFailure)
             errorCode in DECODER_CODES -> PlayerFailure.Decoder
@@ -51,7 +55,10 @@ internal object PlayerMapping {
         }
 
     /** One group of tracks the player found: its kind ([C.TRACK_TYPE_VIDEO] …) and whether any plays. */
-    data class FoundTrack(val type: Int, val supported: Boolean)
+    data class FoundTrack(
+        val type: Int,
+        val supported: Boolean,
+    )
 
     /**
      * The item's picture and sound: none found is absent; any one this device plays makes it playable;
@@ -60,7 +67,10 @@ internal object PlayerMapping {
     fun tracksOf(found: List<FoundTrack>): PlayerTracks =
         PlayerTracks(video = supportOf(found, C.TRACK_TYPE_VIDEO), audio = supportOf(found, C.TRACK_TYPE_AUDIO))
 
-    private fun supportOf(found: List<FoundTrack>, type: Int): TrackSupport {
+    private fun supportOf(
+        found: List<FoundTrack>,
+        type: Int,
+    ): TrackSupport {
         val ofType = found.filter { it.type == type }
         return when {
             ofType.isEmpty() -> TrackSupport.Absent
@@ -77,9 +87,14 @@ internal object PlayerMapping {
         suppressionReason == Player.PLAYBACK_SUPPRESSION_REASON_TRANSIENT_AUDIO_FOCUS_LOSS
 
     /** A level from 0 to 1 in the phone's media-volume steps, rounded, never outside them. */
-    fun volumeStep(level: Float, maxStep: Int): Int = Math.round(level.coerceIn(0f, 1f) * maxStep)
+    fun volumeStep(
+        level: Float,
+        maxStep: Int,
+    ): Int = Math.round(level.coerceIn(0f, 1f) * maxStep)
 
     /** A step of the phone's media volume as a level from 0 to 1. */
-    fun volumeLevel(step: Int, maxStep: Int): Float =
-        if (maxStep <= 0) 0f else step.toFloat() / maxStep
+    fun volumeLevel(
+        step: Int,
+        maxStep: Int,
+    ): Float = if (maxStep <= 0) 0f else step.toFloat() / maxStep
 }

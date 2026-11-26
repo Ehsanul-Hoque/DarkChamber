@@ -32,7 +32,10 @@ class OutOfSpaceTest {
     private val noSpace = strerror(ENOSPC)!!.toKString()
     private val ioError = strerror(EIO)!!.toKString()
 
-    private fun shapes(err: Int, text: String) = listOf(
+    private fun shapes(
+        err: Int,
+        text: String,
+    ) = listOf(
         IOException("write failed with errno $err ($text)"),
         IOException("close failed with errno $err ($text)"),
         IOException("Failed to open /vault/objects/0a1b with $text"),
@@ -54,12 +57,14 @@ class OutOfSpaceTest {
 
     @Test
     fun no_other_failure_is_called_a_full_disk() {
-        val others = shapes(EIO, ioError) + listOf(
-            IOException("Stream Closed"),
-            IOException("Unknown error"),
-            IOException(),
-            IllegalStateException("closed"),
-        )
+        val others =
+            shapes(EIO, ioError) +
+                listOf(
+                    IOException("Stream Closed"),
+                    IOException("Unknown error"),
+                    IOException(),
+                    IllegalStateException("closed"),
+                )
         for (failure in others) {
             assertFalse(isOutOfSpace(failure), failure.message)
         }

@@ -29,7 +29,6 @@ import kotlin.test.assertTrue
 
 /** The camera screen's video decisions, each a function of state. */
 class CameraVideoStateTest {
-
     private val bothQualities = setOf(VideoQuality.HD, VideoQuality.UHD)
 
     private fun state(
@@ -60,10 +59,20 @@ class CameraVideoStateTest {
         mode = mode,
         quality = quality,
         torch = torch,
-        recorder = RecorderState(
-            active = if (recording) ActiveRecording(1_000, withAudio, MutableStateFlow(RecordingProgress.Zero)) else null,
-            stopping = stopping,
-        ),
+        recorder =
+            RecorderState(
+                active =
+                    if (recording) {
+                        ActiveRecording(
+                            1_000,
+                            withAudio,
+                            MutableStateFlow(RecordingProgress.Zero),
+                        )
+                    } else {
+                        null
+                    },
+                stopping = stopping,
+            ),
         lane = VideoLaneState(busy = laneBusy),
         microphone = microphone,
         hasRecorded = hasRecorded,
@@ -93,7 +102,11 @@ class CameraVideoStateTest {
     fun the_light_control_is_the_flash_in_photo_and_the_torch_in_video() {
         assertEquals(LightControl.Flash(FlashMode.Auto), state(mode = CaptureMode.Photo).light)
         assertEquals(LightControl.Torch(on = false), state().light)
-        assertEquals(LightControl.Torch(on = true), state(torch = true, recording = true).light, "available while recording")
+        assertEquals(
+            LightControl.Torch(on = true),
+            state(torch = true, recording = true).light,
+            "available while recording",
+        )
         assertNull(state(hasFlash = false).light, "no light on this lens, no control")
         assertNull(state(mode = CaptureMode.Photo, hasFlash = false).light)
         assertFalse(state(hasFlash = false).flashOffered)
@@ -103,7 +116,10 @@ class CameraVideoStateTest {
     @Test
     fun the_quality_chip_shows_in_video_on_a_lens_with_a_choice_and_not_while_recording() {
         assertEquals(QualityChip(current = VideoQuality.HD, next = VideoQuality.UHD), state().qualityChip)
-        assertEquals(QualityChip(current = VideoQuality.UHD, next = VideoQuality.HD), state(quality = VideoQuality.UHD).qualityChip)
+        assertEquals(
+            QualityChip(current = VideoQuality.UHD, next = VideoQuality.HD),
+            state(quality = VideoQuality.UHD).qualityChip,
+        )
         assertNull(state(qualities = setOf(VideoQuality.HD)).qualityChip, "a lens with only HD")
         // 4K chosen on the back lens, then flipped to a front lens that records only HD: the chip
         // would read "4K" over a recording made in HD.
@@ -130,7 +146,11 @@ class CameraVideoStateTest {
     fun in_video_the_shutter_records_and_while_recording_it_stops() {
         assertEquals(Shutter(ShutterKind.Record, enabled = true), state().shutter)
         assertEquals(Shutter(ShutterKind.Stop, enabled = true), state(recording = true).shutter)
-        assertEquals(Shutter(ShutterKind.Stop, enabled = false), state(recording = true, stopping = true).shutter, "pressed once already")
+        assertEquals(
+            Shutter(ShutterKind.Stop, enabled = false),
+            state(recording = true, stopping = true).shutter,
+            "pressed once already",
+        )
     }
 
     /** The lane holds one clip at a time; the control says why it is out of reach rather than just greying. */
@@ -164,7 +184,10 @@ class CameraVideoStateTest {
     fun the_no_sound_mark_shows_only_on_a_recording_without_sound() {
         assertTrue(state(recording = true, withAudio = false).showsNoSoundMark)
         assertFalse(state(recording = true, withAudio = true).showsNoSoundMark)
-        assertFalse(state(recording = false, microphone = MicrophonePermission.Denied).showsNoSoundMark, "only while recording")
+        assertFalse(
+            state(recording = false, microphone = MicrophonePermission.Denied).showsNoSoundMark,
+            "only while recording",
+        )
     }
 
     @Test
@@ -172,8 +195,14 @@ class CameraVideoStateTest {
         assertEquals(MicrophoneHint.Ask, state(microphone = MicrophonePermission.Denied).microphoneHint)
         assertEquals(MicrophoneHint.Settings, state(microphone = MicrophonePermission.PermanentlyDenied).microphoneHint)
         assertNull(state(microphone = MicrophonePermission.Granted).microphoneHint, "nothing to fix")
-        assertNull(state(microphone = MicrophonePermission.Denied, hasRecorded = true).microphoneHint, "said once, before the first")
-        assertNull(state(microphone = MicrophonePermission.Denied, recording = true).microphoneHint, "the mark says it while recording")
+        assertNull(
+            state(microphone = MicrophonePermission.Denied, hasRecorded = true).microphoneHint,
+            "said once, before the first",
+        )
+        assertNull(
+            state(microphone = MicrophonePermission.Denied, recording = true).microphoneHint,
+            "the mark says it while recording",
+        )
         assertNull(state(mode = CaptureMode.Photo, microphone = MicrophonePermission.Denied).microphoneHint)
     }
 
@@ -202,7 +231,11 @@ class CameraVideoStateTest {
         assertEquals(MicrophoneToggle(soundOn = true), state(soundWanted = true).microphoneToggle)
         assertEquals(MicrophoneToggle(soundOn = false), state(soundWanted = false).microphoneToggle)
         for (refused in MicrophonePermission.entries - MicrophonePermission.Granted) {
-            assertEquals(MicrophoneToggle(soundOn = false), state(microphone = refused, soundWanted = true).microphoneToggle, "$refused")
+            assertEquals(
+                MicrophoneToggle(soundOn = false),
+                state(microphone = refused, soundWanted = true).microphoneToggle,
+                "$refused",
+            )
         }
     }
 
@@ -238,13 +271,20 @@ class CameraVideoStateTest {
         )
         assertEquals(
             CameraNotice.Recording(RecorderNotice.TooShort),
-            withNotices(photo = CaptureProblem.SaveFailed, recorder = RecorderNotice.TooShort, lane = VideoNotice.SaveFailed).notice,
+            withNotices(
+                photo = CaptureProblem.SaveFailed,
+                recorder = RecorderNotice.TooShort,
+                lane = VideoNotice.SaveFailed,
+            ).notice,
         )
         assertEquals(
             CameraNotice.Saving(VideoNotice.SavedUnfiled),
             withNotices(photo = CaptureProblem.SaveFailed, lane = VideoNotice.SavedUnfiled).notice,
         )
-        assertEquals(CameraNotice.Photo(CameraMessage.SaveFailed), withNotices(photo = CaptureProblem.SaveFailed).notice)
+        assertEquals(
+            CameraNotice.Photo(CameraMessage.SaveFailed),
+            withNotices(photo = CaptureProblem.SaveFailed).notice,
+        )
         assertNull(withNotices().notice)
     }
 
@@ -253,15 +293,16 @@ class CameraVideoStateTest {
     @Test
     fun the_tile_shows_the_newest_capture_and_a_ring_while_a_clip_saves() {
         val shot = LastShot(byteArrayOf(1), CaptureMode.Video)
-        val saving = CameraState(
-            destination = null,
-            permission = CameraPermission.Granted,
-            availability = CameraAvailability.Available,
-            capabilities = CameraCapabilities.None,
-            queue = CaptureQueueState(holding = 0, bound = 3),
-            lane = VideoLaneState(busy = true, progress = 0.4f),
-            lastShot = shot,
-        )
+        val saving =
+            CameraState(
+                destination = null,
+                permission = CameraPermission.Granted,
+                availability = CameraAvailability.Available,
+                capabilities = CameraCapabilities.None,
+                queue = CaptureQueueState(holding = 0, bound = 3),
+                lane = VideoLaneState(busy = true, progress = 0.4f),
+                lastShot = shot,
+            )
 
         assertEquals(TileState(lastShot = shot, saving = true, progress = 0.4f), saving.tile)
         assertEquals(TileState(lastShot = null, saving = false, progress = null), state().tile)
@@ -272,9 +313,18 @@ class CameraVideoStateTest {
     /** Turned against the tilt, so an icon stays upright to the person holding the phone. */
     @Test
     fun icons_turn_against_the_tilt() {
-        assertEquals(IconTurn(-90f, animated = true), iconTurn(current = 0f, tilt = 90, layout = CameraLayout.Below, reducedMotion = false))
-        assertEquals(IconTurn(-180f, animated = true), iconTurn(current = -90f, tilt = 180, layout = CameraLayout.Below, reducedMotion = false))
-        assertEquals(IconTurn(0f, animated = true), iconTurn(current = -90f, tilt = 0, layout = CameraLayout.Below, reducedMotion = false))
+        assertEquals(
+            IconTurn(-90f, animated = true),
+            iconTurn(current = 0f, tilt = 90, layout = CameraLayout.Below, reducedMotion = false),
+        )
+        assertEquals(
+            IconTurn(-180f, animated = true),
+            iconTurn(current = -90f, tilt = 180, layout = CameraLayout.Below, reducedMotion = false),
+        )
+        assertEquals(
+            IconTurn(0f, animated = true),
+            iconTurn(current = -90f, tilt = 0, layout = CameraLayout.Below, reducedMotion = false),
+        )
     }
 
     /**
@@ -283,22 +333,37 @@ class CameraVideoStateTest {
      */
     @Test
     fun icons_take_the_shortest_way_round_across_the_wrap_in_both_directions() {
-        assertEquals(90f, iconTurn(current = 0f, tilt = 270, layout = CameraLayout.Below, reducedMotion = false).degrees)
+        assertEquals(
+            90f,
+            iconTurn(current = 0f, tilt = 270, layout = CameraLayout.Below, reducedMotion = false).degrees,
+        )
         assertEquals(0f, iconTurn(current = 90f, tilt = 0, layout = CameraLayout.Below, reducedMotion = false).degrees)
         // From 270° tilt (icon at 90) to 180° tilt: a quarter on, to 180, not three quarters back to -180.
-        assertEquals(180f, iconTurn(current = 90f, tilt = 180, layout = CameraLayout.Below, reducedMotion = false).degrees)
+        assertEquals(
+            180f,
+            iconTurn(current = 90f, tilt = 180, layout = CameraLayout.Below, reducedMotion = false).degrees,
+        )
         // Several turns in: keeps counting from where it is.
-        assertEquals(360f, iconTurn(current = 450f, tilt = 0, layout = CameraLayout.Below, reducedMotion = false).degrees)
+        assertEquals(
+            360f,
+            iconTurn(current = 450f, tilt = 0, layout = CameraLayout.Below, reducedMotion = false).degrees,
+        )
     }
 
     @Test
     fun under_reduced_motion_icons_snap() {
-        assertEquals(IconTurn(-90f, animated = false), iconTurn(current = 0f, tilt = 90, layout = CameraLayout.Below, reducedMotion = true))
+        assertEquals(
+            IconTurn(-90f, animated = false),
+            iconTurn(current = 0f, tilt = 90, layout = CameraLayout.Below, reducedMotion = true),
+        )
     }
 
     /** Where the window is wide the display itself rotates, so icons drawn upright stay upright. */
     @Test
     fun in_the_wide_fallback_icons_do_not_turn() {
-        assertEquals(IconTurn(0f, animated = false), iconTurn(current = -90f, tilt = 90, layout = CameraLayout.Beside, reducedMotion = false))
+        assertEquals(
+            IconTurn(0f, animated = false),
+            iconTurn(current = -90f, tilt = 90, layout = CameraLayout.Beside, reducedMotion = false),
+        )
     }
 }

@@ -38,11 +38,13 @@ class Prelude(
 
     override fun equals(other: Any?): Boolean =
         this === other ||
-            (other is Prelude &&
-                version == other.version &&
-                cipherId == other.cipherId &&
-                headerLen == other.headerLen &&
-                noncePrefix.contentEquals(other.noncePrefix))
+            (
+                other is Prelude &&
+                    version == other.version &&
+                    cipherId == other.cipherId &&
+                    headerLen == other.headerLen &&
+                    noncePrefix.contentEquals(other.noncePrefix)
+            )
 
     override fun hashCode(): Int {
         var result = version

@@ -23,7 +23,6 @@ internal class FailingSqlDriver(
     // could not be read". Off by default, so every existing use refuses writes only.
     private val failQueryOn: (String) -> Boolean = { false },
 ) : SqlDriver {
-
     var refusals = 0
         private set
 
@@ -58,11 +57,15 @@ internal class FailingSqlDriver(
 
     override fun currentTransaction(): Transacter.Transaction? = delegate.currentTransaction()
 
-    override fun addListener(vararg queryKeys: String, listener: Query.Listener) =
-        delegate.addListener(queryKeys = queryKeys, listener = listener)
+    override fun addListener(
+        vararg queryKeys: String,
+        listener: Query.Listener,
+    ) = delegate.addListener(queryKeys = queryKeys, listener = listener)
 
-    override fun removeListener(vararg queryKeys: String, listener: Query.Listener) =
-        delegate.removeListener(queryKeys = queryKeys, listener = listener)
+    override fun removeListener(
+        vararg queryKeys: String,
+        listener: Query.Listener,
+    ) = delegate.removeListener(queryKeys = queryKeys, listener = listener)
 
     override fun notifyListeners(vararg queryKeys: String) = delegate.notifyListeners(queryKeys = queryKeys)
 

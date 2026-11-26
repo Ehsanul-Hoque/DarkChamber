@@ -33,6 +33,7 @@ dependencies {
 }
 
 /** Turns a version-catalog plugin alias into its plugin-marker artifact coordinate. */
-fun Provider<PluginDependency>.asDependency(): Provider<String> = map { dep ->
-    "${dep.pluginId}:${dep.pluginId}.gradle.plugin:${dep.version}"
-}
+fun Provider<PluginDependency>.asDependency(): Provider<String> =
+    map { dep ->
+        "${dep.pluginId}:${dep.pluginId}.gradle.plugin:${dep.version}"
+    }

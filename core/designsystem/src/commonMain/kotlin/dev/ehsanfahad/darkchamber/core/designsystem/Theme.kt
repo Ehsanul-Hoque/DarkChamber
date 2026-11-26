@@ -79,15 +79,20 @@ private fun DarkChamberColors.toMaterialColorScheme() =
 /** Role accessor — `DarkChamberTheme.colors.accent`, `DarkChamberTheme.spacing.spaceMd`, … */
 object DarkChamberTheme {
     val colors: DarkChamberColors
-        @Composable @ReadOnlyComposable get() = LocalDarkChamberColors.current
+        @Composable @ReadOnlyComposable
+        get() = LocalDarkChamberColors.current
     val typography: DarkChamberTypography
-        @Composable @ReadOnlyComposable get() = LocalDarkChamberTypography.current
+        @Composable @ReadOnlyComposable
+        get() = LocalDarkChamberTypography.current
     val shapes: DarkChamberShapes
-        @Composable @ReadOnlyComposable get() = LocalDarkChamberShapes.current
+        @Composable @ReadOnlyComposable
+        get() = LocalDarkChamberShapes.current
     val spacing: DarkChamberSpacing
-        @Composable @ReadOnlyComposable get() = LocalDarkChamberSpacing.current
+        @Composable @ReadOnlyComposable
+        get() = LocalDarkChamberSpacing.current
     val motion: DarkChamberMotion
-        @Composable @ReadOnlyComposable get() = LocalDarkChamberMotion.current
+        @Composable @ReadOnlyComposable
+        get() = LocalDarkChamberMotion.current
 }
 
 // staticCompositionLocalOf: the tokens rarely change, so reads don't need per-value

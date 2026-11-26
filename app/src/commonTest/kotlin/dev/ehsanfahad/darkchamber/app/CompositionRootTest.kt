@@ -19,18 +19,19 @@ import kotlin.test.assertNotNull
  * this only asserts the graph wires up. The round-trip behaviour is covered separately.
  */
 class CompositionRootTest {
-    private val testPlatformModule: Module = module {
-        single<VaultRootResolver> {
-            object : VaultRootResolver {
-                override fun resolve(): Outcome<Path> =
-                    Outcome.Err(VaultError.Io(IllegalStateException("stub resolver not invoked")))
+    private val testPlatformModule: Module =
+        module {
+            single<VaultRootResolver> {
+                object : VaultRootResolver {
+                    override fun resolve(): Outcome<Path> =
+                        Outcome.Err(VaultError.Io(IllegalStateException("stub resolver not invoked")))
+                }
+            }
+            single<SecureKeyStore> { FakeSecureKeyStore() }
+            single<CatalogProvider> {
+                CatalogProvider { error("catalog opener not invoked during graph construction") }
             }
         }
-        single<SecureKeyStore> { FakeSecureKeyStore() }
-        single<CatalogProvider> {
-            CatalogProvider { error("catalog opener not invoked during graph construction") }
-        }
-    }
 
     @Test
     fun graph_resolves_vault_bootstrap() {

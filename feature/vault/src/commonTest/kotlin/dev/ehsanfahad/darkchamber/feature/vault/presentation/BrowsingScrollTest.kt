@@ -28,8 +28,10 @@ import kotlin.test.assertTrue
  * was asked for, which is all these assertions read.
  */
 class BrowsingScrollTest {
-
-    private fun item(id: Byte, name: String) = GalleryItem(
+    private fun item(
+        id: Byte,
+        name: String,
+    ) = GalleryItem(
         id = byteArrayOf(id),
         kind = VaultItemKind.FILE,
         size = 1L,
@@ -43,8 +45,10 @@ class BrowsingScrollTest {
     /** An empty one, built the way the listing builds it rather than written out as a literal. */
     private fun emptyListing() = emptyList<GalleryItem>().ordered(GalleryOrder.Newest).matching("").items
 
-    private fun scrolled(index: Int, offset: Int) =
-        LazyGridState(firstVisibleItemIndex = index, firstVisibleItemScrollOffset = offset)
+    private fun scrolled(
+        index: Int,
+        offset: Int,
+    ) = LazyGridState(firstVisibleItemIndex = index, firstVisibleItemScrollOffset = offset)
 
     @Test
     fun a_re_order_puts_the_grid_back_where_it_was() {

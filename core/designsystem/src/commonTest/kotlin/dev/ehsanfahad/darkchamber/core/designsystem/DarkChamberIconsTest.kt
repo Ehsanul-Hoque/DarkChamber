@@ -16,7 +16,6 @@ import kotlin.test.assertTrue
  * coordinates — which scales the paths out of the box they are drawn in.
  */
 class DarkChamberIconsTest {
-
     @Test
     fun the_album_mark_carries_its_drawing() {
         val paths = albumMarkVector.root.filterIsInstance<VectorPath>()

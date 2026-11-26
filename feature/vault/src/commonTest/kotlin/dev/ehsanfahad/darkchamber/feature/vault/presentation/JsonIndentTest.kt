@@ -10,7 +10,6 @@ import kotlin.test.assertIs
  * (stripping that whitespace) checks each one against its input.
  */
 class JsonIndentTest {
-
     /** A backslash, built rather than typed, so no escape sequence is ever written into this file. */
     private val bs = Char(0x5C)
 
@@ -154,8 +153,18 @@ class JsonIndentTest {
     @Test
     fun a_misplaced_comma_colon_or_member_is_not_json() {
         assertInvalid(
-            "[1,]", "{\"a\":1,}", "[,1]", "[1,,2]", "{,}",
-            "{\"a\"}", "{\"a\":}", "{\"a\" 1}", "{\"a\"::1}", "{\"a\";1}", "[1:2]", "{\"a\":1 \"b\":2}",
+            "[1,]",
+            "{\"a\":1,}",
+            "[,1]",
+            "[1,,2]",
+            "{,}",
+            "{\"a\"}",
+            "{\"a\":}",
+            "{\"a\" 1}",
+            "{\"a\"::1}",
+            "{\"a\";1}",
+            "[1:2]",
+            "{\"a\":1 \"b\":2}",
         )
     }
 
@@ -188,7 +197,7 @@ class JsonIndentTest {
 
     @Test
     fun an_escape_json_does_not_allow_is_not_json() {
-        assertInvalid("\"${bs}x\"", "\"${bs}u12\"", "\"${bs}u12G4\"", "\"${bs}u123G\"","\"${bs}U0041\"", "\"$bs'\"")
+        assertInvalid("\"${bs}x\"", "\"${bs}u12\"", "\"${bs}u12G4\"", "\"${bs}u123G\"", "\"${bs}U0041\"", "\"$bs'\"")
     }
 
     /** A raw control character must be escaped inside a string; a raw tab or line break is not JSON. */
@@ -206,7 +215,11 @@ class JsonIndentTest {
     /** The edges of what is allowed, so the refusals above are not refusing too much. */
     @Test
     fun the_edges_of_the_grammar_are_json() {
-        assertEquals("\"" + Char(0x7F) + Char(0x20) + "\"", indented("\"" + Char(0x7F) + Char(0x20) + "\""), "DEL and space are allowed raw")
+        assertEquals(
+            "\"" + Char(0x7F) + Char(0x20) + "\"",
+            indented("\"" + Char(0x7F) + Char(0x20) + "\""),
+            "DEL and space are allowed raw",
+        )
         assertEquals("\"${bs}u00aF\"", indented("\"${bs}u00aF\""), "hex digits in either case")
         assertEquals("-0.0e-0", indented("-0.0e-0"))
         assertEquals("0", indented("0"))
@@ -220,7 +233,10 @@ class JsonIndentTest {
         val json = "[1,2]"
         assertEquals(12, indented(json).length)
         assertIs<JsonIndent.Result.Indented>(JsonIndent.indent(json, cap = 12))
-        assertIs<JsonIndent.Result.Indented>(JsonIndent.indent("[1,2]  \n", cap = 12), "trailing whitespace adds nothing")
+        assertIs<JsonIndent.Result.Indented>(
+            JsonIndent.indent("[1,2]  \n", cap = 12),
+            "trailing whitespace adds nothing",
+        )
         assertEquals(JsonIndent.Result.TooLarge, JsonIndent.indent(json, cap = 11))
     }
 
@@ -267,27 +283,44 @@ class JsonIndentTest {
             when {
                 inString -> {
                     out.append(c)
-                    if (escaped) escaped = false else if (c == bs) escaped = true else if (c == '"') inString = false
+                    if (escaped) {
+                        escaped = false
+                    } else if (c == bs) {
+                        escaped = true
+                    } else if (c == '"') {
+                        inString = false
+                    }
                 }
-                c == '"' -> { out.append(c); inString = true }
-                c == ' ' || c == '\t' || c == '\n' || c == '\r' -> Unit
-                else -> out.append(c)
+
+                c == '"' -> {
+                    out.append(c)
+                    inString = true
+                }
+
+                c == ' ' || c == '\t' || c == '\n' || c == '\r' -> {
+                    Unit
+                }
+
+                else -> {
+                    out.append(c)
+                }
             }
         }
         return out.toString()
     }
 
     private val fixtures: List<String>
-        get() = listOf(
-            """{"a":{"b":[1,{"c":null}]},"d":[]}""",
-            """[" { } [ ] , : ", "${bs}"", "$bs$bs", "${bs}u007B"]""",
-            """{"b":1,"a":2,"b":3}""",
-            """[0,-0,1.50,1e10,1E+10,-2.5e-3]""",
-            lines("{", """  "a": [""", "    1,", "    true", "  ],", """  "b": {}""", "}"),
-            " \t\r\n [ [ [ ] ] , { \"k k\" : \"v${bs}tv\" } ] \n",
-            "\"only a string with  spaces\"",
-            "[[[[[[[[[[1]]]]]]]]]]",
-        )
+        get() =
+            listOf(
+                """{"a":{"b":[1,{"c":null}]},"d":[]}""",
+                """[" { } [ ] , : ", "$bs"", "$bs$bs", "${bs}u007B"]""",
+                """{"b":1,"a":2,"b":3}""",
+                """[0,-0,1.50,1e10,1E+10,-2.5e-3]""",
+                lines("{", """  "a": [""", "    1,", "    true", "  ],", """  "b": {}""", "}"),
+                " \t\r\n [ [ [ ] ] , { \"k k\" : \"v${bs}tv\" } ] \n",
+                "\"only a string with  spaces\"",
+                "[[[[[[[[[[1]]]]]]]]]]",
+            )
 
     @Test
     fun indenting_changes_nothing_but_whitespace_outside_strings() {

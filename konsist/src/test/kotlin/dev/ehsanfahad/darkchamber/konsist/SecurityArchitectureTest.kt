@@ -16,7 +16,6 @@ import kotlin.test.assertTrue
  * Layer/naming rules are deliberately absent — they land with the rest of the quality tooling.
  */
 class SecurityArchitectureTest {
-
     @Test
     fun `cipher primitives are imported only inside core-crypto`() {
         assertNoForbiddenImports(
@@ -76,9 +75,10 @@ class SecurityArchitectureTest {
         // this is a rule about what a future loader must remember, not about the one that exists.
         // It is a source rule rather than a unit test because a test can only cover the loader it
         // knows about, and the hazard is precisely the loader nobody told the tests about.
-        val violations = productionFiles
-            .filter { BUILDS_AN_IMAGE_LOADER.containsMatchIn(codeOf(it)) }
-            .filterNot { file -> DISK_CACHE_OFF.any { file.text.contains(it) } }
+        val violations =
+            productionFiles
+                .filter { BUILDS_AN_IMAGE_LOADER.containsMatchIn(codeOf(it)) }
+                .filterNot { file -> DISK_CACHE_OFF.any { file.text.contains(it) } }
 
         assertTrue(
             violations.isEmpty(),
@@ -112,20 +112,21 @@ class SecurityArchitectureTest {
         //
         // A source rule rather than a unit test for the usual reason: nothing a host test can reach
         // observes a platform window, and the hazard is the call site nobody wrote a test for.
-        val violations = productionFiles
-            .filter { OPENS_A_WINDOW.containsMatchIn(codeOf(it)) }
-            // The **call**, not the name: the first version of this looked for the bare identifier
-            // and was satisfied by the import line, so deleting the call from a dialog while
-            // leaving the import — the exact shape of an accidental removal — passed.
-            //
-            // And **one call per window**: a file opening a sheet and a dialog with one exclusion
-            // between them passed while asking only whether the file mentioned it — measured by
-            // removing the sheet's call from a file that kept the dialog's.
-            .filter { file ->
-                val code = codeOf(file)
-                Regex(Regex.escape("$EXCLUDES_FROM_STRUCTURES()")).findAll(code).count() <
-                    OPENS_A_WINDOW.findAll(code).count()
-            }
+        val violations =
+            productionFiles
+                .filter { OPENS_A_WINDOW.containsMatchIn(codeOf(it)) }
+                // The **call**, not the name: the first version of this looked for the bare identifier
+                // and was satisfied by the import line, so deleting the call from a dialog while
+                // leaving the import — the exact shape of an accidental removal — passed.
+                //
+                // And **one call per window**: a file opening a sheet and a dialog with one exclusion
+                // between them passed while asking only whether the file mentioned it — measured by
+                // removing the sheet's call from a file that kept the dialog's.
+                .filter { file ->
+                    val code = codeOf(file)
+                    Regex(Regex.escape("$EXCLUDES_FROM_STRUCTURES()")).findAll(code).count() <
+                        OPENS_A_WINDOW.findAll(code).count()
+                }
 
         assertTrue(
             violations.isEmpty(),
@@ -151,9 +152,10 @@ class SecurityArchitectureTest {
         // Checked by the two property names rather than by the helper wrapping them, because a new
         // activity is free to write its own helper. What must not exist is an activity that sets
         // neither.
-        val violations = productionFiles
-            .filter { DECLARES_AN_ACTIVITY.containsMatchIn(codeOf(it)) }
-            .filterNot { file -> EXCLUDES_A_WINDOW.all { codeOf(file).contains(it) } }
+        val violations =
+            productionFiles
+                .filter { DECLARES_AN_ACTIVITY.containsMatchIn(codeOf(it)) }
+                .filterNot { file -> EXCLUDES_A_WINDOW.all { codeOf(file).contains(it) } }
 
         assertTrue(
             violations.isEmpty(),
@@ -181,9 +183,10 @@ class SecurityArchitectureTest {
         // The right answer is no binding at all — the application context already is a
         // PlatformContext. A source rule because it cannot be unit-tested: producing the failure
         // needs a real Context, and the failure is a stack overflow rather than a return value.
-        val violations = productionFiles
-            .filter { it.projectPath.contains("/src/androidMain/") }
-            .filter { DECLARES_A_PLATFORM_CONTEXT.containsMatchIn(codeOf(it)) }
+        val violations =
+            productionFiles
+                .filter { it.projectPath.contains("/src/androidMain/") }
+                .filter { DECLARES_A_PLATFORM_CONTEXT.containsMatchIn(codeOf(it)) }
 
         assertTrue(
             violations.isEmpty(),
@@ -237,9 +240,10 @@ class SecurityArchitectureTest {
         // so a field whose type is inferred cannot slip past; a state type therefore lives in a file
         // that mentions none of those types at all. A `String` cannot be named here — every state has
         // them — which is why decoded text always travels as one of the viewer's own text types.
-        val files = productionFiles.filter {
-            it.projectPath.contains("/feature/") && DECLARES_A_STATE_TYPE.containsMatchIn(codeOf(it))
-        }
+        val files =
+            productionFiles.filter {
+                it.projectPath.contains("/feature/") && DECLARES_A_STATE_TYPE.containsMatchIn(codeOf(it))
+            }
         assertTrue(files.size >= 5, "the rule found too few feature state types to check — has it moved?")
 
         val violations = files.filter { HOLDS_DECRYPTED_CONTENT.containsMatchIn(codeOf(it)) }
@@ -267,11 +271,15 @@ class SecurityArchitectureTest {
         // that are the way out on purpose: the two link openers, and the iOS camera's link to the
         // app's Settings page. Matched on source text, so an import, a qualified call and a member
         // call are all seen.
-        val violations = productionFiles.filter { file ->
-            val code = codeOf(file)
-            OPENS_AN_ADDRESS_BY_ITSELF.containsMatchIn(code) ||
-                (PLATFORM_OPENS_AN_ADDRESS.containsMatchIn(code) && OPENS_ADDRESSES_ON_PURPOSE.none { file.projectPath.endsWith(it) })
-        }
+        val violations =
+            productionFiles.filter { file ->
+                val code = codeOf(file)
+                OPENS_AN_ADDRESS_BY_ITSELF.containsMatchIn(code) ||
+                    (
+                        PLATFORM_OPENS_AN_ADDRESS.containsMatchIn(code) &&
+                            OPENS_ADDRESSES_ON_PURPOSE.none { file.projectPath.endsWith(it) }
+                    )
+            }
 
         assertTrue(
             violations.isEmpty(),
@@ -294,9 +302,10 @@ class SecurityArchitectureTest {
         allowedIn: (KoFileDeclaration) -> Boolean = { false },
         remedy: String,
     ) {
-        val violations = productionImports
-            .filterNot { (file, _) -> allowedIn(file) }
-            .filter { (_, import) -> forbidden(import) }
+        val violations =
+            productionImports
+                .filterNot { (file, _) -> allowedIn(file) }
+                .filter { (_, import) -> forbidden(import) }
 
         assertTrue(
             violations.isEmpty(),
@@ -364,10 +373,11 @@ class SecurityArchitectureTest {
          * wraps them, because a second activity is free to write its own helper — what must not
          * happen is a window with neither property set.
          */
-        val EXCLUDES_A_WINDOW = listOf(
-            "IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS",
-            "IMPORTANT_FOR_CONTENT_CAPTURE_NO_EXCLUDE_DESCENDANTS",
-        )
+        val EXCLUDES_A_WINDOW =
+            listOf(
+                "IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS",
+                "IMPORTANT_FOR_CONTENT_CAPTURE_NO_EXCLUDE_DESCENDANTS",
+            )
 
         /** A class, interface or enum whose name begins `NotSaved`. */
         val DECLARES_A_NOT_SAVED_TYPE =
@@ -415,7 +425,9 @@ class SecurityArchitectureTest {
          * composition local, the type, or its one call), and the span imported on its own.
          */
         val OPENS_AN_ADDRESS_BY_ITSELF =
-            Regex("""LinkAnnotation\s*\.\s*Url(?![A-Za-z0-9_])|(?<![A-Za-z0-9_])(LocalUriHandler|UriHandler|openUri)(?![A-Za-z0-9_])""")
+            Regex(
+                """LinkAnnotation\s*\.\s*Url(?![A-Za-z0-9_])|(?<![A-Za-z0-9_])(LocalUriHandler|UriHandler|openUri)(?![A-Za-z0-9_])""",
+            )
 
         /**
          * The platforms' ways to open an address: Android's `VIEW` intent (by its constant or spelled out as
@@ -432,11 +444,12 @@ class SecurityArchitectureTest {
          * the reader confirmed, and the iOS camera, which opens the app's own page in Settings when the
          * camera was refused.
          */
-        val OPENS_ADDRESSES_ON_PURPOSE = listOf(
-            "/app/link/AndroidLinkOpener.kt",
-            "/app/link/IosLinkOpener.kt",
-            "/app/camera/IosCameraController.kt",
-        )
+        val OPENS_ADDRESSES_ON_PURPOSE =
+            listOf(
+                "/app/link/AndroidLinkOpener.kt",
+                "/app/link/IosLinkOpener.kt",
+                "/app/camera/IosCameraController.kt",
+            )
 
         /** The helper that excludes the window it is composed in. */
         const val EXCLUDES_FROM_STRUCTURES = "ExcludeFromPlatformStructures"
@@ -449,17 +462,24 @@ class SecurityArchitectureTest {
  * every one of them pass while checking nothing. These assertions fail loudly in that case.
  */
 class ScanCoverageTest {
-
     @Test
     fun `the production scan reaches every module that holds Kotlin sources`() {
-        val modules = listOf(
-            "app", "androidApp",
-            "core/model", "core/crypto", "core/storage", "core/db",
-            "core/vault", "core/designsystem", "core/logging",
-            // Every new feature module belongs here: the rules are absence assertions, so a module
-            // the scan never reaches is a module the security invariants do not cover.
-            "feature/vault", "feature/camera",
-        )
+        val modules =
+            listOf(
+                "app",
+                "androidApp",
+                "core/model",
+                "core/crypto",
+                "core/storage",
+                "core/db",
+                "core/vault",
+                "core/designsystem",
+                "core/logging",
+                // Every new feature module belongs here: the rules are absence assertions, so a module
+                // the scan never reaches is a module the security invariants do not cover.
+                "feature/vault",
+                "feature/camera",
+            )
         val missing = modules.filter { module -> productionFiles.none { it.inModule(module) } }
 
         assertTrue(missing.isEmpty(), "Konsist scanned no production file in: $missing")
@@ -475,9 +495,13 @@ class ScanCoverageTest {
 
     @Test
     fun `test sources are excluded from the production scan`() {
-        val testFiles = productionFiles.filter { file ->
-            file.projectPath.substringAfter("/src/").substringBefore('/').contains("Test")
-        }
+        val testFiles =
+            productionFiles.filter { file ->
+                file.projectPath
+                    .substringAfter("/src/")
+                    .substringBefore('/')
+                    .contains("Test")
+            }
 
         assertTrue(testFiles.isEmpty(), "Test sources leaked into the production scan: $testFiles")
     }

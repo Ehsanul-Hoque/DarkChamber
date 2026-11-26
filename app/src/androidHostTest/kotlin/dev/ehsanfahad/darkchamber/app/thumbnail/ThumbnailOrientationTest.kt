@@ -18,7 +18,6 @@ import kotlin.test.assertTrue
  * Applying the transform is device work. Choosing it is arithmetic, and this is the arithmetic.
  */
 class ThumbnailOrientationTest {
-
     @Test
     fun an_upright_photo_needs_no_transform() {
         val normal = orientationTransform(ExifInterface.ORIENTATION_NORMAL)

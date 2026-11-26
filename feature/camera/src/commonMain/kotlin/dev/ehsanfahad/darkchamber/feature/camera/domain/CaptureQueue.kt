@@ -96,8 +96,10 @@ internal class CaptureQueue(
                 // Not reachable today — this coroutine runs in the same scope, and a cancelled
                 // coroutine never resumes from the capture with a value — so no test can reach it;
                 // kept because if it ever is reached, what it would otherwise drop is plaintext.
-                is CaptureResult.Captured ->
+                is CaptureResult.Captured -> {
                     if (waiting.trySend(result.photo).isFailure) result.photo.jpeg.fill(0)
+                }
+
                 CaptureResult.Failed -> {
                     _state.update { it.copy(holding = it.holding - 1, problem = CaptureProblem.CaptureFailed) }
                     stopIfFinished()
@@ -121,23 +123,43 @@ internal class CaptureQueue(
     private suspend fun persist(photo: CapturedPhoto) {
         // Cleared here as well as by the save: a lock landing before the encrypt starts on its own
         // thread cancels the save before it runs, and its clearing with it.
-        val saved = try {
-            withContext(ioContext) { save(photo, albumId) { scope.isActive } }
-        } finally {
-            photo.jpeg.fill(0)
-        }
+        val saved =
+            try {
+                withContext(ioContext) { save(photo, albumId) { scope.isActive } }
+            } finally {
+                photo.jpeg.fill(0)
+            }
         _state.update {
             when (saved) {
-                is Outcome.Ok -> it.copy(holding = it.holding - 1, saved = it.saved + 1, lastSavedId = saved.value, problem = null)
-                is Outcome.Err -> it.copy(
-                    holding = it.holding - 1,
-                    problem = if (saved.error == VaultError.Storage.Full) CaptureProblem.OutOfSpace else CaptureProblem.SaveFailed,
-                )
+                is Outcome.Ok -> {
+                    it.copy(holding = it.holding - 1, saved = it.saved + 1, lastSavedId = saved.value, problem = null)
+                }
+
+                is Outcome.Err -> {
+                    it.copy(
+                        holding = it.holding - 1,
+                        problem =
+                            if (saved.error ==
+                                VaultError.Storage.Full
+                            ) {
+                                CaptureProblem.OutOfSpace
+                            } else {
+                                CaptureProblem.SaveFailed
+                            },
+                    )
+                }
             }
         }
         // The screen that would have said so has gone, so it is said after instead.
         if (saved is Outcome.Err && finishing) {
-            val reason = if (saved.error == VaultError.Storage.Full) NotSavedReason.OutOfSpace else NotSavedReason.CouldNotSave
+            val reason =
+                if (saved.error ==
+                    VaultError.Storage.Full
+                ) {
+                    NotSavedReason.OutOfSpace
+                } else {
+                    NotSavedReason.CouldNotSave
+                }
             notSaved.report(NotSavedKind.Photo, reason, 1)
         }
         stopIfFinished()

@@ -56,4 +56,6 @@ data class BiometricRequest(
  * platform-opaque object the [SecureKeyStore] actual completes the crypto op with — the authorized
  * `CryptoObject` (Android) or the evaluated `LAContext` (iOS); `null` for the host fake.
  */
-data class BiometricAuth(val handle: Any?)
+data class BiometricAuth(
+    val handle: Any?,
+)

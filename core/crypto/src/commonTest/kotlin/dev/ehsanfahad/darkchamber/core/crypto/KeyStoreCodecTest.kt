@@ -8,29 +8,38 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 class KeyStoreCodecTest {
-    private fun pbkdf2Wrap() = WrapEntry(
-        slot = Slot.PASSPHRASE,
-        kdfId = KdfId.PBKDF2_SHA256,
-        kdfParams = KdfParams.Pbkdf2(ByteArray(16) { it.toByte() }, 1000),
-        nonce = ByteArray(12) { (it + 1).toByte() },
-        wrappedMk = ByteArray(48) { (it + 2).toByte() },
-    )
+    private fun pbkdf2Wrap() =
+        WrapEntry(
+            slot = Slot.PASSPHRASE,
+            kdfId = KdfId.PBKDF2_SHA256,
+            kdfParams = KdfParams.Pbkdf2(ByteArray(16) { it.toByte() }, 1000),
+            nonce = ByteArray(12) { (it + 1).toByte() },
+            wrappedMk = ByteArray(48) { (it + 2).toByte() },
+        )
 
-    private fun recoveryWrap() = WrapEntry(
-        slot = Slot.RECOVERY,
-        kdfId = KdfId.HKDF_SHA256,
-        kdfParams = KdfParams.Hkdf(ByteArray(16) { (it + 5).toByte() }, RECOVERY_HKDF_INFO.encodeToByteArray()),
-        nonce = ByteArray(12) { (it + 9).toByte() },
-        wrappedMk = ByteArray(48) { (it + 7).toByte() },
-    )
+    private fun recoveryWrap() =
+        WrapEntry(
+            slot = Slot.RECOVERY,
+            kdfId = KdfId.HKDF_SHA256,
+            kdfParams = KdfParams.Hkdf(ByteArray(16) { (it + 5).toByte() }, RECOVERY_HKDF_INFO.encodeToByteArray()),
+            nonce = ByteArray(12) { (it + 9).toByte() },
+            wrappedMk = ByteArray(48) { (it + 7).toByte() },
+        )
 
-    private fun argon2idWrap() = WrapEntry(
-        slot = Slot.PASSPHRASE,
-        kdfId = KdfId.ARGON2ID,
-        kdfParams = KdfParams.Argon2id(ByteArray(16) { (it + 3).toByte() }, memoryKib = 65536, iterations = 3, parallelism = 2),
-        nonce = ByteArray(12) { (it + 4).toByte() },
-        wrappedMk = ByteArray(48) { (it + 6).toByte() },
-    )
+    private fun argon2idWrap() =
+        WrapEntry(
+            slot = Slot.PASSPHRASE,
+            kdfId = KdfId.ARGON2ID,
+            kdfParams =
+                KdfParams.Argon2id(
+                    ByteArray(16) { (it + 3).toByte() },
+                    memoryKib = 65536,
+                    iterations = 3,
+                    parallelism = 2,
+                ),
+            nonce = ByteArray(12) { (it + 4).toByte() },
+            wrappedMk = ByteArray(48) { (it + 6).toByte() },
+        )
 
     @Test
     fun encode_then_decode_round_trips_a_multi_slot_blob() {
@@ -41,7 +50,11 @@ class KeyStoreCodecTest {
 
     @Test
     fun a_blob_with_no_hardware_slot_decodes_with_a_null_hardware_wrap() {
-        val decoded = KeyStoreCodec.decode(KeyStoreCodec.encode(KeyStoreBlob(KEYSTORE_VERSION, listOf(pbkdf2Wrap())))).getOrNull()
+        val decoded =
+            KeyStoreCodec
+                .decode(
+                    KeyStoreCodec.encode(KeyStoreBlob(KEYSTORE_VERSION, listOf(pbkdf2Wrap()))),
+                ).getOrNull()
         assertNull(decoded?.hardwareWrap)
     }
 
@@ -56,7 +69,10 @@ class KeyStoreCodecTest {
     @Test
     fun a_present_but_empty_hardware_blob_is_malformed() {
         val blob = KeyStoreBlob(KEYSTORE_VERSION, listOf(pbkdf2Wrap()), hardwareWrap = HardwareWrapEntry(ByteArray(0)))
-        assertEquals(Outcome.Err(VaultError.Crypto.MalformedContainer), KeyStoreCodec.decode(KeyStoreCodec.encode(blob)))
+        assertEquals(
+            Outcome.Err(VaultError.Crypto.MalformedContainer),
+            KeyStoreCodec.decode(KeyStoreCodec.encode(blob)),
+        )
     }
 
     @Test
@@ -64,20 +80,30 @@ class KeyStoreCodecTest {
         // A vault must always carry a passphrase/recovery path — a hardware-only blob would lock the
         // user out on a fresh device / after panic-wipe. The existing empty-wraps rule still applies
         // even when a hardware slot is present.
-        val blob = KeyStoreBlob(KEYSTORE_VERSION, emptyList(), hardwareWrap = HardwareWrapEntry(ByteArray(60) { it.toByte() }))
-        assertEquals(Outcome.Err(VaultError.Crypto.MalformedContainer), KeyStoreCodec.decode(KeyStoreCodec.encode(blob)))
+        val blob =
+            KeyStoreBlob(KEYSTORE_VERSION, emptyList(), hardwareWrap = HardwareWrapEntry(ByteArray(60) { it.toByte() }))
+        assertEquals(
+            Outcome.Err(VaultError.Crypto.MalformedContainer),
+            KeyStoreCodec.decode(KeyStoreCodec.encode(blob)),
+        )
     }
 
     @Test
     fun malformed_cbor_is_rejected_as_a_malformed_container() {
-        assertEquals(Outcome.Err(VaultError.Crypto.MalformedContainer), KeyStoreCodec.decode(byteArrayOf(0, 1, 2, 3, 4)))
+        assertEquals(
+            Outcome.Err(VaultError.Crypto.MalformedContainer),
+            KeyStoreCodec.decode(byteArrayOf(0, 1, 2, 3, 4)),
+        )
         assertEquals(Outcome.Err(VaultError.Crypto.MalformedContainer), KeyStoreCodec.decode(ByteArray(0)))
     }
 
     @Test
     fun a_format_version_above_supported_is_update_the_app() {
         val blob = KeyStoreBlob(KEYSTORE_VERSION + 1, listOf(pbkdf2Wrap()))
-        assertEquals(Outcome.Err(VaultError.Crypto.UnsupportedFormatVersion), KeyStoreCodec.decode(KeyStoreCodec.encode(blob)))
+        assertEquals(
+            Outcome.Err(VaultError.Crypto.UnsupportedFormatVersion),
+            KeyStoreCodec.decode(KeyStoreCodec.encode(blob)),
+        )
     }
 
     @Test
@@ -93,11 +119,12 @@ class KeyStoreCodecTest {
     fun non_positive_argon2id_params_are_malformed_not_a_crash() {
         // Mirror the PBKDF2 iterations<=0 guard: a crafted blob with any non-positive m/t/p would
         // otherwise reach the engine's require(... > 0) at unlock and throw uncaught. Reject up front.
-        val bad = listOf(
-            KdfParams.Argon2id(ByteArray(16), memoryKib = 0, iterations = 3, parallelism = 2),
-            KdfParams.Argon2id(ByteArray(16), memoryKib = 65536, iterations = 0, parallelism = 2),
-            KdfParams.Argon2id(ByteArray(16), memoryKib = 65536, iterations = 3, parallelism = 0),
-        )
+        val bad =
+            listOf(
+                KdfParams.Argon2id(ByteArray(16), memoryKib = 0, iterations = 3, parallelism = 2),
+                KdfParams.Argon2id(ByteArray(16), memoryKib = 65536, iterations = 0, parallelism = 2),
+                KdfParams.Argon2id(ByteArray(16), memoryKib = 65536, iterations = 3, parallelism = 0),
+            )
         for (params in bad) {
             val wrap = WrapEntry(Slot.PASSPHRASE, KdfId.ARGON2ID, params, ByteArray(12), ByteArray(48))
             val blob = KeyStoreBlob(KEYSTORE_VERSION, listOf(wrap))
@@ -127,16 +154,36 @@ class KeyStoreCodecTest {
 
     @Test
     fun a_kdf_id_that_disagrees_with_its_params_is_malformed() {
-        val wrap = WrapEntry(Slot.PASSPHRASE, KdfId.PBKDF2_SHA256, KdfParams.Hkdf(ByteArray(16), ByteArray(4)), ByteArray(12), ByteArray(48))
+        val wrap =
+            WrapEntry(
+                Slot.PASSPHRASE,
+                KdfId.PBKDF2_SHA256,
+                KdfParams.Hkdf(ByteArray(16), ByteArray(4)),
+                ByteArray(12),
+                ByteArray(48),
+            )
         val blob = KeyStoreBlob(KEYSTORE_VERSION, listOf(wrap))
-        assertEquals(Outcome.Err(VaultError.Crypto.MalformedContainer), KeyStoreCodec.decode(KeyStoreCodec.encode(blob)))
+        assertEquals(
+            Outcome.Err(VaultError.Crypto.MalformedContainer),
+            KeyStoreCodec.decode(KeyStoreCodec.encode(blob)),
+        )
     }
 
     @Test
     fun a_wrong_size_nonce_is_malformed() {
-        val wrap = WrapEntry(Slot.PASSPHRASE, KdfId.PBKDF2_SHA256, KdfParams.Pbkdf2(ByteArray(16), 1000), ByteArray(11), ByteArray(48))
+        val wrap =
+            WrapEntry(
+                Slot.PASSPHRASE,
+                KdfId.PBKDF2_SHA256,
+                KdfParams.Pbkdf2(ByteArray(16), 1000),
+                ByteArray(11),
+                ByteArray(48),
+            )
         val blob = KeyStoreBlob(KEYSTORE_VERSION, listOf(wrap))
-        assertEquals(Outcome.Err(VaultError.Crypto.MalformedContainer), KeyStoreCodec.decode(KeyStoreCodec.encode(blob)))
+        assertEquals(
+            Outcome.Err(VaultError.Crypto.MalformedContainer),
+            KeyStoreCodec.decode(KeyStoreCodec.encode(blob)),
+        )
     }
 
     @Test
@@ -145,7 +192,14 @@ class KeyStoreCodecTest {
         // require(iterations > 0) at unlock time and throw an uncaught IllegalArgumentException.
         // The codec must reject it up front as a malformed container (FORMAT §6).
         for (iters in intArrayOf(0, -1)) {
-            val wrap = WrapEntry(Slot.PASSPHRASE, KdfId.PBKDF2_SHA256, KdfParams.Pbkdf2(ByteArray(16), iters), ByteArray(12), ByteArray(48))
+            val wrap =
+                WrapEntry(
+                    Slot.PASSPHRASE,
+                    KdfId.PBKDF2_SHA256,
+                    KdfParams.Pbkdf2(ByteArray(16), iters),
+                    ByteArray(12),
+                    ByteArray(48),
+                )
             val blob = KeyStoreBlob(KEYSTORE_VERSION, listOf(wrap))
             assertEquals(
                 Outcome.Err(VaultError.Crypto.MalformedContainer),
@@ -158,12 +212,18 @@ class KeyStoreCodecTest {
     @Test
     fun a_format_version_below_one_is_malformed() {
         val blob = KeyStoreBlob(0, listOf(pbkdf2Wrap()))
-        assertEquals(Outcome.Err(VaultError.Crypto.MalformedContainer), KeyStoreCodec.decode(KeyStoreCodec.encode(blob)))
+        assertEquals(
+            Outcome.Err(VaultError.Crypto.MalformedContainer),
+            KeyStoreCodec.decode(KeyStoreCodec.encode(blob)),
+        )
     }
 
     @Test
     fun an_empty_wrap_list_is_malformed() {
         val blob = KeyStoreBlob(KEYSTORE_VERSION, emptyList())
-        assertEquals(Outcome.Err(VaultError.Crypto.MalformedContainer), KeyStoreCodec.decode(KeyStoreCodec.encode(blob)))
+        assertEquals(
+            Outcome.Err(VaultError.Crypto.MalformedContainer),
+            KeyStoreCodec.decode(KeyStoreCodec.encode(blob)),
+        )
     }
 }

@@ -12,10 +12,10 @@ import dev.ehsanfahad.darkchamber.core.model.VaultError
 import dev.ehsanfahad.darkchamber.core.storage.VaultStorage
 import kotlinx.io.Buffer
 import kotlinx.io.buffered
-import kotlinx.io.readByteArray
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 import kotlinx.io.files.SystemTemporaryDirectory
+import kotlinx.io.readByteArray
 import kotlin.random.Random
 import kotlin.random.nextULong
 import kotlin.test.AfterTest
@@ -38,10 +38,17 @@ class RangeReaderTest {
     @AfterTest
     fun cleanup() = deleteRecursively(testDir)
 
-    private class CountingEngine(private val real: CryptoEngine) : CryptoEngine by real {
+    private class CountingEngine(
+        private val real: CryptoEngine,
+    ) : CryptoEngine by real {
         var opens = 0
 
-        override fun aeadOpen(key: ByteArray, nonce: ByteArray, aad: ByteArray, ciphertext: ByteArray): Outcome<ByteArray> {
+        override fun aeadOpen(
+            key: ByteArray,
+            nonce: ByteArray,
+            aad: ByteArray,
+            ciphertext: ByteArray,
+        ): Outcome<ByteArray> {
             opens++
             return real.aeadOpen(key, nonce, aad, ciphertext)
         }
@@ -49,21 +56,28 @@ class RangeReaderTest {
 
     private val sessionEngine = CountingEngine(engine)
     private val session: VaultSession =
-        VaultSession.createVault(sessionEngine, DefaultKeyDerivation(engine), "correct horse battery".encodeToByteArray(), cheapKdf).session
+        VaultSession
+            .createVault(
+                sessionEngine,
+                DefaultKeyDerivation(engine),
+                "correct horse battery".encodeToByteArray(),
+                cheapKdf,
+            ).session
 
     private val catalog: CatalogStore = (CatalogStore.create(testSqlDriver()) as Outcome.Ok).value
 
-    private val objects: VaultObjects = run {
-        SystemFileSystem.createDirectories(testDir)
-        VaultObjects(
-            session,
-            VaultStorage(testDir),
-            catalog,
-            DchmCodec(engine),
-            clock = { 42L },
-            random = Random(11).let { rng -> { n -> rng.nextBytes(n) } },
-        )
-    }
+    private val objects: VaultObjects =
+        run {
+            SystemFileSystem.createDirectories(testDir)
+            VaultObjects(
+                session,
+                VaultStorage(testDir),
+                catalog,
+                DchmCodec(engine),
+                clock = { 42L },
+                random = Random(11).let { rng -> { n -> rng.nextBytes(n) } },
+            )
+        }
 
     private fun <T> Outcome<T>.ok(): T = assertIs<Outcome.Ok<T>>(this).value
 
@@ -72,9 +86,18 @@ class RangeReaderTest {
     // Every byte says where it sits, so a read from the wrong place shows.
     private fun content(size: Int) = ByteArray(size) { (it * 7 + 3).toByte() }
 
-    private fun stored(data: ByteArray, chunkSize: Int = 64): ByteArray =
-        objects.importObject(kind = 0, name = "n", mime = "application/octet-stream", chunkSize = chunkSize,
-            openSource = { Buffer().apply { write(data.copyOf()) } }).ok()
+    private fun stored(
+        data: ByteArray,
+        chunkSize: Int = 64,
+    ): ByteArray =
+        objects
+            .importObject(
+                kind = 0,
+                name = "n",
+                mime = "application/octet-stream",
+                chunkSize = chunkSize,
+                openSource = { Buffer().apply { write(data.copyOf()) } },
+            ).ok()
 
     @Test
     fun reads_a_range_inside_one_chunk_and_reports_the_plaintext_length() {
@@ -134,10 +157,11 @@ class RangeReaderTest {
             Triple(70L, 0, -1),
             Triple(70L, 2, 4),
         )) {
-            val unwraps = unwrapsDuring {
-                val error = assertIs<Outcome.Err>(reader.readAt(position, into, offset, size)).error
-                assertIs<IllegalArgumentException>(assertIs<VaultError.Io>(error).cause)
-            }
+            val unwraps =
+                unwrapsDuring {
+                    val error = assertIs<Outcome.Err>(reader.readAt(position, into, offset, size)).error
+                    assertIs<IllegalArgumentException>(assertIs<VaultError.Io>(error).cause)
+                }
             assertEquals(0, unwraps, "position=$position offset=$offset size=$size")
         }
         assertEquals(1, reader.readByteAt(70)) // the reader still works after them
@@ -317,15 +341,18 @@ class RangeReaderTest {
         val headerLen = (bytes[6].toInt() and 0xFF) or ((bytes[7].toInt() and 0xFF) shl 8)
         SystemFileSystem.sink(file).buffered().use { it.write(bytes, 0, 16 + headerLen + 64 + 16) } // chunk 0 only
 
-        assertIs<VaultError.Io>(assertIs<Outcome.Err>(reader.readAt(position = 64, into = ByteArray(1), offset = 0, size = 1)).error)
+        assertIs<VaultError.Io>(
+            assertIs<Outcome.Err>(reader.readAt(position = 64, into = ByteArray(1), offset = 0, size = 1)).error,
+        )
         reader.close()
     }
 
     // The one object file in this test's vault.
     private fun storedObjectFile(): Path {
-        fun walk(dir: Path): List<Path> = SystemFileSystem.list(dir).flatMap { p ->
-            if (SystemFileSystem.metadataOrNull(p)?.isDirectory == true) walk(p) else listOf(p)
-        }
+        fun walk(dir: Path): List<Path> =
+            SystemFileSystem.list(dir).flatMap { p ->
+                if (SystemFileSystem.metadataOrNull(p)?.isDirectory == true) walk(p) else listOf(p)
+            }
         return walk(Path(testDir, "objects")).single { it.name.endsWith(".dchm") }
     }
 

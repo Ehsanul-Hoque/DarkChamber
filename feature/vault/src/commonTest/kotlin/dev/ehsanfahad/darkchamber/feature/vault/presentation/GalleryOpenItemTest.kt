@@ -35,7 +35,11 @@ import kotlin.time.Duration
 class GalleryOpenItemTest {
     private val lifecycle = LifecycleRegistry().apply { resume() }
 
-    private class Opened(val id: List<Byte>, val order: GalleryOrder, val query: String)
+    private class Opened(
+        val id: List<Byte>,
+        val order: GalleryOrder,
+        val query: String,
+    )
 
     private val opened = mutableListOf<Opened>()
 
@@ -64,75 +68,80 @@ class GalleryOpenItemTest {
     }
 
     @Test
-    fun a_tap_outside_selecting_opens_the_item_with_the_grids_order_and_search() = runTest {
-        val vault = FakeVaultItems()
-        val component = component(vault)
-        vault.emit(1, 2, 3)
-        component.chooseOrder(GalleryOrder.NameAsc)
-        component.openSearch()
-        component.editSearch("file")
+    fun a_tap_outside_selecting_opens_the_item_with_the_grids_order_and_search() =
+        runTest {
+            val vault = FakeVaultItems()
+            val component = component(vault)
+            vault.emit(1, 2, 3)
+            component.chooseOrder(GalleryOrder.NameAsc)
+            component.openSearch()
+            component.editSearch("file")
 
-        component.tapItem(byteArrayOf(2))
+            component.tapItem(byteArrayOf(2))
 
-        val open = opened.single()
-        assertEquals(listOf<Byte>(2), open.id)
-        assertEquals(GalleryOrder.NameAsc, open.order)
-        assertEquals("file", open.query)
-        assertTrue(!component.state.value.selection.active, "a tap does not start selecting")
-    }
+            val open = opened.single()
+            assertEquals(listOf<Byte>(2), open.id)
+            assertEquals(GalleryOrder.NameAsc, open.order)
+            assertEquals("file", open.query)
+            assertTrue(!component.state.value.selection.active, "a tap does not start selecting")
+        }
 
     /** A search that was closed filters nothing, so the viewer is handed none. */
     @Test
-    fun a_closed_search_hands_the_viewer_no_query() = runTest {
-        val vault = FakeVaultItems()
-        val component = component(vault)
-        vault.emit(1, 2)
-        component.openSearch()
-        component.editSearch("file")
-        component.closeSearch()
+    fun a_closed_search_hands_the_viewer_no_query() =
+        runTest {
+            val vault = FakeVaultItems()
+            val component = component(vault)
+            vault.emit(1, 2)
+            component.openSearch()
+            component.editSearch("file")
+            component.closeSearch()
 
-        component.tapItem(byteArrayOf(1))
+            component.tapItem(byteArrayOf(1))
 
-        assertEquals("", opened.single().query)
-    }
-
-    @Test
-    fun a_tap_while_selecting_toggles_and_opens_nothing() = runTest {
-        val vault = FakeVaultItems()
-        val component = component(vault)
-        vault.emit(1, 2, 3)
-        component.selectItem(byteArrayOf(1))
-
-        component.tapItem(byteArrayOf(2))
-
-        assertEquals(emptyList(), opened.map { it.id })
-        assertEquals(2, component.state.value.selection.count)
-    }
+            assertEquals("", opened.single().query)
+        }
 
     @Test
-    fun back_from_the_viewer_asks_once_for_the_item_to_be_brought_into_view() = runTest {
-        val vault = FakeVaultItems()
-        val component = component(vault)
-        vault.emit(1, 2, 3)
+    fun a_tap_while_selecting_toggles_and_opens_nothing() =
+        runTest {
+            val vault = FakeVaultItems()
+            val component = component(vault)
+            vault.emit(1, 2, 3)
+            component.selectItem(byteArrayOf(1))
 
-        component.revealItem(byteArrayOf(2, 0x5A))
+            component.tapItem(byteArrayOf(2))
 
-        assertEquals("025a", component.state.value.revealKey)
+            assertEquals(emptyList(), opened.map { it.id })
+            assertEquals(2, component.state.value.selection.count)
+        }
 
-        component.revealHandled()
+    @Test
+    fun back_from_the_viewer_asks_once_for_the_item_to_be_brought_into_view() =
+        runTest {
+            val vault = FakeVaultItems()
+            val component = component(vault)
+            vault.emit(1, 2, 3)
 
-        assertNull(component.state.value.revealKey)
-    }
+            component.revealItem(byteArrayOf(2, 0x5A))
+
+            assertEquals("025a", component.state.value.revealKey)
+
+            component.revealHandled()
+
+            assertNull(component.state.value.revealKey)
+        }
 
     // ---- the scroll the screen makes ----------------------------------------------------------------
 
-    private fun item(n: Int) = GalleryItem(
-        id = byteArrayOf(n.toByte()),
-        kind = VaultItemKind.FILE,
-        size = 1L,
-        createdAt = 1L,
-        meta = GalleryItemMeta.Readable("f", "image/jpeg"),
-    )
+    private fun item(n: Int) =
+        GalleryItem(
+            id = byteArrayOf(n.toByte()),
+            kind = VaultItemKind.FILE,
+            size = 1L,
+            createdAt = 1L,
+            meta = GalleryItemMeta.Readable("f", "image/jpeg"),
+        )
 
     private val items = (0 until 40).map(::item)
 

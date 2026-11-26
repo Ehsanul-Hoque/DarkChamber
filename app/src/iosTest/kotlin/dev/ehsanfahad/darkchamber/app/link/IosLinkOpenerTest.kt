@@ -14,25 +14,28 @@ import kotlin.test.assertEquals
 class IosLinkOpenerTest {
     private val reached = mutableListOf<String>()
 
-    private fun opener(answer: Boolean) = IosLinkOpener { url: NSURL, done: (Boolean) -> Unit ->
-        reached += url.absoluteString.orEmpty()
-        done(answer)
-    }
-
-    @Test
-    fun a_non_web_address_never_reaches_the_platform() = runTest {
-        val opener = opener(answer = true)
-
-        listOf("javascript:alert(1)", "file:///x", "https://", " https://x").forEach {
-            assertEquals(LinkOpened.NotOpened, opener.open(it), it)
+    private fun opener(answer: Boolean) =
+        IosLinkOpener { url: NSURL, done: (Boolean) -> Unit ->
+            reached += url.absoluteString.orEmpty()
+            done(answer)
         }
-        assertEquals(emptyList(), reached)
-    }
 
     @Test
-    fun a_web_address_is_handed_over_as_written_and_the_answer_reported() = runTest {
-        assertEquals(LinkOpened.Opened, opener(answer = true).open("https://Example.com/a%20b?q=1#top"))
-        assertEquals(LinkOpened.NotOpened, opener(answer = false).open("https://example.com"))
-        assertEquals(listOf("https://Example.com/a%20b?q=1#top", "https://example.com"), reached)
-    }
+    fun a_non_web_address_never_reaches_the_platform() =
+        runTest {
+            val opener = opener(answer = true)
+
+            listOf("javascript:alert(1)", "file:///x", "https://", " https://x").forEach {
+                assertEquals(LinkOpened.NotOpened, opener.open(it), it)
+            }
+            assertEquals(emptyList(), reached)
+        }
+
+    @Test
+    fun a_web_address_is_handed_over_as_written_and_the_answer_reported() =
+        runTest {
+            assertEquals(LinkOpened.Opened, opener(answer = true).open("https://Example.com/a%20b?q=1#top"))
+            assertEquals(LinkOpened.NotOpened, opener(answer = false).open("https://example.com"))
+            assertEquals(listOf("https://Example.com/a%20b?q=1#top", "https://example.com"), reached)
+        }
 }

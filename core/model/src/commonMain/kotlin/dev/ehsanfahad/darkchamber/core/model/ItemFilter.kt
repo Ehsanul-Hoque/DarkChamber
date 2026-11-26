@@ -14,7 +14,6 @@ package dev.ehsanfahad.darkchamber.core.model
  * answer.
  */
 sealed interface ItemFilter {
-
     /** Every item in the vault, filed or not. */
     data object All : ItemFilter
 
@@ -29,9 +28,10 @@ sealed interface ItemFilter {
      * callers compare filters — a listing re-subscribes when its filter changes, and an identity
      * comparison would make every rebuild of the same filter look like a change.
      */
-    class Album(val id: ByteArray) : ItemFilter {
-        override fun equals(other: Any?): Boolean =
-            this === other || (other is Album && id.contentEquals(other.id))
+    class Album(
+        val id: ByteArray,
+    ) : ItemFilter {
+        override fun equals(other: Any?): Boolean = this === other || (other is Album && id.contentEquals(other.id))
 
         override fun hashCode(): Int = id.contentHashCode()
 

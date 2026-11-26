@@ -10,10 +10,15 @@ import kotlin.test.assertTrue
  * another app, read a local file, or run script by being tapped.
  */
 class LinkRulesTest {
+    private fun target(
+        address: String,
+        sections: Map<String, Int> = emptyMap(),
+    ) = LinkRules.target(address, sections)
 
-    private fun target(address: String, sections: Map<String, Int> = emptyMap()) = LinkRules.target(address, sections)
-
-    private fun web(address: String, host: String) = LinkTarget.Web(address, host)
+    private fun web(
+        address: String,
+        host: String,
+    ) = LinkTarget.Web(address, host)
 
     /** A backslash, built rather than typed, so no escape sequence is ever written into this file. */
     private val bs = Char(0x5C)
@@ -49,14 +54,26 @@ class LinkRulesTest {
     @Test
     fun a_section_link_to_no_heading_does_nothing() {
         val sections = sections("# Intro\n")
-        for (address in listOf("#nope", "#", "#Intro", "# intro", "intro")) assertEquals(LinkTarget.Inert, target(address, sections), address)
+        for (address in listOf(
+            "#nope",
+            "#",
+            "#Intro",
+            "# intro",
+            "intro",
+        )) {
+            assertEquals(LinkTarget.Inert, target(address, sections), address)
+        }
     }
 
     /** A link may spell its anchor in percent-encoded UTF-8, as editors write non-Latin ones. */
     @Test
     fun a_percent_encoded_section_link_finds_its_heading() {
         val sections = sections("# বাংলা লেখা\n")
-        val encoded = "বাংলা-লেখা".encodeToByteArray().joinToString("") { "%" + (it.toInt() and 0xFF).toString(16).uppercase().padStart(2, '0') }
+        val encoded =
+            "বাংলা-লেখা".encodeToByteArray().joinToString("") {
+                "%" +
+                    (it.toInt() and 0xFF).toString(16).uppercase().padStart(2, '0')
+            }
         assertEquals(LinkTarget.Section(0), target("#$encoded", sections))
         assertEquals(LinkTarget.Section(0), target("#" + encoded.lowercase(), sections), "hex digits in either case")
         assertEquals(LinkTarget.Section(0), target("#বাংলা-লেখা", sections), "or as written")
@@ -65,7 +82,14 @@ class LinkRulesTest {
     @Test
     fun a_broken_percent_encoding_does_nothing() {
         val sections = sections("# a\n")
-        for (address in listOf("#%ZZ", "#%6", "#%", "#%FF%FE")) assertEquals(LinkTarget.Inert, target(address, sections), address)
+        for (address in listOf(
+            "#%ZZ",
+            "#%6",
+            "#%",
+            "#%FF%FE",
+        )) {
+            assertEquals(LinkTarget.Inert, target(address, sections), address)
+        }
         assertEquals(LinkTarget.Section(0), target("#%61", sections), "an encoded ASCII letter")
     }
 
@@ -75,13 +99,20 @@ class LinkRulesTest {
     fun http_and_https_open_and_the_address_is_kept_exactly() {
         assertEquals(web("https://example.com/a?b=c#d", "example.com"), target("https://example.com/a?b=c#d"))
         assertEquals(web("http://example.com", "example.com"), target("http://example.com"))
-        assertEquals(web("HTTPS://Example.COM/X", "Example.COM"), target("HTTPS://Example.COM/X"), "the scheme in any case; nothing re-cased")
+        assertEquals(
+            web("HTTPS://Example.COM/X", "Example.COM"),
+            target("HTTPS://Example.COM/X"),
+            "the scheme in any case; nothing re-cased",
+        )
     }
 
     /** Nothing is decoded or tidied: the confirmation shows what the file says. */
     @Test
     fun an_address_is_never_decoded_or_tidied() {
-        assertEquals(web("https://xn--bcher-kva.example/%41%20b", "xn--bcher-kva.example"), target("https://xn--bcher-kva.example/%41%20b"))
+        assertEquals(
+            web("https://xn--bcher-kva.example/%41%20b", "xn--bcher-kva.example"),
+            target("https://xn--bcher-kva.example/%41%20b"),
+        )
         assertEquals(web("https://example.com/my uri", "example.com"), target("https://example.com/my uri"))
     }
 
@@ -89,17 +120,37 @@ class LinkRulesTest {
     @Test
     fun the_host_is_the_site_the_address_really_reaches() {
         assertEquals("evil.example", (target("https://google.com@evil.example/login") as LinkTarget.Web).host)
-        assertEquals("evil.example", (target("https://a:b@c@evil.example") as LinkTarget.Web).host, "the last @ before the path")
+        assertEquals(
+            "evil.example",
+            (target("https://a:b@c@evil.example") as LinkTarget.Web).host,
+            "the last @ before the path",
+        )
         assertEquals("example.com", (target("https://example.com:8443/x") as LinkTarget.Web).host)
         assertEquals("example.com", (target("https://example.com?q") as LinkTarget.Web).host)
         assertEquals("example.com", (target("https://example.com#f") as LinkTarget.Web).host)
-        assertEquals("[2001:db8::1]", (target("http://[2001:db8::1]:80/") as LinkTarget.Web).host, "a bracketed address keeps its colons")
-        assertEquals("example.com", (target("https://user@example.com/a@b") as LinkTarget.Web).host, "an @ in the path is the path's")
+        assertEquals(
+            "[2001:db8::1]",
+            (target("http://[2001:db8::1]:80/") as LinkTarget.Web).host,
+            "a bracketed address keeps its colons",
+        )
+        assertEquals(
+            "example.com",
+            (target("https://user@example.com/a@b") as LinkTarget.Web).host,
+            "an @ in the path is the path's",
+        )
     }
 
     @Test
     fun a_web_address_with_no_site_does_not_open() {
-        for (address in listOf("http://", "https://", "http:///path", "https://user@/x", "https://:443/", "http:example.com", "https:/example.com")) {
+        for (address in listOf(
+            "http://",
+            "https://",
+            "http:///path",
+            "https://user@/x",
+            "https://:443/",
+            "http:example.com",
+            "https:/example.com",
+        )) {
             assertEquals(LinkTarget.Inert, target(address), address)
         }
     }
@@ -108,11 +159,22 @@ class LinkRulesTest {
     @Test
     fun every_other_scheme_does_nothing() {
         for (
-            address in listOf(
-                "javascript:alert(1)", "intent://x#Intent;scheme=http;end", "file:///sdcard/x", "content://media/1",
-                "data:text/html,<b>x</b>", "mailto:a@b.c", "tel:123", "sms:123", "market://details?id=x",
-                "dc-vault://open", "ftp://example.com", "httpx://example.com", "https-evil://example.com", "ws://example.com",
-            )
+        address in listOf(
+            "javascript:alert(1)",
+            "intent://x#Intent;scheme=http;end",
+            "file:///sdcard/x",
+            "content://media/1",
+            "data:text/html,<b>x</b>",
+            "mailto:a@b.c",
+            "tel:123",
+            "sms:123",
+            "market://details?id=x",
+            "dc-vault://open",
+            "ftp://example.com",
+            "httpx://example.com",
+            "https-evil://example.com",
+            "ws://example.com",
+        )
         ) {
             assertEquals(LinkTarget.Inert, target(address), address)
         }
@@ -129,7 +191,13 @@ class LinkRulesTest {
     @Test
     fun a_padded_address_does_nothing() {
         val wide = " ".repeat(8) + "https://example.com"
-        for (address in listOf(" https://example.com", wide, "\thttps://example.com", " javascript:alert(1)", "\nhttps://example.com")) {
+        for (address in listOf(
+            " https://example.com",
+            wide,
+            "\thttps://example.com",
+            " javascript:alert(1)",
+            "\nhttps://example.com",
+        )) {
             assertEquals(LinkTarget.Inert, target(address), address)
         }
     }
@@ -140,10 +208,34 @@ class LinkRulesTest {
      */
     @Test
     fun an_address_holding_unseen_characters_does_nothing() {
-        val unseen = listOf(
-            0x00, 0x09, 0x0A, 0x1F, 0x7F, 0x00AD, 0x061C, 0x180E, 0x200B, 0x200C, 0x200D, 0x200E, 0x200F,
-            0x2028, 0x2029, 0x202A, 0x202B, 0x202C, 0x202D, 0x202E, 0x2066, 0x2067, 0x2068, 0x2069, 0xFEFF,
-        )
+        val unseen =
+            listOf(
+                0x00,
+                0x09,
+                0x0A,
+                0x1F,
+                0x7F,
+                0x00AD,
+                0x061C,
+                0x180E,
+                0x200B,
+                0x200C,
+                0x200D,
+                0x200E,
+                0x200F,
+                0x2028,
+                0x2029,
+                0x202A,
+                0x202B,
+                0x202C,
+                0x202D,
+                0x202E,
+                0x2066,
+                0x2067,
+                0x2068,
+                0x2069,
+                0xFEFF,
+            )
         for (code in unseen) {
             val address = "https://example.com/a" + Char(code) + "b"
             assertEquals(LinkTarget.Inert, target(address), "U+" + code.toString(16).padStart(4, '0'))
@@ -159,10 +251,13 @@ class LinkRulesTest {
     @Test
     fun an_address_holding_a_backslash_does_nothing() {
         for (
-            address in listOf(
-                "https://evil.example$bs@good.com/", "https://${bs}evil.example/", "https://example.com/a${bs}b",
-                "https://example.com$bs", "HTTP://example.com$bs$bs",
-            )
+        address in listOf(
+            "https://evil.example$bs@good.com/",
+            "https://${bs}evil.example/",
+            "https://example.com/a${bs}b",
+            "https://example.com$bs",
+            "HTTP://example.com$bs$bs",
+        )
         ) {
             assertEquals(LinkTarget.Inert, target(address), address)
         }
@@ -172,11 +267,11 @@ class LinkRulesTest {
     @Test
     fun a_backslash_written_any_way_markdown_allows_does_nothing() {
         for (
-            markdown in listOf(
-                "[Sign in](https://evil.example$bs$bs@good.com/)",
-                "<https://evil.example$bs@good.com/>",
-                "[Sign in](https://evil.example&#92;@good.com/)",
-            )
+        markdown in listOf(
+            "[Sign in](https://evil.example$bs$bs@good.com/)",
+            "<https://evil.example$bs@good.com/>",
+            "[Sign in](https://evil.example&#92;@good.com/)",
+        )
         ) {
             val span = (MarkdownModel.from(markdown)!!.blocks.single() as MdBlock.Paragraph).spans.single()
             assertEquals("https://evil.example$bs@good.com/", span.link, markdown)

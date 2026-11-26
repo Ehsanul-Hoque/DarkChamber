@@ -81,7 +81,11 @@ class PlayerGesturesTest {
         val belowBand = Offset(750f, 1_700f)
         assertEquals(DragOwner.Nobody, PlayerGestures.dragOwner(PlayerKind.Video, aboveBand, down, controlsHidden))
         assertEquals(DragOwner.Nobody, PlayerGestures.dragOwner(PlayerKind.Video, belowBand, up, controlsHidden))
-        assertEquals(DragOwner.Brightness, PlayerGestures.dragOwner(PlayerKind.Video, Offset(250f, 200f), down, controlsHidden), "the band's top edge is inside")
+        assertEquals(
+            DragOwner.Brightness,
+            PlayerGestures.dragOwner(PlayerKind.Video, Offset(250f, 200f), down, controlsHidden),
+            "the band's top edge is inside",
+        )
     }
 
     @Test
@@ -100,7 +104,10 @@ class PlayerGesturesTest {
     @Test
     fun with_the_controls_hidden_the_seek_bars_place_turns_the_page_like_anywhere_else() {
         val whereTheBarWas = Offset(500f, 1_740f)
-        assertEquals(DragOwner.Pager, PlayerGestures.dragOwner(PlayerKind.Video, whereTheBarWas, sideways, controlsHidden))
+        assertEquals(
+            DragOwner.Pager,
+            PlayerGestures.dragOwner(PlayerKind.Video, whereTheBarWas, sideways, controlsHidden),
+        )
     }
 
     @Test

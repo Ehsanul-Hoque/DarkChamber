@@ -46,9 +46,10 @@ internal class CreateAlbum(
  * error for an empty text field.
  */
 internal sealed interface CreateAlbumResult {
-
     /** The album exists. The listing will carry it on its next emission; nothing here has to insert it. */
-    class Created(val id: ByteArray) : CreateAlbumResult
+    class Created(
+        val id: ByteArray,
+    ) : CreateAlbumResult
 
     /** Nothing usable was typed. No call was made, so there is nothing to undo. */
     data object NameMissing : CreateAlbumResult
@@ -57,5 +58,7 @@ internal sealed interface CreateAlbumResult {
      * The vault refused. [error] is for the log and for deciding what to say — never for printing
      * raw, and never alongside the name that was being created (hard rule 4).
      */
-    class Failed(val error: VaultError) : CreateAlbumResult
+    class Failed(
+        val error: VaultError,
+    ) : CreateAlbumResult
 }
