@@ -15,9 +15,9 @@ kotlin {
         target.binaries.framework {
             baseName = "Shared"
             isStatic = true
-            export(project(":core:model"))
-            export(project(":core:crypto"))
-            export(project(":core:db"))
+            export(project.dependencies.project(":core:model"))
+            export(project.dependencies.project(":core:crypto"))
+            export(project.dependencies.project(":core:db"))
         }
         target.binaries.all { linkerOpts("-lsqlite3") }
     }
