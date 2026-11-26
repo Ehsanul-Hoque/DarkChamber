@@ -53,20 +53,10 @@ F-Droid builds include everything including sync (honor system, like Conversatio
 
 Goal: a walking skeleton with the security core proven before any product UI.
 
-> **Progress (2026-09): Phase 0 is complete.** The encrypted-vault core is built and verified:
->
-> - `:core:crypto` — the `.dchm` codec + key hierarchy (Argon2id/PBKDF2/recovery, `VaultSession`) +
->   the hardware `SecureKeyStore` / biometric seams, with committed test vectors.
-> - `:core:storage` — `VaultStorage` (atomic object/thumbnail/key-blob stores + `tmp/`), no crypto dep.
-> - `:core:db` — SQLDelight catalog (opaque encrypted columns) behind a fail-closed `CatalogStore`.
-> - `:core:vault` — `VaultObjects`: streaming import/open/openMeta/shred (composes the three cores).
-> - `:app` — the composition root: Koin graph, `VaultBootstrap` cold-open, the Decompose session gate,
->   cryptographic per-use biometric unlock, and the lock lifecycle — on an Android `FragmentActivity`
->   and an iOS `ComposeUIViewController`.
->
-> The exit criteria below are **met** (streaming encrypt + 2 GB stream-decrypt in bounded RAM;
-> kill → relaunch → biometric unlock, plaintext never on disk). **Phase 1 picked up from here** — the
-> camera/import + viewer UI; its progress note is below. See the git history and `docs/` for detail.
+> **Progress (2026-09): Phase 0 is complete.** The `.dchm` codec and key hierarchy (with committed test vectors),
+> the storage layer, the encrypted catalog, `core:vault` composing them, and the app's session gate with biometric
+> unlock and the lock lifecycle are built; the exit criteria below are met. Module detail is in
+> [`docs/engineering/MODULES.md`](./docs/engineering/MODULES.md).
 
 - KMP project scaffold: `core-crypto`, `core-storage`, `core-db`, `app` (Compose Multiplatform), CI on GitHub Actions (Android + iOS builds, unit tests).
 - **Crypto core v1:** AES-256-GCM chunked streaming encryption/decryption (the `.dchm` container format — see docs/FORMAT.md), envelope key hierarchy, Argon2id KDF.
@@ -80,67 +70,38 @@ Goal: a walking skeleton with the security core proven before any product UI.
 
 The complete free product. Everything here ships open source and free.
 
-> **Progress (2026-10): Phase 1 is under way — the vault half of it is in place, and the camera takes
-> photos and records video; the viewers are next.**
-> What a build can do today, on Android and iOS — the readme describes each of these for a reader
-> rather than a planner:
+> **Progress (2026-11): Phase 1 is under way — the vault, the private camera and the in-app viewers
+> are in place; export with metadata scrubbing is next.**
+> What a build does today, on Android and iOS, and the limits it states rather than hides:
 >
-> - **Hold files.** An adaptive grid over the encrypted catalog, behind the Phase 0 session gate, with
->   batch import from the file and photo pickers — bounded RAM, honest two-level progress, continue
->   past an unreadable file, and a stop that lands **within** a file rather than after it.
-> - **Show what is in there.** Previews generated at import, each sealed under its own key, decoded to
->   memory only. A file with no preview shows its type; a preview is a convenience, never evidence.
-> - **Offer to delete the original**, where the system allows it, behind a disclosure that says what
->   deletion on flash storage can and cannot promise.
-> - **Organise into albums** — created, renamed, deleted, filled by moving a selection in, and the
->   destination of an import made from inside one. Two things the words suggest and the app does not:
->   **deleting an album keeps every file in it** (they become unfiled, and the confirmation says so),
->   and an item is in **one album at a time**, so filing moves it. An album organises; it is not a
->   second lock.
-> - **Find one file** among thousands: four orders, a search over names, and a line in the bar saying
->   which listing you are looking at. Both run on rows already on screen, because a name lives inside
->   the encrypted metadata and no query can sort or match what it cannot open — so re-ordering and
->   typing never re-open a row. An empty grid names which of five reasons it is empty.
-> - **Survive the cloud.** A file that has to be downloaded before it can be encrypted says it is
->   waiting, and **stopping actually stops** — the provider's transfer carries on, because nothing can
->   call it off, and whatever it hands over is thrown away unread.
-> - **Take a photo privately.** A camera opened from any listing files each shot where an import from
->   there would, and its count moves only once the shot is in. The photo goes from the camera into
->   memory and from memory into the vault's encryption — no file on the way, nothing in the system
->   photo library, no location requested. Only the app's own copies are cleared afterwards; the
->   camera framework's buffers are the platform's. Where a region requires a shutter sound, it plays.
-> - **Record video privately**, in HD or 4K where the lens can, with sound optional. A clip is too
->   large to hold in memory, so it passes through **one plaintext file in the app's private storage**
->   while it is recorded and encrypted, and that file is deleted on every way out — saved, failed, too
->   short, or abandoned by a lock; a crash leaves it until the app next starts. Deleted is not wiped:
->   flash storage can keep the old blocks, as the threat model says of the shredder. Recording is limited
->   to what the phone has room to encrypt, and a full disk is named only when the phone reports one.
->   Anything a lock or a failure discarded is counted, never described, on the next unlocked screen.
-> - **Give nothing to the rest of the phone.** Screenshot and recording blocking plus a blank
->   app-switcher card on Android, an obscured snapshot on iOS (which offers no way to block a
->   screenshot at all — the threat model says so and no copy here softens it), and every window kept
->   out of the platform's autofill and content-capture structures. That second channel is **not**
->   covered by the screenshot flag: a device showed a vault text field travelling it with the flag set.
->   The cost is stated rather than hidden — a password manager cannot fill the passphrase.
+> - **Import** from the file and photo pickers in bounded memory, with a stop that lands within a file; a cloud
+>   file waits for its download, and a stop throws away whatever arrives (the provider's own transfer carries on). Previews are sealed under their own keys. Deleting the
+>   original is offered behind a disclosure of what flash storage can keep.
+> - **Albums and browsing.** An album is a label: deleting one keeps its files, and an item is in one album at a
+>   time. Order and search run on the rows on screen, because names are encrypted.
+> - **The private camera.** A photo goes from memory into the vault — no file, no system library, no location. A
+>   video passes through **one plaintext file in app-private storage** while recorded and encrypted, deleted on
+>   every way out (a crash leaves it until the next start; deleted is not wiped).
+> - **Viewers, in memory only:** photos decoded after the whole file verifies; video and audio streamed by byte
+>   range with no cache or media session; PDFs read whole into memory (Android 11+, never a file); text and
+>   Markdown drawn by our own code with no web view. A file that fails its integrity check shows nothing of
+>   itself — a video or audio file that fails partway stops there and says so.
+> - **Links** leave only after a dialog with the full address; once the browser has it, the vault locks.
+> - **Delete** destroys the item's key; the threat model says what flash storage may still hold.
+> - **Nothing handed to the rest of the phone:** screenshot blocking on Android (iOS cannot block a screenshot — an
+>   obscured snapshot only), and every window kept out of autofill and content capture, which the screenshot flag
+>   does not cover (so a password manager cannot fill the passphrase).
 >
-> Still to come before v1.0: the in-app viewers and the seekable reads they need,
-> export with metadata scrubbing, the settings screen and recovery-key entry, and the
-> release-readiness tooling.
->
-> **Verified on Android hardware; iOS only on the simulator.** The platform-specific paths there —
-> the pickers, the preview encoder, the camera — have not been run on a device, which is a
-> pre-release gate rather than something to imply away. What automated tests cannot show at all has
-> its own checklists in [`docs/verification/`](./docs/verification), one per area, with the
-> release-blocking lines marked: that a name never reaches the catalog file or a log line, that a
-> layout holds at a large font scale, that no window hands its text to another process, that a
-> photo never reaches shared storage or carries a location, and that a video's scratch file is gone
-> however a recording ends — after a crash, at the next launch.
+> Still to come before v1.0: export with metadata scrubbing (and the "decrypt & open in…" fallback), the settings
+> screen and recovery-key entry, and the quality and release tooling. **Verified on Android hardware; iOS only on
+> the simulator** — every iOS platform path is a pre-release gate. What automated tests cannot show has checklists
+> in [`docs/verification/`](./docs/verification), with the release-blocking lines marked.
 
 | Feature                                | Notes                                                                                                                                                                                               |
 |----------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Encrypted vault with albums             | Import from gallery & file picker; batch import; albums as labels (one per item, deleting an album keeps its files); sort/search on encrypted metadata                                               |
 | **Private camera** (photo + video)     | CameraX / AVFoundation → encrypting import → app-private storage. A photo never touches a file; a video passes through one app-private scratch file while it is recorded and encrypted, then is deleted |
-| In-app viewers                         | Images (in-memory decode), video & audio (streaming decrypt via ExoPlayer custom DataSource / AVAssetResourceLoaderDelegate), PDF (PDFKit in-memory on iOS; private-cache temp or memfd on Android) |
+| In-app viewers                         | Images (in-memory decode), video & audio (streaming decrypt by byte range via a Media3 DataSource / AVAssetResourceLoaderDelegate, no cache), PDF (whole into memory, verified first: an anonymous memory file + `PdfRenderer` on Android 11+, CoreGraphics on iOS; never a file), text, JSON and Markdown (drawn by our own code; HTML as source; no web view; links only after a confirmation, which locks the vault) |
 | "Decrypt & open in…" fallback          | Share-sheet export for docx/zip/other, with explicit "file is leaving the vault" warning + cleanup action                                                                                           |
 | Unlock: PIN + biometrics               | Hardware-backed; rate-limited PIN attempts                                                                                                                                                          |
 | **Recovery key** flow                  | Forced at setup; brutal clarity that loss = permanent data loss                                                                                                                                     |

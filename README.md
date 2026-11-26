@@ -6,59 +6,16 @@ A Kotlin Multiplatform app for **Android** and **iOS** that encrypts, stores, an
 
 **Free and open source (GPLv3). Local-first. No ads, no trackers, no accounts — and v1 ships with no `INTERNET` permission, so you can verify in the manifest that your files cannot leave your device.**
 
-> ⚠️ **Status: pre-release.** The encrypted-vault core is **built and verified**, and the vault
-> itself now has a usable face on it — but **nothing here is ready to protect real files yet.**
-> What exists, on both Android and iOS:
->
-> - the **`.dchm` container format** (chunked AES-256-GCM behind a swappable `CryptoEngine`) and the
->   portable **key hierarchy** (MasterKey/per-object DEK, Argon2id passphrase + PBKDF2 fallback + HKDF
->   recovery, a hardware-backed key slot behind a `SecureKeyStore` seam), checked against committed
->   [format & KeyStore test vectors](./docs/format-test-vectors);
-> - the **storage layer** (atomic app-private stores, backup denied) and the encrypted **SQLDelight
->   catalog**;
-> - **streaming** import + large-file (2 GB video) **stream-decrypt** in bounded RAM;
-> - the **session gate** with cryptographic per-use **biometric unlock**, a passphrase fallback, and a
->   lock lifecycle that tears the session down on lock and on backgrounding;
-> - the **vault screen** — a grid of what you have put in, newest first — and **batch import** from
->   the file picker or the photo picker, with progress you can watch and stop part-way through;
-> - **encrypted previews**, generated as a file is imported and sealed under their own key. No
->   decrypted image is ever written to storage, and the in-memory cache is emptied when you lock;
-> - the option to **delete the original** after importing it, where the system allows it, behind a
->   disclosure you have to answer that says what deleting on flash storage can and cannot promise;
-> - **albums** — group what you have put in, see what is in no album, move a selection in or out, and
->   import straight into the album you are looking at. An album is a label, not a container: deleting
->   one keeps every file in it, and an item is in one album at a time, so filing it moves it. Albums
->   organise — they are not a second lock, and nothing in the app pretends otherwise;
-> - **browsing** — four orders (newest, oldest, A–Z, Z–A) and a search over names, plus a line in the
->   bar saying which listing you are looking at. Both run on the rows already on screen, because a
->   name lives inside the encrypted metadata and no database can sort or match what it cannot open;
->   changing the order or typing never re-decrypts a row. The search covers names on the current
->   listing and says so, an item whose name will not open is counted out rather than quietly dropped,
->   and an empty grid names which of the five reasons it is empty;
-> - **a private camera, for photos and video** — opened from any listing, it files each shot where an
->   import from there would and shows that listing's count live. A photo goes from the camera into
->   memory and from memory into the vault's encryption: no file, nothing in the system photo library,
->   no location attached. A video passes through one app-private scratch file while it is recorded
->   and encrypted, then is deleted;
-> - **a viewer for photos, and delete** — tap an item, or the camera's last-shot tile, to swipe through
->   the listing it came from; delete one item there, or many from a selection. Delete destroys the
->   item's key, so the app can never open it again; the threat model says what flash storage may
->   still hold;
-> - **nothing handed to the rest of the phone** — screenshots and screen recording are blocked, and
->   every window the app opens, each dialog included, keeps itself out of the platform's autofill and
->   content-capture structures. That channel is **not** covered by the screenshot flag: it was
->   measured sending a vault text field to another process, which is why a password manager cannot
->   fill the passphrase here.
->
-> Video and audio play inside the viewer, streamed from the encrypted file in memory, and PDFs are
-> shown from memory too, with zoom, jump-to-page and fast scroll (Android 11 or newer; older Android
-> versions say they can't show PDFs rather than write one to a file). Text files are shown from memory
-> as well — plain text, code, JSON re-indented without changing anything else, and Markdown drawn by the
-> app's own code with no web view (HTML shows its source). A web link in a Markdown file opens only
-> after a dialog showing its full address and what opening it sends out, and the vault locks behind
-> it. What's left before the vault is
-> usable: export with metadata scrubbing, and the settings screen. The
-> documents under [`docs/`](./docs) describe the target design.
+> ⚠️ **Status: pre-release — nothing here is ready to protect real files yet.** Built on Android and
+> iOS: the [`.dchm` format](./docs/FORMAT.md) and key hierarchy (checked against committed
+> [test vectors](./docs/format-test-vectors)), the encrypted storage and catalog, the session gate with
+> biometric unlock, the vault screen with import, albums and search, the private camera (photos and
+> video), in-app viewers for images, video, audio, PDFs, text and Markdown, delete by key destruction,
+> and screenshot and autofill protection. Still to come before v1.0: export with metadata scrubbing, the
+> settings screen and recovery-key entry. Android is verified on hardware; iOS so far only on the
+> simulator. What a build does today, with its honest limits, is in the [roadmap's progress
+> note](./ROADMAP.md#phase-1--mvp-vault--private-camera--v10); the documents under [`docs/`](./docs) describe
+> the design.
 
 ---
 
