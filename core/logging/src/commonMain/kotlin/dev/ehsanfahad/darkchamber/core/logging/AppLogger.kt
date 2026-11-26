@@ -1,4 +1,4 @@
-/**
+/*
  * `:core:logging` — the app's only logging surface.
  *
  * Hard rule #4: logs carry identifiers, sizes, and error codes only. No file names, note
