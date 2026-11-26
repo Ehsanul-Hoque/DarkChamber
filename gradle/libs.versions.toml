@@ -4,7 +4,7 @@ android-compileSdk = "37"
 android-minSdk = "24"
 android-targetSdk = "36"
 androidx-activity = "1.13.0"
-androidx-appcompat = "1.7.1"
+androidx-appcompat = "1.8.0"
 androidx-core = "1.19.1"
 androidx-espresso = "3.7.0"
 androidx-exifinterface = "1.4.2"
@@ -49,16 +49,17 @@ bouncycastle = "1.85.2"
 # the stable line carrying BiometricPrompt + CryptoObject (crypto-bound auth). Apache-2.0.
 androidxBiometric = "1.1.0"
 # fragment-ktx — BiometricPrompt requires a FragmentActivity host (MainActivity). Apache-2.0.
-androidxFragment = "1.9.0"
+androidxFragment = "1.9.1"
 # Essenty lifecycle — the Decompose component-tree lifecycle. 2.5.0 matches decompose 3.5.0's
 # transitive pin; declared explicitly because :app drives a LifecycleRegistry directly. Apache-2.0.
 essenty = "2.5.0"
 # --- Camera --------------------------------------------------------
 # CameraX, the Android side of :feature:camera's CameraController seam (implemented in :app's
-# androidMain). 1.6.2 is the newest stable line (the 1.7.0 series is still alpha). Apache-2.0. Photos
-# are captured in memory only — never ImageCapture's file saver, which stages through a file. Video
-# records to one app-private tmp/ file, deleted once it is encrypted (docs/THREAT_MODEL.md).
-androidxCamera = "1.6.2"
+# androidMain). 1.7.0 is the newest stable line; it raised its own minSdk to 24, which is ours.
+# Apache-2.0. Photos are captured in memory only — never ImageCapture's file saver, which stages
+# through a file. Video records to one app-private tmp/ file, deleted once it is encrypted
+# (docs/THREAT_MODEL.md).
+androidxCamera = "1.7.0"
 # --- Text viewer ---------------------------------------------------
 # JetBrains' CommonMark/GFM parser: text in, a syntax tree out — no UI, no I/O, no network, and only
 # the Kotlin standard library underneath; JVM (what Android consumes) and both iOS targets. The viewer
