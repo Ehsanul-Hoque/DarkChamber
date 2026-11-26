@@ -24,7 +24,7 @@ material3 = "1.12.0-alpha03"
 # (ADR-004 / hard rule #3) — the catalog being the only dependency source is what
 # keeps that enforceable.
 cryptographyKotlin = "0.6.0"   # pinned EXACTLY (pre-1.0) — wrapped by CryptoEngine; do not bump casually
-sqldelight = "2.3.2"
+sqldelight = "2.4.1"
 koin = "4.2.2"
 decompose = "3.5.0"
 coil3 = "3.6.3"
