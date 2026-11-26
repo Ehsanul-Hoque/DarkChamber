@@ -38,8 +38,8 @@ jobs:
     outputs:
       ios: ${{ steps.filter.outputs.ios }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@v4
         id: filter
         with:
           filters: |
@@ -60,7 +60,7 @@ jobs:
   commit-messages:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0   # the checker walks the full PR commit range
       - name: Test the commit-message checker
@@ -88,8 +88,8 @@ jobs:
     if: github.event.repository.visibility == 'public'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/dependency-review-action@v4
+      - uses: actions/checkout@v7
+      - uses: actions/dependency-review-action@v5
         with:
           fail-on-severity: high
 
@@ -98,12 +98,14 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "21"
-      - uses: gradle/actions/setup-gradle@v4
+      # Held at v5 on purpose: v6 moved its caching into a component that is not open source and
+      # asks its users to accept separate terms of use. v5 already runs on Node 24.
+      - uses: gradle/actions/setup-gradle@v5
 
       - name: Security architecture rules (Konsist)
         # Runs first: it is seconds of work and a violation of a hard security rule should fail
@@ -121,12 +123,12 @@ jobs:
   # quality:
   #   runs-on: ubuntu-latest
   #   steps:
-  #     - uses: actions/checkout@v4
-  #     - uses: actions/setup-java@v4
+  #     - uses: actions/checkout@v7
+  #     - uses: actions/setup-java@v6
   #       with:
   #         distribution: temurin
   #         java-version: "21"
-  #     - uses: gradle/actions/setup-gradle@v4
+  #     - uses: gradle/actions/setup-gradle@v5
   #     - name: Static analysis (ktlint, detekt)
   #       run: ./gradlew ktlintCheck detekt
   #     - name: Coverage gates
@@ -143,12 +145,12 @@ jobs:
     if: needs.changes.outputs.ios == 'true' && github.event.pull_request.draft == false
     runs-on: macos-latest        # ~10x the cost of Linux — that's why it's gated
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "21"
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v5
       - name: iOS unit tests (simulator) + device-architecture compile
         # The simulator test task runs the suite on a booted simulator, which `macos-latest` provides
         # via its bundled Xcode. This is what the host suite cannot reach: the iOS platform seams, the
