@@ -124,6 +124,7 @@ import kotlin.math.roundToInt
  * viewfinder run under them, and the bar and the bottom controls place themselves inside the insets,
  * their fades running on under the bars. The wide fallback is simply inset whole.
  */
+@Suppress("ktlint:compose:parameter-naming") // In `onOpenLastShot`, "shot" is a noun: the photo last taken.
 @Composable
 internal fun CameraScreen(
     state: CameraState,
@@ -551,7 +552,13 @@ private fun BelowViewfinder(
     }
 }
 
-/** [content] for [target], cross-faded at `motionFast` when it changes and resized smoothly; a cut under reduced motion. */
+/**
+ * [content] for [target], cross-faded at `motionFast` when it changes and resized smoothly; a cut under reduced motion.
+ *
+ * [content] is called from two places, which ktlint's Compose rules flag; they only trade places when the system's
+ * reduced-motion setting changes while the camera is open, and what they show holds no state worth keeping across that.
+ */
+@Suppress("ktlint:compose:content-slot-reused")
 @Composable
 private fun <T> Swapping(
     target: T,
@@ -698,7 +705,7 @@ private fun Viewfinder(
 
     LaunchedEffect(focusTaps) {
         if (focusTaps == 0) return@LaunchedEffect
-        delay(FocusShownMillis)
+        delay(FOCUS_SHOWN_MILLIS)
         focusAt = null
     }
 }
@@ -715,7 +722,7 @@ private fun CaptureBlink(blinks: Int) {
     val shade = remember { Animatable(0f) }
     LaunchedEffect(blinks) {
         if (blinks == 0) return@LaunchedEffect
-        shade.snapTo(BlinkDepth)
+        shade.snapTo(BLINK_DEPTH)
         if (reduced) {
             delay(motion.motionFast.toLong())
             shade.snapTo(0f)
@@ -975,8 +982,8 @@ private fun Shutter(
             val pulse = rememberInfiniteTransition()
             val value by pulse.animateFloat(
                 initialValue = 1f,
-                targetValue = PulseLow,
-                animationSpec = infiniteRepeatable(tween(durationMillis = PulseMillis), RepeatMode.Reverse),
+                targetValue = PULSE_LOW,
+                animationSpec = infiniteRepeatable(tween(durationMillis = PULSE_MILLIS), RepeatMode.Reverse),
             )
             value
         } else {
@@ -989,7 +996,7 @@ private fun Shutter(
                 .size(ApertureDefaults.Size)
                 .clip(CircleShape)
                 .clickable(enabled = shutter.enabled, role = Role.Button, onClick = onShoot)
-                .alpha(if (shutter.enabled) 1f else DisabledAlpha),
+                .alpha(if (shutter.enabled) 1f else DISABLED_ALPHA),
     ) {
         Box(modifier = Modifier.alpha(ringAlpha)) {
             Aperture(
@@ -1021,11 +1028,11 @@ private val StatusMarkSize = 8.dp
 private val RecordDotSize = 26.dp
 private val StopSquareSize = 20.dp
 private val StopCorner = 4.dp
-private const val FocusShownMillis = 1_000L
-private const val BlinkDepth = 0.7f
-private const val DisabledAlpha = 0.38f
-private const val PulseLow = 0.75f
-private const val PulseMillis = 1_600
+private const val FOCUS_SHOWN_MILLIS = 1_000L
+private const val BLINK_DEPTH = 0.7f
+private const val DISABLED_ALPHA = 0.38f
+private const val PULSE_LOW = 0.75f
+private const val PULSE_MILLIS = 1_600
 
 // The chrome's bands over a video's edges: one even shade across each bar, so no text or mark ever
 // sits on a clear stretch of a bright picture — which a fade to transparent left at its inner edge —

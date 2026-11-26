@@ -392,6 +392,4 @@ class CaptureQueueTest {
         }
 
     private fun captured(seed: Int): CaptureResult = CaptureResult.Captured(CapturedPhoto(jpegLike(seed), 0))
-
-    /** Runs what it is handed only when the test says so — the encrypt, held at its doorstep. */
 }
