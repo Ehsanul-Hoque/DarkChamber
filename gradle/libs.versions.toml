@@ -13,7 +13,7 @@ androidx-testExt = "1.3.0"
 androidx-testRunner = "1.7.0"
 composeMultiplatform = "1.11.1"
 junit = "4.13.2"
-kotlin = "2.4.10"
+kotlin = "2.4.21"
 material3 = "1.11.0-alpha07"
 
 # --- Phase 0+ target dependencies (docs/engineering/MODULES.md §6) ------------
@@ -32,10 +32,10 @@ turbine = "1.2.1"
 detekt = "1.23.8"
 konsist = "0.18.1"
 kover = "0.9.9"
-buildkonfig = "0.22.0"
+buildkonfig = "0.24.1"
 # core:crypto: .dchm streaming IO + CBOR header. JetBrains-official, KMP, GPLv3-OK.
 kotlinxIo = "0.9.1"
-kotlinxSerialization = "1.11.0"   # serialization runtime (cbor); the compiler plugin tracks `kotlin`
+kotlinxSerialization = "1.13.0"   # serialization runtime (cbor); the compiler plugin tracks `kotlin`
 # core:db: reactive catalog Flow (sqldelight-coroutines) + host/iOS test drivers.
 kotlinxCoroutines = "1.11.0"
 # core:crypto: pure-JVM Argon2id for the Android/host passphrase-wrap actual. GPLv3-OK
