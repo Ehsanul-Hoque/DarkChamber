@@ -29,7 +29,7 @@ koin = "4.2.2"
 decompose = "3.6.2"
 coil3 = "3.6.3"
 media3 = "1.11.1"
-kermit = "2.1.0"
+kermit = "2.2.0"
 turbine = "1.2.1"
 detekt = "1.23.8"
 konsist = "0.18.1"
@@ -42,7 +42,7 @@ kotlinxSerialization = "1.13.0"   # serialization runtime (cbor); the compiler p
 kotlinxCoroutines = "1.11.0"
 # core:crypto: pure-JVM Argon2id for the Android/host passphrase-wrap actual. GPLv3-OK
 # (BouncyCastle is MIT-style). iOS uses the vendored phc-winner-argon2 cinterop instead.
-bouncycastle = "1.85.2"
+bouncycastle = "1.87"
 # --- Session gate + biometric --------------------------------------
 # androidx.biometric BASE (not -ktx: no stable -ktx exists; our BiometricAuthenticator
 # seam already exposes suspend, so the -ktx coroutine helpers aren't needed). 1.1.0 is
