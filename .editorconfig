@@ -14,3 +14,5 @@ max_line_length = 120
 ktlint_code_style = ktlint_official
 # Composable functions are named like types (PascalCase), as Compose's own guidelines ask.
 ktlint_function_naming_ignore_when_annotated_with = Composable
+# The design system's theme is provided through these; supplying them is what it is for.
+compose_allowed_composition_locals = LocalDarkChamberColors,LocalDarkChamberTypography,LocalDarkChamberShapes,LocalDarkChamberSpacing,LocalDarkChamberMotion
