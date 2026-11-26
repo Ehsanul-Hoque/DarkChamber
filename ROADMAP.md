@@ -80,8 +80,8 @@ Goal: a walking skeleton with the security core proven before any product UI.
 
 The complete free product. Everything here ships open source and free.
 
-> **Progress (2026-10): Phase 1 is under way — the vault half of it is in place, and the camera takes
-> photos and records video; the viewers are next.**
+> **Progress (2026-11): Phase 1 is under way — the vault, the private camera and the in-app viewers
+> are in place; export with metadata scrubbing is next.**
 > What a build can do today, on Android and iOS — the readme describes each of these for a reader
 > rather than a planner:
 >
@@ -116,6 +116,22 @@ The complete free product. Everything here ships open source and free.
 >   flash storage can keep the old blocks, as the threat model says of the shredder. Recording is limited
 >   to what the phone has room to encrypt, and a full disk is named only when the phone reports one.
 >   Anything a lock or a failure discarded is counted, never described, on the next unlocked screen.
+> - **Open what is in there, in memory only.** A viewer swipes through the listing an item was opened
+>   from. Photos are decoded only after the whole file has verified. Video and audio stream from the
+>   encrypted file by byte range, decrypting only the chunks the player reads — no cache, no media
+>   session, no lock-screen card. A PDF is read whole into memory and handed to the platform's renderer only once it
+>   has verified (Android 11 or newer, through an anonymous memory file; older versions say they cannot
+>   show PDFs rather than write one to a file). Text files — plain text, code, JSON re-indented without
+>   changing anything else, Markdown drawn by the app's own code — are decoded from memory too, with no
+>   web view anywhere, so HTML shows its source. A photo, PDF or text file that fails its integrity
+>   check shows nothing of itself; a video or audio file that fails partway stops there and says so. A
+>   lock stops a read within a chunk.
+> - **Let a link out only on purpose.** A web link in a Markdown file opens only after a dialog showing
+>   its full address, the site named in it and what opening it sends out; once the browser has it,
+>   the vault locks — even in split-screen, where the app is never sent to the background.
+> - **Delete for good.** Deleting an item, from the viewer or a whole selection, destroys its key, so
+>   the app can never open it again; the confirmation promises no more than that, and the threat model
+>   says what flash storage may still hold.
 > - **Give nothing to the rest of the phone.** Screenshot and recording blocking plus a blank
 >   app-switcher card on Android, an obscured snapshot on iOS (which offers no way to block a
 >   screenshot at all — the threat model says so and no copy here softens it), and every window kept
@@ -123,12 +139,12 @@ The complete free product. Everything here ships open source and free.
 >   covered by the screenshot flag: a device showed a vault text field travelling it with the flag set.
 >   The cost is stated rather than hidden — a password manager cannot fill the passphrase.
 >
-> Still to come before v1.0: the in-app viewers and the seekable reads they need,
-> export with metadata scrubbing, the settings screen and recovery-key entry, and the
-> release-readiness tooling.
+> Still to come before v1.0: export with metadata scrubbing (and the "decrypt & open in…" fallback),
+> the settings screen and recovery-key entry, and the quality and release-readiness tooling.
 >
 > **Verified on Android hardware; iOS only on the simulator.** The platform-specific paths there —
-> the pickers, the preview encoder, the camera — have not been run on a device, which is a
+> the pickers, the preview encoder, the camera, the players, the PDF renderer and the link opener —
+> have not been run on a device, which is a
 > pre-release gate rather than something to imply away. What automated tests cannot show at all has
 > its own checklists in [`docs/verification/`](./docs/verification), one per area, with the
 > release-blocking lines marked: that a name never reaches the catalog file or a log line, that a
@@ -140,7 +156,7 @@ The complete free product. Everything here ships open source and free.
 |----------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Encrypted vault with albums             | Import from gallery & file picker; batch import; albums as labels (one per item, deleting an album keeps its files); sort/search on encrypted metadata                                               |
 | **Private camera** (photo + video)     | CameraX / AVFoundation → encrypting import → app-private storage. A photo never touches a file; a video passes through one app-private scratch file while it is recorded and encrypted, then is deleted |
-| In-app viewers                         | Images (in-memory decode), video & audio (streaming decrypt via ExoPlayer custom DataSource / AVAssetResourceLoaderDelegate), PDF (PDFKit in-memory on iOS; private-cache temp or memfd on Android) |
+| In-app viewers                         | Images (in-memory decode), video & audio (streaming decrypt by byte range via a Media3 DataSource / AVAssetResourceLoaderDelegate, no cache), PDF (whole into memory, verified first: an anonymous memory file + `PdfRenderer` on Android 11+, CoreGraphics on iOS; never a file), text, JSON and Markdown (drawn by our own code; HTML as source; no web view; links only after a confirmation, which locks the vault) |
 | "Decrypt & open in…" fallback          | Share-sheet export for docx/zip/other, with explicit "file is leaving the vault" warning + cleanup action                                                                                           |
 | Unlock: PIN + biometrics               | Hardware-backed; rate-limited PIN attempts                                                                                                                                                          |
 | **Recovery key** flow                  | Forced at setup; brutal clarity that loss = permanent data loss                                                                                                                                     |
