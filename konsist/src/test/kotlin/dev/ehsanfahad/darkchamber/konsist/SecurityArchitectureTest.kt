@@ -435,7 +435,8 @@ class SecurityArchitectureTest {
          */
         val PLATFORM_OPENS_AN_ADDRESS =
             Regex(
-                """(?<![A-Za-z0-9_])(ACTION_VIEW|android\.intent\.action\.VIEW|openURL|CustomTabsIntent|SFSafariViewController)""" +
+                """(?<![A-Za-z0-9_])(ACTION_VIEW|android\.intent\.action\.VIEW|openURL|""" +
+                    """CustomTabsIntent|SFSafariViewController)""" +
                     """(?![A-Za-z0-9_])""",
             )
 
