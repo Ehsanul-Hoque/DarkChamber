@@ -189,9 +189,12 @@ class CameraNavigationTest {
                 listOf("cherry.jpg", "apple.jpg").map { name ->
                     (
                         objects
-                            .importObject(kind = VaultItemKind.FILE.code, name = name, mime = "image/jpeg", openSource = {
-                                Buffer().apply { write(byteArrayOf(1, 2, 3)) }
-                            }) as Outcome.Ok
+                            .importObject(
+                                kind = VaultItemKind.FILE.code,
+                                name = name,
+                                mime = "image/jpeg",
+                                openSource = { Buffer().apply { write(byteArrayOf(1, 2, 3)) } },
+                            ) as Outcome.Ok
                     ).value
                 }
             val component = component(open)

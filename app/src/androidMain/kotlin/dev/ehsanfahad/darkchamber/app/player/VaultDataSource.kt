@@ -90,7 +90,10 @@ internal class VaultReadException(
 @UnstableApi
 internal class VaultDataSource(
     private val shared: SharedRangeReader,
-) : BaseDataSource(/* isNetwork = */ false) {
+) : BaseDataSource(
+        // isNetwork =
+        false,
+    ) {
     private var uri: Uri? = null
     private var opened = false
     private var position = 0L

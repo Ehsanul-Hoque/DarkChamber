@@ -1,3 +1,7 @@
+// Named to pair with the common VaultRootResolver.kt, as each platform's side of a shared file is,
+// rather than after the one class it holds.
+@file:Suppress("ktlint:standard:filename")
+
 package dev.ehsanfahad.darkchamber.app
 
 import dev.ehsanfahad.darkchamber.core.model.Outcome

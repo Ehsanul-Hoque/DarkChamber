@@ -1,3 +1,8 @@
+// The lock card's steps (create, recovery key, biometrics, unlock) each emit their rows straight into
+// the card's column, which owns their spacing; a column of their own would only nest the same layout.
+// ktlint's Compose rules flag that, and honour a suppression of this rule only for a whole file.
+@file:Suppress("ktlint:compose:multiple-emitters-check")
+
 package dev.ehsanfahad.darkchamber.app.ui
 
 import androidx.compose.animation.core.animateFloatAsState
@@ -109,7 +114,13 @@ fun RootContent(
  * Reduced motion goes **instant** here rather than to a gentler animation. Elsewhere a cross-fade is
  * what motion degrades *to* (§8); a fade is already that floor, so the only thing left to honour the
  * setting with is to skip it.
+ *
+ * [content] is therefore called from two places, which ktlint's Compose rules flag. They only trade
+ * places when the reduced-motion setting changes while the vault is open — leaving the app locks it,
+ * so in practice only beside Settings in split screen — and the cost then is on-screen state such as a
+ * scroll position starting over, once.
  */
+@Suppress("ktlint:compose:content-slot-reused")
 @Composable
 private fun UnlockedFadeIn(content: @Composable () -> Unit) {
     if (prefersReducedMotion()) {

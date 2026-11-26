@@ -39,7 +39,11 @@ import platform.UIKit.UIVisualEffectView
  * [LifecycleRegistry] whose STOP/RESUME track app background/foreground, so backgrounding locks the
  * vault (the iOS analogue of the Android `onStop` teardown; hard rules #1/#5). The session lives only
  * in memory — nothing is persisted, so there is no saved-state child to restore.
+ *
+ * Named like a type, as Compose Multiplatform's iOS entry points are, because Swift calls it by this
+ * name; ktlint's function-naming rule is suppressed for that.
  */
+@Suppress("ktlint:standard:function-naming")
 @OptIn(ExperimentalForeignApi::class)
 fun MainViewController(): UIViewController {
     val koin = appKoin

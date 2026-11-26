@@ -49,7 +49,7 @@ class VaultBootstrapTest {
 
     @Test
     fun createVault_persists_the_keystore_and_returns_a_recovery_key() {
-        val created = bootstrap().createVault(PASSPHRASE())
+        val created = bootstrap().createVault(passphrase())
         assertTrue(created is Outcome.Ok, "create failed: $created")
         assertTrue(created.value.recoveryKey.isNotBlank(), "recovery key must be shown")
         created.value.vault.session
@@ -59,19 +59,19 @@ class VaultBootstrapTest {
 
     @Test
     fun create_then_unlock_via_passphrase() {
-        bootstrap().createVault(PASSPHRASE()).let {
+        bootstrap().createVault(passphrase()).let {
             assertTrue(it is Outcome.Ok, "create failed: $it")
             it.value.vault.session
                 .close()
         }
-        val reopened = bootstrap().unlock(PASSPHRASE())
+        val reopened = bootstrap().unlock(passphrase())
         assertTrue(reopened is Outcome.Ok, "reopen failed: $reopened")
         reopened.value.session.close()
     }
 
     @Test
     fun unlock_rejects_a_wrong_passphrase() {
-        bootstrap().createVault(PASSPHRASE()).let {
+        bootstrap().createVault(passphrase()).let {
             assertTrue(it is Outcome.Ok)
             it.value.vault.session
                 .close()
@@ -84,7 +84,7 @@ class VaultBootstrapTest {
     @Test
     fun a_wrong_passphrase_does_not_open_the_catalog() {
         // Seed a vault with a real catalog.
-        bootstrap().createVault(PASSPHRASE()).let {
+        bootstrap().createVault(passphrase()).let {
             assertTrue(it is Outcome.Ok)
             it.value.vault.session
                 .close()
@@ -100,11 +100,11 @@ class VaultBootstrapTest {
     @Test
     fun create_enroll_then_unlock_with_biometric_approve() =
         runTest {
-            val created = bootstrap().createVault(PASSPHRASE())
+            val created = bootstrap().createVault(passphrase())
             assertTrue(created is Outcome.Ok)
             val boot = bootstrap()
             // enroll on a fresh boot over the same root (reads the persisted keystore)
-            val unlocked = boot.unlock(PASSPHRASE())
+            val unlocked = boot.unlock(passphrase())
             assertTrue(unlocked is Outcome.Ok)
             assertTrue(boot.enrollBiometric(unlocked.value, approve()) is Outcome.Ok, "enroll failed")
             unlocked.value.session.close()
@@ -119,10 +119,10 @@ class VaultBootstrapTest {
     @Test
     fun unlock_with_biometric_denied_is_an_auth_error() =
         runTest {
-            val created = bootstrap().createVault(PASSPHRASE())
+            val created = bootstrap().createVault(passphrase())
             assertTrue(created is Outcome.Ok)
             val boot = bootstrap()
-            val unlocked = boot.unlock(PASSPHRASE())
+            val unlocked = boot.unlock(passphrase())
             assertTrue(unlocked is Outcome.Ok)
             assertTrue(boot.enrollBiometric(unlocked.value, approve()) is Outcome.Ok)
             unlocked.value.session.close()
@@ -138,7 +138,7 @@ class VaultBootstrapTest {
     @Test
     fun unlock_with_biometric_without_enrollment_is_malformed() =
         runTest {
-            bootstrap().createVault(PASSPHRASE()).let {
+            bootstrap().createVault(passphrase()).let {
                 assertTrue(it is Outcome.Ok)
                 it.value.vault.session
                     .close()
@@ -152,7 +152,7 @@ class VaultBootstrapTest {
     @Test
     fun createVault_aborts_on_the_first_error_a_failing_catalog() {
         val failing = CatalogProvider { Outcome.Err(VaultError.Db(IllegalStateException("catalog down"))) }
-        val outcome = bootstrap(catalogProvider = failing).createVault(PASSPHRASE())
+        val outcome = bootstrap(catalogProvider = failing).createVault(passphrase())
 
         assertTrue(outcome is Outcome.Err, "a failing catalog must abort the open")
         assertTrue(outcome.error is VaultError.Db)
@@ -171,7 +171,7 @@ class VaultBootstrapTest {
     @Test
     fun a_cold_open_purges_leftover_plaintext_scratch() =
         runTest {
-            bootstrap().createVault(PASSPHRASE()).let {
+            bootstrap().createVault(passphrase()).let {
                 assertTrue(it is Outcome.Ok)
                 it.value.vault.session
                     .close()
@@ -186,13 +186,13 @@ class VaultBootstrapTest {
 
             // And the same on the unlock path, which is a cold open too.
             SystemFileSystem.sink(orphan).buffered().use { it.writeString("still must not survive") }
-            val reopened = bootstrap().unlock(PASSPHRASE())
+            val reopened = bootstrap().unlock(passphrase())
             assertTrue(reopened is Outcome.Ok, "reopen failed: $reopened")
             reopened.value.session.close()
             assertTrue(!SystemFileSystem.exists(orphan), "scratch must not survive an unlock")
         }
 
-    private fun PASSPHRASE(): ByteArray = "correct-horse-battery".encodeToByteArray()
+    private fun passphrase(): ByteArray = "correct-horse-battery".encodeToByteArray()
 
     private fun deleteRecursively(path: Path) {
         val md = SystemFileSystem.metadataOrNull(path) ?: return
