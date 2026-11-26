@@ -36,7 +36,7 @@ konsist = "0.18.1"
 kover = "0.9.9"
 buildkonfig = "0.24.1"
 # core:crypto: .dchm streaming IO + CBOR header. JetBrains-official, KMP, GPLv3-OK.
-kotlinxIo = "0.9.1"
+kotlinxIo = "0.9.3"
 kotlinxSerialization = "1.13.0"   # serialization runtime (cbor); the compiler plugin tracks `kotlin`
 # core:db: reactive catalog Flow (sqldelight-coroutines) + host/iOS test drivers.
 kotlinxCoroutines = "1.11.0"
