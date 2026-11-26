@@ -393,9 +393,7 @@ internal fun GalleryScreen(
                 )
             }
 
-            is SelectionDelete.Deleted, null -> {
-                Unit
-            }
+            is SelectionDelete.Deleted, null -> {}
         }
 
         // The album's own two dialogs, above the grid they act on. Never both: each intent refuses
@@ -632,9 +630,7 @@ private fun FilingCard(
             }
 
             // The chooser is a dialog, so this card is never asked to draw it.
-            is Filing.Choosing -> {
-                Unit
-            }
+            is Filing.Choosing -> {}
         }
     }
 }
@@ -682,9 +678,7 @@ private fun DeleteCard(
             }
 
             // The confirmation is a dialog, so this card is never asked to draw it.
-            is SelectionDelete.Asking -> {
-                Unit
-            }
+            is SelectionDelete.Asking -> {}
         }
     }
 }

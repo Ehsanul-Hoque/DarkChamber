@@ -102,9 +102,7 @@ internal fun MarkdownPageView(
                 }
             }
 
-            LinkTarget.Inert -> {
-                Unit
-            }
+            LinkTarget.Inert -> {}
         }
     }
 

@@ -821,9 +821,7 @@ private fun LightControl(controls: Controls) {
     Box(modifier = Modifier.size(spacing.spaceXxl)) {
         Swapping(state.light?.takeIf { state.showsViewfinder }) { light ->
             when (light) {
-                null -> {
-                    Unit
-                }
+                null -> {}
 
                 is LightControl.Flash -> {
                     IconButton(onClick = controls.onCycleFlash, modifier = Modifier.size(spacing.spaceXxl)) {
@@ -1000,9 +998,7 @@ private fun Shutter(
             )
         }
         when (shutter.kind) {
-            ShutterKind.Photo -> {
-                Unit
-            }
+            ShutterKind.Photo -> {}
 
             // Inside the aperture, so the one place a full circle belongs.
             ShutterKind.Record -> {

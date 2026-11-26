@@ -297,9 +297,7 @@ class JsonIndentTest {
                     inString = true
                 }
 
-                c == ' ' || c == '\t' || c == '\n' || c == '\r' -> {
-                    Unit
-                }
+                c == ' ' || c == '\t' || c == '\n' || c == '\r' -> {}
 
                 else -> {
                     out.append(c)

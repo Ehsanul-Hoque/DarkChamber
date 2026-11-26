@@ -171,9 +171,7 @@ internal class ImportQueue(
                     // was being fetched or encrypted — and telling the user it failed would blame a
                     // file for their own decision. Which of the two it was is settled upstream,
                     // where the stop flag lives.
-                    ImportResult.Stopped -> {
-                        Unit
-                    }
+                    ImportResult.Stopped -> {}
                 }
             }
         } finally {

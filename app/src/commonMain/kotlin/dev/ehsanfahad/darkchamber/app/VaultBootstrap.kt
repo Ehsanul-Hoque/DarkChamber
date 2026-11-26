@@ -131,9 +131,7 @@ class VaultBootstrap(
                     return w
                 }
 
-                is Outcome.Ok -> {
-                    Unit
-                }
+                is Outcome.Ok -> {}
             }
             handedOff = true
             return Outcome.Ok(CreatedVaultSession(OpenVault(created.session, at.storage, catalog), created.recoveryKey))

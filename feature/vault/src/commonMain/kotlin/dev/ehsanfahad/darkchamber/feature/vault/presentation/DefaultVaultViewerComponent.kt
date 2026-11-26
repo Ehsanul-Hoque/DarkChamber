@@ -188,9 +188,7 @@ internal open class ViewerComponent<T>(
                 return
             }
 
-            OpenPlan.Decode -> {
-                Unit
-            }
+            OpenPlan.Decode -> {}
         }
         val job = scope.launch(start = CoroutineStart.LAZY) { readText(key, shown, kind) }
         textOpening = Opening(key, job)
@@ -462,9 +460,7 @@ internal open class ViewerComponent<T>(
                 return
             }
 
-            OpenPlan.Decode -> {
-                Unit
-            }
+            OpenPlan.Decode -> {}
         }
         val job = scope.launch(start = CoroutineStart.LAZY) { openPdf(key, shown, renderer) }
         pdfOpening = Opening(key, job)
