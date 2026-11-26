@@ -57,7 +57,11 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.label
  * Deliberately plainer than the item grid: albums are few, nothing here animates on arrival, and the
  * one affordance makes an album rather than importing a file — an album list is something a user
  * returns to rather than watches fill.
+ *
+ * ktlint's Compose rules read `onOpenUnfiled` as past tense; "unfiled" names the items in no album, so
+ * that rule is suppressed here and on [AlbumGrid].
  */
+@Suppress("ktlint:compose:parameter-naming")
 @Composable
 internal fun AlbumsScreen(
     state: AlbumsState,
@@ -149,6 +153,7 @@ internal fun AlbumsScreen(
     }
 }
 
+@Suppress("ktlint:compose:parameter-naming") // "unfiled" in `onOpenUnfiled`: see [AlbumsScreen]
 @Composable
 private fun AlbumGrid(
     albums: List<AlbumTile>,

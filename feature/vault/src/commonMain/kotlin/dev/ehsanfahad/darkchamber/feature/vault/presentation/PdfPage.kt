@@ -82,7 +82,7 @@ internal fun PdfPageView(
     onTap: () -> Unit,
     onZoomedIn: (Boolean) -> Unit,
     onViewport: (visible: IntRange, shownWidthPx: Int, zoom: Float, screenWidthPx: Int) -> Unit,
-    onScrolled: (page: Int, offsetPx: Int) -> Unit,
+    onScroll: (page: Int, offsetPx: Int) -> Unit,
     /** The page most on screen, for the indicator. */
     onReading: (Int) -> Unit,
     /** Room above the first page and below the last, so neither ends under a bar. */
@@ -99,6 +99,11 @@ internal fun PdfPageView(
     var drawZoom by remember { mutableFloatStateOf(1f) }
     val list = rememberLazyListState(page.start.page, page.start.offsetPx)
     val shown by rememberUpdatedState(isShown)
+    // The callbacks as of the latest composition, for the effects below that outlive one.
+    val currentOnZoomedIn by rememberUpdatedState(onZoomedIn)
+    val currentOnViewport by rememberUpdatedState(onViewport)
+    val currentOnScroll by rememberUpdatedState(onScroll)
+    val currentOnReading by rememberUpdatedState(onReading)
     // A fling of the zoomed column, while it runs; the decay is the one a scroll uses.
     val flingScope = rememberCoroutineScope()
     val decay = rememberSplineBasedDecay<Offset>()
@@ -112,7 +117,7 @@ internal fun PdfPageView(
             drawZoom = 1f
         }
     }
-    LaunchedEffect(zoom) { onZoomedIn(!ViewerZoom.pagerMaySwipe(zoom)) }
+    LaunchedEffect(zoom) { currentOnZoomedIn(!ViewerZoom.pagerMaySwipe(zoom)) }
     LaunchedEffect(jump) {
         if (jump == null) return@LaunchedEffect
         // Back to fit first: a page landing under a zoom would show some corner of it.
@@ -124,7 +129,7 @@ internal fun PdfPageView(
     }
     LaunchedEffect(list) {
         snapshotFlow { list.firstVisibleItemIndex to list.firstVisibleItemScrollOffset }
-            .collect { (index, offsetPx) -> if (shown) onScrolled(index, offsetPx) }
+            .collect { (index, offsetPx) -> if (shown) currentOnScroll(index, offsetPx) }
     }
     // The fast-scroll thumb: shown for a while after the column last moved, and while it is dragged.
     var scrolledLately by remember { mutableStateOf(false) }
@@ -210,10 +215,10 @@ internal fun PdfPageView(
                 )
             }.distinctUntilChanged().collect { seen ->
                 // A fast-scroll drag sweeps past pages it would be a waste to draw: only where it ends.
-                if (!seen.dragging) onViewport(seen.pages, widthPx, seen.zoom, widthPx)
+                if (!seen.dragging) currentOnViewport(seen.pages, widthPx, seen.zoom, widthPx)
                 seen.most?.let {
                     reading = it
-                    onReading(it)
+                    currentOnReading(it)
                 }
             }
         }

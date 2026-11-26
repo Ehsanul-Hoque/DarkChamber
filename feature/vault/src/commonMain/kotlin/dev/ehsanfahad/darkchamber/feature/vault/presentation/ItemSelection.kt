@@ -3,8 +3,6 @@ package dev.ehsanfahad.darkchamber.feature.vault.presentation
 import com.arkivanov.decompose.value.MutableValue
 import com.arkivanov.decompose.value.Value
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
-// Not auto-imported in common source sets, and required on the JVM target: a value class without it
-// does not compile there, while on the native targets the annotation is simply inert.
 import kotlin.jvm.JvmInline
 
 /**
@@ -123,6 +121,10 @@ internal data class SelectionState(
  *
  * A wrapper rather than a bare `List<Byte>` so the intent survives: a list of bytes could be
  * anything, and the conversion is easy to forget at one call site out of six.
+ *
+ * `JvmInline` is imported by hand: it is not auto-imported in common source sets, and it is required
+ * on the JVM target — a value class without it does not compile there, while on the native targets
+ * the annotation is simply inert.
  */
 @JvmInline
 internal value class ItemKey(

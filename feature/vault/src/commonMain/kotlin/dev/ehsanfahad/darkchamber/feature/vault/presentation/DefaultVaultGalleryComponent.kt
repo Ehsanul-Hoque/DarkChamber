@@ -831,8 +831,9 @@ internal class DefaultVaultGalleryComponent(
      * holding those back would take a label the user is reading back off the screen for [after]
      * before restoring it. The grace exists to keep a label from flashing on, not to make one flash
      * off, so an announcement already made stands until the stage actually changes.
+     *
+     * Experimental `transformLatest`, accepted for the reason given on [holdBackPicking].
      */
-    // Experimental `transformLatest`, accepted for the reason given on [holdBackPicking].
     @OptIn(ExperimentalCoroutinesApi::class)
     private fun Flow<ImportState>.holdBackUnmeasurableStages(after: Duration): Flow<ImportState> =
         flow {

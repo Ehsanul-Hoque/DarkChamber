@@ -48,6 +48,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -138,7 +139,7 @@ fun VaultViewerContent(
         onToggleFormatted = component::toggleFormatted,
         onOpenLink = component::openLink,
         onPdfViewport = component::pdfViewport,
-        onPdfScrolled = component::pdfScrolled,
+        onPdfScroll = component::pdfScrolled,
         onViewport = component::viewportMeasured,
         onShowPage = component::showPage,
         onBack = component::back,
@@ -153,7 +154,11 @@ fun VaultViewerContent(
 /**
  * The viewer: a pager on pure black, the picture running under the system bars, with bars over it
  * that a tap hides and shows.
+ *
+ * ktlint's Compose rules read `onToggleFormatted` as past tense; "formatted" names the view it switches
+ * to, so that rule is suppressed here.
  */
+@Suppress("ktlint:compose:parameter-naming")
 @Composable
 internal fun ViewerScreen(
     state: ViewerState,
@@ -166,7 +171,7 @@ internal fun ViewerScreen(
     onToggleFormatted: () -> Unit,
     onOpenLink: (String) -> Unit,
     onPdfViewport: (visible: IntRange, shownWidthPx: Int, zoom: Float, screenWidthPx: Int) -> Unit,
-    onPdfScrolled: (page: Int, offsetPx: Int) -> Unit,
+    onPdfScroll: (page: Int, offsetPx: Int) -> Unit,
     onViewport: (widthPx: Int, heightPx: Int) -> Unit,
     onShowPage: (Int) -> Unit,
     onBack: () -> Unit,
@@ -186,12 +191,14 @@ internal fun ViewerScreen(
     // actions, as on a PDF page — a player page's is taller.
     var topBarPx by remember { mutableIntStateOf(0) }
     var bottomBarPx by remember { mutableIntStateOf(0) }
+    // As of the latest composition, for the size effect below, which outlives one.
+    val currentOnViewport by rememberUpdatedState(onViewport)
 
     // Pure black whatever the theme: a media surface (docs/DESIGN.md §2), where a raw colour is the token.
     BoxWithConstraints(modifier = modifier.fillMaxSize().background(Color.Black)) {
         val widthPx = constraints.maxWidth
         val heightPx = constraints.maxHeight
-        LaunchedEffect(widthPx, heightPx) { onViewport(widthPx, heightPx) }
+        LaunchedEffect(widthPx, heightPx) { currentOnViewport(widthPx, heightPx) }
 
         val shown: GalleryItem? = state.items.getOrNull(state.index)
         if (!state.loading && shown != null) {
@@ -261,7 +268,7 @@ internal fun ViewerScreen(
                         PdfHooks(
                             drawn = if (isShown) pdfPages else emptyMap(),
                             onViewport = onPdfViewport,
-                            onScrolled = onPdfScrolled,
+                            onScroll = onPdfScroll,
                             onReading = { if (isShown) pdfReading = it },
                             topPaddingPx = topBarPx,
                             bottomPaddingPx = bottomBarPx,
@@ -439,7 +446,7 @@ private fun ViewerPageView(
                 onTap = onTap,
                 onZoomedIn = onZoomedIn,
                 onViewport = pdf.onViewport,
-                onScrolled = pdf.onScrolled,
+                onScroll = pdf.onScroll,
                 onReading = pdf.onReading,
                 topPaddingPx = pdf.topPaddingPx,
                 bottomPaddingPx = pdf.bottomPaddingPx,
@@ -503,7 +510,8 @@ private fun ZoomablePicture(
             offset = Offset.Zero
         }
     }
-    LaunchedEffect(zoom) { onZoomedIn(!ViewerZoom.pagerMaySwipe(zoom)) }
+    val currentOnZoomedIn by rememberUpdatedState(onZoomedIn)
+    LaunchedEffect(zoom) { currentOnZoomedIn(!ViewerZoom.pagerMaySwipe(zoom)) }
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val box = Size(constraints.maxWidth.toFloat(), constraints.maxHeight.toFloat())
@@ -766,7 +774,7 @@ private fun ViewerBottomBar(
 private class PdfHooks(
     val drawn: Map<Int, ImageBitmap?>,
     val onViewport: (visible: IntRange, shownWidthPx: Int, zoom: Float, screenWidthPx: Int) -> Unit,
-    val onScrolled: (page: Int, offsetPx: Int) -> Unit,
+    val onScroll: (page: Int, offsetPx: Int) -> Unit,
     val onReading: (Int) -> Unit,
     val topPaddingPx: Int,
     val bottomPaddingPx: Int,
@@ -998,9 +1006,11 @@ private fun NoticeBanner(
     modifier: Modifier = Modifier,
 ) {
     val colors = DarkChamberTheme.colors
+    // The dismiss as of the latest composition: the timer outlives the one that started it.
+    val currentOnDismiss by rememberUpdatedState(onDismiss)
     LaunchedEffect(text) {
         delay(NOTICE_MS)
-        onDismiss()
+        currentOnDismiss()
     }
     Text(
         text = text,

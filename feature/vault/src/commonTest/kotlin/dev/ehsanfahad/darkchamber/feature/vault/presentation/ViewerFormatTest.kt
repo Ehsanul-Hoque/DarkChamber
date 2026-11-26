@@ -517,7 +517,7 @@ class ViewerFormatTest {
     private val pdfMeta = GalleryItemMeta.Readable("report.pdf", "application/pdf")
 
     /** A space a line never breaks at (U+00A0), written as its code so no editor shows it as a space. */
-    private val NBSP = Char(0x00A0)
+    private val nbsp = Char(0x00A0)
     private val openPdf = ViewerPage.Pdf(pageCount = 12, pageSizes = List(12) { PdfPageSize(595, 842) })
 
     private val waited = ViewerFormat.PDF_DASHES_AFTER_MS
@@ -540,7 +540,7 @@ class ViewerFormatTest {
     @Test
     fun an_open_pdf_names_the_page_being_read() {
         val indicator = shown(openPdf, reading = 2)
-        assertEquals("Page 3 of 12", indicator.text.replace(NBSP, ' '))
+        assertEquals("Page 3 of 12", indicator.text.replace(nbsp, ' '))
         assertTrue(indicator.ready)
     }
 
@@ -591,9 +591,9 @@ class ViewerFormatTest {
     @Test
     fun the_indicator_wraps_only_before_of() {
         val open = shown(openPdf, reading = 399).text
-        assertEquals(listOf("Page${NBSP}400", "of${NBSP}12"), open.split(' '))
+        assertEquals(listOf("Page${nbsp}400", "of${nbsp}12"), open.split(' '))
         val loading = shown(ViewerPage.Loading).text
-        assertEquals(listOf("Page$NBSP–", "of$NBSP–"), loading.split(' '))
+        assertEquals(listOf("Page$nbsp–", "of$nbsp–"), loading.split(' '))
     }
 
     /** What a screen reader hears has plain spaces. */
@@ -601,7 +601,7 @@ class ViewerFormatTest {
     fun the_spoken_indicator_has_no_unbreakable_spaces() {
         for (page in listOf(openPdf, ViewerPage.Loading)) {
             val spoken = shown(page, reading = 2).spoken
-            assertFalse(spoken.contains(NBSP), "\"$spoken\"")
+            assertFalse(spoken.contains(nbsp), "\"$spoken\"")
         }
     }
 

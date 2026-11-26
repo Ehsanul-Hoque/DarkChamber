@@ -23,6 +23,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -445,7 +446,7 @@ internal fun GalleryBrowseControls(
     search: GallerySearch,
     onChooseOrder: (GalleryOrder) -> Unit,
     onOpenSearch: () -> Unit,
-    onSearchFocused: () -> Unit,
+    onSearchFocus: () -> Unit,
     onEditSearch: (String) -> Unit,
     onCloseSearch: () -> Unit,
     // Whether the order and search controls themselves belong on the row — see [showsBrowseControls].
@@ -459,6 +460,8 @@ internal fun GalleryBrowseControls(
 ) {
     val spacing = DarkChamberTheme.spacing
     val colors = DarkChamberTheme.colors
+    // As of the latest composition, for the focus effect below, which outlives one.
+    val currentOnSearchFocus by rememberUpdatedState(onSearchFocus)
 
     Column(modifier = modifier.fillMaxWidth()) {
         Row(
@@ -500,7 +503,7 @@ internal fun GalleryBrowseControls(
                         LaunchedEffect(search.takesFocus) {
                             if (search.takesFocus) {
                                 focus.requestFocus()
-                                onSearchFocused()
+                                currentOnSearchFocus()
                             }
                         }
 

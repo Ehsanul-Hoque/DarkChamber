@@ -102,7 +102,7 @@ internal fun GalleryScreen(
     imageLoader: ImageLoader,
     onChooseOrder: (GalleryOrder) -> Unit,
     onOpenSearch: () -> Unit,
-    onSearchFocused: () -> Unit,
+    onSearchFocus: () -> Unit,
     onEditSearch: (String) -> Unit,
     onCloseSearch: () -> Unit,
     onAddPhotos: () -> Unit,
@@ -116,7 +116,7 @@ internal fun GalleryScreen(
     onDismissError: () -> Unit,
     onSelectItem: (ByteArray) -> Unit,
     onTapItem: (ByteArray) -> Unit,
-    onRevealHandled: () -> Unit,
+    onReveal: () -> Unit,
     onSelectAll: () -> Unit,
     onClearSelection: () -> Unit,
     onStartFiling: () -> Unit,
@@ -165,7 +165,7 @@ internal fun GalleryScreen(
             val visible = gridState.layoutInfo.visibleItemsInfo
             val range = if (visible.isEmpty()) IntRange.EMPTY else visible.first().index..visible.last().index
             revealScroll(state.items, key, range)?.let { gridState.requestScrollToItem(it) }
-            onRevealHandled()
+            onReveal()
         }
     }
 
@@ -199,7 +199,7 @@ internal fun GalleryScreen(
                         onChooseOrder(chosen)
                     },
                     onOpenSearch = onOpenSearch,
-                    onSearchFocused = onSearchFocused,
+                    onSearchFocus = onSearchFocus,
                     onEditSearch = onEditSearch,
                     onCloseSearch = onCloseSearch,
                     showsControls = state.showsBrowseControls(),
