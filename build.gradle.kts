@@ -7,6 +7,8 @@ plugins {
     alias(libs.plugins.composeMultiplatform) apply false
     alias(libs.plugins.composeCompiler) apply false
     alias(libs.plugins.kotlinJvm) apply false
+    // Formatting for the build scripts that belong to no module (this one, settings, build-logic's).
+    id("darkchamber.quality")
 }
 
 // Points git at the tracked hooks in .githooks/, so a commit message and the commit's Kotlin doc

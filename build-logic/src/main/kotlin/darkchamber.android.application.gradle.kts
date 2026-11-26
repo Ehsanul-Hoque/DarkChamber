@@ -15,6 +15,11 @@ import java.util.Properties
 // included-build precompiled plugin drags the Kotlin plugin classpath into the app and
 // crashes AGP 9 (KotlinAndroidTarget references the removed BaseVariant API).
 
+plugins {
+    // Formatting is not Android-specific, so applying it here is safe (unlike AGP above).
+    id("darkchamber.quality")
+}
+
 val libs = the<LibrariesForLibs>()
 
 // ---------------------------------------------------------------------------

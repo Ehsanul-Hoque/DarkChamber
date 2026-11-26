@@ -35,6 +35,13 @@ detekt = "1.23.8"
 konsist = "0.18.1"
 kover = "0.9.9"
 buildkonfig = "0.24.1"
+# --- Quality tooling (the darkchamber.quality convention plugin) ----
+# Spotless runs ktlint; its formatting rules live in the root .editorconfig. Build-time only —
+# nothing of these ships in the app.
+spotless = "8.12.0"
+ktlint = "1.8.0"
+# Compose rules for ktlint (Compose naming, modifiers, state) — loaded as a ktlint rule set.
+composeRules = "0.6.8"
 # core:crypto: .dchm streaming IO + CBOR header. JetBrains-official, KMP, GPLv3-OK.
 kotlinxIo = "0.9.3"
 kotlinxSerialization = "1.13.0"   # serialization runtime (cbor); the compiler plugin tracks `kotlin`
@@ -151,6 +158,8 @@ kermit = { module = "co.touchlab:kermit", version.ref = "kermit" }
 # Test-only.
 turbine = { module = "app.cash.turbine:turbine", version.ref = "turbine" }
 konsist = { module = "com.lemonappdev:konsist", version.ref = "konsist" }
+# Build-time only: the ktlint rule set Spotless loads (see the `spotless` version above).
+compose-rules-ktlint = { module = "io.nlopez.compose.rules:ktlint", version.ref = "composeRules" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }
@@ -161,6 +170,8 @@ kotlinMultiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref =
 # :konsist is a plain JVM test-only module (the architecture rules run as JUnit tests).
 kotlinJvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlinSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+# Formatting — applied by the darkchamber.quality convention plugin.
+spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
 
 # --- Phase 0+ target plugins (declared now, applied later) ----------
 sqldelight = { id = "app.cash.sqldelight", version.ref = "sqldelight" }

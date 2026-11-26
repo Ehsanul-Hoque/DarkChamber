@@ -1,0 +1,16 @@
+# Formatting rules for the Kotlin sources and build scripts. ktlint (through Spotless, see the
+# darkchamber.quality convention plugin) and IDEs both read this file, so they agree.
+#   ./gradlew spotlessCheck   — check
+#   ./gradlew spotlessApply   — fix what can be fixed automatically
+root = true
+
+[*.{kt,kts}]
+charset = utf-8
+indent_style = space
+indent_size = 4
+insert_final_newline = true
+# ktlint_official would wrap at 140; the code has long been written to about 120.
+max_line_length = 120
+ktlint_code_style = ktlint_official
+# Composable functions are named like types (PascalCase), as Compose's own guidelines ask.
+ktlint_function_naming_ignore_when_annotated_with = Composable
