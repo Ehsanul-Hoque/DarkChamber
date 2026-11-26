@@ -8,6 +8,8 @@ import dev.ehsanfahad.darkchamber.app.player.AndroidPlayerDisplay
 import dev.ehsanfahad.darkchamber.app.player.AndroidVaultPlayerFactory
 import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerDisplay
 import dev.ehsanfahad.darkchamber.app.pdf.AndroidPdfRenderer
+import dev.ehsanfahad.darkchamber.app.link.AndroidLinkOpener
+import dev.ehsanfahad.darkchamber.feature.vault.api.LinkOpener
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPdfRenderer
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPlayerFactory
 import dev.ehsanfahad.darkchamber.app.thumbnail.AndroidThumbnailEncoder
@@ -90,6 +92,17 @@ class AndroidPlatformModuleTest {
         val app = koinApplication { modules(platformModule()) }
         try {
             assertIs<AndroidPdfRenderer>(app.koin.getOrNull<VaultPdfRenderer>())
+        } finally {
+            app.close()
+        }
+    }
+
+    /** Resolved optionally — without it no link opens — so a deleted binding would pass unnoticed. */
+    @Test
+    fun the_platform_module_binds_the_android_link_opener() {
+        val app = koinApplication { modules(platformModule()) }
+        try {
+            assertIs<AndroidLinkOpener>(app.koin.getOrNull<LinkOpener>())
         } finally {
             app.close()
         }

@@ -34,6 +34,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.VaultImports
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryOrder
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultViewerComponent
 import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerDisplay
+import dev.ehsanfahad.darkchamber.feature.vault.api.LinkOpener
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPdfRenderer
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPlayerFactory
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerImageDecoder
@@ -593,6 +594,11 @@ class DefaultUnlockedComponent(
                         // platform modules bind one (Android's says it cannot show PDFs before 11).
                         pdfs = koin.getOrNull<VaultPdfRenderer>(),
                         pdfContext = pdfContext(),
+                        // Optional too: without it no link opens. With it, this subtree's own lock —
+                        // the Lock button's — which the viewer calls once a browser has taken an
+                        // address: the browser can open beside the app, where nothing else would lock.
+                        links = koin.getOrNull<LinkOpener>(),
+                        lockVault = ::lock,
                         mainContext = mainContext + featureWork,
                         // Reading, decrypting and decoding a page, and shredding: all blocking.
                         ioContext = ioContext,

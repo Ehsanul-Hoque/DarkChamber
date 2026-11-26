@@ -1,6 +1,7 @@
 package dev.ehsanfahad.darkchamber.feature.vault.presentation
 
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
+import dev.ehsanfahad.darkchamber.feature.vault.api.FormatNote
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
 import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerKind
@@ -30,11 +31,14 @@ internal object ViewerFormat {
      *   damage. A password is the document's own lock, and there is nowhere here to type it. A renderer
      *   that will not read a verified file is the renderer's limit: the line says the file is unchanged
      *   since it was saved — the vault checked exactly that — and names no cause it was not told.
+     * - **Not text.** Read and verified, so not damage: the file is unchanged. Why it is not text — another
+     *   encoding, or not text at all — is not known, so it names neither.
      * - **Couldn't open.** Why is not known, so no why.
      */
     fun pageMessage(page: ViewerPage): String? =
         when (page) {
-            ViewerPage.Loading, ViewerPage.Picture, is ViewerPage.Media, is ViewerPage.Pdf -> null
+            ViewerPage.Loading, ViewerPage.Picture, is ViewerPage.Media, is ViewerPage.Pdf, is ViewerPage.Text -> null
+            ViewerPage.NotText -> "This file can't be shown as text here. It is unchanged since it was saved."
             is ViewerPage.NotViewable -> "This file can't be opened here."
             ViewerPage.TooLarge -> "This file is too large to open here."
             ViewerPage.CantShow -> "This file can't be shown on this device."
@@ -193,11 +197,12 @@ internal object ViewerFormat {
     /** The catalog deletes all or nothing, so this is true; why it failed is not known, so no why. */
     fun deleteFailed(): String = "Couldn't delete. Nothing was deleted."
 
-    /** What the viewer says after a delete from it — always one file. */
+    /** What the viewer says after a delete from it — always one file — or a link no app took. */
     fun notice(notice: ViewerNotice): String =
         when (notice) {
             ViewerNotice.Deleted -> deleted(1)
             ViewerNotice.DeleteFailed -> deleteFailed()
+            ViewerNotice.LinkNotOpened -> linkNotOpened()
         }
 
     /** The mark drawn above a page's message. */
@@ -205,7 +210,7 @@ internal object ViewerFormat {
         when {
             page is ViewerPage.NotViewable -> page.badge
             page == ViewerPage.Unverified || page == ViewerPage.StoppedUnverified -> WARNING_BADGE
-            meta is GalleryItemMeta.Readable -> GalleryFormat.typeBadge(meta.mime)
+            meta is GalleryItemMeta.Readable -> GalleryFormat.typeBadge(meta)
             else -> WARNING_BADGE
         }
 
@@ -248,6 +253,38 @@ internal object ViewerFormat {
     /** Beside the fast-scroll thumb while it is dragged: the page the drag has reached, counted from 1. */
     fun fastScrollPage(index: Int): String = "Page ${index + 1}"
 
+    /** Beside a text file's fast-scroll thumb while it is dragged: the line the drag has reached, counted from 1. */
+    fun fastScrollLine(index: Int): String = "Line ${index + 1}"
+
+    /**
+     * The Formatted / Plain switch: its words name the view shown ([formatted] or as written), as the
+     * page indicator names the page shown; a screen reader hears what a tap does as its action.
+     */
+    fun textViewName(formatted: Boolean): String = if (formatted) "Formatted" else "Plain"
+
+    fun textViewAction(formatted: Boolean): String = if (formatted) "Show as written" else "Show formatted"
+
+    /**
+     * Above a Markdown or JSON file shown only as written. Each says why there is no formatted view and
+     * nothing about the file's state: it was read and verified, and the limit is this viewer's.
+     */
+    fun formatNote(note: FormatNote): String =
+        when (note) {
+            FormatNote.TooLarge -> "Shown as written: too large to format here."
+            FormatNote.TooComplex -> "Shown as written: too complex to format here."
+            FormatNote.NotJson -> "Shown as written: not valid JSON, so it can't be formatted."
+        }
+
+    /** What a screen reader says for a task list item's box: drawn as a mark, never a control. */
+    fun taskSpoken(done: Boolean): String = if (done) "Done" else "Not done"
+
+    /**
+     * An image in a Markdown file, which is never fetched: its description where the image would be, in
+     * brackets so it does not read as the file's own words; an image with no description still shows
+     * its place.
+     */
+    fun imageText(description: String): String = if (description.isBlank()) "[Image]" else "[Image: $description]"
+
     /** The jump-to-page dialog's title, and its confirm button. */
     fun jumpTitle(): String = "Go to page"
 
@@ -272,6 +309,32 @@ internal object ViewerFormat {
     fun pdfPageNotShown(): String = "This page couldn't be shown."
 
     fun cancel(): String = "Cancel"
+
+    /*
+     * The confirmation before a web link leaves the vault. It shows the address exactly as the file
+     * gives it — never the link's words, which can say anything — and the site it reaches on a line of
+     * its own, since a user part (`google.com@…`) can make an address read as another. Every line is
+     * true on the failure path: the browser and the site are not ours, so they "may" and "can"; the
+     * vault locks only once the browser has taken the address.
+     */
+
+    fun linkTitle(): String = "Open this link in your browser?"
+
+    fun linkSite(host: String): String = "Site: $host"
+
+    fun linkLeaves(): String =
+        "The address leaves the vault. Your browser may keep it in its history and sync it to your other devices, " +
+            "and the site can learn that it was opened."
+
+    fun linkLocks(): String = "Opening it locks the vault."
+
+    fun linkOpen(): String = "Open"
+
+    /**
+     * No app took the address: nothing left the vault and nothing locked. Why is not known — no app
+     * for web links, or the platform refusing this address — so it names only what happened.
+     */
+    fun linkNotOpened(): String = "No app opened this link."
 
     /** The confirm button once pressed: the only thing saying why the buttons stopped responding. */
     fun deleting(): String = "Deleting…"

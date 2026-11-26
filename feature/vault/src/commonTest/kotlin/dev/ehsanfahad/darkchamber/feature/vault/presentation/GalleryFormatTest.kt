@@ -15,20 +15,35 @@ import kotlin.test.assertTrue
 
 class GalleryFormatTest {
 
+    private fun badge(name: String, mime: String) = GalleryFormat.typeBadge(GalleryItemMeta.Readable(name, mime))
+
     @Test
     fun type_badges_follow_the_mime_family() {
-        assertEquals("IMG", GalleryFormat.typeBadge("image/heic"))
-        assertEquals("VID", GalleryFormat.typeBadge("video/mp4"))
-        assertEquals("AUD", GalleryFormat.typeBadge("audio/mpeg"))
-        assertEquals("PDF", GalleryFormat.typeBadge("application/pdf"))
-        assertEquals("TXT", GalleryFormat.typeBadge("text/markdown"))
+        assertEquals("IMG", badge("a", "image/heic"))
+        assertEquals("VID", badge("a", "video/mp4"))
+        assertEquals("AUD", badge("a", "audio/mpeg"))
+        assertEquals("PDF", badge("a", "application/pdf"))
+        assertEquals("TXT", badge("a", "text/markdown"))
     }
 
     /** An unknown type gets an honest label, not a guess at what the file might be. */
     @Test
     fun an_unknown_mime_falls_back_to_a_neutral_badge() {
-        assertEquals("FILE", GalleryFormat.typeBadge("application/x-sqlite3"))
-        assertEquals("FILE", GalleryFormat.typeBadge(""))
+        assertEquals("FILE", badge("a", "application/x-sqlite3"))
+        assertEquals("FILE", badge("a", ""))
+        assertEquals("FILE", badge("archive.zip", "application/octet-stream"))
+    }
+
+    /** The grid calls "TXT" exactly what the viewer reads as text, so a tile never contradicts its page. */
+    @Test
+    fun the_text_badge_follows_the_viewers_text_rule() {
+        assertEquals("TXT", badge("notes.md", "application/octet-stream"))
+        assertEquals("TXT", badge("data.json", "application/octet-stream"))
+        assertEquals("TXT", badge("data", "application/json"))
+        assertEquals("TXT", badge("feed", "application/xml"))
+        assertEquals("TXT", badge("page.HTML", ""))
+        assertEquals("IMG", badge("photo.txt", "image/jpeg"), "a picture named .txt is still a picture")
+        assertEquals("PDF", badge("paper.md", "application/pdf"))
     }
 
     @Test

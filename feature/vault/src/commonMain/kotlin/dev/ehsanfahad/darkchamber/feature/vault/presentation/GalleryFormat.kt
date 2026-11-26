@@ -16,17 +16,20 @@ internal object GalleryFormat {
     /**
      * A short type badge for the media slot, standing in for the thumbnail until thumbnails exist.
      * Derived from the MIME family, so an unknown type still gets something honest rather than a
-     * guess at the content.
+     * guess at the content. "TXT" is exactly what the viewer reads as text ([textKind]) — the stored
+     * type or a known extension in the name — so a tile never promises a page its viewer won't show.
      */
-    fun typeBadge(mime: String): String =
-        when {
+    fun typeBadge(meta: GalleryItemMeta.Readable): String {
+        val mime = meta.mime
+        return when {
             mime.startsWith("image/") -> "IMG"
             mime.startsWith("video/") -> "VID"
             mime.startsWith("audio/") -> "AUD"
             mime == "application/pdf" -> "PDF"
-            mime.startsWith("text/") -> "TXT"
+            textKind(meta) != null -> "TXT"
             else -> "FILE"
         }
+    }
 
     /**
      * What the order control reads as, collapsed.

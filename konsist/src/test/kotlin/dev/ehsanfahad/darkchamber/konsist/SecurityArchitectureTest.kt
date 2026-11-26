@@ -228,27 +228,60 @@ class SecurityArchitectureTest {
     }
 
     @Test
-    fun `screen state in a feature holds no picture and no player`() {
+    fun `screen state in a feature holds no picture, no player and no text`() {
         // The session-gate rule: screen state holds ids and descriptions, never decrypted content.
-        // A decoded picture is the content itself, and a player holds decoded video and sound, and
-        // state is what gets copied, compared, kept across recompositions and handed around — so a
-        // viewer keeps its pictures and its one player in separate holders it drops on destroy. Read
-        // file-wide, like the not-saved rule, so a field whose type is inferred cannot slip past; a
-        // state type therefore lives in a file that mentions no picture or player type at all.
+        // A decoded picture is the content itself, a player holds decoded video and sound, and a text
+        // document holds a decrypted file's words; state is what gets copied, compared, kept across
+        // recompositions and handed around — so a viewer keeps its pictures, its one player and its
+        // one text in separate holders it drops on destroy. Read file-wide, like the not-saved rule,
+        // so a field whose type is inferred cannot slip past; a state type therefore lives in a file
+        // that mentions none of those types at all. A `String` cannot be named here — every state has
+        // them — which is why decoded text always travels as one of the viewer's own text types.
         val files = productionFiles.filter {
             it.projectPath.contains("/feature/") && DECLARES_A_STATE_TYPE.containsMatchIn(codeOf(it))
         }
         assertTrue(files.size >= 5, "the rule found too few feature state types to check — has it moved?")
 
-        val violations = files.filter { HOLDS_A_PICTURE.containsMatchIn(codeOf(it)) }
+        val violations = files.filter { HOLDS_DECRYPTED_CONTENT.containsMatchIn(codeOf(it)) }
 
         assertTrue(
             violations.isEmpty(),
             buildString {
                 appendLine(
-                    "A file declaring a feature's state type mentions a picture, player or surface type. " +
-                        "State holds ids and descriptions only; keep decoded pictures and players in their " +
-                        "own holders, in another file.",
+                    "A file declaring a feature's state type mentions a picture, player, surface or text " +
+                        "document type. State holds ids and descriptions only; keep decoded pictures, " +
+                        "players and texts in their own holders, in another file.",
+                )
+                violations.forEach { appendLine("  ${it.projectPath}") }
+            },
+        )
+    }
+
+    @Test
+    fun `nothing opens a web address except the confirmed link opener`() {
+        // A web address leaves the vault only after the reader has seen the whole address in the
+        // confirmation, and the vault locks once a browser has it. Compose has its own ways to open
+        // one with neither: a `LinkAnnotation.Url` span opens on tap, and `LocalUriHandler` /
+        // `openUri` open whatever they are given — forbidden everywhere. Each platform has its own
+        // too — a `VIEW` intent, `openURL`, a custom tab, a Safari view — allowed only in the files
+        // that are the way out on purpose: the two link openers, and the iOS camera's link to the
+        // app's Settings page. Matched on source text, so an import, a qualified call and a member
+        // call are all seen.
+        val violations = productionFiles.filter { file ->
+            val code = codeOf(file)
+            OPENS_AN_ADDRESS_BY_ITSELF.containsMatchIn(code) ||
+                (PLATFORM_OPENS_AN_ADDRESS.containsMatchIn(code) && OPENS_ADDRESSES_ON_PURPOSE.none { file.projectPath.endsWith(it) })
+        }
+
+        assertTrue(
+            violations.isEmpty(),
+            buildString {
+                appendLine(
+                    "A source opens an address outside the confirmed link opener — Compose's own " +
+                        "(LinkAnnotation.Url, LocalUriHandler, UriHandler, openUri) anywhere, or the " +
+                        "platform's (ACTION_VIEW, openURL, CustomTabsIntent, SFSafariViewController) outside " +
+                        "the link openers. Draw links with LinkAnnotation.Clickable and hand the address to " +
+                        "the viewer's confirmation, which opens it through LinkOpener.",
                 )
                 violations.forEach { appendLine("  ${it.projectPath}") }
             },
@@ -356,18 +389,54 @@ class SecurityArchitectureTest {
         val DECLARES_A_STATE_TYPE = Regex("""class\s+[A-Za-z0-9_]*State(?![A-Za-z0-9_])""")
 
         /**
-         * The types a decoded picture travels as, on either platform or in Compose — the players and
-         * surfaces that hold decoded video and sound, and the PDF buffer, document and renderers that
-         * hold a whole decrypted PDF — all content just the same.
+         * Every type that carries decrypted vault content, on either platform or in Compose: decoded
+         * pictures; the players and surfaces that hold decoded video and sound; the PDF buffer, document
+         * and renderers that hold a whole decrypted PDF; the viewer's text types, the rows a text page is
+         * drawn as, a link's target (an address from the file) and Compose's styled text, all holding a
+         * decrypted file's words; the letter widths a text page measures (which characters a file holds)
+         * — and what makes those.
          */
-        val HOLDS_A_PICTURE =
+        val HOLDS_DECRYPTED_CONTENT =
             Regex(
                 """(?<![A-Za-z0-9_])(ImageBitmap|Bitmap|Painter|UIImage|CGImage|""" +
                     """VaultPlayer|Player|ExoPlayer|MediaPlayer|AVPlayer|AVPlayerItem|AVPlayerLayer|""" +
                     """Surface|SurfaceView|TextureView|""" +
                     """VaultPdfRenderer|VaultPdfBuffer|VaultPdfDocument|PdfOpened|PdfRenderer|""" +
-                    """PDFDocument|PDFPage)(?![A-Za-z0-9_])""",
+                    """PDFDocument|PDFPage|""" +
+                    """TextDocument|DecodedText|FormattedText|MarkdownDocument|MdBlock|MdSpan|MdListItem|""" +
+                    """TextRows|MdRow|LinkTarget|AnnotatedString|LetterWidths|""" +
+                    // What makes them, so a value whose type is inferred (`val x = TextDecoding.decode(…)`)
+                    // is caught by the call that made it.
+                    """TextDecoding|MarkdownModel|JsonIndent|TextReading|MarkdownRows|LinkRules|ScreenLines)(?![A-Za-z0-9_])""",
             )
+
+        /**
+         * Compose's own ways to open a web address: a URL link span, the URI handler (as the
+         * composition local, the type, or its one call), and the span imported on its own.
+         */
+        val OPENS_AN_ADDRESS_BY_ITSELF =
+            Regex("""LinkAnnotation\s*\.\s*Url(?![A-Za-z0-9_])|(?<![A-Za-z0-9_])(LocalUriHandler|UriHandler|openUri)(?![A-Za-z0-9_])""")
+
+        /**
+         * The platforms' ways to open an address: Android's `VIEW` intent (by its constant or spelled out as
+         * the action's name) and custom tabs, iOS's `openURL` and Safari view.
+         */
+        val PLATFORM_OPENS_AN_ADDRESS =
+            Regex(
+                """(?<![A-Za-z0-9_])(ACTION_VIEW|android\.intent\.action\.VIEW|openURL|CustomTabsIntent|SFSafariViewController)""" +
+                    """(?![A-Za-z0-9_])""",
+            )
+
+        /**
+         * The files that open an address on purpose: the two link openers, which take only an address
+         * the reader confirmed, and the iOS camera, which opens the app's own page in Settings when the
+         * camera was refused.
+         */
+        val OPENS_ADDRESSES_ON_PURPOSE = listOf(
+            "/app/link/AndroidLinkOpener.kt",
+            "/app/link/IosLinkOpener.kt",
+            "/app/camera/IosCameraController.kt",
+        )
 
         /** The helper that excludes the window it is composed in. */
         const val EXCLUDES_FROM_STRUCTURES = "ExcludeFromPlatformStructures"

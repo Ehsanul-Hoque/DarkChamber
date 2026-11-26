@@ -5,6 +5,8 @@ import dev.ehsanfahad.darkchamber.app.image.IosViewerImageDecoder
 import dev.ehsanfahad.darkchamber.app.media.IosPlayerDisplay
 import dev.ehsanfahad.darkchamber.app.media.IosVaultPlayerFactory
 import dev.ehsanfahad.darkchamber.app.pdf.IosPdfRenderer
+import dev.ehsanfahad.darkchamber.app.link.IosLinkOpener
+import dev.ehsanfahad.darkchamber.feature.vault.api.LinkOpener
 import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerDisplay
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPdfRenderer
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPlayerFactory
@@ -54,6 +56,17 @@ class IosPlatformModuleTest {
         val app = koinApplication { modules(platformModule()) }
         try {
             assertIs<IosPdfRenderer>(app.koin.getOrNull<VaultPdfRenderer>())
+        } finally {
+            app.close()
+        }
+    }
+
+    @Test
+    fun the_platform_module_binds_the_ios_link_opener() {
+        // Resolved optionally (no link then opens), so only this would notice it missing.
+        val app = koinApplication { modules(platformModule()) }
+        try {
+            assertIs<IosLinkOpener>(app.koin.getOrNull<LinkOpener>())
         } finally {
             app.close()
         }

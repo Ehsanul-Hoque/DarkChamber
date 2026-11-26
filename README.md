@@ -52,7 +52,11 @@ A Kotlin Multiplatform app for **Android** and **iOS** that encrypts, stores, an
 >
 > Video and audio play inside the viewer, streamed from the encrypted file in memory, and PDFs are
 > shown from memory too, with zoom, jump-to-page and fast scroll (Android 11 or newer; older Android
-> versions say they can't show PDFs rather than write one to a file). What's left before the vault is
+> versions say they can't show PDFs rather than write one to a file). Text files are shown from memory
+> as well — plain text, code, JSON re-indented without changing anything else, and Markdown drawn by the
+> app's own code with no web view (HTML shows its source). A web link in a Markdown file opens only
+> after a dialog showing its full address and what opening it sends out, and the vault locks behind
+> it. What's left before the vault is
 > usable: export with metadata scrubbing, and the settings screen. The
 > documents under [`docs/`](./docs) describe the target design.
 
@@ -62,7 +66,7 @@ A Kotlin Multiplatform app for **Android** and **iOS** that encrypts, stores, an
 
 - **Private camera** — photos & video captured into encrypted, app-private storage. A photo goes from memory straight into the vault; a video passes through one app-private scratch file while it is recorded and encrypted, then is deleted. Nothing reaches shared storage, so Google Photos has nothing to back up.
 - **Encrypted vault** — import any file (images, videos, audio, PDFs, documents); everything is encrypted with AES-256-GCM under hardware-backed keys (Android Keystore/StrongBox, iOS Keychain).
-- **View without exposing** — in-app viewers decrypt to memory: images, streaming video/audio with seeking, PDFs. Anything else opens via an explicit, warned "decrypt & open in…" flow.
+- **View without exposing** — in-app viewers decrypt to memory: images, streaming video/audio with seeking, PDFs, text and Markdown (no web view). Anything else opens via an explicit, warned "decrypt & open in…" flow.
 - **Encrypted notes** — Markdown notes stored as first-class vault items.
 - **Metadata scrubber** — inspect and strip EXIF/GPS/XMP from files before sharing, with a before/after diff. Works standalone, without importing.
 - **Honest shredder** — vault items are *crypto-shredded* (key destroyed — genuinely irreversible). For external files we do a best-effort overwrite and tell you plainly what flash storage can and can't guarantee. No "military-grade wipe" theater.

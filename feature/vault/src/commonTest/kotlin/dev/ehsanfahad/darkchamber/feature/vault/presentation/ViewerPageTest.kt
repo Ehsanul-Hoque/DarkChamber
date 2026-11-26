@@ -31,6 +31,8 @@ class ViewerPageTest {
         assertEquals(OpenPlan.Show(ViewerPage.NotViewable("AUD")), openPlan(readable("audio/mpeg"), 1_000, cap))
         assertEquals(OpenPlan.Show(ViewerPage.NotViewable("PDF")), openPlan(readable("application/pdf"), 1_000, cap))
         assertEquals(OpenPlan.Show(ViewerPage.NotViewable("FILE")), openPlan(readable("application/zip"), 1_000, cap))
+        val markdown = GalleryItemMeta.Readable(name = "notes.md", mime = "application/octet-stream")
+        assertEquals(OpenPlan.Show(ViewerPage.NotViewable("TXT")), openPlan(markdown, 1_000, cap), "the grid's badge")
     }
 
     /** Over the cap, nothing is read into memory at all — the size column is plaintext. */

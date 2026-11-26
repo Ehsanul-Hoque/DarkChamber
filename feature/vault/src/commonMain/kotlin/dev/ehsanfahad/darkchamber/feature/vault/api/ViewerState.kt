@@ -23,6 +23,12 @@ data class ViewerState(
      * where the screen cannot be turned, and there is no button.
      */
     val orientationTarget: ScreenOrientation? = null,
+    /**
+     * Whether a Markdown or JSON file is shown formatted (or as written). One choice for every such
+     * file, kept from file to file for the viewer's life; a new viewer — after a lock, say — starts
+     * formatted.
+     */
+    val formatted: Boolean = true,
 )
 
 /** Where a delete from the viewer stands. */
@@ -34,11 +40,14 @@ enum class ViewerDeleteStage {
     Deleting,
 }
 
-/** What a finished delete reports. */
+/** What a finished delete, or a link that could not be opened, reports. */
 enum class ViewerNotice {
     /** The item is gone; its key was destroyed. */
     Deleted,
 
     /** The vault refused. Nothing was deleted. */
     DeleteFailed,
+
+    /** No app took a web address the reader chose to open. Nothing left the vault and nothing locked. */
+    LinkNotOpened,
 }

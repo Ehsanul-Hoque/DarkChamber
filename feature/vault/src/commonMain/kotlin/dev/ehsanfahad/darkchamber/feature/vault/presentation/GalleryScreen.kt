@@ -1490,7 +1490,7 @@ private fun ItemTile(
                     Text(
                         text = when (val meta = item.meta) {
                             is GalleryItemMeta.Readable ->
-                                if (unverified) "!" else GalleryFormat.typeBadge(meta.mime)
+                                if (unverified) "!" else GalleryFormat.typeBadge(meta)
                             GalleryItemMeta.Unreadable -> "!"
                         },
                         style = DarkChamberTheme.typography.label,

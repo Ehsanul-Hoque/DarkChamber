@@ -6,6 +6,7 @@ import dev.ehsanfahad.darkchamber.core.vault.VaultObjects
 import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
 import dev.ehsanfahad.darkchamber.feature.vault.api.PhotoPicker
 import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerDisplay
+import dev.ehsanfahad.darkchamber.feature.vault.api.LinkOpener
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPdfRenderer
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPlayerFactory
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
@@ -192,6 +193,11 @@ fun vaultViewerComponent(
     display: PlayerDisplay? = null,
     // The platform's PDF renderer. Without one, a PDF page shows its badge, as before PDFs.
     pdfs: VaultPdfRenderer? = null,
+    // The platform's browser hand-off and the session's own lock, which the viewer calls once a
+    // browser has taken an address. Both or no link opens: a link that left without the lock would
+    // leave the vault open beside the browser.
+    links: LinkOpener? = null,
+    lockVault: (() -> Unit)? = null,
     mainContext: CoroutineContext = Dispatchers.Main,
     // Where a page is read, decrypted and decoded, and where a delete runs: all blocking, all large
     // or slow, none of it for the thread drawing the pager.
@@ -225,6 +231,8 @@ fun vaultViewerComponent(
         openObject = items::open,
         pdfs = pdfs,
         pdfContext = pdfContext,
+        links = links,
+        lockVault = lockVault,
     )
 }
 
