@@ -26,7 +26,7 @@ material3 = "1.12.0-alpha03"
 cryptographyKotlin = "0.6.0"   # pinned EXACTLY (pre-1.0) — wrapped by CryptoEngine; do not bump casually
 sqldelight = "2.4.1"
 koin = "4.2.2"
-decompose = "3.5.0"
+decompose = "3.6.2"
 coil3 = "3.6.3"
 media3 = "1.11.1"
 kermit = "2.1.0"
@@ -50,9 +50,10 @@ bouncycastle = "1.85.2"
 androidxBiometric = "1.1.0"
 # fragment-ktx — BiometricPrompt requires a FragmentActivity host (MainActivity). Apache-2.0.
 androidxFragment = "1.9.1"
-# Essenty lifecycle — the Decompose component-tree lifecycle. 2.5.0 matches decompose 3.5.0's
-# transitive pin; declared explicitly because :app drives a LifecycleRegistry directly. Apache-2.0.
-essenty = "2.5.0"
+# Essenty lifecycle — the Decompose component-tree lifecycle. 2.7.1 matches decompose 3.6.2's
+# transitive pin (move the two together); declared explicitly because :app drives a
+# LifecycleRegistry directly. Apache-2.0.
+essenty = "2.7.1"
 # --- Camera --------------------------------------------------------
 # CameraX, the Android side of :feature:camera's CameraController seam (implemented in :app's
 # androidMain). 1.7.0 is the newest stable line; it raised its own minSdk to 24, which is ours.
