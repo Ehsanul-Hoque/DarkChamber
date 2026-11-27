@@ -37,7 +37,6 @@ konsist = "0.18.1"
 # Jetpack Compose UI that Compose Multiplatform resolves to on Android, so the two stay one Compose.
 robolectric = "4.18.1"
 androidxComposeUi = "1.12.1"
-kover = "0.9.9"
 buildkonfig = "0.24.1"
 # --- Quality tooling (the darkchamber.quality convention plugin) ----
 # Spotless runs ktlint; its formatting rules live in the root .editorconfig. Build-time only —
@@ -51,6 +50,9 @@ composeRules = "0.6.8"
 # and gets no more releases. Only the plain `detekt` task runs (no type resolution) — the alpha's open
 # false positives on expect/actual pairs are in the type-resolution tasks.
 detekt = "2.0.0-alpha.6"
+# Coverage of what the JVM host tests run, each module gated at what was measured for it. Not 0.9.10: it
+# reports 0 % under the configuration cache, which this build keeps on.
+kover = "0.9.11"
 # core:crypto: .dchm streaming IO + CBOR header. JetBrains-official, KMP, GPLv3-OK.
 kotlinxIo = "0.9.3"
 kotlinxSerialization = "1.13.0"   # serialization runtime (cbor); the compiler plugin tracks `kotlin`
@@ -182,11 +184,11 @@ kotlinMultiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref =
 # :konsist is a plain JVM test-only module (the architecture rules run as JUnit tests).
 kotlinJvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlinSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
-# Formatting and static analysis — applied by the darkchamber.quality convention plugin.
+# Formatting, static analysis and coverage — applied by the darkchamber.quality convention plugin.
 spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
 detekt = { id = "dev.detekt", version.ref = "detekt" }
+kover = { id = "org.jetbrains.kotlinx.kover", version.ref = "kover" }
 
 # --- Phase 0+ target plugins (declared now, applied later) ----------
 sqldelight = { id = "app.cash.sqldelight", version.ref = "sqldelight" }
-kover = { id = "org.jetbrains.kotlinx.kover", version.ref = "kover" }
 buildkonfig = { id = "com.codingfeline.buildkonfig", version.ref = "buildkonfig" }

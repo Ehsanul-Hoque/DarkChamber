@@ -1,4 +1,6 @@
 import dev.detekt.gradle.extensions.DetektExtension
+import kotlinx.kover.gradle.plugin.dsl.CoverageUnit
+import kotlinx.kover.gradle.plugin.dsl.KoverProjectExtension
 import org.gradle.accessors.dm.LibrariesForLibs
 
 // Convention plugin for code quality (docs/engineering/MODULES.md §5). Applied by the KMP and Android
@@ -17,6 +19,8 @@ import org.gradle.accessors.dm.LibrariesForLibs
 //   ./gradlew spotlessCheck   — fails on any formatting difference or ktlint finding
 //   ./gradlew spotlessApply   — fixes what ktlint can fix by itself
 //   ./gradlew detekt          — fails on any detekt finding not in the module's baseline
+//
+// Coverage: Kover, per module, each gated at what was measured for it — see below.
 
 plugins {
     id("com.diffplug.spotless")
@@ -80,6 +84,51 @@ if (project != rootProject) {
         // The one module whose findings are fixed rather than recorded: see the header.
         if (path != ":core:crypto") {
             baseline = layout.projectDirectory.file("detekt-baseline.xml")
+        }
+    }
+}
+
+// Coverage: Kover on every KMP library module but :core:testing, which is test support. Not :konsist (a
+// test-only JVM module) or :androidApp (a thin host), which never apply the KMP library plugin.
+//
+// It measures what the JVM host tests run. Code in iosMain is never compiled for the JVM, so it is not
+// in the numbers at all — the iOS simulator tests cover it, unmeasured. Generated code is excluded where
+// its generator is applied (SQLDelight's, in :core:db).
+//
+// Each module is gated at the line coverage measured for it, rounded down to the whole percent — a
+// floor that can only be raised, never a target. Raise a number here when a module's coverage rises.
+// A module Kover measures but this map does not name fails the build, so none goes ungated.
+//
+//   ./gradlew koverVerify      — fails when a module's line coverage is below its floor
+//   ./gradlew koverHtmlReport  — per module, in <module>/build/reports/kover/html
+val lineCoverageFloors =
+    mapOf(
+        ":app" to 42,
+        ":core:crypto" to 88,
+        ":core:db" to 88,
+        ":core:designsystem" to 81,
+        ":core:logging" to 56,
+        ":core:model" to 65,
+        ":core:storage" to 91,
+        ":core:vault" to 96,
+        ":feature:camera" to 61,
+        ":feature:vault" to 62,
+    )
+
+pluginManager.withPlugin("com.android.kotlin.multiplatform.library") {
+    if (path != ":core:testing") {
+        pluginManager.apply("org.jetbrains.kotlinx.kover")
+        val floor =
+            lineCoverageFloors[path]
+                ?: error("$path is measured by Kover but has no line coverage floor in darkchamber.quality")
+        extensions.configure<KoverProjectExtension> {
+            reports {
+                verify {
+                    rule {
+                        minBound(floor, CoverageUnit.LINE)
+                    }
+                }
+            }
         }
     }
 }
