@@ -1,9 +1,37 @@
+import com.android.build.api.dsl.KotlinMultiplatformAndroidHostTestCompilation
+
 plugins {
     id("darkchamber.kmp.feature")
 }
 
 kotlin {
+    // Compose UI tests are written once, in commonTest, over a test base class whose Android side runs
+    // under Robolectric — an expect/actual class, still Beta in Kotlin, opted into to keep the build
+    // warning-free (as :core:db does for its driver seam).
+    compilerOptions {
+        freeCompilerArgs.add("-Xexpect-actual-classes")
+    }
+
+    android {
+        // Robolectric reads the merged manifest and resources, which the host test only sees with this.
+        // Set on the compilation: the convention plugin has already created the host test, and it can
+        // be created only once.
+        compilations.withType<KotlinMultiplatformAndroidHostTestCompilation>().configureEach {
+            isIncludeAndroidResources = true
+        }
+    }
+
     sourceSets {
+        commonTest.dependencies {
+            implementation(libs.compose.uiTest)
+        }
+        getByName("androidHostTest").dependencies {
+            implementation(libs.robolectric)
+            implementation(libs.androidx.compose.uiTestManifest)
+            // Compose's test library brings Espresso 3.5.0, which calls an InputManager method current
+            // Android no longer has; the idle wait fails on it under Robolectric. 3.7.0 does not.
+            implementation(libs.androidx.espresso.core)
+        }
         commonMain.dependencies {
             // The vault feature reads and writes items through VaultObjects only: import, listing
             // summaries, open, shred. It touches no cipher primitive, no filesystem API, and no

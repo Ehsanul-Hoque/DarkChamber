@@ -32,6 +32,11 @@ media3 = "1.11.1"
 kermit = "2.2.0"
 turbine = "1.2.1"
 konsist = "0.18.1"
+# Compose UI tests, test-only: Robolectric gives the JVM host an Android framework to compose on, and
+# the androidx test manifest declares the activity the tests host content in. Its version is the
+# Jetpack Compose UI that Compose Multiplatform resolves to on Android, so the two stay one Compose.
+robolectric = "4.18.1"
+androidxComposeUi = "1.12.1"
 kover = "0.9.9"
 buildkonfig = "0.24.1"
 # --- Quality tooling (the darkchamber.quality convention plugin) ----
@@ -162,6 +167,9 @@ kermit = { module = "co.touchlab:kermit", version.ref = "kermit" }
 # Test-only.
 turbine = { module = "app.cash.turbine:turbine", version.ref = "turbine" }
 konsist = { module = "com.lemonappdev:konsist", version.ref = "konsist" }
+compose-uiTest = { module = "org.jetbrains.compose.ui:ui-test", version.ref = "composeMultiplatform" }
+androidx-compose-uiTestManifest = { module = "androidx.compose.ui:ui-test-manifest", version.ref = "androidxComposeUi" }
+robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 # Build-time only: the ktlint rule set Spotless loads (see the `spotless` version above).
 compose-rules-ktlint = { module = "io.nlopez.compose.rules:ktlint", version.ref = "composeRules" }
 
