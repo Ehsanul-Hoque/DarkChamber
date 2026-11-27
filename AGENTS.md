@@ -33,7 +33,9 @@ Package root: `dev.ehsanfahad.darkchamber`.
 > - **`:app`** — the composition root: Koin graph and every platform seam (pickers, camera, players, PDF renderers,
 >   link openers, keystore, catalog driver), the fail-closed cold-open, the `Locked | Unlocked` session gate, unlock
 >   and the lock lifecycle. Hosted by `:androidApp` (`FragmentActivity`) and `:iosApp` (`ComposeUIViewController`).
-> - **`:konsist`** — architecture and **security-invariant** rules, run in CI on every PR. `:core:testing` is a stub.
+> - **`:konsist`** — architecture and **security-invariant** rules, run in CI on every PR.
+> - **`:core:testing`** — test support: the Compose UI-test helpers (`UiTest`, themed content, the shared
+>   finders); a module opts in with `darkchamber.compose.uitest` and writes its UI tests once in `commonTest`.
 >
 > **Tooling.** Wired: a tracked `commit-msg` hook (`./gradlew installGitHooks`) running CI's commit check (scopes in
 > `config/commit-scopes.txt`); a tracked `pre-commit` hook refusing a doc comment cut off its declaration

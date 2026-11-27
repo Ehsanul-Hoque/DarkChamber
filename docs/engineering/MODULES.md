@@ -43,7 +43,7 @@ DarkChamber is a multi-module Gradle project. Isolation is real (compile-time), 
 
     **Secure screens are not here.** `FLAG_SECURE` and the iOS snapshot blur are whole-app properties set by the platform hosts (`:androidApp`'s `MainActivity`, `:app`'s `MainViewController`), not per-screen wrappers: everything in the unlocked tree is vault content and the locked tree shows the recovery key, so there is nothing to opt out of, and a wrapper a new screen forgets to apply is a silent leak.
 - `core:logging` — Kermit setup (see [`PATTERNS.md`](./PATTERNS.md) §4 — no Crashlytics, no remote anything). *Built:* `initLogging()` (Kermit + platform writer only) and `redactCause(VaultError): String` / `logVaultError(stage, error)` — the hard-rule-#4 boundary that reduces any `VaultError` to a content-free code (`Io`/`Db`/`Crypto.*`), never the carried cause message, a path, an id, or vault content — and `logMeasurement`, a line built only from a name and numbers, for measuring a player without logging what it plays.
-- `core:testing` — shared fakes, fixtures, test dispatchers, Turbine helpers, format test-vector loaders (test-only).
+- `core:testing` — test support, only ever a test dependency. *Built:* the Compose UI-test helpers — `UiTest`, the base class every UI test extends (an `expect`/`actual` class whose Android side carries Robolectric's runner, so one test in `commonTest` runs on the Android host and natively on the iOS simulator, while a module's other host tests stay plain JUnit); `setThemedContent` (the content inside `DarkChamberTheme`); `hasRole` and `onButton` (the button with exactly that label, enabled or not — never a title sharing its words); and `assertNoText` (no node shows the text, alone or inside a sentence). It exports Compose's test API, and depends on `core:designsystem` for the theme. A module gets all of it by applying `darkchamber.compose.uitest`. Planned: shared fakes, test dispatchers and the format test-vector loaders. The picker fakes stay in `:feature:vault`'s tests, since they implement that feature's own seams and a core module may not depend on a feature.
 
 ### Feature modules
 
@@ -159,9 +159,16 @@ build-logic/src/main/kotlin/
 ├── darkchamber.kmp.library.gradle.kts      # built — KMP targets + common deps
 ├── darkchamber.kmp.compose.gradle.kts      # built — kmp.library + Compose Multiplatform
 ├── darkchamber.kmp.feature.gradle.kts      # built — kmp.compose + Decompose/Koin/designsystem/logging
+├── darkchamber.compose.uitest.gradle.kts   # built — opt-in: Compose UI tests on the Android host + iOS simulator
 ├── darkchamber.android.application.gradle.kts   # built
 └── darkchamber.quality.gradle.kts          # planned — detekt + ktlint + kover, uniform
 ```
+
+`darkchamber.compose.uitest` is applied by each module that has Compose UI tests, beside its
+`darkchamber.kmp.*` plugin. It adds `:core:testing` to `commonTest`, gives the Android host test the merged
+manifest and resources Robolectric reads (with the test activity's manifest, and Espresso 3.7.0 in place of
+the 3.5.0 Compose's test library brings, which fails under Robolectric), and opts the test source sets into
+Compose's experimental test API. A UI test is then a `commonTest` class extending `UiTest`.
 
 There is deliberately **no `darkchamber.konsist` plugin**: `:konsist` is the single consumer of those
 rules and applies the Kotlin JVM plugin directly.
