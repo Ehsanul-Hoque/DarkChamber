@@ -20,6 +20,8 @@ internal fun TestGalleryScreen(
     state: GalleryState,
     onAcknowledgeImport: () -> Unit = {},
     onRequestOriginalDelete: () -> Unit = {},
+    onConfirmDeleteSelection: () -> Unit = {},
+    onCancelDeleteSelection: () -> Unit = {},
 ) {
     val context = LocalPlatformContext.current
     val imageLoader =
@@ -63,8 +65,8 @@ internal fun TestGalleryScreen(
         onCancelFilingCreate = {},
         onAcknowledgeFiling = {},
         onRequestDeleteSelection = {},
-        onConfirmDeleteSelection = {},
-        onCancelDeleteSelection = {},
+        onConfirmDeleteSelection = onConfirmDeleteSelection,
+        onCancelDeleteSelection = onCancelDeleteSelection,
         onAcknowledgeDeletion = {},
         onStartAlbumRename = {},
         onEditAlbumName = {},
