@@ -1,0 +1,179 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>ComplexCondition:DefaultVaultGalleryComponent.kt:DefaultVaultGalleryComponent$becameStopping || changedStage || previous == null || previous.elapsedNow() &gt;= interval</ID>
+    <ID>ComplexCondition:DefaultVaultViewerComponent.kt:ViewerComponent$closed || pdf != null || pdfOpening != null || !pdfKind(shown)</ID>
+    <ID>ComplexCondition:JsonIndent.kt:JsonIndent$i &lt; text.length &amp;&amp; (text[i] == ' ' || text[i] == '\t' || text[i] == '\n' || text[i] == '\r')</ID>
+    <ID>ComplexCondition:MarkdownModel.kt:MarkdownModel$(delimiter == '.' || delimiter == ')') &amp;&amp; (after == ' ' || after == '\t')</ID>
+    <ID>ComplexCondition:MarkdownModel.kt:TreeReader$i &gt; 0 &amp;&amp; i &lt; nodes.lastIndex &amp;&amp; nodes[i - 1].type != MarkdownTokenTypes.EOL &amp;&amp; nodes[i + 1].type != MarkdownTokenTypes.EOL</ID>
+    <ID>ComplexCondition:MarkdownModel.kt:TreeReader$text.length &gt;= 2 &amp;&amp; text.first() == ' ' &amp;&amp; text.last() == ' ' &amp;&amp; text.isNotBlank()</ID>
+    <ID>CyclomaticComplexMethod:DefaultVaultViewerComponent.kt:ViewerComponent$private fun refreshWindow</ID>
+    <ID>CyclomaticComplexMethod:DefaultVaultViewerComponent.kt:ViewerComponent$private suspend fun openPdf</ID>
+    <ID>CyclomaticComplexMethod:GalleryScreen.kt:@Composable internal fun GalleryScreen</ID>
+    <ID>CyclomaticComplexMethod:GalleryScreen.kt:@Composable private fun ItemTile</ID>
+    <ID>CyclomaticComplexMethod:JsonIndent.kt:JsonIndent$fun indent: Result</ID>
+    <ID>CyclomaticComplexMethod:MarkdownModel.kt:MarkdownModel$private fun nestsTooDeep: Boolean</ID>
+    <ID>CyclomaticComplexMethod:MarkdownModel.kt:TreeReader$private fun block: MdBlock?</ID>
+    <ID>CyclomaticComplexMethod:MarkdownModel.kt:TreeReader$private fun inline</ID>
+    <ID>CyclomaticComplexMethod:PdfPage.kt:@Composable internal fun PdfPageView</ID>
+    <ID>CyclomaticComplexMethod:PlayerPage.kt:@Composable internal fun PlayerPageView</ID>
+    <ID>CyclomaticComplexMethod:TextPage.kt:@Composable internal fun RowsColumn</ID>
+    <ID>CyclomaticComplexMethod:ViewerScreen.kt:@Suppress("ktlint:compose:parameter-naming") @Composable internal fun ViewerScreen</ID>
+    <ID>FunctionOnlyReturningConstant:GalleryFormat.kt:GalleryFormat$fun albumActions: String</ID>
+    <ID>FunctionOnlyReturningConstant:GalleryFormat.kt:GalleryFormat$fun albumGone: String</ID>
+    <ID>FunctionOnlyReturningConstant:GalleryFormat.kt:GalleryFormat$fun albumNameLabel: String</ID>
+    <ID>FunctionOnlyReturningConstant:GalleryFormat.kt:GalleryFormat$fun backToAlbums: String</ID>
+    <ID>FunctionOnlyReturningConstant:GalleryFormat.kt:GalleryFormat$fun chooserEmpty: String</ID>
+    <ID>FunctionOnlyReturningConstant:GalleryFormat.kt:GalleryFormat$fun clearSearch: String</ID>
+    <ID>FunctionOnlyReturningConstant:GalleryFormat.kt:GalleryFormat$fun deleteAlbum: String</ID>
+    <ID>FunctionOnlyReturningConstant:GalleryFormat.kt:GalleryFormat$fun deleteAlbumQuestion: String</ID>
+    <ID>FunctionOnlyReturningConstant:GalleryFormat.kt:GalleryFormat$fun inAlbum: String</ID>
+    <ID>FunctionOnlyReturningConstant:GalleryFormat.kt:GalleryFormat$fun moveToAlbum: String</ID>
+    <ID>FunctionOnlyReturningConstant:GalleryFormat.kt:GalleryFormat$fun newAlbum: String</ID>
+    <ID>FunctionOnlyReturningConstant:GalleryFormat.kt:GalleryFormat$fun openCamera: String</ID>
+    <ID>FunctionOnlyReturningConstant:GalleryFormat.kt:GalleryFormat$fun renameAlbum: String</ID>
+    <ID>FunctionOnlyReturningConstant:GalleryFormat.kt:GalleryFormat$fun searchNames: String</ID>
+    <ID>FunctionOnlyReturningConstant:GalleryFormat.kt:GalleryFormat$fun unfileSelection: String</ID>
+    <ID>FunctionOnlyReturningConstant:GalleryFormat.kt:GalleryFormat$fun unverifiedPreview: String</ID>
+    <ID>FunctionOnlyReturningConstant:ViewerFormat.kt:ViewerFormat$fun back: String</ID>
+    <ID>FunctionOnlyReturningConstant:ViewerFormat.kt:ViewerFormat$fun cancel: String</ID>
+    <ID>FunctionOnlyReturningConstant:ViewerFormat.kt:ViewerFormat$fun deleteFailed: String</ID>
+    <ID>FunctionOnlyReturningConstant:ViewerFormat.kt:ViewerFormat$fun deleting: String</ID>
+    <ID>FunctionOnlyReturningConstant:ViewerFormat.kt:ViewerFormat$fun detailsAction: String</ID>
+    <ID>FunctionOnlyReturningConstant:ViewerFormat.kt:ViewerFormat$fun jumpGo: String</ID>
+    <ID>FunctionOnlyReturningConstant:ViewerFormat.kt:ViewerFormat$fun jumpTitle: String</ID>
+    <ID>FunctionOnlyReturningConstant:ViewerFormat.kt:ViewerFormat$fun linkLocks: String</ID>
+    <ID>FunctionOnlyReturningConstant:ViewerFormat.kt:ViewerFormat$fun linkNotOpened: String</ID>
+    <ID>FunctionOnlyReturningConstant:ViewerFormat.kt:ViewerFormat$fun linkOpen: String</ID>
+    <ID>FunctionOnlyReturningConstant:ViewerFormat.kt:ViewerFormat$fun linkTitle: String</ID>
+    <ID>FunctionOnlyReturningConstant:ViewerFormat.kt:ViewerFormat$fun pdfPageNotShown: String</ID>
+    <ID>FunctionOnlyReturningConstant:ViewerFormat.kt:ViewerFormat$fun seekLabel: String</ID>
+    <ID>LargeClass:DefaultVaultViewerComponent.kt:ViewerComponent&lt;T&gt; : ComponentContext</ID>
+    <ID>LargeClass:GalleryFormatTest.kt:GalleryFormatTest</ID>
+    <ID>LargeClass:MarkdownModelTest.kt:MarkdownModelTest</ID>
+    <ID>LongMethod:AlbumNameDialog.kt:@Composable internal fun AlbumNameDialog</ID>
+    <ID>LongMethod:AlbumsScreen.kt:@Composable private fun AlbumTileView</ID>
+    <ID>LongMethod:DefaultVaultViewerComponent.kt:ViewerComponent$private suspend fun readText</ID>
+    <ID>LongMethod:GalleryBrowseControls.kt:@Composable internal fun GalleryBrowseControls</ID>
+    <ID>LongMethod:GalleryScreen.kt:@Composable internal fun GalleryScreen</ID>
+    <ID>LongMethod:GalleryScreen.kt:@Composable private fun AlbumChooser</ID>
+    <ID>LongMethod:GalleryScreen.kt:@Composable private fun ImportProgressCard</ID>
+    <ID>LongMethod:GalleryScreen.kt:@Composable private fun ItemTile</ID>
+    <ID>LongMethod:JsonIndent.kt:JsonIndent$fun indent: Result</ID>
+    <ID>LongMethod:MarkdownModel.kt:TreeReader$private fun inline</ID>
+    <ID>LongMethod:MarkdownPage.kt:@Composable internal fun MarkdownPageView</ID>
+    <ID>LongMethod:MarkdownPage.kt:@Composable private fun MdRowView</ID>
+    <ID>LongMethod:PdfPage.kt:@Composable internal fun PdfPageView</ID>
+    <ID>LongMethod:PlayerPage.kt:@Composable internal fun PlayerControls</ID>
+    <ID>LongMethod:PlayerPage.kt:@Composable internal fun PlayerPageView</ID>
+    <ID>LongMethod:TextKindTest.kt:TextKindTest$@Test fun every_listed_type_and_extension_has_its_kind</ID>
+    <ID>LongMethod:TextPage.kt:@Composable internal fun RowsColumn</ID>
+    <ID>LongMethod:ViewerScreen.kt:@Composable private fun ViewerPageView</ID>
+    <ID>LongMethod:ViewerScreen.kt:@Composable private fun ZoomablePicture</ID>
+    <ID>LongMethod:ViewerScreen.kt:@Suppress("ktlint:compose:parameter-naming") @Composable internal fun ViewerScreen</ID>
+    <ID>LoopWithTooManyJumpStatements:MarkdownModel.kt:MarkdownModel$while</ID>
+    <ID>LoopWithTooManyJumpStatements:MarkdownModel.kt:TreeReader$for</ID>
+    <ID>LoopWithTooManyJumpStatements:MarkdownText.kt:MarkdownText$for</ID>
+    <ID>LoopWithTooManyJumpStatements:PdfPage.kt:while</ID>
+    <ID>LoopWithTooManyJumpStatements:TextPage.kt:while</ID>
+    <ID>MagicNumber:GalleryFormat.kt:GalleryFormat$10</ID>
+    <ID>MagicNumber:GalleryScreen.kt:0.45f</ID>
+    <ID>MagicNumber:JsonIndent.kt:JsonIndent$0x20</ID>
+    <ID>MagicNumber:JsonIndent.kt:JsonIndent$5</ID>
+    <ID>MagicNumber:JsonIndent.kt:JsonIndent$6</ID>
+    <ID>MagicNumber:LinkRules.kt:LinkRules$0x00AD</ID>
+    <ID>MagicNumber:LinkRules.kt:LinkRules$0x061C</ID>
+    <ID>MagicNumber:LinkRules.kt:LinkRules$0x180E</ID>
+    <ID>MagicNumber:LinkRules.kt:LinkRules$0x20</ID>
+    <ID>MagicNumber:LinkRules.kt:LinkRules$0x200B</ID>
+    <ID>MagicNumber:LinkRules.kt:LinkRules$0x200F</ID>
+    <ID>MagicNumber:LinkRules.kt:LinkRules$0x2028</ID>
+    <ID>MagicNumber:LinkRules.kt:LinkRules$0x202E</ID>
+    <ID>MagicNumber:LinkRules.kt:LinkRules$0x2066</ID>
+    <ID>MagicNumber:LinkRules.kt:LinkRules$0x2069</ID>
+    <ID>MagicNumber:LinkRules.kt:LinkRules$0x7F</ID>
+    <ID>MagicNumber:LinkRules.kt:LinkRules$0xFEFF</ID>
+    <ID>MagicNumber:LinkRules.kt:LinkRules$16</ID>
+    <ID>MagicNumber:LinkRules.kt:LinkRules$3</ID>
+    <ID>MagicNumber:ListKeys.kt:4</ID>
+    <ID>MagicNumber:MarkdownModel.kt:0x10000</ID>
+    <ID>MagicNumber:MarkdownModel.kt:0x10FFFF</ID>
+    <ID>MagicNumber:MarkdownModel.kt:0x3FF</ID>
+    <ID>MagicNumber:MarkdownModel.kt:0xD800</ID>
+    <ID>MagicNumber:MarkdownModel.kt:0xDC00</ID>
+    <ID>MagicNumber:MarkdownModel.kt:0xDFFF</ID>
+    <ID>MagicNumber:MarkdownModel.kt:0xFFFD</ID>
+    <ID>MagicNumber:MarkdownModel.kt:10</ID>
+    <ID>MagicNumber:MarkdownModel.kt:16</ID>
+    <ID>MagicNumber:MarkdownModel.kt:MarkdownModel$4</ID>
+    <ID>MagicNumber:MarkdownModel.kt:TreeReader$4</ID>
+    <ID>MagicNumber:PlaybackRules.kt:HeldSpeed.Slow$0.5f</ID>
+    <ID>MagicNumber:ScreenLines.kt:ScreenLines$0x10000</ID>
+    <ID>MagicNumber:ScreenLines.kt:ScreenLines$0x3FF</ID>
+    <ID>MagicNumber:ScreenLines.kt:ScreenLines$0xD800</ID>
+    <ID>MagicNumber:ScreenLines.kt:ScreenLines$0xDC00</ID>
+    <ID>MagicNumber:ScreenLines.kt:ScreenLines$10</ID>
+    <ID>MagicNumber:TextDecoding.kt:TextDecoding$8</ID>
+    <ID>MagicNumber:TextReading.kt:TextReading$3</ID>
+    <ID>MagicNumber:TextReading.kt:TextReading$4</ID>
+    <ID>MagicNumber:TextReading.kt:TextRows$3</ID>
+    <ID>MagicNumber:ViewerFormat.kt:ViewerFormat$100f</ID>
+    <ID>NestedBlockDepth:JsonIndent.kt:JsonIndent$fun indent: Result</ID>
+    <ID>ReturnCount:DefaultVaultGalleryComponent.kt:DefaultVaultGalleryComponent$override fun confirmAlbumDelete</ID>
+    <ID>ReturnCount:DefaultVaultGalleryComponent.kt:DefaultVaultGalleryComponent$override fun confirmAlbumRename</ID>
+    <ID>ReturnCount:DefaultVaultGalleryComponent.kt:DefaultVaultGalleryComponent$override fun confirmFilingCreate</ID>
+    <ID>ReturnCount:DefaultVaultGalleryComponent.kt:DefaultVaultGalleryComponent$override fun editAlbumName</ID>
+    <ID>ReturnCount:DefaultVaultGalleryComponent.kt:DefaultVaultGalleryComponent$override fun editFilingAlbumName</ID>
+    <ID>ReturnCount:DefaultVaultGalleryComponent.kt:DefaultVaultGalleryComponent$override fun startAlbumRename</ID>
+    <ID>ReturnCount:DefaultVaultGalleryComponent.kt:DefaultVaultGalleryComponent$override fun startFiling</ID>
+    <ID>ReturnCount:DefaultVaultViewerComponent.kt:ViewerComponent$fun openLink</ID>
+    <ID>ReturnCount:DefaultVaultViewerComponent.kt:ViewerComponent$private fun onPlayerState</ID>
+    <ID>ReturnCount:DefaultVaultViewerComponent.kt:ViewerComponent$private fun refreshPdf</ID>
+    <ID>ReturnCount:DefaultVaultViewerComponent.kt:ViewerComponent$private fun refreshText</ID>
+    <ID>ReturnCount:GalleryBrowseControls.kt:internal fun GalleryState.importOffer: ImportOffer?</ID>
+    <ID>ReturnCount:GalleryFormat.kt:GalleryFormat$fun size: String</ID>
+    <ID>ReturnCount:ImportCoordinator.kt:ImportCoordinator$override fun acknowledge</ID>
+    <ID>ReturnCount:ImportCoordinator.kt:ImportCoordinator$override fun requestOriginalDelete</ID>
+    <ID>ReturnCount:ImportFile.kt:ImportFile$suspend operator fun invoke: ImportResult</ID>
+    <ID>ReturnCount:ImportQueue.kt:ImportQueue.Companion$fun Long?.fractionAt: Float?</ID>
+    <ID>ReturnCount:JsonIndent.kt:JsonIndent$fun indent: Result</ID>
+    <ID>ReturnCount:JsonIndent.kt:JsonIndent$private fun scalarEnd: Int?</ID>
+    <ID>ReturnCount:JsonIndent.kt:JsonIndent$private fun stringEnd: Int?</ID>
+    <ID>ReturnCount:LinkRules.kt:LinkRules$fun target: LinkTarget</ID>
+    <ID>ReturnCount:LinkRules.kt:LinkRules$private fun percentDecoded: String?</ID>
+    <ID>ReturnCount:MarkdownModel.kt:TreeReader$private fun referenceAddress: String?</ID>
+    <ID>ReturnCount:MarkdownModel.kt:TreeReader$private fun table: MdBlock</ID>
+    <ID>ReturnCount:PdfReading.kt:PdfReading$fun flingGoesOn: Boolean</ID>
+    <ID>ReturnCount:PdfReading.kt:PdfReading$fun flingVelocity: Offset?</ID>
+    <ID>ReturnCount:PdfReading.kt:PdfReading$fun parseJump: PageJump</ID>
+    <ID>ReturnCount:PlayerGestures.kt:PlayerGestures$fun dragOwner: DragOwner</ID>
+    <ID>ReturnCount:TextDecoding.kt:TextDecoding$fun decode: DecodedText</ID>
+    <ID>ReturnCount:TextDecoding.kt:TextDecoding$private fun utf16: String?</ID>
+    <ID>ReturnCount:ThumbPlace.kt:ThumbPlace$fun fraction: Float</ID>
+    <ID>ReturnCount:ViewerPage.kt:internal fun textKind: TextKind?</ID>
+    <ID>ReturnCount:ViewerScreen.kt:private fun textSwitch: (@Composable () -&gt; Unit)?</ID>
+    <ID>SwallowedException:LoadViewerImage.kt:LoadViewerImage$e: Exception</ID>
+    <ID>ThrowsCount:ImportFile.kt:ImportFile$suspend operator fun invoke: ImportResult</ID>
+    <ID>TooGenericExceptionCaught:DefaultVaultViewerComponent.kt:ViewerComponent$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:ImportFile.kt:ImportFile$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:ImportFile.kt:ImportFile$e: Throwable</ID>
+    <ID>TooGenericExceptionCaught:LoadViewerImage.kt:LoadViewerImage$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:ShredItem.kt:ShredItem$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:ShredItem.kt:ShredItems$e: Exception</ID>
+    <ID>TooManyFunctions:DefaultVaultGalleryComponent.kt:DefaultVaultGalleryComponent : VaultGalleryComponentComponentContext</ID>
+    <ID>TooManyFunctions:DefaultVaultViewerComponent.kt:ViewerComponent&lt;T&gt; : ComponentContext</ID>
+    <ID>TooManyFunctions:GalleryBrowseControls.kt:dev.ehsanfahad.darkchamber.feature.vault.presentation.GalleryBrowseControls.kt</ID>
+    <ID>TooManyFunctions:GalleryFormat.kt:GalleryFormat</ID>
+    <ID>TooManyFunctions:GalleryScreen.kt:dev.ehsanfahad.darkchamber.feature.vault.presentation.GalleryScreen.kt</ID>
+    <ID>TooManyFunctions:MarkdownModel.kt:TreeReader</ID>
+    <ID>TooManyFunctions:PdfReading.kt:PdfReading</ID>
+    <ID>TooManyFunctions:VaultGalleryComponent.kt:VaultGalleryComponent</ID>
+    <ID>TooManyFunctions:VaultItems.kt:VaultItems</ID>
+    <ID>TooManyFunctions:VaultObjectsItems.kt:VaultObjectsItems : VaultItems</ID>
+    <ID>TooManyFunctions:VaultViewerComponent.kt:VaultViewerComponent</ID>
+    <ID>TooManyFunctions:ViewerFormat.kt:ViewerFormat</ID>
+    <ID>TooManyFunctions:ViewerPage.kt:dev.ehsanfahad.darkchamber.feature.vault.presentation.ViewerPage.kt</ID>
+    <ID>TooManyFunctions:ViewerScreen.kt:dev.ehsanfahad.darkchamber.feature.vault.presentation.ViewerScreen.kt</ID>
+  </CurrentIssues>
+</SmellBaseline>

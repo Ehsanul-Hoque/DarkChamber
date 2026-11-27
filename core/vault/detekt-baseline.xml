@@ -1,0 +1,31 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>ComplexCondition:RangeReader.kt:ChunkRangeReader$position &lt; 0 || offset &lt; 0 || size &lt; 0 || offset &gt; into.size - size</ID>
+    <ID>CyclomaticComplexMethod:VaultObjects.kt:VaultObjects$fun importObject: Outcome&lt;ByteArray&gt;</ID>
+    <ID>EmptyFunctionBlock:StreamFixtures.kt:CountingHashingSink${}</ID>
+    <ID>EmptyFunctionBlock:StreamFixtures.kt:GeneratingSource${}</ID>
+    <ID>LongMethod:VaultObjects.kt:VaultObjects$fun importObject: Outcome&lt;ByteArray&gt;</ID>
+    <ID>LongMethod:VaultObjects.kt:VaultObjects$private fun storeGuarded: Outcome&lt;ByteArray&gt;</ID>
+    <ID>ReturnCount:RangeReader.kt:ChunkRangeReader$override fun readAt: Outcome&lt;Int&gt;</ID>
+    <ID>ReturnCount:RangeReader.kt:private fun ObjectReader.readFully: Outcome&lt;ByteArray&gt;</ID>
+    <ID>ReturnCount:VaultObjects.kt:VaultObjects$fun importObject: Outcome&lt;ByteArray&gt;</ID>
+    <ID>ReturnCount:VaultObjects.kt:VaultObjects$fun openMeta: Outcome&lt;ObjectMeta&gt;</ID>
+    <ID>ReturnCount:VaultObjects.kt:VaultObjects$fun openObject: Outcome&lt;Unit&gt;</ID>
+    <ID>ReturnCount:VaultObjects.kt:VaultObjects$fun openRange: Outcome&lt;RangeReader&gt;</ID>
+    <ID>ReturnCount:VaultObjects.kt:VaultObjects$fun openThumbnail: Outcome&lt;ByteArray?&gt;</ID>
+    <ID>ReturnCount:VaultObjects.kt:VaultObjects$fun renameAlbum: Outcome&lt;Unit&gt;</ID>
+    <ID>ReturnCount:VaultObjects.kt:VaultObjects$fun shredObject: Outcome&lt;Unit&gt;</ID>
+    <ID>ReturnCount:VaultObjects.kt:VaultObjects$private fun storeGuarded: Outcome&lt;ByteArray&gt;</ID>
+    <ID>SwallowedException:AlbumMeta.kt:e: Exception</ID>
+    <ID>SwallowedException:AlbumMetaTest.kt:AlbumMetaTest$e: Exception</ID>
+    <ID>SwallowedException:RangeReader.kt:ChunkRangeReader$e: IllegalStateException</ID>
+    <ID>SwallowedException:RangeReader.kt:ChunkRangeReader.Companion$e: IllegalStateException</ID>
+    <ID>SwallowedException:VaultObjects.kt:VaultObjects$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:AlbumMeta.kt:e: Exception</ID>
+    <ID>TooGenericExceptionCaught:VaultObjects.kt:VaultObjects$e: Exception</ID>
+    <ID>TooManyFunctions:VaultObjects.kt:VaultObjects</ID>
+    <ID>UnusedParameter:VaultShredManyTest.kt:VaultShredManyTest$vo: VaultObjects</ID>
+  </CurrentIssues>
+</SmellBaseline>

@@ -31,7 +31,6 @@ coil3 = "3.6.3"
 media3 = "1.11.1"
 kermit = "2.2.0"
 turbine = "1.2.1"
-detekt = "1.23.8"
 konsist = "0.18.1"
 kover = "0.9.9"
 buildkonfig = "0.24.1"
@@ -40,8 +39,13 @@ buildkonfig = "0.24.1"
 # nothing of these ships in the app.
 spotless = "8.12.0"
 ktlint = "1.8.0"
-# Compose rules for ktlint (Compose naming, modifiers, state) — loaded as a ktlint rule set.
+# Compose rules for ktlint (Compose naming, modifiers, state) — loaded as a ktlint rule set. Not loaded
+# into detekt as well: its detekt build is the same rules, so every finding would be reported twice.
 composeRules = "0.6.8"
+# Static analysis. A pre-release, pinned exactly: 1.23.x cannot read the metadata of Kotlin 2.3 and later
+# and gets no more releases. Only the plain `detekt` task runs (no type resolution) — the alpha's open
+# false positives on expect/actual pairs are in the type-resolution tasks.
+detekt = "2.0.0-alpha.6"
 # core:crypto: .dchm streaming IO + CBOR header. JetBrains-official, KMP, GPLv3-OK.
 kotlinxIo = "0.9.3"
 kotlinxSerialization = "1.13.0"   # serialization runtime (cbor); the compiler plugin tracks `kotlin`
@@ -170,11 +174,11 @@ kotlinMultiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref =
 # :konsist is a plain JVM test-only module (the architecture rules run as JUnit tests).
 kotlinJvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlinSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
-# Formatting — applied by the darkchamber.quality convention plugin.
+# Formatting and static analysis — applied by the darkchamber.quality convention plugin.
 spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
+detekt = { id = "dev.detekt", version.ref = "detekt" }
 
 # --- Phase 0+ target plugins (declared now, applied later) ----------
 sqldelight = { id = "app.cash.sqldelight", version.ref = "sqldelight" }
-detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
 kover = { id = "org.jetbrains.kotlinx.kover", version.ref = "kover" }
 buildkonfig = { id = "com.codingfeline.buildkonfig", version.ref = "buildkonfig" }

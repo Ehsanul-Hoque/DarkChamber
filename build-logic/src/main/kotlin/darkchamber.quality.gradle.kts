@@ -1,16 +1,22 @@
+import dev.detekt.gradle.extensions.DetektExtension
 import org.gradle.accessors.dm.LibrariesForLibs
 
-// Convention plugin for code quality (docs/engineering/MODULES.md §5): formatting through Spotless
-// running ktlint — with the Compose rule set on Kotlin sources, plain ktlint on build scripts. Applied by the KMP and Android application convention
-// plugins, by :konsist, and by the root project, which covers the build scripts outside any module
-// (its own, settings, and build-logic's).
+// Convention plugin for code quality (docs/engineering/MODULES.md §5). Applied by the KMP and Android
+// application convention plugins, by :konsist, and by the root project, which covers the build
+// scripts outside any module (its own, settings, and build-logic's).
 //
-// The rules themselves live in the root .editorconfig, so an IDE and this build read the same
-// file. Only hand-written sources are in scope: build/ (generated SQLDelight code included) and the
-// vendored C under src/nativeInterop never are.
+// Formatting: Spotless running ktlint — the Compose rule set on Kotlin sources, plain ktlint on build
+// scripts. The rules live in the root .editorconfig, so an IDE and this build read the same file.
+// Static analysis: detekt's plain `detekt` task over every source set, on its default rules plus the
+// departures in config/detekt/detekt.yml. Each module keeps a baseline of the findings it had when
+// detekt arrived, so only new ones fail — except :core:crypto, which has none and must stay clean.
 //
-//   ./gradlew spotlessCheck   — fails on any formatting difference or rule finding
+// Only hand-written sources are in scope: build/ (generated SQLDelight code included) and the vendored
+// C under src/nativeInterop never are.
+//
+//   ./gradlew spotlessCheck   — fails on any formatting difference or ktlint finding
 //   ./gradlew spotlessApply   — fixes what ktlint can fix by itself
+//   ./gradlew detekt          — fails on any detekt finding not in the module's baseline
 
 plugins {
     id("com.diffplug.spotless")
@@ -58,6 +64,22 @@ spotless {
         kotlinGradle {
             target("*.gradle.kts")
             ktlint(ktlintVersion).setEditorConfigPath(editorConfig)
+        }
+    }
+}
+
+// The root has no Kotlin sources of its own, so detekt goes on every other project only.
+if (project != rootProject) {
+    pluginManager.apply("dev.detekt")
+    extensions.configure<DetektExtension> {
+        // Every source set — common, platform and test — rather than the plugin's default directories.
+        source.setFrom(layout.projectDirectory.dir("src"))
+        config.setFrom(rootProject.layout.projectDirectory.file("config/detekt/detekt.yml"))
+        buildUponDefaultConfig = true
+        parallel = true
+        // The one module whose findings are fixed rather than recorded: see the header.
+        if (path != ":core:crypto") {
+            baseline = layout.projectDirectory.file("detekt-baseline.xml")
         }
     }
 }

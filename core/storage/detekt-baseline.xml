@@ -1,0 +1,17 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>MagicNumber:BlobStore.kt:BlobStore$4</ID>
+    <ID>ReturnCount:BlobStore.kt:BlobStore$fun write: Outcome&lt;Unit&gt;</ID>
+    <ID>ReturnCount:ObjectReader.kt:ObjectReader$fun readAt: Outcome&lt;Int&gt;</ID>
+    <ID>SwallowedException:VaultStorage.kt:ScratchFile$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:BlobStore.kt:BlobStore$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:ObjectReader.kt:ObjectReader$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:PlatformFile.android.kt:e: Throwable</ID>
+    <ID>TooGenericExceptionCaught:VaultRootLayout.kt:e: Exception</ID>
+    <ID>TooGenericExceptionCaught:VaultStorage.kt:ScratchFile$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:VaultStorage.kt:VaultStorage$e: Exception</ID>
+    <ID>TooManyFunctions:VaultStorage.kt:VaultStorage</ID>
+  </CurrentIssues>
+</SmellBaseline>

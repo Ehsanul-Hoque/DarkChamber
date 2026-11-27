@@ -1,0 +1,33 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>MagicNumber:Aperture.kt:0.6f</ID>
+    <ID>MagicNumber:DarkChamberColors.kt:0x661C1917</ID>
+    <ID>MagicNumber:DarkChamberColors.kt:0x99000000</ID>
+    <ID>MagicNumber:DarkChamberColors.kt:0xFF131110</ID>
+    <ID>MagicNumber:DarkChamberColors.kt:0xFF1C1917</ID>
+    <ID>MagicNumber:DarkChamberColors.kt:0xFF1F2E23</ID>
+    <ID>MagicNumber:DarkChamberColors.kt:0xFF201300</ID>
+    <ID>MagicNumber:DarkChamberColors.kt:0xFF26221F</ID>
+    <ID>MagicNumber:DarkChamberColors.kt:0xFF2B0906</ID>
+    <ID>MagicNumber:DarkChamberColors.kt:0xFF2E6B44</ID>
+    <ID>MagicNumber:DarkChamberColors.kt:0xFF3B3632</ID>
+    <ID>MagicNumber:DarkChamberColors.kt:0xFF3D2C0F</ID>
+    <ID>MagicNumber:DarkChamberColors.kt:0xFF4A3200</ID>
+    <ID>MagicNumber:DarkChamberColors.kt:0xFF5F594F</ID>
+    <ID>MagicNumber:DarkChamberColors.kt:0xFF7A5200</ID>
+    <ID>MagicNumber:DarkChamberColors.kt:0xFF8FB896</ID>
+    <ID>MagicNumber:DarkChamberColors.kt:0xFFA79E93</ID>
+    <ID>MagicNumber:DarkChamberColors.kt:0xFFB3372C</ID>
+    <ID>MagicNumber:DarkChamberColors.kt:0xFFDCEBE0</ID>
+    <ID>MagicNumber:DarkChamberColors.kt:0xFFE06A5E</ID>
+    <ID>MagicNumber:DarkChamberColors.kt:0xFFE2DED8</ID>
+    <ID>MagicNumber:DarkChamberColors.kt:0xFFE3A144</ID>
+    <ID>MagicNumber:DarkChamberColors.kt:0xFFEDE7DE</ID>
+    <ID>MagicNumber:DarkChamberColors.kt:0xFFF1C67E</ID>
+    <ID>MagicNumber:DarkChamberColors.kt:0xFFF4E3C2</ID>
+    <ID>MagicNumber:DarkChamberColors.kt:0xFFFAF9F7</ID>
+    <ID>MagicNumber:DarkChamberColors.kt:0xFFFFFFFF</ID>
+  </CurrentIssues>
+</SmellBaseline>

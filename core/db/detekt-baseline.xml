@@ -1,0 +1,11 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>LargeClass:CatalogStoreTest.kt:CatalogStoreTest</ID>
+    <ID>ReturnCount:DriverFactoryIosTest.kt:DriverFactoryIosTest$private fun bytesOf: ByteArray?</ID>
+    <ID>TooGenericExceptionCaught:CatalogStore.kt:CatalogStore.Companion$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:CatalogStore.kt:e: Exception</ID>
+    <ID>TooManyFunctions:CatalogStore.kt:CatalogStore</ID>
+  </CurrentIssues>
+</SmellBaseline>

@@ -1,0 +1,39 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>CyclomaticComplexMethod:CameraFormatTest.kt:CameraFormatTest$private fun everyLine: List&lt;String&gt;</ID>
+    <ID>CyclomaticComplexMethod:JpegOrientation.kt:internal fun withOrientation: ByteArray</ID>
+    <ID>CyclomaticComplexMethod:JpegOrientation.kt:private fun rewriteInPlace: ByteArray</ID>
+    <ID>FunctionOnlyReturningConstant:CameraFormat.kt:CameraFormat$fun closeDescription: String</ID>
+    <ID>FunctionOnlyReturningConstant:CameraFormat.kt:CameraFormat$fun flipDescription: String</ID>
+    <ID>FunctionOnlyReturningConstant:CameraFormat.kt:CameraFormat$fun noSoundDescription: String</ID>
+    <ID>LongMethod:CameraScreen.kt:@Composable private fun TopBar</ID>
+    <ID>LongMethod:CameraScreen.kt:@Suppress("ktlint:compose:parameter-naming") // In `onOpenLastShot`, "shot" is a noun: the photo last taken. @Composable internal fun CameraScreen</ID>
+    <ID>MagicNumber:CameraFormat.kt:CameraFormat$10</ID>
+    <ID>MagicNumber:CameraFormat.kt:CameraFormat$100</ID>
+    <ID>MagicNumber:CameraState.kt:CaptureRatio.FourByThree$3f</ID>
+    <ID>MagicNumber:CameraState.kt:CaptureRatio.FourByThree$4f</ID>
+    <ID>MagicNumber:CameraState.kt:CaptureRatio.SixteenByNine$16f</ID>
+    <ID>MagicNumber:CameraState.kt:CaptureRatio.SixteenByNine$9f</ID>
+    <ID>MagicNumber:JpegOrientation.kt:0xFF</ID>
+    <ID>MagicNumber:JpegOrientation.kt:16</ID>
+    <ID>MagicNumber:JpegOrientation.kt:180</ID>
+    <ID>MagicNumber:JpegOrientation.kt:270</ID>
+    <ID>MagicNumber:JpegOrientation.kt:3</ID>
+    <ID>MagicNumber:JpegOrientation.kt:4</ID>
+    <ID>MagicNumber:JpegOrientation.kt:6</ID>
+    <ID>MagicNumber:JpegOrientation.kt:8</ID>
+    <ID>MagicNumber:JpegOrientation.kt:90</ID>
+    <ID>MagicNumber:PhotoName.ios.kt:1000.0</ID>
+    <ID>ReturnCount:CameraVaultTest.kt:CameraVaultTest$private fun filesUnder: List&lt;Path&gt;</ID>
+    <ID>ReturnCount:JpegOrientation.kt:internal fun withOrientation: ByteArray</ID>
+    <ID>ReturnCount:JpegOrientation.kt:private fun rewriteInPlace: ByteArray</ID>
+    <ID>ReturnCount:VideoRecorder.kt:VideoRecorder$fun start: Boolean</ID>
+    <ID>TooManyFunctions:CameraComponent.kt:CameraComponent</ID>
+    <ID>TooManyFunctions:CameraController.kt:CameraController</ID>
+    <ID>TooManyFunctions:CameraFormat.kt:CameraFormat</ID>
+    <ID>TooManyFunctions:CameraScreen.kt:dev.ehsanfahad.darkchamber.feature.camera.presentation.CameraScreen.kt</ID>
+    <ID>TooManyFunctions:DefaultCameraComponent.kt:DefaultCameraComponent : CameraComponentComponentContext</ID>
+  </CurrentIssues>
+</SmellBaseline>
