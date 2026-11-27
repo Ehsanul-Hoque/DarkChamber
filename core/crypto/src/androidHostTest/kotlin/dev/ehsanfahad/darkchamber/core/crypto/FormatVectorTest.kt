@@ -21,6 +21,9 @@ import kotlin.test.fail
  */
 @OptIn(ExperimentalStdlibApi::class)
 class FormatVectorTest {
+    // Fields named exactly as the committed vector files name them (docs/format-test-vectors), so a
+    // reader can lay one beside the other; detekt's camel-case rule is suppressed for that.
+    @Suppress("ConstructorParameterNaming")
     @Serializable
     data class PositiveVector(
         val name: String,
@@ -37,6 +40,7 @@ class FormatVectorTest {
         val container: String,
     )
 
+    @Suppress("ConstructorParameterNaming") // named as the vector files name them, as above
     @Serializable
     data class NegativeVector(
         val name: String,

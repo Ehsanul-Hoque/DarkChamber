@@ -29,6 +29,9 @@ object KeyStoreCodec {
     @OptIn(ExperimentalSerializationApi::class)
     fun encode(blob: KeyStoreBlob): ByteArray = darkChamberCbor.encodeToByteArray(KeyStoreBlob.serializer(), blob)
 
+    // detekt's complexity and return-count rules are suppressed: every refusal returns its typed error
+    // where it is found, in the order FORMAT.md gives them, and verified decoding is not reshaped.
+    @Suppress("ComplexCondition", "CyclomaticComplexMethod", "ReturnCount")
     @OptIn(ExperimentalSerializationApi::class)
     fun decode(bytes: ByteArray): Outcome<KeyStoreBlob> {
         val blob =

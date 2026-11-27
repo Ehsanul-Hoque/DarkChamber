@@ -76,6 +76,8 @@ class AndroidSecureKeyStore(
         }
     }
 
+    // Each refusal returns its typed error where it is found, so detekt's return count is suppressed.
+    @Suppress("ReturnCount")
     override suspend fun unwrap(
         blob: ByteArray,
         authenticator: BiometricAuthenticator,

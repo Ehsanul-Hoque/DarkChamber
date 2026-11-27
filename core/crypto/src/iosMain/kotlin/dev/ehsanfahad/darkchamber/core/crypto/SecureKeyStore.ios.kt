@@ -216,6 +216,8 @@ class IosSecureKeyStore(
             CFDataCreate(kCFAllocatorDefault, pinned.addressOf(0).reinterpret(), bytes.size.convert())!!
         }
 
+    // Early returns for empty data and a missing byte pointer, so detekt's return count is suppressed.
+    @Suppress("ReturnCount")
     private fun cfDataToBytes(data: CFDataRef): ByteArray {
         val len = CFDataGetLength(data).toInt()
         if (len == 0) return ByteArray(0)

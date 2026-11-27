@@ -21,6 +21,9 @@ import kotlin.test.fail
  */
 @OptIn(ExperimentalStdlibApi::class)
 class KeyStoreVectorTest {
+    // Fields named exactly as the committed vector file names them (docs/format-test-vectors), so a
+    // reader can lay one beside the other; detekt's camel-case rule is suppressed for that.
+    @Suppress("ConstructorParameterNaming")
     @Serializable
     data class KeyStoreVector(
         val name: String,

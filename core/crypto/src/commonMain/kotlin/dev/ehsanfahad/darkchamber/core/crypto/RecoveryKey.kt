@@ -18,6 +18,15 @@ object RecoveryKey {
     // Crockford base32: no I, L, O, U. Index = 5-bit value.
     private const val ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
     private const val GROUP = 4
+    private const val BITS_PER_BYTE = 8
+    private const val BYTE_MASK = 0xFF
+
+    /** One base32 symbol carries 5 bits; the mask keeps exactly those. */
+    private const val BITS_PER_SYMBOL = 5
+    private const val SYMBOL_MASK = 0x1F
+
+    /** The checksum's position weight (see [checkSymbol]). */
+    private const val CHECK_WEIGHT = 31
 
     private val decodeMap: Map<Char, Int> =
         buildMap {
@@ -29,7 +38,7 @@ object RecoveryKey {
         }
 
     /** Body length for a 32-byte key: ceil(256 / 5) = 52 base32 chars. */
-    private const val BODY_LEN = (RECOVERY_KEY_SIZE * 8 + 4) / 5
+    private const val BODY_LEN = (RECOVERY_KEY_SIZE * BITS_PER_BYTE + BITS_PER_SYMBOL - 1) / BITS_PER_SYMBOL
 
     /** A fresh random recovery key and its display encoding. */
     fun generate(engine: CryptoEngine): Pair<ByteArray, String> {
@@ -43,19 +52,21 @@ object RecoveryKey {
         var buffer = 0
         var bits = 0
         for (b in raw) {
-            buffer = (buffer shl 8) or (b.toInt() and 0xFF)
-            bits += 8
-            while (bits >= 5) {
-                bits -= 5
-                body.append(ALPHABET[(buffer ushr bits) and 0x1F])
+            buffer = (buffer shl BITS_PER_BYTE) or (b.toInt() and BYTE_MASK)
+            bits += BITS_PER_BYTE
+            while (bits >= BITS_PER_SYMBOL) {
+                bits -= BITS_PER_SYMBOL
+                body.append(ALPHABET[(buffer ushr bits) and SYMBOL_MASK])
             }
             buffer = buffer and ((1 shl bits) - 1)
         }
-        if (bits > 0) body.append(ALPHABET[(buffer shl (5 - bits)) and 0x1F])
+        if (bits > 0) body.append(ALPHABET[(buffer shl (BITS_PER_SYMBOL - bits)) and SYMBOL_MASK])
         body.append(checkSymbol(raw))
         return group(body)
     }
 
+    // Each refusal returns its typed error where it is found, so detekt's return count is suppressed.
+    @Suppress("ReturnCount")
     fun parse(text: String): Outcome<ByteArray> {
         val cleaned = text.uppercase().filter { it != '-' && !it.isWhitespace() }
         if (cleaned.length != BODY_LEN + 1) return Outcome.Err(VaultError.Crypto.MalformedContainer)
@@ -75,17 +86,20 @@ object RecoveryKey {
         return Outcome.Ok(raw)
     }
 
+    // An unknown symbol, non-zero padding and a wrong length each return null where found, so
+    // detekt's return count is suppressed.
+    @Suppress("ReturnCount")
     private fun decodeBody(body: String): ByteArray? {
         val out = ArrayList<Byte>(RECOVERY_KEY_SIZE)
         var buffer = 0
         var bits = 0
         for (c in body) {
             val v = decodeMap[c] ?: return null
-            buffer = (buffer shl 5) or v
-            bits += 5
-            if (bits >= 8) {
-                bits -= 8
-                out.add(((buffer ushr bits) and 0xFF).toByte())
+            buffer = (buffer shl BITS_PER_SYMBOL) or v
+            bits += BITS_PER_SYMBOL
+            if (bits >= BITS_PER_BYTE) {
+                bits -= BITS_PER_BYTE
+                out.add(((buffer ushr bits) and BYTE_MASK).toByte())
                 buffer = buffer and ((1 shl bits) - 1)
             }
         }
@@ -99,7 +113,7 @@ object RecoveryKey {
     // real key integrity is the GCM tag on unwrap.
     private fun checkSymbol(raw: ByteArray): Char {
         var rem = 0
-        for (b in raw) rem = (rem * 31 + (b.toInt() and 0xFF)) and 0x1F
+        for (b in raw) rem = (rem * CHECK_WEIGHT + (b.toInt() and BYTE_MASK)) and SYMBOL_MASK
         return ALPHABET[rem]
     }
 

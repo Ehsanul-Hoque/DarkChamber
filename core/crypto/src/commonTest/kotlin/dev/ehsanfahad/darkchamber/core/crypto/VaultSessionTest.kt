@@ -112,10 +112,10 @@ class VaultSessionTest {
         val created = newVault()
         val wrapped = created.session.generateDek()
         var leaked: ByteArray? = null
-        assertFailsWith<RuntimeException> {
+        assertFailsWith<IllegalStateException> {
             created.session.useDek(wrapped) { dek ->
                 leaked = dek
-                throw RuntimeException("boom")
+                throw IllegalStateException("boom")
             }
         }
         assertTrue(leaked!!.all { it == 0.toByte() }, "DEK must be zeroized even on the exception path")

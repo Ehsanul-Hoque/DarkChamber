@@ -24,7 +24,11 @@ class DchmCodec(
      * returns the measured plaintext size in bytes (the value the header records) so callers can fill
      * a catalog `size` column without re-reading the source.
      * [openSource] MUST return a fresh, independent source on each call — the codec reads it twice.
+     *
+     * Two detekt rules are suppressed here: each check returns its typed error where it is found, and
+     * any exception the write meets becomes `VaultError.Io` — the codec throws nothing across layers.
      */
+    @Suppress("ReturnCount", "TooGenericExceptionCaught")
     fun encryptContainer(
         dek: ByteArray,
         noncePrefix: ByteArray,
@@ -113,7 +117,20 @@ class DchmCodec(
      * bytes (splice), and cross-checks the whole-plaintext SHA-256. Failures map to the precise
      * [VaultError]: a newer format → `UnsupportedFormatVersion`; tampering/corruption/truncation →
      * `IntegrityFailure`; non-container bytes → `MalformedContainer`.
+     *
+     * detekt's length, complexity and return-count rules are suppressed here: the function is the
+     * format's checks in the order FORMAT.md gives them, each returning its typed error where it is
+     * found, and verified code is not reshaped to suit a count. A short read is itself the finding
+     * (truncation), so its `EOFException` becomes that error rather than travelling on; any other
+     * exception becomes `VaultError.Io`.
      */
+    @Suppress(
+        "CyclomaticComplexMethod",
+        "LongMethod",
+        "ReturnCount",
+        "SwallowedException",
+        "TooGenericExceptionCaught",
+    )
     fun decryptContainer(
         dek: ByteArray,
         fileId: ByteArray,
@@ -192,7 +209,11 @@ class DchmCodec(
      * Open a container for reads by position, without reading it through: the prelude, the sealed
      * header and the last chunk, and nothing in between. [size] is the container's stored length and
      * [read] returns exactly `length` bytes at `position` (it may throw; that surfaces as `Io`).
+     *
+     * Two detekt rules are suppressed here, for the reasons given on [decryptContainer]: each check
+     * returns its typed error where it is found, and any exception becomes `VaultError.Io`.
      */
+    @Suppress("ReturnCount", "TooGenericExceptionCaught")
     fun openLayout(
         dek: ByteArray,
         fileId: ByteArray,
@@ -258,7 +279,10 @@ class DchmCodec(
      * Authenticate and decode the header, with the prelude as its AAD, and refuse authenticated
      * values no encoder writes — one set of rules for [decryptContainer] and [openLayout]. The decoded
      * CBOR is zeroed once read; the header's plaintext lives on only in the returned object.
+     *
+     * Each refusal returns its typed error where it is found, so detekt's return count is suppressed.
      */
+    @Suppress("ReturnCount")
     private fun openHeader(
         dek: ByteArray,
         preludeBytes: ByteArray,
@@ -345,5 +369,8 @@ internal fun chunkAad(
     isLast: Boolean,
 ): ByteArray = fileId + u32Le(index) + byteArrayOf(if (isLast) 1 else 0)
 
+private const val U32_SIZE = 4
+private const val BITS_PER_BYTE = 8
+
 /** Little-endian u32 encoding of the low 32 bits of [value]. */
-internal fun u32Le(value: Long): ByteArray = ByteArray(4) { i -> (value ushr (8 * i)).toByte() }
+internal fun u32Le(value: Long): ByteArray = ByteArray(U32_SIZE) { i -> (value ushr (BITS_PER_BYTE * i)).toByte() }

@@ -148,7 +148,10 @@ class VaultSession private constructor(
      * re-encrypted** — only the PASSPHRASE slot changes. [oldPassphrase] must currently unlock the
      * slot (wrong → `IntegrityFailure`); a KeyStore without a PASSPHRASE slot → `MalformedContainer`.
      * Both passphrase arrays are **consumed** — zeroized before returning (as [createVault] does).
+     *
+     * Each refusal returns its typed error where it is found, so detekt's return count is suppressed.
      */
+    @Suppress("ReturnCount")
     fun changePassphrase(
         keyStore: KeyStoreBlob,
         oldPassphrase: ByteArray,
