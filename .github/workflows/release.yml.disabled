@@ -81,7 +81,8 @@ jobs:
         if: inputs.dry_run == false && steps.bump.outputs.level != 'none'
         run: |
           if [ "${{ inputs.threat_model_reviewed }}" != "true" ]; then
-            echo "::error::Release blocked: tick 'threat_model_reviewed' after confirming the release introduces no undocumented threat-model change (docs/THREAT_MODEL.md)."
+            echo "::error::Release blocked: tick 'threat_model_reviewed' after confirming the release" \
+              "introduces no undocumented threat-model change (docs/THREAT_MODEL.md)."
             exit 1
           fi
 

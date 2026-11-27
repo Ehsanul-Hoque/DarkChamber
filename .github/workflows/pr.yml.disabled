@@ -57,7 +57,10 @@ jobs:
       - name: Validate commit messages (all commits in the PR)
         # Node-free Conventional Commits check (docs/engineering/WORKFLOW.md §2).
         # Re-validates what Lefthook checked locally, so bypassed hooks change nothing.
-        run: bash ./scripts/check-commits.sh "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: bash ./scripts/check-commits.sh "$BASE_SHA" "$HEAD_SHA"
 
   # Supply-chain gate: flags new dependencies & incompatible licenses on the PR
   # (docs/engineering/RELEASE.md §6). New runtime deps need justification in the
