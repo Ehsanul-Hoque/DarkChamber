@@ -99,7 +99,7 @@ internal fun AlbumNameDialog(
             ) {
                 TextButton(onClick = onCancel, enabled = !draft.saving) {
                     Text(
-                        text = "Cancel",
+                        text = ViewerFormat.cancel(),
                         style = DarkChamberTheme.typography.label,
                         color = if (draft.saving) colors.textSecondary else colors.textPrimary,
                     )
