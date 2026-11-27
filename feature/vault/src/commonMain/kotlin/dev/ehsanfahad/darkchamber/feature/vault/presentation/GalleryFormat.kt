@@ -550,6 +550,15 @@ internal object GalleryFormat {
         }
     }
 
+    /**
+     * The control that ends something without changing anything: the import summary's dismissal, and
+     * leaving selection mode. Here rather than in the layouts so a UI test finds it through the same
+     * call the screen makes, never a retyped word. A function, not a constant, like every line in this
+     * object: string extraction turns each into a resource lookup without touching its callers.
+     */
+    @Suppress("FunctionOnlyReturningConstant")
+    fun done(): String = "Done"
+
     /** How a finished batch reads. Plural-aware, because "1 files" is the sort of thing users notice. */
     fun importedCount(imported: Int): String =
         when (imported) {

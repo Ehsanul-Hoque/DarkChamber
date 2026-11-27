@@ -1122,7 +1122,7 @@ private fun SelectionActions(
         }
         TextButton(onClick = onClear) {
             Text(
-                text = "Done",
+                text = GalleryFormat.done(),
                 style = DarkChamberTheme.typography.label,
                 color = DarkChamberTheme.colors.accent,
             )
@@ -1414,7 +1414,7 @@ private fun ImportSummaryLine(
         // the import affordances, so whatever sits here is what a finger returning from "Add photos"
         // finds — and that has to be the one tap that costs nothing.
         TextButton(onClick = onDismiss) {
-            Text("Done", style = DarkChamberTheme.typography.label, color = colors.accent)
+            Text(GalleryFormat.done(), style = DarkChamberTheme.typography.label, color = colors.accent)
         }
     }
 }
