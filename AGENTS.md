@@ -40,8 +40,10 @@ Package root: `dev.ehsanfahad.darkchamber`.
 > **Tooling.** Wired: a tracked `commit-msg` hook (`./gradlew installGitHooks`) running CI's commit check (scopes in
 > `config/commit-scopes.txt`); a tracked `pre-commit` hook refusing a doc comment cut off its declaration
 > (`scripts/check-doc-comments.sh`, also in CI); `pr.yml` (build, commit check, a gated macOS job running the iOS
-> tests). **Not wired yet:** ktlint, detekt, Kover, `migrationTest` and the `quality` job; `nightly` / `release` /
-> `test-build` workflows stay `*.yml.disabled` — verify a Gradle task exists before assuming it runs.
+> tests, and the `quality` job: workflow-file validation, Spotless with ktlint, detekt, Kover's per-module coverage
+> floors); shared Compose UI tests on the Android host (Robolectric) and the iOS simulator. **Not wired yet:**
+> `migrationTest`; `nightly` / `release` / `test-build` workflows stay `*.yml.disabled` — verify a Gradle task exists
+> before assuming it runs.
 
 ## Source of truth — read these first
 
@@ -86,16 +88,20 @@ Architecture + security rules (**exists today**, and runs in CI on every PR):
 ```bash
 ./gradlew :konsist:test       # architecture + SECURITY-INVARIANT rules (crypto/storage confinement)
 ```
-The `:konsist` module has no quality convention plugin applied, so its rules run as that module's own
-test task — there is no top-level `konsistTest`.
+Konsist's rules are ordinary tests in their own module, so they run as that module's test task — there is
+no top-level `konsistTest`.
 
-Quality & coverage (target tooling — **none of these tasks exist yet**; confirm before relying on one):
+Quality & coverage (the `darkchamber.quality` convention plugin; all run in CI's `quality` job):
 ```bash
-./gradlew ktlintFormat        # auto-fix formatting — run before committing
-./gradlew ktlintCheck detekt  # lint + static analysis
-./gradlew koverVerify         # coverage gates: core:crypto ~100%, domain 90%, overall 80%
-./gradlew migrationTest       # fixture-vault upgrade gate (exists after v1.0 ships)
+./gradlew spotlessApply       # auto-fix formatting (ktlint + the Compose rules) — run before committing
+./gradlew spotlessCheck       # fails on any formatting difference or ktlint finding
+./gradlew detekt              # static analysis; per-module baselines, none in core:crypto
+./gradlew koverVerify         # per-module line-coverage floors, set from measurement (docs/engineering/TESTING.md §4)
+./gradlew migrationTest       # fixture-vault upgrade gate — does NOT exist yet (arrives after v1.0 ships)
 ```
+The coverage targets (core:crypto ~100%, domain 90%, overall 80%) are where the floors are headed; the floors are
+what is enforced. Compose UI tests live in `commonTest`, extend `:core:testing`'s `UiTest`, and find text through
+the screen's own format functions — see `docs/engineering/TESTING.md` §8.
 
 Versions are centralized in `gradle/libs.versions.toml`; never hardcode versions in a `build.gradle.kts`. `cryptography-kotlin` is pre-1.0 and pinned **exactly** — do not bump it casually; it sits behind our `CryptoEngine` interface.
 

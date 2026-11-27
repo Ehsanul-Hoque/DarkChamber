@@ -43,7 +43,19 @@ bash scripts/test-check-doc-comments.sh
 ```
 
 Hooks are convenience, not the gate — CI re-checks every commit on the PR, so a skipped hook
-(`--no-verify`) changes nothing. Formatting and static-analysis hooks arrive with that tooling.
+(`--no-verify`) changes nothing.
+
+**Formatting is not a hook.** Run `./gradlew spotlessApply` before committing; CI's `quality` job runs
+`spotlessCheck` and `detekt` and refuses what they refuse ([`TESTING.md`](./TESTING.md) §5). A finding
+ktlint cannot fix is fixed by hand, or suppressed at the site with the reason beside it.
+
+**Blame past the reformat.** The whole repository was reformatted in one commit that changed formatting only,
+listed in [`.git-blame-ignore-revs`](../../.git-blame-ignore-revs). GitHub's blame skips it by itself; for
+`git blame` in your clone, once:
+
+```bash
+git config blame.ignoreRevsFile .git-blame-ignore-revs
+```
 
 ## 2. Commit conventions
 

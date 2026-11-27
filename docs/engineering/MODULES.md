@@ -161,8 +161,16 @@ build-logic/src/main/kotlin/
 ├── darkchamber.kmp.feature.gradle.kts      # built — kmp.compose + Decompose/Koin/designsystem/logging
 ├── darkchamber.compose.uitest.gradle.kts   # built — opt-in: Compose UI tests on the Android host + iOS simulator
 ├── darkchamber.android.application.gradle.kts   # built
-└── darkchamber.quality.gradle.kts          # planned — detekt + ktlint + kover, uniform
+└── darkchamber.quality.gradle.kts          # built — Spotless (ktlint) + detekt + Kover, uniform
 ```
+
+`darkchamber.quality` is applied by `darkchamber.kmp.library` and `darkchamber.android.application`, by
+`:konsist`, and by the root project for the build scripts outside any module. It formats with Spotless running
+ktlint and the Compose rules (settings in the root `.editorconfig`), analyses with detekt (departures from the
+defaults in `config/detekt/detekt.yml`, a baseline per module except `:core:crypto`), and — on every KMP library
+module but `:core:testing` — measures coverage with Kover, each module gated at a floor set from what was
+measured for it. The floors are one map in the plugin; [`TESTING.md`](./TESTING.md) §4–§5 has the numbers and
+the reasons.
 
 `darkchamber.compose.uitest` is applied by each module that has Compose UI tests, beside its
 `darkchamber.kmp.*` plugin. It adds `:core:testing` to `commonTest`, gives the Android host test the merged
