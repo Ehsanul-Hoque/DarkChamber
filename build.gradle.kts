@@ -23,7 +23,7 @@ tasks.register<Exec>("installGitHooks") {
     doLast {
         println(
             "git hooks: core.hooksPath = .githooks (commit-msg checks each message; pre-commit runs formatting " +
-                "and static analysis when Kotlin is staged)",
+                "and static analysis when Kotlin or its checks' configuration is staged)",
         )
     }
 }

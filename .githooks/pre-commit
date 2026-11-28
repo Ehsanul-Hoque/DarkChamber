@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 #
 # pre-commit — refuse a commit that CI's formatting and static-analysis checks would refuse, before it
-# exists: `spotlessCheck detekt` (scripts/check-formatting.sh), when the commit stages Kotlin. Those
-# read the working tree, so a staged Kotlin file that also has unstaged changes is refused first:
-# stage the rest of it, or stash it, and commit again.
+# exists: `spotlessCheck detekt` (scripts/check-formatting.sh), when the commit stages Kotlin or the
+# files that configure those checks. They read the working tree, so a staged Kotlin file with unstaged
+# changes, or an unstaged change to that configuration, is refused first: stage it, or stash it, and
+# commit again.
 #
 # ktlint's rules include the one that refuses a doc comment cut off its declaration — one directly
 # followed by another (`kdoc`, `no-consecutive-comments`); a comment about the whole file is a block

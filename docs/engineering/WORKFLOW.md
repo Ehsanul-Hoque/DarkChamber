@@ -28,12 +28,15 @@ A rule of your own can run beside it: make an executable `hooks/commit-msg.local
 same message file. It lives inside `.git/`, so it is never committed and applies to your clone alone.
 
 **`pre-commit`** runs formatting and static analysis — `./gradlew spotlessCheck detekt`, the checks CI's
-`quality` job runs ([`TESTING.md`](./TESTING.md) §5) — when the commit stages a `.kt` or `.kts` file, through
+`quality` job runs ([`TESTING.md`](./TESTING.md) §5) — when the commit stages a `.kt` or `.kts` file, or one of
+the files that configure those checks (`.editorconfig`, `config/detekt/`, a module's `detekt-baseline.xml`,
+`build-logic/`, `gradle/libs.versions.toml`, a build script), through
 [`scripts/check-formatting.sh`](../../scripts/check-formatting.sh). About a second with Gradle's daemon warm,
-longer the first time. Those checks read the files on disk, not what is staged, so a staged Kotlin file that also
-has unstaged changes is refused before they run: stage the rest of it (`git add`) or set it aside
-(`git stash push --keep-index`), and commit again. Files the commit does not touch can make the checks fail, never
-pass. Run `./gradlew spotlessApply` to fix what ktlint can; a finding it cannot fix is fixed by hand, or
+longer the first time or after a configuration change. Those checks read the files on disk, not what is staged, so
+before they run the hook refuses a staged Kotlin file that also has unstaged changes, and any change to that
+configuration that is not staged (an edit, a deletion, a new file not yet added): stage it (`git add`) or set it
+aside (`git stash push --keep-index --include-untracked`), and commit again. Then every file the checks read is
+either as committed or Kotlin the commit does not touch, which can make them fail, never pass. Run `./gradlew spotlessApply` to fix what ktlint can; a finding it cannot fix is fixed by hand, or
 suppressed at the site with the reason beside it. Coverage (`koverVerify`) is not checked here — it needs the whole
 test suite, and runs in CI.
 

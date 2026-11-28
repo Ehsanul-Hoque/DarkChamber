@@ -38,10 +38,11 @@ Package root: `dev.ehsanfahad.darkchamber`.
 >   finders); a module opts in with `darkchamber.compose.uitest` and writes its UI tests once in `commonTest`.
 >
 > **Tooling.** Wired: a tracked `commit-msg` hook (`./gradlew installGitHooks`) running CI's commit check (scopes in
-> `config/commit-scopes.txt`); a tracked `pre-commit` hook running `spotlessCheck detekt` when Kotlin is staged
-> (`scripts/check-formatting.sh` — it refuses a staged Kotlin file with unstaged changes; ktlint's rules include the
-> one refusing a doc comment cut off its declaration); `pr.yml` (build, commit check, a gated macOS job running the iOS
-> tests, and the `quality` job: workflow-file validation, Spotless with ktlint, detekt, Kover's per-module coverage
+> `config/commit-scopes.txt`); a tracked `pre-commit` hook running `spotlessCheck detekt` when Kotlin or the checks'
+> configuration is staged (`scripts/check-formatting.sh` — it refuses a staged Kotlin file with unstaged changes, and
+> any unstaged change to `.editorconfig`, detekt's config or baselines, `build-logic/`, the version catalog or a build
+> script; ktlint's rules include the one refusing a doc comment cut off its declaration); `pr.yml` (build, commit
+> check, a gated macOS job running the iOS tests, and the `quality` job: workflow-file validation, Spotless with ktlint, detekt, Kover's per-module coverage
 > floors); shared Compose UI tests on the Android host (Robolectric) and the iOS simulator. **Not wired yet:**
 > `migrationTest`; `nightly` / `release` / `test-build` workflows stay `*.yml.disabled` — verify a Gradle task exists
 > before assuming it runs.

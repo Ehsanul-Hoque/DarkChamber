@@ -1,13 +1,19 @@
 #!/usr/bin/env bash
 #
 # check-formatting.sh — before a commit, run the formatting and static-analysis gates CI runs
-# (`spotlessCheck detekt`), when the commit stages Kotlin.
+# (`spotlessCheck detekt`), when the commit stages Kotlin or the files that configure those checks.
 #
-# Spotless and detekt read the working tree, not what is staged. So a staged Kotlin file that also
-# has unstaged changes is refused before anything runs: the checks would read a file other than the
-# one being committed, and could pass it on a fix that is not in the commit. With that ruled out,
-# every staged file is on disk as it will be committed; a file the commit does not touch can only
-# make the checks fail, never let a staged file through.
+# The configuration is .editorconfig (ktlint's rules), config/detekt/, each module's
+# detekt-baseline.xml, build-logic/ (the plugin that wires the checks), the version catalog (their
+# versions) and every build script. A commit changing one of them changes what passes, so it is
+# checked like Kotlin.
+#
+# Spotless and detekt read the working tree, not what is staged. So before anything runs, the hook
+# refuses when what they would read differs from what is being committed: a staged Kotlin file that
+# also has unstaged changes, or any change to the configuration that is not staged (an edit, a
+# deletion, a new untracked file) — the checks could otherwise pass the commit on a fix or a rule
+# that is not in it. With that ruled out, every file the checks read is either as it will be
+# committed or Kotlin the commit does not touch, which can only make them fail.
 #
 # The tracked pre-commit hook (.githooks/pre-commit) runs this; CI runs the checks themselves on
 # every pull request, so a skipped hook changes nothing. Coverage is not checked here: it needs the
@@ -22,24 +28,44 @@ set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
 
-STAGED="$(git diff --cached --name-only --diff-filter=ACMR -- '*.kt' '*.kts')"
-[ -n "$STAGED" ] || exit 0
+# The files that configure the checks (git pathspecs; a leading * matches at any depth).
+CONFIG=(.editorconfig config/detekt '*detekt-baseline.xml' build-logic gradle/libs.versions.toml '*.gradle.kts')
 
-# Staged files whose working copy differs from what is staged (edited again, or deleted, since).
+# Kotlin added, changed or renamed (a deleted Kotlin file is nothing to format), and any change to
+# the configuration, deletions included.
+STAGED_KOTLIN="$(git diff --cached --name-only --diff-filter=ACMR -- '*.kt' '*.kts')"
+STAGED_CONFIG="$(git diff --cached --name-only -- "${CONFIG[@]}")"
+[ -n "$STAGED_KOTLIN$STAGED_CONFIG" ] || exit 0
+
+# Staged Kotlin whose working copy differs from what is staged (edited again, or deleted, since).
 PARTIAL=""
 while IFS= read -r path; do
+  [ -n "$path" ] || continue
   if ! git diff --quiet -- "$path"; then
     PARTIAL="$PARTIAL  $path"$'\n'
   fi
-done <<< "$STAGED"
+done <<< "$STAGED_KOTLIN"
 
-if [ -n "$PARTIAL" ]; then
+# Configuration on disk that is not what is staged: unstaged edits and deletions, and new files git
+# does not track yet (a new module's baseline is read the moment it exists).
+UNSTAGED_CONFIG="$(git diff --name-only -- "${CONFIG[@]}"; git ls-files --others --exclude-standard -- "${CONFIG[@]}")"
+
+if [ -n "$PARTIAL$UNSTAGED_CONFIG" ]; then
   {
-    echo "These staged Kotlin files also have changes that are not staged:"
-    printf '%s' "$PARTIAL"
+    if [ -n "$PARTIAL" ]; then
+      echo "These staged Kotlin files also have changes that are not staged:"
+      printf '%s' "$PARTIAL"
+    fi
+    if [ -n "$UNSTAGED_CONFIG" ]; then
+      echo "These files configure the checks and have changes that are not staged:"
+      while IFS= read -r path; do
+        if [ -n "$path" ]; then echo "  $path"; fi
+      done <<< "$UNSTAGED_CONFIG"
+    fi
     echo ""
     echo "Formatting and static analysis read the files on disk, so they cannot check what this commit holds."
-    echo "Stage the rest of each file (git add), or set it aside (git stash push --keep-index), and commit again."
+    echo "Stage the rest of each file (git add), or set it aside (git stash push --keep-index --include-untracked),"
+    echo "and commit again."
   } >&2
   exit 1
 fi
