@@ -40,14 +40,21 @@ Each checker has its own fixtures, which CI runs before using it:
 ```bash
 bash scripts/test-check-commits.sh
 bash scripts/test-check-doc-comments.sh
+bash scripts/test-check-formatting.sh
 ```
 
 Hooks are convenience, not the gate — CI re-checks every commit on the PR, so a skipped hook
 (`--no-verify`) changes nothing.
 
-**Formatting is not a hook.** Run `./gradlew spotlessApply` before committing; CI's `quality` job runs
-`spotlessCheck` and `detekt` and refuses what they refuse ([`TESTING.md`](./TESTING.md) §5). A finding
-ktlint cannot fix is fixed by hand, or suppressed at the site with the reason beside it.
+**`pre-commit` also runs formatting and static analysis** — `./gradlew spotlessCheck detekt`, the checks CI's
+`quality` job runs ([`TESTING.md`](./TESTING.md) §5) — when the commit stages a `.kt` or `.kts` file, through
+[`scripts/check-formatting.sh`](../../scripts/check-formatting.sh). About a second with Gradle's daemon warm,
+longer the first time. Those checks read the files on disk, not what is staged, so a staged Kotlin file that also
+has unstaged changes is refused before they run: stage the rest of it (`git add`) or set it aside
+(`git stash push --keep-index`), and commit again. Files the commit does not touch can make the checks fail, never
+pass. Run `./gradlew spotlessApply` to fix what ktlint can; a finding it cannot fix is fixed by hand, or
+suppressed at the site with the reason beside it. Coverage (`koverVerify`) is not checked here — it needs the whole
+test suite, and runs in CI.
 
 **Blame past the reformat.** The whole repository was reformatted in one commit that changed formatting only,
 listed in [`.git-blame-ignore-revs`](../../.git-blame-ignore-revs). GitHub's blame skips it by itself; for

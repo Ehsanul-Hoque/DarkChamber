@@ -80,6 +80,10 @@ jobs:
       - name: No doc comment cut off its declaration (every Kotlin file)
         # The same check the pre-commit hook runs on staged files; a skipped hook changes nothing.
         run: bash ./scripts/check-doc-comments.sh
+      - name: Test the pre-commit formatting check
+        # Its fixtures: which commits the hook lets through and when it runs the checks. The checks
+        # themselves (spotlessCheck, detekt) run in the quality job.
+        run: bash ./scripts/test-check-formatting.sh
 
   # Supply-chain gate: flags new dependencies & incompatible licenses on the PR
   # (docs/engineering/RELEASE.md §6). New runtime deps need justification in the PR body.
