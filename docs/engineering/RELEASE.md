@@ -17,7 +17,7 @@ Fast checks on Linux; the expensive macOS job runs only when shared/iOS code cha
 | Job                 | Runs                                                                                                        |
 |---------------------|-------------------------------------------------------------------------------------------------------------|
 | `changes`           | the path filter that decides whether `ios-tests` runs                                                       |
-| `commit-messages`   | the commit and doc-comment checkers' own fixtures, then both checks over the PR                             |
+| `commit-messages`   | the commit checker's fixtures and the check over the PR; the pre-commit formatting check's fixtures          |
 | `dependency-review` | the supply-chain gate on new dependencies (public repositories only)                                        |
 | `build`             | `:konsist:test` first (the security-invariant rules), then `assembleFossDebug` and the host suite            |
 | `quality`           | the workflow files validated, then `spotlessCheck detekt`, then `koverVerify` with each module's report kept |

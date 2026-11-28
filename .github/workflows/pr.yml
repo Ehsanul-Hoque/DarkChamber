@@ -74,12 +74,6 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: bash ./scripts/check-commits.sh "$BASE_SHA" "$HEAD_SHA"
-      - name: Test the doc-comment checker
-        # Its fixtures: the file-header pattern allowed, every stacked pair refused.
-        run: bash ./scripts/test-check-doc-comments.sh
-      - name: No doc comment cut off its declaration (every Kotlin file)
-        # The same check the pre-commit hook runs on staged files; a skipped hook changes nothing.
-        run: bash ./scripts/check-doc-comments.sh
       - name: Test the pre-commit formatting check
         # Its fixtures: which commits the hook lets through and when it runs the checks. The checks
         # themselves (spotlessCheck, detekt) run in the quality job.

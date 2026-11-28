@@ -1,39 +1,17 @@
 #!/usr/bin/env bash
 #
-# pre-commit — refuse a commit that CI's own checks would refuse, before it exists:
+# pre-commit — refuse a commit that CI's formatting and static-analysis checks would refuse, before it
+# exists: `spotlessCheck detekt` (scripts/check-formatting.sh), when the commit stages Kotlin. Those
+# read the working tree, so a staged Kotlin file that also has unstaged changes is refused first:
+# stage the rest of it, or stash it, and commit again.
 #
-#   1. a doc comment cut off its declaration (scripts/check-doc-comments.sh), on the Kotlin files this
-#      commit stages, as staged: a fix sitting unstaged in the working tree does not let a broken
-#      staged file in;
-#   2. formatting and static analysis — `spotlessCheck detekt` (scripts/check-formatting.sh) — when the
-#      commit stages Kotlin. Those read the working tree, so a staged Kotlin file that also has unstaged
-#      changes is refused first: stage the rest of it, or stash it, and commit again.
+# ktlint's rules include the one that refuses a doc comment cut off its declaration — one directly
+# followed by another (`kdoc`, `no-consecutive-comments`); a comment about the whole file is a block
+# comment above the `package` line.
 #
 # Installed by `./gradlew installGitHooks` (sets core.hooksPath to .githooks), beside commit-msg.
 # CI stays the gate: a hook can be skipped (--no-verify), the PR check cannot.
 #
 set -euo pipefail
 
-ROOT="$(git rev-parse --show-toplevel)"
-
-# 1. Doc comments, on each staged Kotlin file as it will be committed.
-(
-  STAGED="$(git diff --cached --name-only --diff-filter=ACMR -- '*.kt')"
-  [ -n "$STAGED" ] || exit 0
-
-  WORK="$(mktemp -d)"
-  trap 'rm -rf "$WORK"' EXIT
-
-  # Each staged file at its own path, so the report names it as the repo does.
-  while IFS= read -r path; do
-    mkdir -p "$WORK/$(dirname "$path")"
-    git show ":$path" > "$WORK/$path"
-  done <<< "$STAGED"
-
-  cd "$WORK"
-  # shellcheck disable=SC2086 # one path per line, none with spaces (git ls-files output)
-  bash "$ROOT/scripts/check-doc-comments.sh" $STAGED
-)
-
-# 2. Formatting and static analysis.
-bash "$ROOT/scripts/check-formatting.sh"
+bash "$(git rev-parse --show-toplevel)/scripts/check-formatting.sh"
