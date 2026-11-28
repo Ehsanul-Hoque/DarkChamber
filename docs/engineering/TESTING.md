@@ -38,15 +38,16 @@ The highest-value tests in DarkChamber guard the two things that can silently de
 
 CI runs an upgrade test **from every previously released schema and format version**: fixture vaults (tiny, committed per release) are opened by the current build; every item must decrypt and every catalog row survive. A failed migration must fail *closed* in production code (refuse to run, vault untouched). "Old vaults always open" is a release-blocking invariant, per ARCHITECTURE.md §14.
 
-### 3.3 Property/round-trip fuzzing
+### 3.3 Property/round-trip fuzzing (planned — not in the tree yet)
 
-Randomized round-trips (encrypt → decrypt == identity across sizes 0..multi-chunk; random truncations/bit-flips must fail authentication) run in the PR suite with a bounded iteration count and nightly with a larger one.
+Planned: randomized round-trips (encrypt → decrypt == identity across sizes 0..multi-chunk; random truncations/bit-flips must fail authentication), run in the PR suite with a bounded iteration count and nightly with a larger one. Until it exists, the codec's own tests cover these cases with fixed inputs, and the format vectors (§3.1) with committed ones.
 
 ## 4. Coverage policy — Kover
 
 **What is enforced: floors, measured.** Kover runs per module (never merged) over what the JVM host tests
 execute, and each module is gated at the **line coverage measured for it**, rounded down to the whole percent.
-A floor only ever rises: raise a module's number in the `darkchamber.quality` plugin when its coverage does. A
+A floor only ever rises: raise a module's number in the `darkchamber.quality` plugin, and in the table below,
+when its coverage does. A
 module Kover measures but the plugin gives no floor fails the build.
 
 | Module               | Floor (line %) |
@@ -103,9 +104,12 @@ this project builds with and gets no more releases. Only the plain `detekt` task
 tasks carry the alpha's open false positives on `expect`/`actual` pairs. When 2.0 is stable, bump it and turn
 type resolution on. `config/detekt/detekt.yml` holds only departures from the defaults, each with its reason
 — among them, detekt's test-path leniency re-declared to include `androidHostTest`, which its defaults miss.
-Each module keeps a baseline of the findings it had when detekt arrived, so only new ones fail; **never in
-`core:crypto`**, whose findings were fixed (named constants for the format's numbers, a scoped
-`@Suppress` with a reason where the structure follows the format). The Compose rules run once, in ktlint, not
+Each module keeps a baseline of the findings it had when detekt arrived; **never in `core:crypto`**, whose
+findings were fixed (named constants for the format's numbers, a scoped `@Suppress` with a reason where the
+structure follows the format). A baseline entry is a rule and the declaration it fired in, not a line, so it
+lets through more than the findings it lists: a new finding of a rule already recorded for the same
+declaration passes too — a second `catch (e: Exception)` in a class whose baseline already holds one. Review
+covers those, and burning a baseline down removes the gap. The Compose rules run once, in ktlint, not
 again in detekt.
 
 **Konsist is the exception.** It is not run by the quality plugin: its rules are ordinary tests in their own
@@ -126,8 +130,9 @@ the GitHub Actions schema and `yamllint --strict` with `config/yamllint.yml`, ov
                                              # shared code (gated to non-draft, see RELEASE.md). Worth
                                              # running locally before any iOS-visible change: it is the
                                              # only suite that exercises the native SQLite driver, the
-                                             # iOS platform seams, and the container vectors on a
-                                             # second platform.
+                                             # iOS platform seams, and the codec, header and key-wrap
+                                             # suites on a second platform (the committed vectors run
+                                             # on the host only).
 ./gradlew koverVerify                        # per-module coverage floors
 ./gradlew koverHtmlReport                    # per module: <module>/build/reports/kover/html
 ./gradlew migrationTest                      # fixture-vault upgrade gate (not yet: after v1.0)

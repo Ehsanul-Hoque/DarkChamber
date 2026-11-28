@@ -11,14 +11,16 @@ import org.gradle.accessors.dm.LibrariesForLibs
 // scripts. The rules live in the root .editorconfig, so an IDE and this build read the same file.
 // Static analysis: detekt's plain `detekt` task over every source set, on its default rules plus the
 // departures in config/detekt/detekt.yml. Each module keeps a baseline of the findings it had when
-// detekt arrived, so only new ones fail — except :core:crypto, which has none and must stay clean.
+// detekt arrived — except :core:crypto, which has none and must stay clean. A baseline entry is a rule
+// and the declaration it fired in, not a line: a new finding of a rule already recorded for the same
+// declaration (a second generic catch in a class that has one) passes too, so review has to see those.
 //
 // Only hand-written sources are in scope: build/ (generated SQLDelight code included) and the vendored
 // C under src/nativeInterop never are.
 //
 //   ./gradlew spotlessCheck   — fails on any formatting difference or ktlint finding
 //   ./gradlew spotlessApply   — fixes what ktlint can fix by itself
-//   ./gradlew detekt          — fails on any detekt finding not in the module's baseline
+//   ./gradlew detekt          — fails on any detekt finding the module's baseline does not match
 //
 // Coverage: Kover, per module, each gated at what was measured for it — see below.
 
@@ -96,7 +98,8 @@ if (project != rootProject) {
 // its generator is applied (SQLDelight's, in :core:db).
 //
 // Each module is gated at the line coverage measured for it, rounded down to the whole percent — a
-// floor that can only be raised, never a target. Raise a number here when a module's coverage rises.
+// floor that can only be raised, never a target. Raise a number here, and in the table in
+// docs/engineering/TESTING.md §4, when a module's coverage rises.
 // A module Kover measures but this map does not name fails the build, so none goes ungated.
 //
 //   ./gradlew koverVerify      — fails when a module's line coverage is below its floor

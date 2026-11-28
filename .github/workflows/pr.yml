@@ -187,7 +187,8 @@ jobs:
         # The simulator test task runs the suite on a booted simulator, which `macos-latest` provides
         # via its bundled Xcode. This is what the host suite cannot reach: the iOS platform seams, the
         # whole common suite against the **native** SQLite driver rather than the JDBC one, and the
-        # .dchm format vectors on a second platform. 697 tests as of this change.
+        # .dchm codec, header and key-wrap suites on a second platform (the committed format vectors
+        # run on the host only).
         #
         # No separate compile tasks for the simulator: the test task compiles and links its own
         # sources, so `compileKotlinIosSimulatorArm64` and `compileTestKotlinIosSimulatorArm64` were
