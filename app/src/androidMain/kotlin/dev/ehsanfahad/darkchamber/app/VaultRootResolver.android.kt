@@ -1,3 +1,7 @@
+// Named to pair with the common VaultRootResolver.kt, as each platform's side of a shared file is,
+// rather than after the one class it holds.
+@file:Suppress("ktlint:standard:filename")
+
 package dev.ehsanfahad.darkchamber.app
 
 import android.content.Context
@@ -9,7 +13,9 @@ import kotlinx.io.files.Path
  * the manifest already denies OS/cloud backup (`allowBackup=false` + deny-all rules), so
  * the default no-op exclusion hook is correct here.
  */
-class AndroidVaultRootResolver(context: Context) : VaultRootResolver {
+class AndroidVaultRootResolver(
+    context: Context,
+) : VaultRootResolver {
     private val delegate = DirectoryVaultRootResolver(Path(context.filesDir.absolutePath, "vault"))
 
     override fun resolve(): Outcome<Path> = delegate.resolve()

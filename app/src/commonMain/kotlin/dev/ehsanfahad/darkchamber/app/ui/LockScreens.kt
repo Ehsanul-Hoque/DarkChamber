@@ -1,5 +1,12 @@
+// The lock card's steps (create, recovery key, biometrics, unlock) each emit their rows straight into
+// the card's column, which owns their spacing; a column of their own would only nest the same layout.
+// ktlint's Compose rules flag that, and honour a suppression of this rule only for a whole file.
+@file:Suppress("ktlint:compose:multiple-emitters-check")
+
 package dev.ehsanfahad.darkchamber.app.ui
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,7 +26,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -31,10 +37,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.animation.core.tween
 import com.arkivanov.decompose.ExperimentalDecomposeApi
 import com.arkivanov.decompose.extensions.compose.stack.Children
 import com.arkivanov.decompose.extensions.compose.stack.animation.StackAnimation
@@ -70,7 +75,10 @@ import dev.ehsanfahad.darkchamber.feature.vault.presentation.VaultViewerContent
  * The real vault UI is Phase 1 — [UnlockedContent] is a placeholder with a Lock button.
  */
 @Composable
-fun RootContent(component: RootComponent, modifier: Modifier = Modifier) {
+fun RootContent(
+    component: RootComponent,
+    modifier: Modifier = Modifier,
+) {
     DarkChamberTheme {
         Surface(modifier = modifier.fillMaxSize(), color = DarkChamberTheme.colors.background) {
             val child by component.child.subscribeAsState()
@@ -106,7 +114,13 @@ fun RootContent(component: RootComponent, modifier: Modifier = Modifier) {
  * Reduced motion goes **instant** here rather than to a gentler animation. Elsewhere a cross-fade is
  * what motion degrades *to* (§8); a fade is already that floor, so the only thing left to honour the
  * setting with is to skip it.
+ *
+ * [content] is therefore called from two places, which ktlint's Compose rules flag. They only trade
+ * places when the reduced-motion setting changes while the vault is open — leaving the app locks it,
+ * so in practice only beside Settings in split screen — and the cost then is on-screen state such as a
+ * scroll position starting over, once.
  */
+@Suppress("ktlint:compose:content-slot-reused")
 @Composable
 private fun UnlockedFadeIn(content: @Composable () -> Unit) {
     if (prefersReducedMotion()) {
@@ -146,37 +160,56 @@ private fun LockedContent(component: LockedComponent) {
         busy = state.busy,
     ) {
         when (step) {
-            is LockStep.Create -> CreateVaultStep(state, component::submitCreate)
-            is LockStep.Recovery -> RecoveryKeyStep(
-                recoveryKey = step.recoveryKey,
-                copied = state.recoveryKeyCopied,
-                onCopy = component::copyRecoveryKey,
-                onConfirm = component::confirmRecoverySaved,
-            )
-            is LockStep.EnableBiometric -> EnableBiometricStep(state, component::enableBiometric, component::skipBiometric)
-            is LockStep.Unlock -> UnlockStep(state, component::submitPassphraseUnlock, component::startBiometricUnlock)
+            is LockStep.Create -> {
+                CreateVaultStep(state, component::submitCreate)
+            }
+
+            is LockStep.Recovery -> {
+                RecoveryKeyStep(
+                    recoveryKey = step.recoveryKey,
+                    copied = state.recoveryKeyCopied,
+                    onCopy = component::copyRecoveryKey,
+                    onConfirm = component::confirmRecoverySaved,
+                )
+            }
+
+            is LockStep.EnableBiometric -> {
+                EnableBiometricStep(state, component::enableBiometric, component::skipBiometric)
+            }
+
+            is LockStep.Unlock -> {
+                UnlockStep(state, component::submitPassphraseUnlock, component::startBiometricUnlock)
+            }
         }
     }
 }
 
 /** Where the iris sits for each step. Half-open is "in the middle of getting you in". */
-private fun LockStep.aperture(busy: Boolean): ApertureState = when (this) {
-    // Key derivation (Argon2id) takes real seconds — the iris opening is the progress.
-    is LockStep.Create -> if (busy) ApertureState.Unlocking else ApertureState.Closed
-    is LockStep.Recovery -> ApertureState.Unlocking
-    is LockStep.EnableBiometric -> ApertureState.Unlocking
-    is LockStep.Unlock -> if (busy) ApertureState.Unlocking else ApertureState.Closed
-}
+private fun LockStep.aperture(busy: Boolean): ApertureState =
+    when (this) {
+        // Key derivation (Argon2id) takes real seconds — the iris opening is the progress.
+        is LockStep.Create -> if (busy) ApertureState.Unlocking else ApertureState.Closed
 
-private fun LockStep.title(): String = when (this) {
-    is LockStep.Create -> "Create your vault"
-    is LockStep.Recovery -> "Save your recovery key"
-    is LockStep.EnableBiometric -> "Unlock with biometrics?"
-    is LockStep.Unlock -> "Unlock"
-}
+        is LockStep.Recovery -> ApertureState.Unlocking
+
+        is LockStep.EnableBiometric -> ApertureState.Unlocking
+
+        is LockStep.Unlock -> if (busy) ApertureState.Unlocking else ApertureState.Closed
+    }
+
+private fun LockStep.title(): String =
+    when (this) {
+        is LockStep.Create -> "Create your vault"
+        is LockStep.Recovery -> "Save your recovery key"
+        is LockStep.EnableBiometric -> "Unlock with biometrics?"
+        is LockStep.Unlock -> "Unlock"
+    }
 
 @Composable
-private fun CreateVaultStep(state: LockState, onCreate: (ByteArray) -> Unit) {
+private fun CreateVaultStep(
+    state: LockState,
+    onCreate: (ByteArray) -> Unit,
+) {
     var passphrase by remember { mutableStateOf("") }
     Text(
         "Choose a passphrase. It is the only way in besides your recovery key — we can't reset it.",
@@ -239,7 +272,11 @@ private fun RecoveryKeyStep(
 }
 
 @Composable
-private fun EnableBiometricStep(state: LockState, onEnable: () -> Unit, onSkip: () -> Unit) {
+private fun EnableBiometricStep(
+    state: LockState,
+    onEnable: () -> Unit,
+    onSkip: () -> Unit,
+) {
     Text(
         "Use Face or fingerprint to unlock next time. Your passphrase still works, and you can turn " +
             "this off later.",
@@ -299,23 +336,29 @@ private fun UnlockedContent(component: UnlockedComponent) {
         // in one frame, which on a stack of siblings leaves nothing to say which way the user went.
         Children(
             stack = stack,
-            animation = predictiveBackAnimation(
-                // The host's handler, which the gate wired up — the same one the gallery's selection
-                // callback uses. This is what lets the user's own gesture drag the outgoing screen on
-                // Android 13 and later rather than only animating after the press.
-                backHandler = component.backHandler,
-                // **The only pop.** The stack is built with `handleBackButton = false` for this
-                // reason: two registered handlers would pop twice on one gesture.
-                onBack = component::onBack,
-                fallbackAnimation = navigationAnimation(),
-            ),
+            animation =
+                predictiveBackAnimation(
+                    // The host's handler, which the gate wired up — the same one the gallery's selection
+                    // callback uses. This is what lets the user's own gesture drag the outgoing screen on
+                    // Android 13 and later rather than only animating after the press.
+                    backHandler = component.backHandler,
+                    // **The only pop.** The stack is built with `handleBackButton = false` for this
+                    // reason: two registered handlers would pop twice on one gesture.
+                    onBack = component::onBack,
+                    fallbackAnimation = navigationAnimation(),
+                ),
         ) { created ->
             // Each screen carries its own bar, so the bar slides with the screen it describes. One
             // bar shared above the stack would follow the active child, which changes when a push
             // starts and only when a back gesture's slide has finished — so it changed, or vanished
             // for the camera, at the wrong end of every transition and moved the grid.
             val instance = created.instance
-            Column(modifier = Modifier.fillMaxSize().then(if (paddedByHost(instance)) Modifier.safeDrawingPadding() else Modifier)) {
+            Column(
+                modifier =
+                    Modifier.fillMaxSize().then(
+                        if (paddedByHost(instance)) Modifier.safeDrawingPadding() else Modifier,
+                    ),
+            ) {
                 if (showsUnlockedBar(instance)) ScreenBar(component = component, child = instance)
                 Box(modifier = Modifier.weight(1f)) { UnlockedScreen(component = component, child = instance) }
             }
@@ -325,10 +368,11 @@ private fun UnlockedContent(component: UnlockedComponent) {
         // the same reason. It is the gate's record, so it is here after the unlock that follows the
         // lock which caused it.
         val notSaved by component.notSaved.collectAsState()
-        val notSavedLines = notSavedNoticeLines(
-            cameraInFront = stack.active.instance is UnlockedChild.Camera,
-            summary = notSaved,
-        )
+        val notSavedLines =
+            notSavedNoticeLines(
+                cameraInFront = stack.active.instance is UnlockedChild.Camera,
+                summary = notSaved,
+            )
 
         // Inset on its own, since it sits over the camera too, which the host does not pad.
         Column(modifier = Modifier.align(Alignment.BottomCenter).safeDrawingPadding()) {
@@ -345,30 +389,45 @@ private fun UnlockedContent(component: UnlockedComponent) {
 
 /** The vault's bar as it reads above [child]: where it is, the way into albums, and the lock. */
 @Composable
-private fun ScreenBar(component: UnlockedComponent, child: UnlockedChild) {
+private fun ScreenBar(
+    component: UnlockedComponent,
+    child: UnlockedChild,
+) {
     // Subscribed rather than read once: an album can be renamed from the screen the bar is sitting
     // above, and a crumb that did not follow it would be the only stale name on screen.
-    val gallery = when (child) {
-        is UnlockedChild.Gallery -> child.component.state.subscribeAsState().value
-        is UnlockedChild.Albums, is UnlockedChild.Camera, is UnlockedChild.Viewer -> null
-    }
+    val gallery =
+        when (child) {
+            is UnlockedChild.Gallery -> {
+                child.component.state
+                    .subscribeAsState()
+                    .value
+            }
+
+            is UnlockedChild.Albums, is UnlockedChild.Camera, is UnlockedChild.Viewer -> {
+                null
+            }
+        }
     UnlockedBar(
         onLock = component::lock,
         // Offered from the vault's own grid only. From inside an album, or from the album grid
         // itself, the way onward is back — a second entry point to the screen you are standing next
         // to is noise.
-        onAlbums = component::openAlbums.takeIf {
-            child is UnlockedChild.Gallery && child.scope == GalleryScope.WholeVault
-        },
+        onAlbums =
+            component::openAlbums.takeIf {
+                child is UnlockedChild.Gallery && child.scope == GalleryScope.WholeVault
+            },
         crumb = crumbFor(child, gallery),
     )
 }
 
 /** One unlocked screen, below its bar. */
 @Composable
-private fun UnlockedScreen(component: UnlockedComponent, child: UnlockedChild) {
+private fun UnlockedScreen(
+    component: UnlockedComponent,
+    child: UnlockedChild,
+) {
     when (child) {
-        is UnlockedChild.Gallery ->
+        is UnlockedChild.Gallery -> {
             // The session owns the loader (it decrypts through the session's vault and holds previews
             // in memory), so the screen is handed one rather than making its own. Absent only in a
             // graph with no platform context, which production never is — both platform modules bind
@@ -376,12 +435,16 @@ private fun UnlockedScreen(component: UnlockedComponent, child: UnlockedChild) {
             component.imageLoader?.let { loader ->
                 VaultGalleryContent(child.component, loader)
             }
+        }
+
         // The same loader, for the same reason: an album's cover is one of its items, so it is drawn
         // through the session's encrypted-preview path rather than a second one.
-        is UnlockedChild.Albums ->
+        is UnlockedChild.Albums -> {
             component.imageLoader?.let { loader ->
                 VaultAlbumsContent(child.component, loader)
             }
+        }
+
         // The last-shot tile draws through the same loader, handed in as a slot: the camera never
         // builds a loader of its own, so the lock's cache clear covers it.
         // Held upright for as long as it is composed, so it is released when the screen is popped and
@@ -389,7 +452,10 @@ private fun UnlockedScreen(component: UnlockedComponent, child: UnlockedChild) {
         // Full-screen, under the system bars, with its own bars inside the insets. It decodes through
         // its own seam rather than the grid's loader, and holds its pictures in its own component,
         // which the lock destroys with the subtree.
-        is UnlockedChild.Viewer -> VaultViewerContent(child.component)
+        is UnlockedChild.Viewer -> {
+            VaultViewerContent(child.component)
+        }
+
         is UnlockedChild.Camera -> {
             HoldPortrait()
             component.imageLoader?.let { loader ->
@@ -436,13 +502,18 @@ private fun <C : Any, T : Any> navigationAnimation(): StackAnimation<C, T> {
  * Null on the vault itself, where a second label would only repeat the name beside it.
  */
 @Composable
-private fun UnlockedBar(onLock: () -> Unit, onAlbums: (() -> Unit)?, crumb: String?) {
+private fun UnlockedBar(
+    onLock: () -> Unit,
+    onAlbums: (() -> Unit)?,
+    crumb: String?,
+) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = DarkChamberTheme.spacing.spaceMd, vertical = DarkChamberTheme.spacing.spaceXs),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = DarkChamberTheme.spacing.spaceMd, vertical = DarkChamberTheme.spacing.spaceXs),
     ) {
         // Weighted, so the actions on the right are measured first and keep their space. This row is
         // the tightest on the surface — an album's name can be any length the user typed — and the
@@ -499,7 +570,11 @@ private fun UnlockedBar(onLock: () -> Unit, onAlbums: (() -> Unit)?, crumb: Stri
 }
 
 @Composable
-private fun PassphraseField(value: String, onChange: (String) -> Unit, label: String) {
+private fun PassphraseField(
+    value: String,
+    onChange: (String) -> Unit,
+    label: String,
+) {
     OutlinedTextField(
         value = value,
         onValueChange = onChange,
@@ -524,13 +599,14 @@ private fun GateScaffold(
     content: @Composable () -> Unit,
 ) {
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            // Keep content clear of the status bar / notch (iOS) and system bars (Android edge-to-edge),
-            // while the Surface background still fills behind them.
-            .safeDrawingPadding()
-            .verticalScroll(rememberScrollState())
-            .padding(DarkChamberTheme.spacing.spaceLg),
+        modifier =
+            Modifier
+                .fillMaxSize()
+                // Keep content clear of the status bar / notch (iOS) and system bars (Android edge-to-edge),
+                // while the Surface background still fills behind them.
+                .safeDrawingPadding()
+                .verticalScroll(rememberScrollState())
+                .padding(DarkChamberTheme.spacing.spaceLg),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(DarkChamberTheme.spacing.spaceMd),
     ) {
@@ -555,16 +631,36 @@ private fun GateScaffold(
 }
 
 /** Honest, plain error copy (docs/DESIGN.md §11; hard rule #6). */
-private fun LockError.message(): String = when (this) {
-    LockError.WrongPassphrase -> "That passphrase didn't work. Try again."
-    LockError.BiometricCanceled -> "Biometric unlock was canceled. Use your passphrase or try again."
-    LockError.BiometricUnavailable -> "Biometrics aren't available. Use your passphrase."
-    LockError.BiometricFailed -> "Biometric unlock didn't work this time. Try again or use your passphrase."
-    LockError.HardwareInvalidated ->
-        "Your biometrics changed, so biometric unlock is disabled. Unlock with your passphrase, then re-enable it."
-    LockError.CreateFailed -> "Couldn't create the vault. Please try again."
-    LockError.ProbeFailed -> "Couldn't open the vault storage. Unlock with your passphrase."
-}
+private fun LockError.message(): String =
+    when (this) {
+        LockError.WrongPassphrase -> {
+            "That passphrase didn't work. Try again."
+        }
+
+        LockError.BiometricCanceled -> {
+            "Biometric unlock was canceled. Use your passphrase or try again."
+        }
+
+        LockError.BiometricUnavailable -> {
+            "Biometrics aren't available. Use your passphrase."
+        }
+
+        LockError.BiometricFailed -> {
+            "Biometric unlock didn't work this time. Try again or use your passphrase."
+        }
+
+        LockError.HardwareInvalidated -> {
+            "Your biometrics changed, so biometric unlock is disabled. Unlock with your passphrase, then re-enable it."
+        }
+
+        LockError.CreateFailed -> {
+            "Couldn't create the vault. Please try again."
+        }
+
+        LockError.ProbeFailed -> {
+            "Couldn't open the vault storage. Unlock with your passphrase."
+        }
+    }
 
 /**
  * Between the vault's name and the listing below it. A path separator, because that is what the row

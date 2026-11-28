@@ -13,7 +13,6 @@ import kotlin.test.assertTrue
  * improvement if that point is the one being checked.
  */
 class NameLabelsTest {
-
     @Test
     fun a_readable_album_name_is_itself() {
         assertEquals("Berlin trip", AlbumTileName.Readable("Berlin trip").label())

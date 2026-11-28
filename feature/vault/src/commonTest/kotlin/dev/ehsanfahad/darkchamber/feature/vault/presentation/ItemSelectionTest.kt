@@ -23,14 +23,14 @@ import kotlin.test.assertTrue
  * hand an action ids that no longer exist.
  */
 class ItemSelectionTest {
-
-    private fun item(vararg id: Byte) = GalleryItem(
-        id = byteArrayOf(*id),
-        kind = VaultItemKind.FILE,
-        size = 10L,
-        createdAt = 1L,
-        meta = GalleryItemMeta.Readable("file.txt", "text/plain"),
-    )
+    private fun item(vararg id: Byte) =
+        GalleryItem(
+            id = byteArrayOf(*id),
+            kind = VaultItemKind.FILE,
+            size = 10L,
+            createdAt = 1L,
+            meta = GalleryItemMeta.Readable("file.txt", "text/plain"),
+        )
 
     @Test
     fun a_long_press_enters_the_mode_with_that_item_selected() {

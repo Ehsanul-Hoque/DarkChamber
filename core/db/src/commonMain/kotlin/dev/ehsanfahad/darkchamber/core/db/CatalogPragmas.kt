@@ -15,7 +15,10 @@ package dev.ehsanfahad.darkchamber.core.db
  * so it is never assumed.
  */
 internal object CatalogPragmas {
-    class Pragma(val name: String, val value: String) {
+    class Pragma(
+        val name: String,
+        val value: String,
+    ) {
         val sql: String get() = "PRAGMA $name = $value"
     }
 

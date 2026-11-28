@@ -17,7 +17,11 @@ package dev.ehsanfahad.darkchamber.app.image
  * `null` for bounds the platform could not parse — reported as zero or less — or no target: there is
  * nothing to decode.
  */
-internal fun viewerSampleSize(sourceWidth: Int, sourceHeight: Int, maxLongEdge: Int): Int? {
+internal fun viewerSampleSize(
+    sourceWidth: Int,
+    sourceHeight: Int,
+    maxLongEdge: Int,
+): Int? {
     if (sourceWidth <= 0 || sourceHeight <= 0 || maxLongEdge <= 0) return null
     val longEdge = maxOf(sourceWidth, sourceHeight)
     var sample = 1

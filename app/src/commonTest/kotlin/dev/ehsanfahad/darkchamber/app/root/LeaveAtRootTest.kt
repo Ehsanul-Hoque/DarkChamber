@@ -16,7 +16,6 @@ import kotlin.time.Duration.Companion.seconds
  * press ends the session — and it must not be able to go wrong because a coroutine did not run.
  */
 class LeaveAtRootTest {
-
     @Test
     fun a_first_press_never_leaves() {
         assertFalse(backPressLeaves(armedFor = null, window = WINDOW), "nothing armed it, so nothing leaves")

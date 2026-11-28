@@ -29,11 +29,16 @@ import kotlin.test.assertIs
  */
 @OptIn(ExperimentalForeignApi::class)
 class VaultImportOutOfSpaceTest {
-
-    private class FailingAfter(private val failure: Exception) : RawSource {
+    private class FailingAfter(
+        private val failure: Exception,
+    ) : RawSource {
         private val bytes = Buffer().apply { write(ByteArray(100) { 1 }) }
-        override fun readAtMostTo(sink: Buffer, byteCount: Long): Long =
-            if (bytes.size > 0) bytes.readAtMostTo(sink, byteCount) else throw failure
+
+        override fun readAtMostTo(
+            sink: Buffer,
+            byteCount: Long,
+        ): Long = if (bytes.size > 0) bytes.readAtMostTo(sink, byteCount) else throw failure
+
         override fun close() = Unit
     }
 
@@ -50,25 +55,27 @@ class VaultImportOutOfSpaceTest {
         IOException("file write failed with errno $err (${strerror(err)!!.toKString()})")
 
     @Test
-    fun a_full_disk_during_the_encrypt_is_reported_as_full_and_stores_nothing() = runTest {
-        val fx = AlbumFixture()
+    fun a_full_disk_during_the_encrypt_is_reported_as_full_and_stores_nothing() =
+        runTest {
+            val fx = AlbumFixture()
 
-        val result = fx.importFailingWith(errnoFailure(ENOSPC))
+            val result = fx.importFailingWith(errnoFailure(ENOSPC))
 
-        assertIs<Outcome.Err>(result)
-        assertEquals(VaultError.Storage.Full, result.error)
-        assertEquals(0L, (fx.catalog.countItems() as Outcome.Ok).value, "fail-closed as before: no row")
-        fx.close()
-    }
+            assertIs<Outcome.Err>(result)
+            assertEquals(VaultError.Storage.Full, result.error)
+            assertEquals(0L, (fx.catalog.countItems() as Outcome.Ok).value, "fail-closed as before: no row")
+            fx.close()
+        }
 
     @Test
-    fun any_other_failure_during_the_encrypt_stays_io() = runTest {
-        val fx = AlbumFixture()
+    fun any_other_failure_during_the_encrypt_stays_io() =
+        runTest {
+            val fx = AlbumFixture()
 
-        val result = fx.importFailingWith(errnoFailure(EIO))
+            val result = fx.importFailingWith(errnoFailure(EIO))
 
-        assertIs<Outcome.Err>(result)
-        assertIs<VaultError.Io>(result.error)
-        fx.close()
-    }
+            assertIs<Outcome.Err>(result)
+            assertIs<VaultError.Io>(result.error)
+            fx.close()
+        }
 }

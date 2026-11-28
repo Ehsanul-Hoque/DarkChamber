@@ -14,8 +14,10 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class GalleryFormatTest {
-
-    private fun badge(name: String, mime: String) = GalleryFormat.typeBadge(GalleryItemMeta.Readable(name, mime))
+    private fun badge(
+        name: String,
+        mime: String,
+    ) = GalleryFormat.typeBadge(GalleryItemMeta.Readable(name, mime))
 
     @Test
     fun type_badges_follow_the_mime_family() {
@@ -649,8 +651,9 @@ class GalleryFormatTest {
     /** Each named stage says something different, or the label is decoration rather than information. */
     @Test
     fun the_named_stages_are_told_apart() {
-        val labels = listOf(ImportStage.FETCHING, ImportStage.COPYING, ImportStage.FINISHING)
-            .map { GalleryFormat.stageLabel(it) }
+        val labels =
+            listOf(ImportStage.FETCHING, ImportStage.COPYING, ImportStage.FINISHING)
+                .map { GalleryFormat.stageLabel(it) }
 
         assertEquals(labels.size, labels.distinct().size, "two stages reading alike explain nothing: $labels")
     }
@@ -700,9 +703,14 @@ class GalleryFormatTest {
      */
     @Test
     fun an_intact_or_unnamed_tile_says_nothing_about_a_preview() {
-        assertNull(GalleryFormat.badgeSpoken(GalleryItemMeta.Readable("beach.jpg", "image/jpeg"), previewUnverified = false))
+        assertNull(
+            GalleryFormat.badgeSpoken(GalleryItemMeta.Readable("beach.jpg", "image/jpeg"), previewUnverified = false),
+        )
         assertNull(GalleryFormat.badgeSpoken(GalleryItemMeta.Unreadable, previewUnverified = false))
-        assertNull(GalleryFormat.badgeSpoken(GalleryItemMeta.Unreadable, previewUnverified = true), "no preview is asked for")
+        assertNull(
+            GalleryFormat.badgeSpoken(GalleryItemMeta.Unreadable, previewUnverified = true),
+            "no preview is asked for",
+        )
     }
 
     /**

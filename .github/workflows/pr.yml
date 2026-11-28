@@ -7,11 +7,11 @@
 # architecture rules (:konsist — cipher confinement, no network, no telemetry SDK, shared-storage
 # confinement, logger confinement). Those run in the `build` job because they guard the hard rules
 # in CLAUDE.md and must gate every PR.
-# The `quality` job (ktlint / detekt / kover) stays COMMENTED OUT until those convention plugins
-# exist (docs/engineering/MODULES.md §5). `migrationTest` arrives after v1.0 ships fixture vaults and
-# is carried as a commented step in the iOS job so the first release has a prompt.
-# Do NOT mark any check required in branch protection until the quality job is green — see
-# nightly/release/test-build which remain *.yml.disabled.
+# The `quality` job validates the workflow files and runs the darkchamber.quality gates: Spotless
+# (ktlint), detekt and Kover's per-module coverage floors. `migrationTest` arrives after v1.0 ships
+# fixture vaults and is carried as a commented step in the iOS job so the first release has a prompt.
+# Which checks are required is a branch-protection setting, made by the maintainer; nightly, release
+# and test-build remain *.yml.disabled.
 name: PR
 
 on:
@@ -38,8 +38,8 @@ jobs:
     outputs:
       ios: ${{ steps.filter.outputs.ios }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@v4
         id: filter
         with:
           filters: |
@@ -60,7 +60,7 @@ jobs:
   commit-messages:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0   # the checker walks the full PR commit range
       - name: Test the commit-message checker
@@ -68,14 +68,16 @@ jobs:
         # quietly stopped refusing anything would otherwise pass every PR.
         run: bash ./scripts/test-check-commits.sh
       - name: Validate commit messages (all commits in the PR)
-        # Node-free Conventional Commits check (docs/engineering/WORKFLOW.md §2).
-        run: bash ./scripts/check-commits.sh "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
-      - name: Test the doc-comment checker
-        # Its fixtures: the file-header pattern allowed, every stacked pair refused.
-        run: bash ./scripts/test-check-doc-comments.sh
-      - name: No doc comment cut off its declaration (every Kotlin file)
-        # The same check the pre-commit hook runs on staged files; a skipped hook changes nothing.
-        run: bash ./scripts/check-doc-comments.sh
+        # Node-free Conventional Commits check (docs/engineering/WORKFLOW.md §2). The range arrives through
+        # the environment, as GitHub recommends for any expression a script reads.
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: bash ./scripts/check-commits.sh "$BASE_SHA" "$HEAD_SHA"
+      - name: Test the pre-commit formatting check
+        # Its fixtures: which commits the hook lets through and when it runs the checks. The checks
+        # themselves (spotlessCheck, detekt) run in the quality job.
+        run: bash ./scripts/test-check-formatting.sh
 
   # Supply-chain gate: flags new dependencies & incompatible licenses on the PR
   # (docs/engineering/RELEASE.md §6). New runtime deps need justification in the PR body.
@@ -88,8 +90,8 @@ jobs:
     if: github.event.repository.visibility == 'public'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/dependency-review-action@v4
+      - uses: actions/checkout@v7
+      - uses: actions/dependency-review-action@v5
         with:
           fail-on-severity: high
 
@@ -98,12 +100,14 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "21"
-      - uses: gradle/actions/setup-gradle@v4
+      # Held at v5 on purpose: v6 moved its caching into a component that is not open source and
+      # asks its users to accept separate terms of use. v5 already runs on Node 24.
+      - uses: gradle/actions/setup-gradle@v5
 
       - name: Security architecture rules (Konsist)
         # Runs first: it is seconds of work and a violation of a hard security rule should fail
@@ -115,22 +119,52 @@ jobs:
         # runs the common/Android-host unit tests in every core module.
         run: ./gradlew :androidApp:assembleFossDebug testAndroidHostTest
 
-  # --- Deferred: the quality gate. Uncomment once the darkchamber.quality convention plugin adds
-  #     these tasks (MODULES.md §5, TESTING.md §5). Konsist is NOT here — the security-invariant
-  #     rules already run in the `build` job above, where they gate every PR.
-  # quality:
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - uses: actions/setup-java@v4
-  #       with:
-  #         distribution: temurin
-  #         java-version: "21"
-  #     - uses: gradle/actions/setup-gradle@v4
-  #     - name: Static analysis (ktlint, detekt)
-  #       run: ./gradlew ktlintCheck detekt
-  #     - name: Coverage gates
-  #       run: ./gradlew koverVerify
+  # The quality gate: the workflow files themselves, formatting, static analysis and coverage, from the
+  # darkchamber.quality convention plugin (MODULES.md §5, TESTING.md §4–§5). Konsist is not here — the
+  # security-invariant rules run in the `build` job above, where they gate every PR.
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # First, and seconds of work: a workflow is the one file building the repository cannot check.
+      # The Actions schema catches what GitHub would misread (a misspelled key, a bad `if`, a step with
+      # neither `uses` nor `run`); yamllint the rest, with its settings in config/yamllint.yml. The
+      # *.yml.disabled templates are checked too, so one is sound on the day it is switched on.
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Validate the workflow files
+        run: |
+          python -m pip install --quiet check-jsonschema==0.39.0 yamllint==1.38.0
+          check-jsonschema --builtin-schema vendor.github-workflows --default-filetype yaml \
+            .github/workflows/*.yml .github/workflows/*.yml.disabled
+          yamllint --strict -c config/yamllint.yml .github/workflows/*.yml .github/workflows/*.yml.disabled
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+      # Held at v5 for the reason given in the `build` job.
+      - uses: gradle/actions/setup-gradle@v5
+
+      - name: Formatting and static analysis (Spotless with ktlint, detekt)
+        run: ./gradlew spotlessCheck detekt
+
+      - name: Coverage gates (Kover, per module, at the line coverage measured for each)
+        run: ./gradlew koverVerify koverXmlReport koverHtmlReport
+
+      # Each module's report, kept whether or not a gate failed, so the numbers behind a failure can be
+      # read. There is no coverage comment on the PR: that needs write permission and a third-party action.
+      - name: Upload the coverage reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: kover-reports
+          path: |
+            */build/reports/kover/
+            */*/build/reports/kover/
+          if-no-files-found: error
 
   # NOTE: this job was called `ios-compile` until it started running the tests. The job name is the
   # check name, so renaming it retires the old check — which is only safe while nothing requires it.
@@ -143,17 +177,18 @@ jobs:
     if: needs.changes.outputs.ios == 'true' && github.event.pull_request.draft == false
     runs-on: macos-latest        # ~10x the cost of Linux — that's why it's gated
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "21"
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v5
       - name: iOS unit tests (simulator) + device-architecture compile
         # The simulator test task runs the suite on a booted simulator, which `macos-latest` provides
         # via its bundled Xcode. This is what the host suite cannot reach: the iOS platform seams, the
         # whole common suite against the **native** SQLite driver rather than the JDBC one, and the
-        # .dchm format vectors on a second platform. 697 tests as of this change.
+        # .dchm codec, header and key-wrap suites on a second platform (the committed format vectors
+        # run on the host only).
         #
         # No separate compile tasks for the simulator: the test task compiles and links its own
         # sources, so `compileKotlinIosSimulatorArm64` and `compileTestKotlinIosSimulatorArm64` were

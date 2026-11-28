@@ -25,21 +25,28 @@ internal object IosPlayerMapping {
      * `AVErrorDecoderTemporarilyUnavailable`: a decoder busy for now is not a device that cannot play
      * the file, so it names no cause.
      */
-    val DECODER_CODES: Set<Long> = setOf(
-        AVErrorFileFormatNotRecognized,
-        AVErrorDecoderNotFound,
-        AVErrorFormatUnsupported,
-    )
+    val DECODER_CODES: Set<Long> =
+        setOf(
+            AVErrorFileFormatNotRecognized,
+            AVErrorDecoderNotFound,
+            AVErrorFormatUnsupported,
+        )
 
     /** One error in an error's chain: its domain and code. */
-    data class ErrorLink(val domain: String?, val code: Long)
+    data class ErrorLink(
+        val domain: String?,
+        val code: Long,
+    )
 
     /**
      * Where a stop came from. A read the vault refused wins, whatever AVFoundation made of it; a format or
      * decoder this device lacks — anywhere in the error's chain, since AVFoundation wraps its causes — is
      * the decoder's; anything else names no cause.
      */
-    fun failureOf(chain: List<ErrorLink>, readerFailure: VaultError?): PlayerFailure =
+    fun failureOf(
+        chain: List<ErrorLink>,
+        readerFailure: VaultError?,
+    ): PlayerFailure =
         when {
             readerFailure != null -> PlayerFailure.Reader(readerFailure)
             chain.any { it.domain == AVFoundationErrorDomain && it.code in DECODER_CODES } -> PlayerFailure.Decoder
@@ -47,7 +54,11 @@ internal object IosPlayerMapping {
         }
 
     /** One track AVFoundation found: a picture or not, and whether this device plays it. */
-    data class FoundTrack(val video: Boolean, val audio: Boolean, val playable: Boolean)
+    data class FoundTrack(
+        val video: Boolean,
+        val audio: Boolean,
+        val playable: Boolean,
+    )
 
     /** The asset's picture and sound, as on Android: none absent, any playable playable, else unplayable. */
     fun tracksOf(found: List<FoundTrack>): PlayerTracks =

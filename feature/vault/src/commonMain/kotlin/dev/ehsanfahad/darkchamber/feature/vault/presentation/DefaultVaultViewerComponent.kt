@@ -4,65 +4,65 @@ import androidx.compose.ui.graphics.ImageBitmap
 import com.arkivanov.decompose.ComponentContext
 import com.arkivanov.decompose.value.MutableValue
 import com.arkivanov.decompose.value.Value
+import com.arkivanov.essenty.lifecycle.doOnDestroy
+import dev.ehsanfahad.darkchamber.core.logging.logMeasurement
+import dev.ehsanfahad.darkchamber.core.logging.logVaultError
 import dev.ehsanfahad.darkchamber.core.model.ItemFilter
 import dev.ehsanfahad.darkchamber.core.model.Outcome
+import dev.ehsanfahad.darkchamber.core.model.VaultError
 import dev.ehsanfahad.darkchamber.core.vault.RangeReader
+import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
+import dev.ehsanfahad.darkchamber.feature.vault.api.FormatNote
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
 import dev.ehsanfahad.darkchamber.feature.vault.api.LinkOpened
 import dev.ehsanfahad.darkchamber.feature.vault.api.LinkOpener
+import dev.ehsanfahad.darkchamber.feature.vault.api.PdfOpened
+import dev.ehsanfahad.darkchamber.feature.vault.api.PdfPageSize
+import dev.ehsanfahad.darkchamber.feature.vault.api.PdfPlace
+import dev.ehsanfahad.darkchamber.feature.vault.api.PdfRefusal
 import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerDisplay
 import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerKind
 import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerState
-import dev.ehsanfahad.darkchamber.feature.vault.api.FormatNote
 import dev.ehsanfahad.darkchamber.feature.vault.api.TextDocument
 import dev.ehsanfahad.darkchamber.feature.vault.api.TextKind
+import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPdfBuffer
+import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPdfDocument
+import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPdfRenderer
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPlayer
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPlayerFactory
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultViewerComponent
+import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerDeleteStage
+import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerNotice
+import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerPage
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerState
+import dev.ehsanfahad.darkchamber.feature.vault.domain.AlbumPresence
 import dev.ehsanfahad.darkchamber.feature.vault.domain.GalleryControls
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveAlbum
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveGallery
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ViewerPosition
 import dev.ehsanfahad.darkchamber.feature.vault.domain.following
 import dev.ehsanfahad.darkchamber.feature.vault.domain.startPosition
-import com.arkivanov.essenty.lifecycle.doOnDestroy
-import dev.ehsanfahad.darkchamber.core.logging.logVaultError
-import dev.ehsanfahad.darkchamber.core.model.VaultError
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.launchIn
-import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.combine
-import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
-import dev.ehsanfahad.darkchamber.feature.vault.domain.AlbumPresence
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.job
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerDeleteStage
-import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerNotice
-import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerPage
+import kotlinx.io.RawSink
 import kotlin.coroutines.CoroutineContext
-import dev.ehsanfahad.darkchamber.feature.vault.api.PdfOpened
-import dev.ehsanfahad.darkchamber.feature.vault.api.PdfPageSize
-import dev.ehsanfahad.darkchamber.feature.vault.api.PdfPlace
-import dev.ehsanfahad.darkchamber.feature.vault.api.PdfRefusal
-import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPdfBuffer
-import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPdfDocument
-import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPdfRenderer
-import dev.ehsanfahad.darkchamber.core.logging.logMeasurement
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.TimeSource
-import kotlinx.io.RawSink
 
 /**
  * The viewer's state holder, generic in the picture type so its rules are tested without a platform
@@ -187,7 +187,8 @@ internal open class ViewerComponent<T>(
                 setPage(key, plan.page)
                 return
             }
-            OpenPlan.Decode -> Unit
+
+            OpenPlan.Decode -> {}
         }
         val job = scope.launch(start = CoroutineStart.LAZY) { readText(key, shown, kind) }
         textOpening = Opening(key, job)
@@ -200,52 +201,77 @@ internal open class ViewerComponent<T>(
      * A lock or a swipe stops the decrypt within a chunk, and a read that was abandoned publishes nothing:
      * its hop throws on the way out.
      */
-    private suspend fun readText(key: String, item: GalleryItem, kind: TextKind) {
+    private suspend fun readText(
+        key: String,
+        item: GalleryItem,
+        kind: TextKind,
+    ) {
         try {
-            val result = withContext(ioContext) {
-                val into = textBuffer(item.size.toInt())
-                try {
-                    val sink = ExactArraySink(into)
-                    val read = try {
-                        openObject(item.id, StopsWhenCancelled(coroutineContext.job, sink))
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        // The vault answers with outcomes; a throw is a session closed under the read, or
-                        // more bytes than the item's stored size.
-                        Outcome.Err(VaultError.Unexpected(e))
-                    }
-                    when {
-                        read is Outcome.Err -> TextRead.Refused(pageForOpenFailure(read.error))
-                        !sink.full -> TextRead.Refused(ViewerPage.CouldntOpen) // fewer bytes than stored
-                        else -> when (val decoded = TextDecoding.decode(into)) {
-                            DecodedText.NotText -> TextRead.Refused(ViewerPage.NotText)
-                            // More lines than a page can hold in memory: refused before any is indexed.
-                            DecodedText.TooManyLines -> TextRead.Refused(ViewerPage.TooLarge)
-                            is DecodedText.Text -> {
-                                // The bytes are done with once decoded: zeroed now, not after formatting,
-                                // which can take seconds.
-                                into.fill(0)
-                                val reading = coroutineContext.job
-                                val (formatted, note) = try {
-                                    formatted(kind, decoded, item.size) { !reading.isActive }
-                                } catch (e: CancellationException) {
-                                    throw e
-                                } catch (_: Exception) {
-                                    // Formatting reads what the file holds in depth; whatever it trips on,
-                                    // the file is still shown as written.
-                                    null to FormatNote.TooComplex
+            val result =
+                withContext(ioContext) {
+                    val into = textBuffer(item.size.toInt())
+                    try {
+                        val sink = ExactArraySink(into)
+                        val read =
+                            try {
+                                openObject(item.id, StopsWhenCancelled(coroutineContext.job, sink))
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                // The vault answers with outcomes; a throw is a session closed under the read, or
+                                // more bytes than the item's stored size.
+                                Outcome.Err(VaultError.Unexpected(e))
+                            }
+                        when {
+                            read is Outcome.Err -> {
+                                TextRead.Refused(pageForOpenFailure(read.error))
+                            }
+
+                            !sink.full -> {
+                                TextRead.Refused(ViewerPage.CouldntOpen)
+                            }
+
+                            // fewer bytes than stored
+                            else -> {
+                                when (val decoded = TextDecoding.decode(into)) {
+                                    DecodedText.NotText -> {
+                                        TextRead.Refused(ViewerPage.NotText)
+                                    }
+
+                                    // More lines than a page can hold in memory: refused before any is indexed.
+                                    DecodedText.TooManyLines -> {
+                                        TextRead.Refused(ViewerPage.TooLarge)
+                                    }
+
+                                    is DecodedText.Text -> {
+                                        // The bytes are done with once decoded: zeroed now, not after formatting,
+                                        // which can take seconds.
+                                        into.fill(0)
+                                        val reading = coroutineContext.job
+                                        val (formatted, note) =
+                                            try {
+                                                formatted(kind, decoded, item.size) { !reading.isActive }
+                                            } catch (e: CancellationException) {
+                                                throw e
+                                            } catch (_: Exception) {
+                                                // Formatting reads what the file holds in depth; whatever it trips on,
+                                                // the file is still shown as written.
+                                                null to FormatNote.TooComplex
+                                            }
+                                        TextRead.Shown(ViewerPage.Text(kind, note), TextDocument(decoded, formatted))
+                                    }
                                 }
-                                TextRead.Shown(ViewerPage.Text(kind, note), TextDocument(decoded, formatted))
                             }
                         }
+                    } finally {
+                        into.fill(0)
                     }
-                } finally {
-                    into.fill(0)
                 }
-            }
             when (result) {
-                is TextRead.Refused -> setPage(key, result.page)
+                is TextRead.Refused -> {
+                    setPage(key, result.page)
+                }
+
                 is TextRead.Shown -> {
                     textShown = key
                     _texts.value = mapOf(key to result.document)
@@ -264,29 +290,61 @@ internal open class ViewerComponent<T>(
      * reader's nesting and time limits, and its reading stops as soon as [cancelled] — a lock or a swipe.
      * JSON is indented while the result fits the indent's own cap and [TEXT_MAX_LINES] lines.
      */
-    private fun formatted(kind: TextKind, text: DecodedText.Text, size: Long, cancelled: () -> Boolean): Pair<FormattedText?, FormatNote?> =
+    private fun formatted(
+        kind: TextKind,
+        text: DecodedText.Text,
+        size: Long,
+        cancelled: () -> Boolean,
+    ): Pair<FormattedText?, FormatNote?> =
         when (kind) {
-            TextKind.Markdown -> when {
-                size > MARKDOWN_FORMAT_CAP -> null to FormatNote.TooLarge
-                else -> readMarkdown(text.whole, cancelled)
-                    ?.let { FormattedText.Markdown(it) to null }
-                    ?: (null to FormatNote.TooComplex)
+            TextKind.Markdown -> {
+                when {
+                    size > MARKDOWN_FORMAT_CAP -> {
+                        null to FormatNote.TooLarge
+                    }
+
+                    else -> {
+                        readMarkdown(text.whole, cancelled)
+                            ?.let { FormattedText.Markdown(it) to null }
+                            ?: (null to FormatNote.TooComplex)
+                    }
+                }
             }
-            TextKind.Json -> when (val indented = JsonIndent.indent(text.whole)) {
-                // Indenting adds lines; past what a page holds, the file as written is shown instead.
-                is JsonIndent.Result.Indented -> TextDecoding.pageLines(indented.text)
-                    ?.let { FormattedText.Json(it) to null }
-                    ?: (null to FormatNote.TooLarge)
-                JsonIndent.Result.Invalid -> null to FormatNote.NotJson
-                JsonIndent.Result.TooLarge -> null to FormatNote.TooLarge
+
+            TextKind.Json -> {
+                when (val indented = JsonIndent.indent(text.whole)) {
+                    // Indenting adds lines; past what a page holds, the file as written is shown instead.
+                    is JsonIndent.Result.Indented -> {
+                        TextDecoding
+                            .pageLines(indented.text)
+                            ?.let { FormattedText.Json(it) to null }
+                            ?: (null to FormatNote.TooLarge)
+                    }
+
+                    JsonIndent.Result.Invalid -> {
+                        null to FormatNote.NotJson
+                    }
+
+                    JsonIndent.Result.TooLarge -> {
+                        null to FormatNote.TooLarge
+                    }
+                }
             }
-            TextKind.Plain, TextKind.Code -> null to null
+
+            TextKind.Plain, TextKind.Code -> {
+                null to null
+            }
         }
 
     private sealed interface TextRead {
-        class Refused(val page: ViewerPage) : TextRead
+        class Refused(
+            val page: ViewerPage,
+        ) : TextRead
 
-        class Shown(val page: ViewerPage.Text, val document: TextDocument) : TextRead
+        class Shown(
+            val page: ViewerPage.Text,
+            val document: TextDocument,
+        ) : TextRead
     }
 
     /** Let the text shown go: its document dropped at once, its page back to waiting to be read again. */
@@ -304,10 +362,20 @@ internal open class ViewerComponent<T>(
      * is kept; one drawn at another keeps its picture until the new one arrives. Every render runs on
      * [pdfContext], one at a time.
      */
-    fun pdfViewport(visible: IntRange, shownWidthPx: Int, zoom: Float, screenWidthPx: Int) {
+    fun pdfViewport(
+        visible: IntRange,
+        shownWidthPx: Int,
+        zoom: Float,
+        screenWidthPx: Int,
+    ) {
         val shown = pdf ?: return
         val window = PdfReading.renderWindow(visible, shown.pageCount)
-        (shown.renders.keys - window.toSet()).forEach { shown.renders.remove(it)?.job?.cancel() }
+        (shown.renders.keys - window.toSet()).forEach {
+            shown.renders
+                .remove(it)
+                ?.job
+                ?.cancel()
+        }
         _pdfPages.value = _pdfPages.value.filterKeys { it in window }
         for (index in window) {
             // Each page by its own shape: a tall page reaches the pixel limit at a narrower width.
@@ -316,25 +384,30 @@ internal open class ViewerComponent<T>(
             val current = shown.renders[index]
             if (current != null && current.width == width) continue
             current?.job?.cancel()
-            val job = scope.launch(start = CoroutineStart.LAZY) {
-                val picture = withContext(pdfContext) {
-                    try {
-                        shown.document.render(index, width)
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (_: Exception) {
-                        null // the seam promises not to throw; one that does could not draw this page
-                    }
+            val job =
+                scope.launch(start = CoroutineStart.LAZY) {
+                    val picture =
+                        withContext(pdfContext) {
+                            try {
+                                shown.document.render(index, width)
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (_: Exception) {
+                                null // the seam promises not to throw; one that does could not draw this page
+                            }
+                        }
+                    // Only into the PDF still shown: a render under way when it was left cannot be stopped.
+                    if (pdf === shown) _pdfPages.value = _pdfPages.value + (index to picture)
                 }
-                // Only into the PDF still shown: a render under way when it was left cannot be stopped.
-                if (pdf === shown) _pdfPages.value = _pdfPages.value + (index to picture)
-            }
             shown.renders[index] = Render(width, job)
             job.start()
         }
     }
 
-    fun pdfScrolled(page: Int, offsetPx: Int) {
+    fun pdfScrolled(
+        page: Int,
+        offsetPx: Int,
+    ) {
         val shown = pdf ?: return
         pdfPlaces[shown.key] = PdfPlace(page, offsetPx)
     }
@@ -348,14 +421,21 @@ internal open class ViewerComponent<T>(
     /** Where each PDF was left, for the viewer's life only; a lock or a close forgets them. */
     private val pdfPlaces = mutableMapOf<String, PdfPlace>()
 
-    private class ShownPdf(val key: String, val document: VaultPdfDocument, val sizes: List<PdfPageSize>) {
+    private class ShownPdf(
+        val key: String,
+        val document: VaultPdfDocument,
+        val sizes: List<PdfPageSize>,
+    ) {
         val pageCount: Int get() = sizes.size
 
         /** The render asked for each page near the screen: its width, and the job drawing it. */
         val renders = mutableMapOf<Int, Render>()
     }
 
-    private class Render(val width: Int, val job: Job)
+    private class Render(
+        val width: Int,
+        val job: Job,
+    )
 
     /** Whether this item is shown as a PDF here: a PDF by its stored type, on a platform with a renderer. */
     private fun pdfKind(item: GalleryItem): Boolean = pdfs != null && isPdf(item.meta)
@@ -379,7 +459,8 @@ internal open class ViewerComponent<T>(
                 setPage(key, plan.page)
                 return
             }
-            OpenPlan.Decode -> Unit
+
+            OpenPlan.Decode -> {}
         }
         val job = scope.launch(start = CoroutineStart.LAZY) { openPdf(key, shown, renderer) }
         pdfOpening = Opening(key, job)
@@ -392,40 +473,49 @@ internal open class ViewerComponent<T>(
      * released here on every path that does not end in a document; a document opened for a page that
      * was left, or a lock, while it opened is closed again — which is why both are taken inside their hops.
      */
-    private suspend fun openPdf(key: String, item: GalleryItem, renderer: VaultPdfRenderer) {
+    private suspend fun openPdf(
+        key: String,
+        item: GalleryItem,
+        renderer: VaultPdfRenderer,
+    ) {
         var buffer: VaultPdfBuffer? = null
         var document: VaultPdfDocument? = null
         val started = TimeSource.Monotonic.markNow()
         try {
-            val read = withContext(ioContext) {
-                val into = renderer.newBuffer(item.size).also { buffer = it }
-                try {
-                    // A lock or a swipe stops the decrypt within a chunk, not at the end of the file.
-                    openObject(item.id, StopsWhenCancelled(coroutineContext.job, into.sink))
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    // The vault answers with outcomes; a throw is a session closed under the read.
-                    Outcome.Err(VaultError.Unexpected(e))
+            val read =
+                withContext(ioContext) {
+                    val into = renderer.newBuffer(item.size).also { buffer = it }
+                    try {
+                        // A lock or a swipe stops the decrypt within a chunk, not at the end of the file.
+                        openObject(item.id, StopsWhenCancelled(coroutineContext.job, into.sink))
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        // The vault answers with outcomes; a throw is a session closed under the read.
+                        Outcome.Err(VaultError.Unexpected(e))
+                    }
                 }
-            }
             if (read is Outcome.Err) {
                 setPage(key, pageForOpenFailure(read.error))
                 return
             }
             val filled = started.elapsedNow()
-            val opened = withContext(pdfContext) {
-                val answer = buffer!!.open()
-                buffer = null // a refusal released it; a document owns it
-                when (answer) {
-                    is PdfOpened.Refused -> null to answer.reason
-                    is PdfOpened.Document -> {
-                        document = answer.document
-                        val sizes = List(answer.document.pageCount) { answer.document.pageSize(it) }
-                        sizes to null
+            val opened =
+                withContext(pdfContext) {
+                    val answer = buffer!!.open()
+                    buffer = null // a refusal released it; a document owns it
+                    when (answer) {
+                        is PdfOpened.Refused -> {
+                            null to answer.reason
+                        }
+
+                        is PdfOpened.Document -> {
+                            document = answer.document
+                            val sizes = List(answer.document.pageCount) { answer.document.pageSize(it) }
+                            sizes to null
+                        }
                     }
                 }
-            }
             val (sizes, refusal) = opened
             // Timings only: never the name, the page count or anything else read from the file.
             logMeasurement(
@@ -479,9 +569,17 @@ internal open class ViewerComponent<T>(
     // Not the component's scope: a release must still run after the destroy that cancels that one.
     private val releaseScope = CoroutineScope(releaseContext + SupervisorJob())
 
-    private class Playing(val key: String, val id: ByteArray, val player: VaultPlayer, val watch: Job)
+    private class Playing(
+        val key: String,
+        val id: ByteArray,
+        val player: VaultPlayer,
+        val watch: Job,
+    )
 
-    private class Opening(val key: String, val job: Job)
+    private class Opening(
+        val key: String,
+        val job: Job,
+    )
 
     /** When the screen changes and when it goes back; every answer goes to [display]. */
     private val displayRules = DisplayRules()
@@ -502,8 +600,14 @@ internal open class ViewerComponent<T>(
     fun playPause() {
         val player = playing?.player ?: return
         when (PlaybackRules.centreControl(PlaybackRules.status(player.state.value))) {
-            CentreControl.Pause -> player.pause()
-            CentreControl.Play -> player.play()
+            CentreControl.Pause -> {
+                player.pause()
+            }
+
+            CentreControl.Play -> {
+                player.play()
+            }
+
             CentreControl.Replay -> {
                 player.seekTo(0L)
                 player.play()
@@ -619,21 +723,21 @@ internal open class ViewerComponent<T>(
         // The grid names an item's album only on the whole vault; inside an album the question does
         // not arise there. Details asks it, so here every item in an album's listing carries that
         // album's name — following a rename, and saying so when the name will not open.
-        val named = if (filter is ItemFilter.Album) {
-            combine(listing, observeAlbum(filter.id)) { items, presence ->
-                val name = (presence as? AlbumPresence.Present)?.name
-                items.map { it.inAlbum(name) }
+        val named =
+            if (filter is ItemFilter.Album) {
+                combine(listing, observeAlbum(filter.id)) { items, presence ->
+                    val name = (presence as? AlbumPresence.Present)?.name
+                    items.map { it.inAlbum(name) }
+                }
+            } else {
+                listing
             }
-        } else {
-            listing
-        }
         named
             .catch { cause ->
                 // A listing that cannot be read leaves nothing to show. The grid behind reports it.
                 logVaultError(LISTING_STAGE, VaultError.Unexpected(cause))
                 close(position?.id ?: startId)
-            }
-            .onEach(::onListing)
+            }.onEach(::onListing)
             .launchIn(scope)
     }
 
@@ -642,7 +746,10 @@ internal open class ViewerComponent<T>(
         val ids = items.map { it.id }
         val next = position?.following(ids) ?: startPosition(startId, ids)
         when (next) {
-            ViewerPosition.Close -> close(position?.id ?: startId)
+            ViewerPosition.Close -> {
+                close(position?.id ?: startId)
+            }
+
             is ViewerPosition.Showing -> {
                 position = next
                 _state.value = _state.value.copy(items = items, index = next.index, loading = false)
@@ -651,7 +758,10 @@ internal open class ViewerComponent<T>(
         }
     }
 
-    fun viewportMeasured(widthPx: Int, heightPx: Int) {
+    fun viewportMeasured(
+        widthPx: Int,
+        heightPx: Int,
+    ) {
         if (widthPx <= 0 || heightPx <= 0) return
         // The phone's auto-rotate turns the screen without asking: the button names what is there now.
         displayRules.screenShaped(landscape = widthPx > heightPx)
@@ -677,12 +787,16 @@ internal open class ViewerComponent<T>(
         val shown = position ?: return
         val items = _state.value.items
         // The page on screen first: loads queue one at a time, and are taken in the order started.
-        val window = listOf(shown.index, shown.index + 1, shown.index - 1)
-            .filter { it in items.indices }
-            .associate { items[it].id.toListKey() to items[it] }
+        val window =
+            listOf(shown.index, shown.index + 1, shown.index - 1)
+                .filter { it in items.indices }
+                .associate { items[it].id.toListKey() to items[it] }
 
         (loads.keys - window.keys).forEach { key -> loads.remove(key)?.cancel() }
-        val pages = _state.value.pages.filterKeys { it in window }.toMutableMap()
+        val pages =
+            _state.value.pages
+                .filterKeys { it in window }
+                .toMutableMap()
         _pictures.value = _pictures.value.filterKeys { it in window }
 
         // A video or audio page needs no viewport and is never loaded as a picture; nor is a PDF,
@@ -693,11 +807,15 @@ internal open class ViewerComponent<T>(
             if ((pdfKind(item) || textItem(item)) && key !in pages) pages[key] = ViewerPage.Loading
         }
         val target = target
-        val starting = if (target == null) {
-            emptyMap()
-        } else {
-            window.filterValues { playerKind(it) == null && !pdfKind(it) && !textItem(it) }.filterKeys { it !in loads }
-        }
+        val starting =
+            if (target == null) {
+                emptyMap()
+            } else {
+                window.filterValues { playerKind(it) == null && !pdfKind(it) && !textItem(it) }.filterKeys {
+                    it !in
+                        loads
+                }
+            }
         starting.keys.forEach { key -> pages[key] = ViewerPage.Loading }
         _state.value = _state.value.copy(pages = pages)
         refreshPlayer(items[shown.index])
@@ -717,13 +835,19 @@ internal open class ViewerComponent<T>(
 
     // Only a page still in the window gets here: leaving it cancels the load, and a cancelled load
     // never returns normally — the loader's `withContext` throws on resuming a cancelled caller.
-    private fun publish(key: String, loaded: LoadedPage<T>) {
+    private fun publish(
+        key: String,
+        loaded: LoadedPage<T>,
+    ) {
         when (loaded) {
             is LoadedPage.Shown -> {
                 _pictures.value = _pictures.value + (key to loaded.image)
                 _state.value = _state.value.copy(pages = _state.value.pages + (key to ViewerPage.Picture))
             }
-            is LoadedPage.Page -> _state.value = _state.value.copy(pages = _state.value.pages + (key to loaded.page))
+
+            is LoadedPage.Page -> {
+                _state.value = _state.value.copy(pages = _state.value.pages + (key to loaded.page))
+            }
         }
     }
 
@@ -754,16 +878,23 @@ internal open class ViewerComponent<T>(
      * on every path that does not hand it over — a failed open, a page left or a lock while it opened —
      * which is why it is taken inside the hop: a result returned from a cancelled hop is dropped.
      */
-    private suspend fun open(key: String, item: GalleryItem) {
+    private suspend fun open(
+        key: String,
+        item: GalleryItem,
+    ) {
         val factory = playerFactory ?: return
         val mime = (item.meta as? GalleryItemMeta.Readable)?.mime ?: return
         var reader: RangeReader? = null
         try {
-            val opened = withContext(ioContext) {
-                openRange(item.id).also { if (it is Outcome.Ok) reader = it.value }
-            }
+            val opened =
+                withContext(ioContext) {
+                    openRange(item.id).also { if (it is Outcome.Ok) reader = it.value }
+                }
             when (opened) {
-                is Outcome.Err -> setPage(key, pageForOpenFailure(opened.error))
+                is Outcome.Err -> {
+                    setPage(key, pageForOpenFailure(opened.error))
+                }
+
                 is Outcome.Ok -> {
                     val player = factory.create(opened.value, mime)
                     reader = null // the player owns it now
@@ -778,21 +909,29 @@ internal open class ViewerComponent<T>(
     }
 
     /** Autoplay: from where it was left (or the start), at the speed set. */
-    private fun startPlaying(key: String, id: ByteArray, player: VaultPlayer) {
+    private fun startPlaying(
+        key: String,
+        id: ByteArray,
+        player: VaultPlayer,
+    ) {
         val from = memory.startPosition(id)
         if (from > 0L) player.seekTo(from)
         player.setSpeed(memory.speed)
         player.play()
-        val watch = scope.launch(start = CoroutineStart.LAZY) {
-            player.state.collect { onPlayerState(key, it) }
-        }
+        val watch =
+            scope.launch(start = CoroutineStart.LAZY) {
+                player.state.collect { onPlayerState(key, it) }
+            }
         playing = Playing(key, id, player, watch)
         _players.value = mapOf(key to player)
         watch.start()
     }
 
     // Only the playing player reports here: letting one go cancels the job watching it first.
-    private fun onPlayerState(key: String, reported: PlayerState) {
+    private fun onPlayerState(
+        key: String,
+        reported: PlayerState,
+    ) {
         val failure = reported.failure
         if (failure != null) {
             setPage(key, pageForPlayerFailure(failure))
@@ -833,7 +972,10 @@ internal open class ViewerComponent<T>(
      * Sets the page shown's page. Only ever the page shown: an open still running is still for it (one
      * for a page left is cancelled), and only the page shown has a player to report.
      */
-    private fun setPage(key: String, page: ViewerPage) {
+    private fun setPage(
+        key: String,
+        page: ViewerPage,
+    ) {
         _state.value = _state.value.copy(pages = _state.value.pages + (key to page))
         syncDisplay()
     }
@@ -853,10 +995,11 @@ internal open class ViewerComponent<T>(
         if (_state.value.delete != ViewerDeleteStage.Asking) return
         _state.value = _state.value.copy(delete = ViewerDeleteStage.Deleting)
         scope.launch {
-            val notice = when (shred(id)) {
-                is Outcome.Ok -> ViewerNotice.Deleted
-                is Outcome.Err -> ViewerNotice.DeleteFailed
-            }
+            val notice =
+                when (shred(id)) {
+                    is Outcome.Ok -> ViewerNotice.Deleted
+                    is Outcome.Err -> ViewerNotice.DeleteFailed
+                }
             _state.value = _state.value.copy(delete = null, notice = notice)
         }
     }
@@ -940,7 +1083,25 @@ internal class DefaultVaultViewerComponent(
     links: LinkOpener? = null,
     lockVault: (() -> Unit)? = null,
 ) : ViewerComponent<ImageBitmap>(
-    componentContext, observeGallery, observeAlbum, load, shred, filter, controls, startId, onBack,
-    openRange, playerFactory, display, mainContext, ioContext, releaseContext, openObject, pdfs, pdfContext,
-    links = links, lockVault = lockVault,
-), VaultViewerComponent
+        componentContext,
+        observeGallery,
+        observeAlbum,
+        load,
+        shred,
+        filter,
+        controls,
+        startId,
+        onBack,
+        openRange,
+        playerFactory,
+        display,
+        mainContext,
+        ioContext,
+        releaseContext,
+        openObject,
+        pdfs,
+        pdfContext,
+        links = links,
+        lockVault = lockVault,
+    ),
+    VaultViewerComponent

@@ -81,33 +81,44 @@ internal class CameraState(
      * that records no video.
      */
     val shutter: Shutter
-        get() = when {
-            mode == CaptureMode.Photo -> Shutter(ShutterKind.Photo, enabled = shutterEnabled)
-            recording -> Shutter(ShutterKind.Stop, enabled = !recorder.stopping)
-            else -> Shutter(
-                ShutterKind.Record,
-                enabled = cameraUsable && capabilities.videoQualities.isNotEmpty() && !lane.busy,
-                waitingOnSave = lane.busy,
-            )
-        }
+        get() =
+            when {
+                mode == CaptureMode.Photo -> {
+                    Shutter(ShutterKind.Photo, enabled = shutterEnabled)
+                }
+
+                recording -> {
+                    Shutter(ShutterKind.Stop, enabled = !recorder.stopping)
+                }
+
+                else -> {
+                    Shutter(
+                        ShutterKind.Record,
+                        enabled = cameraUsable && capabilities.videoQualities.isNotEmpty() && !lane.busy,
+                        waitingOnSave = lane.busy,
+                    )
+                }
+            }
 
     /** The viewfinder's shape is the capture's, so it shows exactly what is saved. */
     val captureRatio: CaptureRatio
-        get() = when (mode) {
-            CaptureMode.Photo -> CaptureRatio.FourByThree
-            CaptureMode.Video -> CaptureRatio.SixteenByNine
-        }
+        get() =
+            when (mode) {
+                CaptureMode.Photo -> CaptureRatio.FourByThree
+                CaptureMode.Video -> CaptureRatio.SixteenByNine
+            }
 
     /**
      * The light control: the flash in photo, the torch in video — which stays while recording, when
      * light is most often wanted. None on a lens without a light.
      */
     val light: LightControl?
-        get() = when {
-            !capabilities.hasFlash -> null
-            mode == CaptureMode.Photo -> LightControl.Flash(flash)
-            else -> LightControl.Torch(torch)
-        }
+        get() =
+            when {
+                !capabilities.hasFlash -> null
+                mode == CaptureMode.Photo -> LightControl.Flash(flash)
+                else -> LightControl.Torch(torch)
+            }
 
     /**
      * The quality chip, in video only and never while recording. Hidden, not disabled, on a lens
@@ -156,16 +167,28 @@ internal class CameraState(
      * system's own prompt is up.
      */
     val explainer: CameraExplainer
-        get() = when (permission) {
-            CameraPermission.NotAsked -> CameraExplainer.None
-            CameraPermission.Denied -> CameraExplainer.Denied
-            CameraPermission.PermanentlyDenied -> CameraExplainer.PermanentlyDenied
-            CameraPermission.Granted -> when (availability) {
-                CameraAvailability.Available -> CameraExplainer.None
-                CameraAvailability.InUseByAnotherApp -> CameraExplainer.InUse
-                CameraAvailability.Unavailable -> CameraExplainer.Unavailable
+        get() =
+            when (permission) {
+                CameraPermission.NotAsked -> {
+                    CameraExplainer.None
+                }
+
+                CameraPermission.Denied -> {
+                    CameraExplainer.Denied
+                }
+
+                CameraPermission.PermanentlyDenied -> {
+                    CameraExplainer.PermanentlyDenied
+                }
+
+                CameraPermission.Granted -> {
+                    when (availability) {
+                        CameraAvailability.Available -> CameraExplainer.None
+                        CameraAvailability.InUseByAnotherApp -> CameraExplainer.InUse
+                        CameraAvailability.Unavailable -> CameraExplainer.Unavailable
+                    }
+                }
             }
-        }
 
     /**
      * Whether the viewfinder is drawn: exactly when no explainer stands in its place, so an
@@ -181,13 +204,14 @@ internal class CameraState(
      * photo, because it explains every photo after it too.
      */
     val message: CameraMessage?
-        get() = when {
-            albumGone -> CameraMessage.AlbumGone
-            queue.problem == CaptureProblem.OutOfSpace -> CameraMessage.OutOfSpace
-            queue.problem == CaptureProblem.SaveFailed -> CameraMessage.SaveFailed
-            queue.problem == CaptureProblem.CaptureFailed -> CameraMessage.CaptureFailed
-            else -> null
-        }
+        get() =
+            when {
+                albumGone -> CameraMessage.AlbumGone
+                queue.problem == CaptureProblem.OutOfSpace -> CameraMessage.OutOfSpace
+                queue.problem == CaptureProblem.SaveFailed -> CameraMessage.SaveFailed
+                queue.problem == CaptureProblem.CaptureFailed -> CameraMessage.CaptureFailed
+                else -> null
+            }
 
     /**
      * The one notice line. An album that is gone explains every capture after it, so it comes
@@ -238,36 +262,56 @@ internal enum class ShutterKind { Photo, Record, Stop }
  * The shutter as drawn: what it does, whether it can, and — when it cannot record — whether that is
  * because the last clip is still saving, so its description can say why.
  */
-internal data class Shutter(val kind: ShutterKind, val enabled: Boolean, val waitingOnSave: Boolean = false)
+internal data class Shutter(
+    val kind: ShutterKind,
+    val enabled: Boolean,
+    val waitingOnSave: Boolean = false,
+)
 
 /** The capture's shape, which the viewfinder takes. */
-internal enum class CaptureRatio(val longOverShort: Float) {
+internal enum class CaptureRatio(
+    val longOverShort: Float,
+) {
     FourByThree(4f / 3f),
     SixteenByNine(16f / 9f),
 }
 
 /** The one light control, in whichever form the mode gives it. */
 internal sealed interface LightControl {
-    data class Flash(val mode: FlashMode) : LightControl
+    data class Flash(
+        val mode: FlashMode,
+    ) : LightControl
 
-    data class Torch(val on: Boolean) : LightControl
+    data class Torch(
+        val on: Boolean,
+    ) : LightControl
 }
 
 /** The notice line's one item, from whichever source [CameraState.notice] chose. */
 internal sealed interface CameraNotice {
-    data class Photo(val message: CameraMessage) : CameraNotice
+    data class Photo(
+        val message: CameraMessage,
+    ) : CameraNotice
 
-    data class Recording(val notice: RecorderNotice) : CameraNotice
+    data class Recording(
+        val notice: RecorderNotice,
+    ) : CameraNotice
 
-    data class Saving(val notice: VideoNotice) : CameraNotice
+    data class Saving(
+        val notice: VideoNotice,
+    ) : CameraNotice
 }
 
 /**
  * The newest saved capture: its item id, for the host to draw, and whether it is a photo or a clip.
  * Not a data class: the generated `equals` would compare the id by identity.
  */
-internal class LastShot(val itemId: ByteArray, val kind: CaptureMode) {
-    override fun equals(other: Any?): Boolean = other is LastShot && itemId.contentEquals(other.itemId) && kind == other.kind
+internal class LastShot(
+    val itemId: ByteArray,
+    val kind: CaptureMode,
+) {
+    override fun equals(other: Any?): Boolean =
+        other is LastShot && itemId.contentEquals(other.itemId) && kind == other.kind
 
     override fun hashCode(): Int = 31 * itemId.contentHashCode() + kind.hashCode()
 
@@ -275,13 +319,22 @@ internal class LastShot(val itemId: ByteArray, val kind: CaptureMode) {
 }
 
 /** What the tile draws: the newest capture, and whether a clip is saving and how far (`null` unmeasured). */
-internal data class TileState(val lastShot: LastShot?, val saving: Boolean, val progress: Float?)
+internal data class TileState(
+    val lastShot: LastShot?,
+    val saving: Boolean,
+    val progress: Float?,
+)
 
 /** The microphone toggle: whether the next recording will have sound. */
-internal data class MicrophoneToggle(val soundOn: Boolean)
+internal data class MicrophoneToggle(
+    val soundOn: Boolean,
+)
 
 /** The quality chip: what is set, and what a tap switches to. */
-internal data class QualityChip(val current: VideoQuality, val next: VideoQuality)
+internal data class QualityChip(
+    val current: VideoQuality,
+    val next: VideoQuality,
+)
 
 /** What replaces the viewfinder when the camera cannot be shown. */
 internal enum class CameraExplainer { None, Denied, PermanentlyDenied, InUse, Unavailable }

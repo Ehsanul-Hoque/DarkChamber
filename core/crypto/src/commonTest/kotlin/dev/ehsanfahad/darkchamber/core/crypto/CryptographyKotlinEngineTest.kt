@@ -92,7 +92,13 @@ class CryptographyKotlinEngineTest {
     @Test
     fun pbkdf2_sha256_matches_rfc7914_known_answer() {
         // RFC 7914 §11: PBKDF2-HMAC-SHA256(P="passwd", S="salt", c=1, dkLen=64).
-        val dk = engine.pbkdf2Sha256("passwd".encodeToByteArray(), "salt".encodeToByteArray(), iterations = 1, dkLenBytes = 64)
+        val dk =
+            engine.pbkdf2Sha256(
+                "passwd".encodeToByteArray(),
+                "salt".encodeToByteArray(),
+                iterations = 1,
+                dkLenBytes = 64,
+            )
         assertEquals(
             "55ac046e56e3089fec1691c22544b605f94185216dde0465e68b9d57c20dacbc" +
                 "49ca9cccf179b645991664b39d77ef317c71b845b1e30bd509112041d3a19783",
@@ -102,9 +108,15 @@ class CryptographyKotlinEngineTest {
 
     @Test
     fun kdf_output_length_must_be_positive() {
-        assertFailsWith<IllegalArgumentException> { engine.pbkdf2Sha256("p".encodeToByteArray(), "s".encodeToByteArray(), 1, 0) }
-        assertFailsWith<IllegalArgumentException> { engine.hkdfSha256("i".encodeToByteArray(), "s".encodeToByteArray(), ByteArray(0), 0) }
-        assertFailsWith<IllegalArgumentException> { engine.pbkdf2Sha256("p".encodeToByteArray(), "s".encodeToByteArray(), 0, 32) }
+        assertFailsWith<IllegalArgumentException> {
+            engine.pbkdf2Sha256("p".encodeToByteArray(), "s".encodeToByteArray(), 1, 0)
+        }
+        assertFailsWith<IllegalArgumentException> {
+            engine.hkdfSha256("i".encodeToByteArray(), "s".encodeToByteArray(), ByteArray(0), 0)
+        }
+        assertFailsWith<IllegalArgumentException> {
+            engine.pbkdf2Sha256("p".encodeToByteArray(), "s".encodeToByteArray(), 0, 32)
+        }
     }
 
     @Test
@@ -113,14 +125,15 @@ class CryptographyKotlinEngineTest {
         //   printf "password" | argon2 somesalt -id -t 2 -m 16 -p 1 -l 32
         // (-m 16 = 2^16 = 65536 KiB). Anchors BOTH actuals — BouncyCastle on the JVM host and the
         // phc cinterop on iOS — to the same published constant.
-        val hash = engine.argon2id(
-            password = "password".encodeToByteArray(),
-            salt = "somesalt".encodeToByteArray(),
-            memoryKib = 65536,
-            iterations = 2,
-            parallelism = 1,
-            outLenBytes = 32,
-        )
+        val hash =
+            engine.argon2id(
+                password = "password".encodeToByteArray(),
+                salt = "somesalt".encodeToByteArray(),
+                memoryKib = 65536,
+                iterations = 2,
+                parallelism = 1,
+                outLenBytes = 32,
+            )
         assertEquals("09316115d5cf24ed5a15a31a3ba326e5cf32edc24702987c02b6566f61913cf7", hash.toHexString())
     }
 
@@ -128,10 +141,18 @@ class CryptographyKotlinEngineTest {
     fun argon2id_rejects_non_positive_parameters_as_misuse() {
         val pw = "p".encodeToByteArray()
         val salt = "somesalt".encodeToByteArray()
-        assertFailsWith<IllegalArgumentException> { engine.argon2id(pw, salt, memoryKib = 0, iterations = 1, parallelism = 1, outLenBytes = 32) }
-        assertFailsWith<IllegalArgumentException> { engine.argon2id(pw, salt, memoryKib = 8, iterations = 0, parallelism = 1, outLenBytes = 32) }
-        assertFailsWith<IllegalArgumentException> { engine.argon2id(pw, salt, memoryKib = 8, iterations = 1, parallelism = 0, outLenBytes = 32) }
-        assertFailsWith<IllegalArgumentException> { engine.argon2id(pw, salt, memoryKib = 8, iterations = 1, parallelism = 1, outLenBytes = 0) }
+        assertFailsWith<IllegalArgumentException> {
+            engine.argon2id(pw, salt, memoryKib = 0, iterations = 1, parallelism = 1, outLenBytes = 32)
+        }
+        assertFailsWith<IllegalArgumentException> {
+            engine.argon2id(pw, salt, memoryKib = 8, iterations = 0, parallelism = 1, outLenBytes = 32)
+        }
+        assertFailsWith<IllegalArgumentException> {
+            engine.argon2id(pw, salt, memoryKib = 8, iterations = 1, parallelism = 0, outLenBytes = 32)
+        }
+        assertFailsWith<IllegalArgumentException> {
+            engine.argon2id(pw, salt, memoryKib = 8, iterations = 1, parallelism = 1, outLenBytes = 0)
+        }
     }
 
     @Test
@@ -139,9 +160,22 @@ class CryptographyKotlinEngineTest {
         // Keep the two actuals consistent: an empty ByteArray would crash the iOS cinterop and phc
         // rejects a <8-byte salt — fail loudly here instead of forwarding to a native precondition.
         val pw = "password".encodeToByteArray()
-        assertFailsWith<IllegalArgumentException> { engine.argon2id(pw, ByteArray(7), memoryKib = 8, iterations = 1, parallelism = 1, outLenBytes = 32) }
-        assertFailsWith<IllegalArgumentException> { engine.argon2id(pw, ByteArray(0), memoryKib = 8, iterations = 1, parallelism = 1, outLenBytes = 32) }
-        assertFailsWith<IllegalArgumentException> { engine.argon2id(ByteArray(0), "somesalt".encodeToByteArray(), memoryKib = 8, iterations = 1, parallelism = 1, outLenBytes = 32) }
+        assertFailsWith<IllegalArgumentException> {
+            engine.argon2id(pw, ByteArray(7), memoryKib = 8, iterations = 1, parallelism = 1, outLenBytes = 32)
+        }
+        assertFailsWith<IllegalArgumentException> {
+            engine.argon2id(pw, ByteArray(0), memoryKib = 8, iterations = 1, parallelism = 1, outLenBytes = 32)
+        }
+        assertFailsWith<IllegalArgumentException> {
+            engine.argon2id(
+                ByteArray(0),
+                "somesalt".encodeToByteArray(),
+                memoryKib = 8,
+                iterations = 1,
+                parallelism = 1,
+                outLenBytes = 32,
+            )
+        }
     }
 
     @Test

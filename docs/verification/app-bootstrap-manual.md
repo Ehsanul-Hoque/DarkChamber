@@ -25,7 +25,7 @@ The cold-open + encrypted round-trip is proven by fast tests before you touch a 
   `./gradlew :androidApp:connectedFossDebugAndroidTest` — boots the real Koin graph with a real
   `Context`; asserts `<filesDir>/vault/db/catalog.db` + `keys/mk.wrapped` exist, an encrypted
   `.dchm` object is written, and **nothing lands in external/shared storage** (hard rule #1).
-  Not wired into CI yet (the instrumented/quality job is still deferred).
+  Not wired into CI: instrumented tests need a device or emulator, and CI runs none.
 
 ## iOS — the `Shared` framework in Xcode
 

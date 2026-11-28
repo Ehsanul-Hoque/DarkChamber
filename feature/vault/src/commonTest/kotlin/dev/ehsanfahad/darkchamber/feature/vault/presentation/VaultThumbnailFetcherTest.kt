@@ -29,35 +29,39 @@ class VaultThumbnailFetcherTest {
     private val thumbnail = ByteArray(64) { (it * 3).toByte() }
 
     @Test
-    fun an_item_with_a_thumbnail_is_fetched_as_its_bytes() = runTest {
-        val items = FakeVaultItems(thumbnails = mapOf(id.toList() to Outcome.Ok(thumbnail)))
+    fun an_item_with_a_thumbnail_is_fetched_as_its_bytes() =
+        runTest {
+            val items = FakeVaultItems(thumbnails = mapOf(id.toList() to Outcome.Ok(thumbnail)))
 
-        val result = fetcher(items).fetch()
+            val result = fetcher(items).fetch()
 
-        val source = assertIs<SourceFetchResult>(result)
-        assertContentEquals(thumbnail, source.source.source().readByteArray())
-        assertEquals(1, items.thumbnailCalls)
-    }
-
-    @Test
-    fun an_item_with_no_thumbnail_fetches_nothing_rather_than_failing() = runTest {
-        val items = FakeVaultItems(thumbnails = mapOf(id.toList() to Outcome.Ok(null)))
-
-        // Most of a vault is in this state — every non-image, everything imported before previews
-        // existed. The tile falls back to its type badge; nothing here is an error.
-        assertNull(fetcher(items).fetch())
-    }
+            val source = assertIs<SourceFetchResult>(result)
+            assertContentEquals(thumbnail, source.source.source().readByteArray())
+            assertEquals(1, items.thumbnailCalls)
+        }
 
     @Test
-    fun a_damaged_thumbnail_fails_instead_of_looking_like_an_absent_one() = runTest {
-        val items = FakeVaultItems(
-            thumbnails = mapOf(id.toList() to Outcome.Err(VaultError.Crypto.IntegrityFailure)),
-        )
+    fun an_item_with_no_thumbnail_fetches_nothing_rather_than_failing() =
+        runTest {
+            val items = FakeVaultItems(thumbnails = mapOf(id.toList() to Outcome.Ok(null)))
 
-        val thrown = assertFailsWith<VaultThumbnailException> { fetcher(items).fetch() }
+            // Most of a vault is in this state — every non-image, everything imported before previews
+            // existed. The tile falls back to its type badge; nothing here is an error.
+            assertNull(fetcher(items).fetch())
+        }
 
-        assertEquals(VaultError.Crypto.IntegrityFailure, thrown.error)
-    }
+    @Test
+    fun a_damaged_thumbnail_fails_instead_of_looking_like_an_absent_one() =
+        runTest {
+            val items =
+                FakeVaultItems(
+                    thumbnails = mapOf(id.toList() to Outcome.Err(VaultError.Crypto.IntegrityFailure)),
+                )
+
+            val thrown = assertFailsWith<VaultThumbnailException> { fetcher(items).fetch() }
+
+            assertEquals(VaultError.Crypto.IntegrityFailure, thrown.error)
+        }
 
     @Test
     fun the_failure_carries_no_decrypted_content() {
@@ -102,15 +106,16 @@ class VaultThumbnailFetcherTest {
      * adds a decoder, so the filesystem handed to the source refuses to be written to at all.
      */
     @Test
-    fun a_decoder_that_asks_for_a_file_is_refused_rather_than_handed_plaintext() = runTest {
-        val items = FakeVaultItems(thumbnails = mapOf(id.toList() to Outcome.Ok(thumbnail)))
+    fun a_decoder_that_asks_for_a_file_is_refused_rather_than_handed_plaintext() =
+        runTest {
+            val items = FakeVaultItems(thumbnails = mapOf(id.toList() to Outcome.Ok(thumbnail)))
 
-        val source = assertIs<SourceFetchResult>(fetcher(items).fetch()).source
+            val source = assertIs<SourceFetchResult>(fetcher(items).fetch()).source
 
-        assertFailsWith<IOException> { source.file() }
-        // And the bytes are still readable the way the decoders actually read them.
-        assertContentEquals(thumbnail, source.source().readByteArray())
-    }
+            assertFailsWith<IOException> { source.file() }
+            // And the bytes are still readable the way the decoders actually read them.
+            assertContentEquals(thumbnail, source.source().readByteArray())
+        }
 
     /**
      * Which failures are a tampering signal, and which are just a picture that would not load.
@@ -144,6 +149,5 @@ class VaultThumbnailFetcherTest {
         assertFalse(previewFailedIntegrity(io))
     }
 
-    private fun fetcher(items: FakeVaultItems) =
-        VaultThumbnailFetcher(VaultThumbnailKey(id), items)
+    private fun fetcher(items: FakeVaultItems) = VaultThumbnailFetcher(VaultThumbnailKey(id), items)
 }

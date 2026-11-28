@@ -116,18 +116,30 @@ internal object MarkdownRows {
     const val MAX_DRAWN_DEPTH = 8
 
     /** The rows a document is drawn as, in order. */
-    fun rows(document: MarkdownDocument, maxChars: Int = TextReading.ROW_MAX_CHARS): List<MdRow> {
+    fun rows(
+        document: MarkdownDocument,
+        maxChars: Int = TextReading.ROW_MAX_CHARS,
+    ): List<MdRow> {
         require(maxChars >= 2)
         val out = mutableListOf<MdRow>()
         val groups = Counter()
         document.blocks.forEachIndexed { index, block ->
-            Builder(out, index, maxChars, groups).block(block, Place(indent = 0, quotes = 0, listDepth = 0), gap = index > 0, marker = null)
+            Builder(out, index, maxChars, groups).block(
+                block,
+                Place(indent = 0, quotes = 0, listDepth = 0),
+                gap =
+                    index > 0,
+                marker = null,
+            )
         }
         return out
     }
 
     /** The first row of top-level block [block]: where a `#section` link brings the page. */
-    fun firstRowOf(rows: List<MdRow>, block: Int): Int? = rows.indexOfFirst { it.block == block }.takeIf { it >= 0 }
+    fun firstRowOf(
+        rows: List<MdRow>,
+        block: Int,
+    ): Int? = rows.indexOfFirst { it.block == block }.takeIf { it >= 0 }
 
     /** The bullet for a list [depth] levels deep (0 outermost): a dot, a ring, a square, then round again. */
     fun bullet(depth: Int): String = BULLETS[depth % BULLETS.size]
@@ -137,10 +149,17 @@ internal object MarkdownRows {
     private val UNTICKED = "" + Char(0x2610)
 
     /** Where a block sits: list levels, quotes, and how many lists deep for its bullets. */
-    private data class Place(val indent: Int, val quotes: Int, val listDepth: Int)
+    private data class Place(
+        val indent: Int,
+        val quotes: Int,
+        val listDepth: Int,
+    )
 
     /** A list item's mark, and what a screen reader says for it (`null`: nothing of its own). */
-    private class Marker(val shown: String, val spoken: String?)
+    private class Marker(
+        val shown: String,
+        val spoken: String?,
+    )
 
     /** Hands out each code block and table its own group, across the whole document. */
     private class Counter {
@@ -155,67 +174,155 @@ internal object MarkdownRows {
         private val maxChars: Int,
         private val groups: Counter,
     ) {
-
-        fun block(block: MdBlock, at: Place, gap: Boolean, marker: Marker?) {
+        fun block(
+            block: MdBlock,
+            at: Place,
+            gap: Boolean,
+            marker: Marker?,
+        ) {
             when (block) {
-                is MdBlock.Heading -> words(sizeOf(block.level), block.spans, at, gap, marker)
-                is MdBlock.Paragraph -> words(MdTextSize.Body, block.spans, at, gap, marker)
-                is MdBlock.Code -> pieces(block.code, at, gap, marker, code = true)
-                is MdBlock.Raw -> pieces(block.text, at, gap, marker, code = false)
-                is MdBlock.Table -> table(block, at, markerRow(at, gap, marker) ?: gap)
+                is MdBlock.Heading -> {
+                    words(sizeOf(block.level), block.spans, at, gap, marker)
+                }
+
+                is MdBlock.Paragraph -> {
+                    words(MdTextSize.Body, block.spans, at, gap, marker)
+                }
+
+                is MdBlock.Code -> {
+                    pieces(block.code, at, gap, marker, code = true)
+                }
+
+                is MdBlock.Raw -> {
+                    pieces(block.text, at, gap, marker, code = false)
+                }
+
+                is MdBlock.Table -> {
+                    table(block, at, markerRow(at, gap, marker) ?: gap)
+                }
+
                 MdBlock.Rule -> {
                     val gapHere = markerRow(at, gap, marker) ?: gap
                     out += MdRow.Rule(top, at.indent, at.quotes, gapHere)
                 }
+
                 is MdBlock.Quote -> {
                     val inner = at.copy(quotes = at.quotes + 1)
-                    block.blocks.forEachIndexed { i, child -> block(child, inner, if (i == 0) gap else true, if (i == 0) marker else null) }
+                    block.blocks.forEachIndexed { i, child ->
+                        block(
+                            child,
+                            inner,
+                            if (i ==
+                                0
+                            ) {
+                                gap
+                            } else {
+                                true
+                            },
+                            if (i == 0) marker else null,
+                        )
+                    }
                 }
-                is MdBlock.ListBlock -> list(block, at, gap, marker)
+
+                is MdBlock.ListBlock -> {
+                    list(block, at, gap, marker)
+                }
             }
         }
 
-        private fun list(list: MdBlock.ListBlock, at: Place, gap: Boolean, outer: Marker?) {
+        private fun list(
+            list: MdBlock.ListBlock,
+            at: Place,
+            gap: Boolean,
+            outer: Marker?,
+        ) {
             // A list that opens an item: the item's mark gets a row, then the list starts under it.
             var gapNext = markerRow(at, gap, outer) ?: gap
             val inner = Place(indent = at.indent + 1, quotes = at.quotes, listDepth = at.listDepth + 1)
             list.items.forEachIndexed { k, item ->
                 val itemGap = if (k == 0) gapNext else list.loose
-                val marker = when {
-                    item.task != null -> Marker(if (item.task) TICKED else UNTICKED, ViewerFormat.taskSpoken(item.task))
-                    list.start != null -> "${list.start + k}.".let { Marker(it, it) }
-                    else -> Marker(bullet(at.listDepth), null)
-                }
+                val marker =
+                    when {
+                        item.task != null -> {
+                            Marker(
+                                if (item.task) TICKED else UNTICKED,
+                                ViewerFormat.taskSpoken(item.task),
+                            )
+                        }
+
+                        list.start != null -> {
+                            "${list.start + k}.".let { Marker(it, it) }
+                        }
+
+                        else -> {
+                            Marker(bullet(at.listDepth), null)
+                        }
+                    }
                 if (item.blocks.isEmpty()) {
-                    out += MdRow.Words(top, inner.indent, inner.quotes, itemGap, MdTextSize.Body, emptyList(), marker.shown, marker.spoken)
+                    out +=
+                        MdRow.Words(
+                            top,
+                            inner.indent,
+                            inner.quotes,
+                            itemGap,
+                            MdTextSize.Body,
+                            emptyList(),
+                            marker.shown,
+                            marker.spoken,
+                        )
                 }
-                item.blocks.forEachIndexed { i, child -> block(child, inner, if (i == 0) itemGap else true, if (i == 0) marker else null) }
+                item.blocks.forEachIndexed { i, child ->
+                    block(
+                        child,
+                        inner,
+                        if (i ==
+                            0
+                        ) {
+                            itemGap
+                        } else {
+                            true
+                        },
+                        if (i == 0) marker else null,
+                    )
+                }
                 gapNext = false
             }
         }
 
         /** A row holding only a list item's mark, for an item opening with something other than words. */
-        private fun markerRow(at: Place, gap: Boolean, marker: Marker?): Boolean? {
+        private fun markerRow(
+            at: Place,
+            gap: Boolean,
+            marker: Marker?,
+        ): Boolean? {
             if (marker == null) return null
-            out += MdRow.Words(top, at.indent, at.quotes, gap, MdTextSize.Body, emptyList(), marker.shown, marker.spoken)
+            out +=
+                MdRow.Words(top, at.indent, at.quotes, gap, MdTextSize.Body, emptyList(), marker.shown, marker.spoken)
             return false
         }
 
-        private fun words(size: MdTextSize, spans: List<MdSpan>, at: Place, gap: Boolean, marker: Marker?) {
+        private fun words(
+            size: MdTextSize,
+            spans: List<MdSpan>,
+            at: Place,
+            gap: Boolean,
+            marker: Marker?,
+        ) {
             val pieces = cutSpans(spans)
             pieces.forEachIndexed { i, piece ->
-                out += MdRow.Words(
-                    block = top,
-                    indent = at.indent,
-                    quotes = at.quotes,
-                    gapAbove = i == 0 && gap,
-                    size = size,
-                    spans = piece,
-                    marker = if (i == 0) marker?.shown else null,
-                    markerSpoken = if (i == 0) marker?.spoken else null,
-                    first = i == 0,
-                    last = i == pieces.lastIndex,
-                )
+                out +=
+                    MdRow.Words(
+                        block = top,
+                        indent = at.indent,
+                        quotes = at.quotes,
+                        gapAbove = i == 0 && gap,
+                        size = size,
+                        spans = piece,
+                        marker = if (i == 0) marker?.shown else null,
+                        markerSpoken = if (i == 0) marker?.spoken else null,
+                        first = i == 0,
+                        last = i == pieces.lastIndex,
+                    )
             }
         }
 
@@ -228,7 +335,11 @@ internal object MarkdownRows {
             return cuts.zipWithNext { from, to -> slice(spans, from, to) }
         }
 
-        private fun slice(spans: List<MdSpan>, from: Int, to: Int): List<MdSpan> {
+        private fun slice(
+            spans: List<MdSpan>,
+            from: Int,
+            to: Int,
+        ): List<MdSpan> {
             val piece = mutableListOf<MdSpan>()
             var offset = 0
             for (span in spans) {
@@ -241,7 +352,13 @@ internal object MarkdownRows {
         }
 
         /** Code or raw text as pieces of whole (or cut) lines, each at most [maxChars] characters. */
-        private fun pieces(text: String, at: Place, gap: Boolean, marker: Marker?, code: Boolean) {
+        private fun pieces(
+            text: String,
+            at: Place,
+            gap: Boolean,
+            marker: Marker?,
+            code: Boolean,
+        ) {
             val gapHere = markerRow(at, gap, marker) ?: gap
             val rows = TextReading.rows(TextDecoding.lines(text), maxChars)
             val lines = List(rows.count) { rows.row(it) }
@@ -263,34 +380,61 @@ internal object MarkdownRows {
             groups.forEachIndexed { i, lines ->
                 val joined = lines.joinToString("\n")
                 val gapAbove = i == 0 && gapHere
-                out += if (code) {
-                    MdRow.Code(top, at.indent, at.quotes, gapAbove, group, joined, width, first = i == 0, last = i == groups.lastIndex)
-                } else {
-                    MdRow.Raw(top, at.indent, at.quotes, gapAbove, joined, first = i == 0, last = i == groups.lastIndex)
-                }
+                out +=
+                    if (code) {
+                        MdRow.Code(
+                            top,
+                            at.indent,
+                            at.quotes,
+                            gapAbove,
+                            group,
+                            joined,
+                            width,
+                            first = i == 0,
+                            last =
+                                i == groups.lastIndex,
+                        )
+                    } else {
+                        MdRow.Raw(
+                            top,
+                            at.indent,
+                            at.quotes,
+                            gapAbove,
+                            joined,
+                            first = i == 0,
+                            last =
+                                i == groups.lastIndex,
+                        )
+                    }
             }
         }
 
-        private fun table(table: MdBlock.Table, at: Place, gap: Boolean) {
+        private fun table(
+            table: MdBlock.Table,
+            at: Place,
+            gap: Boolean,
+        ) {
             val columns = table.alignments.size
             val all = listOf(table.header) + table.rows
-            val widths = List(columns) { c ->
-                all.maxOf { row -> row.getOrNull(c)?.sumOf { it.text.length } ?: 0 }.coerceIn(1, MAX_COLUMN_CHARS)
-            }
+            val widths =
+                List(columns) { c ->
+                    all.maxOf { row -> row.getOrNull(c)?.sumOf { it.text.length } ?: 0 }.coerceIn(1, MAX_COLUMN_CHARS)
+                }
             val pieces = tablePieces(table)
             val group = groups.take()
             pieces.forEachIndexed { i, rows ->
-                out += MdRow.TableRows(
-                    block = top,
-                    indent = at.indent,
-                    quotes = at.quotes,
-                    gapAbove = i == 0 && gap,
-                    group = group,
-                    widths = widths,
-                    alignments = table.alignments,
-                    header = if (i == 0) table.header else null,
-                    rows = rows,
-                )
+                out +=
+                    MdRow.TableRows(
+                        block = top,
+                        indent = at.indent,
+                        quotes = at.quotes,
+                        gapAbove = i == 0 && gap,
+                        group = group,
+                        widths = widths,
+                        alignments = table.alignments,
+                        header = if (i == 0) table.header else null,
+                        rows = rows,
+                    )
             }
         }
 
@@ -321,10 +465,11 @@ internal object MarkdownRows {
 
         private fun charsIn(row: List<List<MdSpan>>): Int = row.sumOf { cell -> cell.sumOf { it.text.length } }
 
-        private fun sizeOf(level: Int): MdTextSize = when (level) {
-            1 -> MdTextSize.Title1
-            2 -> MdTextSize.Title2
-            else -> MdTextSize.Title3
-        }
+        private fun sizeOf(level: Int): MdTextSize =
+            when (level) {
+                1 -> MdTextSize.Title1
+                2 -> MdTextSize.Title2
+                else -> MdTextSize.Title3
+            }
     }
 }

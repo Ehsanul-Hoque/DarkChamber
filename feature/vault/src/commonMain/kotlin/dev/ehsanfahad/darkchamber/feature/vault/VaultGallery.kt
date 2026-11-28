@@ -1,22 +1,28 @@
 package dev.ehsanfahad.darkchamber.feature.vault
 
+import coil3.ImageLoader
+import coil3.PlatformContext
 import com.arkivanov.decompose.ComponentContext
 import dev.ehsanfahad.darkchamber.core.model.ItemFilter
 import dev.ehsanfahad.darkchamber.core.vault.VaultObjects
+import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
 import dev.ehsanfahad.darkchamber.feature.vault.api.FilePicker
+import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryOrder
+import dev.ehsanfahad.darkchamber.feature.vault.api.LinkOpener
 import dev.ehsanfahad.darkchamber.feature.vault.api.PhotoPicker
 import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerDisplay
-import dev.ehsanfahad.darkchamber.feature.vault.api.LinkOpener
-import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPdfRenderer
-import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPlayerFactory
-import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultAlbumsComponent
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultGalleryComponent
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultImports
+import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPdfRenderer
+import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPlayerFactory
+import dev.ehsanfahad.darkchamber.feature.vault.api.VaultViewerComponent
+import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerImageDecoder
 import dev.ehsanfahad.darkchamber.feature.vault.data.VaultObjectsItems
 import dev.ehsanfahad.darkchamber.feature.vault.domain.CreateAlbum
 import dev.ehsanfahad.darkchamber.feature.vault.domain.DeleteAlbum
 import dev.ehsanfahad.darkchamber.feature.vault.domain.FileItems
+import dev.ehsanfahad.darkchamber.feature.vault.domain.GalleryControls
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ImportCoordinator
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ImportFile
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ImportQueue
@@ -26,16 +32,10 @@ import dev.ehsanfahad.darkchamber.feature.vault.domain.ObserveGallery
 import dev.ehsanfahad.darkchamber.feature.vault.domain.RenameAlbum
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ShredItem
 import dev.ehsanfahad.darkchamber.feature.vault.domain.ShredItems
-import dev.ehsanfahad.darkchamber.feature.vault.domain.GalleryControls
-import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryOrder
-import dev.ehsanfahad.darkchamber.feature.vault.api.VaultViewerComponent
-import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerImageDecoder
-import dev.ehsanfahad.darkchamber.feature.vault.presentation.DefaultVaultViewerComponent
-import dev.ehsanfahad.darkchamber.feature.vault.presentation.LoadViewerImage
-import coil3.ImageLoader
-import coil3.PlatformContext
 import dev.ehsanfahad.darkchamber.feature.vault.presentation.DefaultVaultAlbumsComponent
 import dev.ehsanfahad.darkchamber.feature.vault.presentation.DefaultVaultGalleryComponent
+import dev.ehsanfahad.darkchamber.feature.vault.presentation.DefaultVaultViewerComponent
+import dev.ehsanfahad.darkchamber.feature.vault.presentation.LoadViewerImage
 import dev.ehsanfahad.darkchamber.feature.vault.presentation.vaultImageLoader
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -62,12 +62,13 @@ fun vaultImports(
     return ImportCoordinator(
         photoPicker = photoPicker,
         filePicker = filePicker,
-        queue = ImportQueue(
-            importFile = ImportFile(vault = items, ioContext = ioContext),
-            // The same context: reading a picked file's details is a provider round-trip, so it
-            // belongs wherever the encrypt already runs rather than on the thread driving the batch.
-            ioContext = ioContext,
-        ),
+        queue =
+            ImportQueue(
+                importFile = ImportFile(vault = items, ioContext = ioContext),
+                // The same context: reading a picked file's details is a provider round-trip, so it
+                // belongs wherever the encrypt already runs rather than on the thread driving the batch.
+                ioContext = ioContext,
+            ),
         scope = scope,
         // The same reason as the encrypt: deleting an original is a blocking provider call, and a
         // batch of them on the UI thread is a frozen app.
@@ -244,5 +245,7 @@ fun vaultViewerComponent(
  * outlive the lock. The loader keeps **no disk cache** — see `vaultImageLoader` for why that is a
  * hard rule and not a tuning choice.
  */
-fun vaultImageLoader(context: PlatformContext, vaultObjects: VaultObjects): ImageLoader =
-    vaultImageLoader(context, VaultObjectsItems(vaultObjects))
+fun vaultImageLoader(
+    context: PlatformContext,
+    vaultObjects: VaultObjects,
+): ImageLoader = vaultImageLoader(context, VaultObjectsItems(vaultObjects))

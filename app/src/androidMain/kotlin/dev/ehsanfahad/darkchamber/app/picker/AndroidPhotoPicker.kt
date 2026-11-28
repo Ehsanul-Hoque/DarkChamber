@@ -22,7 +22,6 @@ class AndroidPhotoPicker(
     private val activity: () -> FragmentActivity?,
     private val handoff: SystemUiHandoff,
 ) : PhotoPicker {
-
     override suspend fun pickPhotos(): List<PickedFile> {
         val host = activity() ?: error("no activity to present the picker from")
 
@@ -30,14 +29,15 @@ class AndroidPhotoPicker(
         // the handoff the on-background auto-lock tears the session down mid-pick and the result
         // comes back to nothing — the device finding that made this exemption exist. It covers the
         // round-trip only, and is released on every path.
-        val uris = handoff.during {
-            // An empty list on cancel, which is already the seam's "the user backed out".
-            host.awaitActivityResult(
-                keyPrefix = "darkchamber-photos",
-                contract = ActivityResultContracts.PickMultipleVisualMedia(),
-                input = PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo),
-            )
-        }
+        val uris =
+            handoff.during {
+                // An empty list on cancel, which is already the seam's "the user backed out".
+                host.awaitActivityResult(
+                    keyPrefix = "darkchamber-photos",
+                    contract = ActivityResultContracts.PickMultipleVisualMedia(),
+                    input = PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo),
+                )
+            }
 
         // document = false: PickMultipleVisualMedia returns read-only content://media/picker URIs,
         // which are not documents and are not MediaStore rows either, so there is nothing to hand

@@ -50,10 +50,11 @@ internal fun AlbumNameDialog(
 
     Dialog(
         onDismissRequest = onCancel,
-        properties = DialogProperties(
-            dismissOnBackPress = !draft.saving,
-            dismissOnClickOutside = !draft.saving,
-        ),
+        properties =
+            DialogProperties(
+                dismissOnBackPress = !draft.saving,
+                dismissOnClickOutside = !draft.saving,
+            ),
     ) {
         // A dialog is its own window, and the host's exclusion does not reach it — measured: the
         // field below still turned up in a fill request until this was here. The album's name is
@@ -61,10 +62,11 @@ internal fun AlbumNameDialog(
         ExcludeFromPlatformStructures()
 
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(color = colors.surface, shape = DarkChamberTheme.shapes.large)
-                .padding(spacing.spaceLg),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .background(color = colors.surface, shape = DarkChamberTheme.shapes.large)
+                    .padding(spacing.spaceLg),
         ) {
             Text(text = title, style = DarkChamberTheme.typography.title, color = colors.textPrimary)
 
@@ -97,7 +99,7 @@ internal fun AlbumNameDialog(
             ) {
                 TextButton(onClick = onCancel, enabled = !draft.saving) {
                     Text(
-                        text = "Cancel",
+                        text = ViewerFormat.cancel(),
                         style = DarkChamberTheme.typography.label,
                         color = if (draft.saving) colors.textSecondary else colors.textPrimary,
                     )

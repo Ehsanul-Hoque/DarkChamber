@@ -26,7 +26,10 @@ class FakeSecureKeyStore(
 
     override fun isAvailable(): Boolean = available
 
-    override suspend fun wrap(mk: ByteArray, authenticator: BiometricAuthenticator): Outcome<ByteArray> =
+    override suspend fun wrap(
+        mk: ByteArray,
+        authenticator: BiometricAuthenticator,
+    ): Outcome<ByteArray> =
         // The prompt gates use of the key (as a biometric-required platform key does); on approve
         // seal under it, on cancel/invalidation propagate the authenticator's error unchanged.
         authenticator.authenticate(AUTH_REQUEST).flatMap {
@@ -35,7 +38,10 @@ class FakeSecureKeyStore(
             Outcome.Ok(nonce + engine.aeadSeal(k, nonce, ByteArray(0), mk))
         }
 
-    override suspend fun unwrap(blob: ByteArray, authenticator: BiometricAuthenticator): Outcome<ByteArray> =
+    override suspend fun unwrap(
+        blob: ByteArray,
+        authenticator: BiometricAuthenticator,
+    ): Outcome<ByteArray> =
         authenticator.authenticate(AUTH_REQUEST).flatMap {
             val k = key ?: return@flatMap Outcome.Err(VaultError.Crypto.IntegrityFailure)
             if (blob.size < WRAP_NONCE_SIZE) return@flatMap Outcome.Err(VaultError.Crypto.IntegrityFailure)

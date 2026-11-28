@@ -20,7 +20,7 @@ import java.io.File
  * it lives on the on-device checklist), and spot-checks hard rule #1 (no plaintext to shared storage).
  *
  * Runnable locally: `./gradlew :androidApp:connectedFossDebugAndroidTest` (needs a device or
- * emulator). Not wired into CI yet — the instrumented/quality job is still deferred.
+ * emulator). Not wired into CI yet — no CI job runs instrumented tests.
  */
 @RunWith(AndroidJUnit4::class)
 class VaultBootstrapInstrumentedTest {
@@ -31,17 +31,20 @@ class VaultBootstrapInstrumentedTest {
         val vaultRoot = File(context.filesDir, "vault")
         vaultRoot.deleteRecursively() // deterministic create path
 
-        val koin = koinApplication {
-            androidContext(context)
-            modules(appModules())
-        }
+        val koin =
+            koinApplication {
+                androidContext(context)
+                modules(appModules())
+            }
         try {
             val bootstrap = koin.koin.get<VaultBootstrap>()
 
             // First run: create the vault (keystore persisted under the backup-denied root).
             val created = bootstrap.createVault("correct-horse-battery".encodeToByteArray())
             assertTrue("createVault failed: $created", created is Outcome.Ok)
-            (created as Outcome.Ok).value.vault.session.close()
+            (created as Outcome.Ok)
+                .value.vault.session
+                .close()
 
             // Reopen on the same root via the persisted keystore (passphrase unlock).
             val unlocked = bootstrap.unlock("correct-horse-battery".encodeToByteArray())
@@ -63,7 +66,12 @@ class VaultBootstrapInstrumentedTest {
     private fun assertNoExternalArtifacts() {
         val externalDirs = listOfNotNull(context.externalCacheDir, context.getExternalFilesDir(null))
         externalDirs.forEach { dir ->
-            val leaked = dir.walkTopDown().filter { it.isFile }.map { it.name }.toList()
+            val leaked =
+                dir
+                    .walkTopDown()
+                    .filter { it.isFile }
+                    .map { it.name }
+                    .toList()
             assertTrue("external storage leaked files: $leaked", leaked.isEmpty())
         }
     }

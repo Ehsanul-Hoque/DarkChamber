@@ -11,18 +11,26 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.ScreenOrientation
  */
 internal object PlayerChrome {
     /** Whether the bars and controls are on screen: always on an audio page, else as a tap left them. */
-    fun barsVisible(kind: PlayerKind?, shownByTap: Boolean): Boolean = shownByTap || kind == PlayerKind.Audio
+    fun barsVisible(
+        kind: PlayerKind?,
+        shownByTap: Boolean,
+    ): Boolean = shownByTap || kind == PlayerKind.Audio
 
     /** The orientation button's target on this page, or `null` for no button. */
-    fun orientationButton(kind: PlayerKind, target: ScreenOrientation?): ScreenOrientation? =
-        if (kind == PlayerKind.Video) target else null
+    fun orientationButton(
+        kind: PlayerKind,
+        target: ScreenOrientation?,
+    ): ScreenOrientation? = if (kind == PlayerKind.Video) target else null
 
     /**
      * How far up, in pixels, to move the audio page's badge from the middle of the page so that its
      * bottom sits [gap] above the centre control ([centreSize] square, also centred) — never under it.
      */
-    fun badgeShiftAboveCentre(badgeHeight: Int, centreSize: Int, gap: Int): Int =
-        -(centreSize / 2) - gap - (badgeHeight + 1) / 2
+    fun badgeShiftAboveCentre(
+        badgeHeight: Int,
+        centreSize: Int,
+        gap: Int,
+    ): Int = -(centreSize / 2) - gap - (badgeHeight + 1) / 2
 
     /**
      * Whether the page is short enough — a phone on its side — that the player's bottom bar must be one
@@ -38,20 +46,28 @@ internal object PlayerChrome {
      * touch for itself, so the page's own gestures never reach it. Showing and hiding the controls
      * belongs to a video page (an audio page's never hide); skipping ten seconds needs a player.
      */
-    fun readerActions(kind: PlayerKind, hasPlayer: Boolean): List<ReaderAction> = buildList {
-        if (kind == PlayerKind.Video) add(ReaderAction.ToggleControls)
-        if (hasPlayer) {
-            add(ReaderAction.Back)
-            add(ReaderAction.Forward)
+    fun readerActions(
+        kind: PlayerKind,
+        hasPlayer: Boolean,
+    ): List<ReaderAction> =
+        buildList {
+            if (kind == PlayerKind.Video) add(ReaderAction.ToggleControls)
+            if (hasPlayer) {
+                add(ReaderAction.Back)
+                add(ReaderAction.Forward)
+            }
         }
-    }
 
     /**
      * Whether the controls hide by themselves after a while: only over a video that is playing, and
      * never while a [screenReader] runs — someone moving through the controls by touch would have
      * them vanish under them.
      */
-    fun autoHides(kind: PlayerKind?, state: PlayerState?, screenReader: Boolean = false): Boolean =
+    fun autoHides(
+        kind: PlayerKind?,
+        state: PlayerState?,
+        screenReader: Boolean = false,
+    ): Boolean =
         !screenReader && kind == PlayerKind.Video && state != null &&
             PlaybackRules.status(state) == PlaybackStatus.Playing
 }

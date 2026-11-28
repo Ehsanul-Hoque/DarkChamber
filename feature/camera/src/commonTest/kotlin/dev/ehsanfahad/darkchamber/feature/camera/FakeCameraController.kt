@@ -31,13 +31,14 @@ import kotlinx.io.files.Path
 internal class FakeCameraController(
     permission: CameraPermission = CameraPermission.Granted,
     availability: CameraAvailability = CameraAvailability.Available,
-    capabilities: CameraCapabilities = CameraCapabilities(
-        lenses = setOf(Lens.Back, Lens.Front),
-        hasFlash = true,
-        minZoom = 1f,
-        maxZoom = 8f,
-        videoQualities = setOf(VideoQuality.HD, VideoQuality.UHD),
-    ),
+    capabilities: CameraCapabilities =
+        CameraCapabilities(
+            lenses = setOf(Lens.Back, Lens.Front),
+            hasFlash = true,
+            minZoom = 1f,
+            maxZoom = 8f,
+            videoQualities = setOf(VideoQuality.HD, VideoQuality.UHD),
+        ),
     microphonePermission: MicrophonePermission = MicrophonePermission.Granted,
 ) : CameraController {
     override val permission = MutableStateFlow(permission)
@@ -88,7 +89,11 @@ internal class FakeCameraController(
         private set
 
     /** What one [record] call asked for. */
-    data class RecordRequest(val file: Path, val sizeLimitBytes: Long, val withAudio: Boolean)
+    data class RecordRequest(
+        val file: Path,
+        val sizeLimitBytes: Long,
+        val withAudio: Boolean,
+    )
 
     val recordRequests = mutableListOf<RecordRequest>()
 
@@ -186,14 +191,19 @@ internal class FakeCameraController(
         if (capabilities.value.hasFlash) torch = on
     }
 
-    override fun record(file: Path, sizeLimitBytes: Long, withAudio: Boolean): Recording {
+    override fun record(
+        file: Path,
+        sizeLimitBytes: Long,
+        withAudio: Boolean,
+    ): Recording {
         recordRequests += RecordRequest(file, sizeLimitBytes, withAudio)
         if (!isOpen || mode != CaptureMode.Video || recording != null) return ReportedRecording.refused()
         lateinit var started: ReportedRecording
-        started = ReportedRecording(onStop = {
-            recordingStops++
-            endOnStop?.let { started.finish(it) }
-        })
+        started =
+            ReportedRecording(onStop = {
+                recordingStops++
+                endOnStop?.let { started.finish(it) }
+            })
         lastRecording = started
         return started
     }
@@ -211,7 +221,10 @@ internal class FakeCameraController(
         zoom = ratio.coerceIn(caps.minZoom, caps.maxZoom)
     }
 
-    override fun focusAt(x: Float, y: Float) {
+    override fun focusAt(
+        x: Float,
+        y: Float,
+    ) {
         focusPoints += x to y
     }
 

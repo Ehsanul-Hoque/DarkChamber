@@ -15,12 +15,18 @@ class ViewerBarsTest {
     private val colors = darkChamberDarkColors()
     private val overWhite = ViewerBars.scrim.compositeOver(Color.White)
 
-    private fun contrast(a: Color, b: Color): Float {
+    private fun contrast(
+        a: Color,
+        b: Color,
+    ): Float {
         val (light, dark) = listOf(a.luminance(), b.luminance()).sortedDescending()
         return (light + 0.05f) / (dark + 0.05f)
     }
 
-    private fun assertReadable(role: String, text: Color) {
+    private fun assertReadable(
+        role: String,
+        text: Color,
+    ) {
         val ratio = contrast(text, overWhite)
         assertTrue(ratio >= 4.5f, "$role on the bars over a white page: $ratio:1, needs 4.5:1")
     }

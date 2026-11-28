@@ -8,7 +8,6 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.ObjCSignatureOverride
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
-import kotlin.concurrent.Volatile
 import platform.AVFoundation.AVAssetResourceLoader
 import platform.AVFoundation.AVAssetResourceLoaderDelegateProtocol
 import platform.AVFoundation.AVAssetResourceLoadingRequest
@@ -18,6 +17,7 @@ import platform.Foundation.create
 import platform.darwin.NSObject
 import platform.darwin.dispatch_async
 import platform.darwin.dispatch_queue_t
+import kotlin.concurrent.Volatile
 
 /**
  * AVFoundation's requests for an asset's bytes, answered from a [RangeReader] on the loader's serial
@@ -35,7 +35,8 @@ internal class ReaderLoader(
     private val reader: RangeReader,
     private val contentType: String,
     private val queue: dispatch_queue_t,
-) : NSObject(), AVAssetResourceLoaderDelegateProtocol {
+) : NSObject(),
+    AVAssetResourceLoaderDelegateProtocol {
     private var closed = false
     private val chunk = ByteArray(CHUNK_BYTES)
 
@@ -81,15 +82,19 @@ internal class ReaderLoader(
             var at = data.requestedOffset
             val end = if (data.requestsAllDataToEndOfResource) length else minOf(length, at + data.requestedLength)
             while (at < end && !request.cancelled) {
-                val n = when (val read = reader.readAt(at, chunk, 0, minOf(CHUNK_BYTES.toLong(), end - at).toInt())) {
-                    // A chunk that fails its tag, a lock: the request fails, never answered short.
-                    is Outcome.Err -> {
-                        if (failure == null) failure = read.error
-                        request.finishLoadingWithError(null)
-                        return
+                val n =
+                    when (val read = reader.readAt(at, chunk, 0, minOf(CHUNK_BYTES.toLong(), end - at).toInt())) {
+                        // A chunk that fails its tag, a lock: the request fails, never answered short.
+                        is Outcome.Err -> {
+                            if (failure == null) failure = read.error
+                            request.finishLoadingWithError(null)
+                            return
+                        }
+
+                        is Outcome.Ok -> {
+                            read.value
+                        }
                     }
-                    is Outcome.Ok -> read.value
-                }
                 if (n <= 0) break
                 data.respondWithData(chunk.toNSData(n))
                 at += n
@@ -111,7 +116,10 @@ internal class ReaderLoader(
 private const val CHUNK_BYTES = 256 * 1024
 
 /** What AVFoundation is told an asset is: its type identifier, and the extension its URL's path carries. */
-internal data class AssetType(val uti: String, val extension: String)
+internal data class AssetType(
+    val uti: String,
+    val extension: String,
+)
 
 /**
  * The asset type for a stored MIME type. AVFoundation decides how to read an asset from its URL's path
@@ -122,20 +130,56 @@ internal data class AssetType(val uti: String, val extension: String)
 internal fun assetTypeFor(mime: String): AssetType {
     val type = mime.substringBefore(';').trim().lowercase()
     return when (type) {
-        "video/quicktime" -> AssetType("com.apple.quicktime-movie", "mov")
-        "video/x-m4v" -> AssetType("com.apple.m4v-video", "m4v")
-        "audio/mpeg", "audio/mp3" -> AssetType("public.mp3", "mp3")
-        "audio/aac", "audio/x-aac" -> AssetType("public.aac-audio", "aac")
-        "audio/wav", "audio/x-wav", "audio/wave", "audio/vnd.wave" -> AssetType("com.microsoft.waveform-audio", "wav")
-        "audio/aiff", "audio/x-aiff" -> AssetType("public.aiff-audio", "aiff")
-        "audio/flac", "audio/x-flac" -> AssetType("org.xiph.flac", "flac")
-        "audio/ogg", "audio/opus" -> AssetType("org.xiph.ogg-audio", "ogg")
-        else -> if (type.startsWith("audio/")) AssetType("com.apple.m4a-audio", "m4a") else AssetType("public.mpeg-4", "mp4")
+        "video/quicktime" -> {
+            AssetType("com.apple.quicktime-movie", "mov")
+        }
+
+        "video/x-m4v" -> {
+            AssetType("com.apple.m4v-video", "m4v")
+        }
+
+        "audio/mpeg", "audio/mp3" -> {
+            AssetType("public.mp3", "mp3")
+        }
+
+        "audio/aac", "audio/x-aac" -> {
+            AssetType("public.aac-audio", "aac")
+        }
+
+        "audio/wav", "audio/x-wav", "audio/wave", "audio/vnd.wave" -> {
+            AssetType("com.microsoft.waveform-audio", "wav")
+        }
+
+        "audio/aiff", "audio/x-aiff" -> {
+            AssetType("public.aiff-audio", "aiff")
+        }
+
+        "audio/flac", "audio/x-flac" -> {
+            AssetType("org.xiph.flac", "flac")
+        }
+
+        "audio/ogg", "audio/opus" -> {
+            AssetType("org.xiph.ogg-audio", "ogg")
+        }
+
+        else -> {
+            if (type.startsWith(
+                    "audio/",
+                )
+            ) {
+                AssetType("com.apple.m4a-audio", "m4a")
+            } else {
+                AssetType("public.mpeg-4", "mp4")
+            }
+        }
     }
 }
 
 /** The asset's URL: a scheme nothing else answers, and the extension in the path (see [assetTypeFor]). */
-internal fun assetUrl(scheme: String, type: AssetType): NSURL? = NSURL.URLWithString("$scheme:///item.${type.extension}")
+internal fun assetUrl(
+    scheme: String,
+    type: AssetType,
+): NSURL? = NSURL.URLWithString("$scheme:///item.${type.extension}")
 
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 internal fun ByteArray.toNSData(count: Int): NSData =

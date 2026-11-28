@@ -13,8 +13,10 @@ import kotlin.test.assertNull
  * `text/markdown`, another as `application/octet-stream` — so the name's extension counts as well.
  */
 class TextKindTest {
-
-    private fun item(name: String, mime: String) = GalleryItemMeta.Readable(name = name, mime = mime)
+    private fun item(
+        name: String,
+        mime: String,
+    ) = GalleryItemMeta.Readable(name = name, mime = mime)
 
     @Test
     fun a_stored_text_type_is_text_whatever_the_name() {
@@ -33,32 +35,66 @@ class TextKindTest {
     /** The whole list, pinned: an entry dropped or moved to another kind is a file shown differently. */
     @Test
     fun every_listed_type_and_extension_has_its_kind() {
-        val types = mapOf(
-            "text/plain" to TextKind.Plain,
-            "text/markdown" to TextKind.Markdown,
-            "text/x-markdown" to TextKind.Markdown,
-            "application/json" to TextKind.Json,
-            "application/geo+json" to TextKind.Json,
-            "text/x-anything" to TextKind.Code,
-            "application/xml" to TextKind.Code,
-            "application/yaml" to TextKind.Code,
-            "application/x-yaml" to TextKind.Code,
-            "application/toml" to TextKind.Code,
-            "application/javascript" to TextKind.Code,
-            "application/x-sh" to TextKind.Code,
-            "application/sql" to TextKind.Code,
-            "application/rss+xml" to TextKind.Code,
-        )
+        val types =
+            mapOf(
+                "text/plain" to TextKind.Plain,
+                "text/markdown" to TextKind.Markdown,
+                "text/x-markdown" to TextKind.Markdown,
+                "application/json" to TextKind.Json,
+                "application/geo+json" to TextKind.Json,
+                "text/x-anything" to TextKind.Code,
+                "application/xml" to TextKind.Code,
+                "application/yaml" to TextKind.Code,
+                "application/x-yaml" to TextKind.Code,
+                "application/toml" to TextKind.Code,
+                "application/javascript" to TextKind.Code,
+                "application/x-sh" to TextKind.Code,
+                "application/sql" to TextKind.Code,
+                "application/rss+xml" to TextKind.Code,
+            )
         types.forEach { (type, kind) -> assertEquals(kind, textKind(item("noext", type)), type) }
 
         val plain = listOf("txt", "text")
         val markdown = listOf("md", "markdown", "mdown", "mkd")
-        val code = listOf(
-            "html", "htm", "xhtml", "xml", "csv", "tsv", "yaml", "yml", "toml", "ini", "cfg", "conf",
-            "properties", "log", "srt", "vtt",
-            "kt", "kts", "java", "swift", "py", "js", "ts", "c", "h", "cpp", "hpp", "cs", "go", "rs",
-            "rb", "php", "sh", "sql", "css", "gradle",
-        )
+        val code =
+            listOf(
+                "html",
+                "htm",
+                "xhtml",
+                "xml",
+                "csv",
+                "tsv",
+                "yaml",
+                "yml",
+                "toml",
+                "ini",
+                "cfg",
+                "conf",
+                "properties",
+                "log",
+                "srt",
+                "vtt",
+                "kt",
+                "kts",
+                "java",
+                "swift",
+                "py",
+                "js",
+                "ts",
+                "c",
+                "h",
+                "cpp",
+                "hpp",
+                "cs",
+                "go",
+                "rs",
+                "rb",
+                "php",
+                "sh",
+                "sql",
+                "css",
+                "gradle",
+            )
         val unknown = "application/octet-stream"
         plain.forEach { assertEquals(TextKind.Plain, textKind(item("f.$it", unknown)), it) }
         markdown.forEach { assertEquals(TextKind.Markdown, textKind(item("f.$it", unknown)), it) }

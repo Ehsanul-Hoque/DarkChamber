@@ -29,7 +29,16 @@ class MasterKeyWrapTest {
     fun recovery_wrap_then_unwrap_recovers_the_master_key() {
         val recoveryKey = engine.randomBytes(RECOVERY_KEY_SIZE)
         val hkdf = KdfParams.Hkdf(ByteArray(16) { (it + 1).toByte() }, RECOVERY_HKDF_INFO.encodeToByteArray())
-        val entry = MasterKeyWrap.wrap(engine, kdf, mk, recoveryKey, Slot.RECOVERY, hkdf, engine.randomBytes(WRAP_NONCE_SIZE))
+        val entry =
+            MasterKeyWrap.wrap(
+                engine,
+                kdf,
+                mk,
+                recoveryKey,
+                Slot.RECOVERY,
+                hkdf,
+                engine.randomBytes(WRAP_NONCE_SIZE),
+            )
         assertContentEquals(mk, MasterKeyWrap.unwrap(engine, kdf, entry, recoveryKey).getOrNull())
     }
 
@@ -45,7 +54,10 @@ class MasterKeyWrapTest {
         val entry = passphraseWrap()
         val tampered = entry.wrappedMk.copyOf().also { it[0] = (it[0].toInt() xor 0x01).toByte() }
         val bad = WrapEntry(entry.slot, entry.kdfId, entry.kdfParams, entry.nonce, tampered)
-        assertEquals(Outcome.Err(VaultError.Crypto.IntegrityFailure), MasterKeyWrap.unwrap(engine, kdf, bad, passphrase))
+        assertEquals(
+            Outcome.Err(VaultError.Crypto.IntegrityFailure),
+            MasterKeyWrap.unwrap(engine, kdf, bad, passphrase),
+        )
     }
 
     @Test
@@ -53,7 +65,10 @@ class MasterKeyWrapTest {
         val entry = passphraseWrap()
         val badNonce = entry.nonce.copyOf().also { it[0] = (it[0].toInt() xor 0x01).toByte() }
         val bad = WrapEntry(entry.slot, entry.kdfId, entry.kdfParams, badNonce, entry.wrappedMk)
-        assertEquals(Outcome.Err(VaultError.Crypto.IntegrityFailure), MasterKeyWrap.unwrap(engine, kdf, bad, passphrase))
+        assertEquals(
+            Outcome.Err(VaultError.Crypto.IntegrityFailure),
+            MasterKeyWrap.unwrap(engine, kdf, bad, passphrase),
+        )
     }
 
     @Test
@@ -62,6 +77,9 @@ class MasterKeyWrapTest {
         // this. Proves the metadata is authenticated, not just the ciphertext.
         val entry = passphraseWrap()
         val repointed = WrapEntry(Slot.RECOVERY, entry.kdfId, entry.kdfParams, entry.nonce, entry.wrappedMk)
-        assertEquals(Outcome.Err(VaultError.Crypto.IntegrityFailure), MasterKeyWrap.unwrap(engine, kdf, repointed, passphrase))
+        assertEquals(
+            Outcome.Err(VaultError.Crypto.IntegrityFailure),
+            MasterKeyWrap.unwrap(engine, kdf, repointed, passphrase),
+        )
     }
 }

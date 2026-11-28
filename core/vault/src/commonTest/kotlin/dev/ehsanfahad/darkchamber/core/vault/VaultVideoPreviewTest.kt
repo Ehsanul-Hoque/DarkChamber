@@ -12,11 +12,11 @@ import dev.ehsanfahad.darkchamber.core.storage.VaultStorage
 import kotlinx.io.Buffer
 import kotlinx.io.RawSource
 import kotlinx.io.buffered
-import kotlinx.io.readByteArray
-import kotlinx.io.write
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 import kotlinx.io.files.SystemTemporaryDirectory
+import kotlinx.io.readByteArray
+import kotlinx.io.write
 import kotlin.random.Random
 import kotlin.random.nextULong
 import kotlin.test.AfterTest
@@ -36,29 +36,43 @@ class VaultVideoPreviewTest {
     private val engine = CryptographyKotlinEngine()
     private val cheapKdf = PassphraseKdfProfile.Argon2id(memoryKib = 256, iterations = 1, parallelism = 1)
     private val session: VaultSession =
-        VaultSession.createVault(engine, DefaultKeyDerivation(engine), "correct horse battery".encodeToByteArray(), cheapKdf).session
+        VaultSession
+            .createVault(
+                engine,
+                DefaultKeyDerivation(engine),
+                "correct horse battery".encodeToByteArray(),
+                cheapKdf,
+            ).session
 
-    private val storage: VaultStorage = run {
-        SystemFileSystem.createDirectories(testDir)
-        VaultStorage(testDir)
-    }
+    private val storage: VaultStorage =
+        run {
+            SystemFileSystem.createDirectories(testDir)
+            VaultStorage(testDir)
+        }
     private val catalog: CatalogStore = (CatalogStore.create(testSqlDriver()) as Outcome.Ok).value
 
     @AfterTest
     fun cleanup() = deleteRecursively(testDir)
 
-    private fun objects(encoder: ThumbnailEncoder) = VaultObjects(
-        session, storage, catalog, DchmCodec(engine),
-        clock = { 42L },
-        random = Random(31).let { rng -> { n -> rng.nextBytes(n) } },
-        thumbnails = encoder,
-    )
+    private fun objects(encoder: ThumbnailEncoder) =
+        VaultObjects(
+            session,
+            storage,
+            catalog,
+            DchmCodec(engine),
+            clock = { 42L },
+            random = Random(31).let { rng -> { n -> rng.nextBytes(n) } },
+            thumbnails = encoder,
+        )
 
     private val payload = ByteArray(300) { (it * 11 + 2).toByte() } // chunks of 64: 0..4, the last 44 bytes
 
     // An opener that counts how often the import opens its source.
-    private class CountingOpener(private val data: ByteArray) {
+    private class CountingOpener(
+        private val data: ByteArray,
+    ) {
         var opens = 0
+
         fun open(): RawSource {
             opens++
             return Buffer().apply { write(data.copyOf()) }
@@ -68,18 +82,27 @@ class VaultVideoPreviewTest {
     private fun <T> Outcome<T>.ok(): T = assertIs<Outcome.Ok<T>>(this).value
 
     // Imports [mime] and returns how many times the source was opened once the preview phase began.
-    private fun opensDuringThePreview(encoder: ThumbnailEncoder, mime: String, onPreview: () -> Unit = {}): Pair<Outcome<ByteArray>, Int> {
+    private fun opensDuringThePreview(
+        encoder: ThumbnailEncoder,
+        mime: String,
+        onPreview: () -> Unit = {},
+    ): Pair<Outcome<ByteArray>, Int> {
         val opener = CountingOpener(payload)
         var atPreview = -1
-        val result = objects(encoder).importObject(
-            kind = 0, name = "clip", mime = mime, chunkSize = 64, openSource = opener::open,
-            onProgress = { phase, _ ->
-                if (phase == ImportPhase.PREVIEWING) {
-                    atPreview = opener.opens
-                    onPreview()
-                }
-            },
-        )
+        val result =
+            objects(encoder).importObject(
+                kind = 0,
+                name = "clip",
+                mime = mime,
+                chunkSize = 64,
+                openSource = opener::open,
+                onProgress = { phase, _ ->
+                    if (phase == ImportPhase.PREVIEWING) {
+                        atPreview = opener.opens
+                        onPreview()
+                    }
+                },
+            )
         return result to (opener.opens - atPreview)
     }
 
@@ -116,8 +139,14 @@ class VaultVideoPreviewTest {
         // A reader left open would keep decrypted chunks in memory, and a file handle, past the import.
         for (mode in listOf(FakeThumbnailEncoder.Mode.Encode, FakeThumbnailEncoder.Mode.Throw)) {
             val encoder = FakeThumbnailEncoder(mode)
-            objects(encoder).importObject(kind = 0, name = "clip", mime = "video/mp4", chunkSize = 64,
-                openSource = { Buffer().apply { write(payload.copyOf()) } }).ok()
+            objects(encoder)
+                .importObject(
+                    kind = 0,
+                    name = "clip",
+                    mime = "video/mp4",
+                    chunkSize = 64,
+                    openSource = { Buffer().apply { write(payload.copyOf()) } },
+                ).ok()
 
             val late = encoder.lastReader!!.readAt(position = 0, into = ByteArray(4), offset = 0, size = 4)
             assertIs<Outcome.Err>(late, "the reader handed to a $mode encoder was left open")
@@ -139,9 +168,10 @@ class VaultVideoPreviewTest {
 
     // The one object file in this test's vault — the one being imported.
     private fun storedObjectFile(): Path {
-        fun walk(dir: Path): List<Path> = SystemFileSystem.list(dir).flatMap { p ->
-            if (SystemFileSystem.metadataOrNull(p)?.isDirectory == true) walk(p) else listOf(p)
-        }
+        fun walk(dir: Path): List<Path> =
+            SystemFileSystem.list(dir).flatMap { p ->
+                if (SystemFileSystem.metadataOrNull(p)?.isDirectory == true) walk(p) else listOf(p)
+            }
         return walk(Path(testDir, "objects")).single { it.name.endsWith(".dchm") }
     }
 
@@ -152,12 +182,19 @@ class VaultVideoPreviewTest {
         SystemFileSystem.sink(path).buffered().use { it.write(bytes) }
     }
 
-    private fun flip(bytes: ByteArray, at: Int) {
+    private fun flip(
+        bytes: ByteArray,
+        at: Int,
+    ) {
         bytes[at] = (bytes[at].toInt() xor 0x01).toByte()
     }
 
-    private fun assertNoTraceOf(result: Outcome<ByteArray>, expected: VaultError) {
+    private fun assertNoTraceOf(
+        result: Outcome<ByteArray>,
+        expected: VaultError,
+    ) {
         assertEquals(expected, assertIs<Outcome.Err>(result).error)
+
         fun files(dir: String) = SystemFileSystem.list(Path(testDir, dir)).size
         assertEquals(0, files("thumbs"), "no thumbnail blob")
         assertTrue(runCatching { storedObjectFile() }.isFailure, "no object file")
@@ -167,9 +204,10 @@ class VaultVideoPreviewTest {
     @Test
     fun a_read_back_that_fails_its_tag_at_open_fails_the_import_and_leaves_nothing() {
         // The last byte is the last chunk's tag, which the open authenticates.
-        val (result, _) = opensDuringThePreview(FakeThumbnailEncoder(), "video/mp4") {
-            rewriteStoredObject { flip(it, it.size - 1) }
-        }
+        val (result, _) =
+            opensDuringThePreview(FakeThumbnailEncoder(), "video/mp4") {
+                rewriteStoredObject { flip(it, it.size - 1) }
+            }
 
         assertNoTraceOf(result, VaultError.Crypto.IntegrityFailure)
     }
@@ -177,18 +215,26 @@ class VaultVideoPreviewTest {
     @Test
     fun a_read_back_that_fails_its_tag_on_a_later_read_fails_the_import_and_leaves_nothing() {
         // A byte inside chunk 1's ciphertext: the open does not read it; the encoder's reads do.
-        val (result, _) = opensDuringThePreview(FakeThumbnailEncoder(), "video/mp4") {
-            rewriteStoredObject { bytes ->
-                val headerLen = (bytes[6].toInt() and 0xFF) or ((bytes[7].toInt() and 0xFF) shl 8)
-                flip(bytes, 16 + headerLen + (64 + 16) + 5)
+        val (result, _) =
+            opensDuringThePreview(FakeThumbnailEncoder(), "video/mp4") {
+                rewriteStoredObject { bytes ->
+                    val headerLen = (bytes[6].toInt() and 0xFF) or ((bytes[7].toInt() and 0xFF) shl 8)
+                    flip(bytes, 16 + headerLen + (64 + 16) + 5)
+                }
             }
-        }
 
         assertNoTraceOf(result, VaultError.Crypto.IntegrityFailure)
     }
 
     // How an import ended, reduced to what must match between an image and a video import.
-    private data class Ending(val ok: Boolean, val error: String?, val rows: Long, val objects: Int, val thumbnails: Int, val hasPreview: Boolean)
+    private data class Ending(
+        val ok: Boolean,
+        val error: String?,
+        val rows: Long,
+        val objects: Int,
+        val thumbnails: Int,
+        val hasPreview: Boolean,
+    )
 
     /**
      * Imports [mime] into a vault of its own, running [duringPreview] when the preview phase starts,
@@ -202,22 +248,52 @@ class VaultVideoPreviewTest {
     ): Ending {
         val dir = Path(testDir, "v-${Random.nextULong()}")
         SystemFileSystem.createDirectories(dir)
-        val ownSession = VaultSession.createVault(engine, DefaultKeyDerivation(engine), "correct horse battery".encodeToByteArray(), cheapKdf).session
+        val ownSession =
+            VaultSession
+                .createVault(
+                    engine,
+                    DefaultKeyDerivation(engine),
+                    "correct horse battery".encodeToByteArray(),
+                    cheapKdf,
+                ).session
         val ownStorage = VaultStorage(dir)
         val ownCatalog = (CatalogStore.create(testSqlDriver()) as Outcome.Ok).value
-        val vo = VaultObjects(ownSession, ownStorage, ownCatalog, DchmCodec(engine), clock = { 42L },
-            random = Random(37).let { rng -> { n -> rng.nextBytes(n) } }, thumbnails = encoder)
-        val result = vo.importObject(
-            kind = 0, name = "x", mime = mime, chunkSize = 64,
-            openSource = { Buffer().apply { write(payload.copyOf()) } },
-            onProgress = { phase, _ -> if (phase == ImportPhase.PREVIEWING) duringPreview(ownSession, dir) },
-            isActive = isActive,
-        )
+        val vo =
+            VaultObjects(
+                ownSession,
+                ownStorage,
+                ownCatalog,
+                DchmCodec(engine),
+                clock = { 42L },
+                random = Random(37).let { rng -> { n -> rng.nextBytes(n) } },
+                thumbnails = encoder,
+            )
+        val result =
+            vo.importObject(
+                kind = 0,
+                name = "x",
+                mime = mime,
+                chunkSize = 64,
+                openSource = { Buffer().apply { write(payload.copyOf()) } },
+                onProgress = { phase, _ -> if (phase == ImportPhase.PREVIEWING) duringPreview(ownSession, dir) },
+                isActive = isActive,
+            )
+
         fun count(sub: String): Int {
-            fun walk(p: Path): Int = SystemFileSystem.list(p).sumOf { if (SystemFileSystem.metadataOrNull(it)?.isDirectory == true) walk(it) else 1 }
+            fun walk(p: Path): Int =
+                SystemFileSystem.list(p).sumOf {
+                    if (SystemFileSystem.metadataOrNull(it)?.isDirectory ==
+                        true
+                    ) {
+                        walk(it)
+                    } else {
+                        1
+                    }
+                }
             return walk(Path(dir, sub))
         }
-        val hasPreview = result is Outcome.Ok && ownSession.isOpen && vo.openMeta(result.value).ok().thumbnailKey != null
+        val hasPreview =
+            result is Outcome.Ok && ownSession.isOpen && vo.openMeta(result.value).ok().thumbnailKey != null
         return Ending(
             ok = result is Outcome.Ok,
             error = (result as? Outcome.Err)?.error?.let { it::class.simpleName },
@@ -243,17 +319,26 @@ class VaultVideoPreviewTest {
         assertEquals(expected, video)
     }
 
-    private val importedWithoutPreview = Ending(ok = true, error = null, rows = 1, objects = 1, thumbnails = 0, hasPreview = false)
+    private val importedWithoutPreview =
+        Ending(ok = true, error = null, rows = 1, objects = 1, thumbnails = 0, hasPreview = false)
 
     @Test
     fun an_encoder_that_declines_a_video_still_imports_it_without_a_preview() {
-        assertVideoEndsLikeAnImage({ FakeThumbnailEncoder(FakeThumbnailEncoder.Mode.Decline) }, expected = importedWithoutPreview)
-        assertVideoEndsLikeAnImage({ FakeThumbnailEncoder(FakeThumbnailEncoder.Mode.Empty) }, expected = importedWithoutPreview)
+        assertVideoEndsLikeAnImage({
+            FakeThumbnailEncoder(FakeThumbnailEncoder.Mode.Decline)
+        }, expected = importedWithoutPreview)
+        assertVideoEndsLikeAnImage(
+            { FakeThumbnailEncoder(FakeThumbnailEncoder.Mode.Empty) },
+            expected = importedWithoutPreview,
+        )
     }
 
     @Test
     fun an_encoder_that_throws_on_a_video_still_imports_it_without_a_preview() {
-        assertVideoEndsLikeAnImage({ FakeThumbnailEncoder(FakeThumbnailEncoder.Mode.Throw) }, expected = importedWithoutPreview)
+        assertVideoEndsLikeAnImage(
+            { FakeThumbnailEncoder(FakeThumbnailEncoder.Mode.Throw) },
+            expected = importedWithoutPreview,
+        )
     }
 
     @Test
@@ -273,7 +358,15 @@ class VaultVideoPreviewTest {
         assertVideoEndsLikeAnImage(
             { FakeThumbnailEncoder() },
             duringPreview = { session, _ -> session.close() },
-            expected = Ending(ok = false, error = "Unexpected", rows = 0, objects = 0, thumbnails = 0, hasPreview = false),
+            expected =
+                Ending(
+                    ok = false,
+                    error = "Unexpected",
+                    rows = 0,
+                    objects = 0,
+                    thumbnails = 0,
+                    hasPreview = false,
+                ),
         )
     }
 
@@ -282,9 +375,17 @@ class VaultVideoPreviewTest {
         var between: () -> Unit = {}
         var secondRead: Outcome<Int>? = null
 
-        override fun encode(mime: String, maxEdgePx: Int, openSource: () -> RawSource): ByteArray? = null
+        override fun encode(
+            mime: String,
+            maxEdgePx: Int,
+            openSource: () -> RawSource,
+        ): ByteArray? = null
 
-        override fun encode(mime: String, maxEdgePx: Int, reader: RangeReader): ByteArray? {
+        override fun encode(
+            mime: String,
+            maxEdgePx: Int,
+            reader: RangeReader,
+        ): ByteArray? {
             val into = ByteArray(8)
             assertIs<Outcome.Ok<Int>>(reader.readAt(0, into, 0, into.size))
             between()
@@ -313,9 +414,10 @@ class VaultVideoPreviewTest {
 
     @Test
     fun a_read_back_that_is_not_a_container_fails_the_import_and_leaves_nothing() {
-        val (result, _) = opensDuringThePreview(FakeThumbnailEncoder(), "video/mp4") {
-            rewriteStoredObject { it[0] = 'X'.code.toByte() }
-        }
+        val (result, _) =
+            opensDuringThePreview(FakeThumbnailEncoder(), "video/mp4") {
+                rewriteStoredObject { it[0] = 'X'.code.toByte() }
+            }
 
         assertNoTraceOf(result, VaultError.Crypto.MalformedContainer)
     }

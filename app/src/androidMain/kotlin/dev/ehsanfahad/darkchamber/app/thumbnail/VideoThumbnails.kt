@@ -24,12 +24,16 @@ import java.io.IOException
  * [reader] belongs to the caller, which closes it; the retriever's own close of its data source does
  * not reach it.
  */
-internal fun videoFrame(maxEdgePx: Int, reader: RangeReader): Bitmap? {
+internal fun videoFrame(
+    maxEdgePx: Int,
+    reader: RangeReader,
+): Bitmap? {
     val retriever = MediaMetadataRetriever()
     val source = ReaderDataSource(reader)
     return try {
         retriever.setDataSource(source)
-        val at = previewFrameTimeUs(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull())
+        val at =
+            previewFrameTimeUs(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull())
         val bounds = displayedSize(retriever) ?: return null
         val target = thumbnailTargetSize(bounds.width, bounds.height, maxEdgePx) ?: return null
         retriever.frameNear(at, target) { source.refused }
@@ -43,7 +47,8 @@ internal fun videoFrame(maxEdgePx: Int, reader: RangeReader): Bitmap? {
 // The size the video is shown at: its coded size, turned when its rotation is a quarter turn.
 private fun displayedSize(retriever: MediaMetadataRetriever): ThumbnailSize? {
     val width = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: return null
-    val height = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: return null
+    val height =
+        retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: return null
     val rotation = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
     val coded = ThumbnailSize(width, height)
     return if (rotation % 180 != 0) coded.swapped() else coded
@@ -55,16 +60,27 @@ private fun displayedSize(retriever: MediaMetadataRetriever): ThumbnailSize? {
 // Not a second request once the source has refused a read: a refusal is final, so it would fail too,
 // and a frame request whose input fails costs seconds — the platform waits on each decoder it tries
 // (two, about 2 s each, on a Pixel 7 Pro), which is where a lock landing mid-preview spent 8 s.
-private fun MediaMetadataRetriever.frameNear(atUs: Long, target: ThumbnailSize, refused: () -> Boolean): Bitmap? {
+private fun MediaMetadataRetriever.frameNear(
+    atUs: Long,
+    target: ThumbnailSize,
+    refused: () -> Boolean,
+): Bitmap? {
     for (option in listOf(MediaMetadataRetriever.OPTION_NEXT_SYNC, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)) {
         if (refused()) return null
-        val frame = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-            getScaledFrameAtTime(atUs, option, target.width, target.height)
-        } else {
-            getFrameAtTime(atUs, option)?.let { full ->
-                Bitmap.createScaledBitmap(full, target.width, target.height, true).also { if (it !== full) full.recycle() }
+        val frame =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                getScaledFrameAtTime(atUs, option, target.width, target.height)
+            } else {
+                getFrameAtTime(atUs, option)?.let { full ->
+                    Bitmap.createScaledBitmap(full, target.width, target.height, true).also {
+                        if (it !==
+                            full
+                        ) {
+                            full.recycle()
+                        }
+                    }
+                }
             }
-        }
         if (frame != null) return frame
     }
     return null
@@ -76,15 +92,25 @@ private fun MediaMetadataRetriever.frameNear(atUs: Long, target: ThumbnailSize, 
  * `IOException` this contract expects, so the retriever gives up on the file rather than being handed
  * a short read it would take as the end.
  */
-private class ReaderDataSource(private val reader: RangeReader) : MediaDataSource() {
+private class ReaderDataSource(
+    private val reader: RangeReader,
+) : MediaDataSource() {
     /** Whether a read has failed. The reader refuses every read after its first refusal. */
     @Volatile
     var refused = false
         private set
 
-    override fun readAt(position: Long, buffer: ByteArray, offset: Int, size: Int): Int =
+    override fun readAt(
+        position: Long,
+        buffer: ByteArray,
+        offset: Int,
+        size: Int,
+    ): Int =
         when (val read = reader.readAt(position, buffer, offset, size)) {
-            is Outcome.Ok -> if (read.value == RangeReader.END) -1 else read.value
+            is Outcome.Ok -> {
+                if (read.value == RangeReader.END) -1 else read.value
+            }
+
             is Outcome.Err -> {
                 refused = true
                 throw IOException("the vault object could not be read")

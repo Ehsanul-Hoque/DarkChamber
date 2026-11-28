@@ -27,7 +27,6 @@ import kotlin.test.assertTrue
  */
 @OptIn(ExperimentalForeignApi::class)
 class IosPickedFileFromTest {
-
     private lateinit var workDir: Path
     private lateinit var scratchDir: Path
 
@@ -96,7 +95,10 @@ class IosPickedFileFromTest {
     }
 
     /** Stands in for the URL the system hands our completion handler. */
-    private fun systemHandedFile(name: String, contents: String): NSURL {
+    private fun systemHandedFile(
+        name: String,
+        contents: String,
+    ): NSURL {
         val path = Path(workDir, name)
         SystemFileSystem.sink(path).buffered().use { it.writeString(contents) }
         return NSURL.fileURLWithPath(path.toString())

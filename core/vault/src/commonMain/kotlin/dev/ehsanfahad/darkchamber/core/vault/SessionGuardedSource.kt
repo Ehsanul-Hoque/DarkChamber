@@ -35,8 +35,10 @@ internal class SessionGuardedSource(
     private val delegate: RawSource,
     private val shouldContinue: () -> Boolean,
 ) : RawSource {
-
-    override fun readAtMostTo(sink: Buffer, byteCount: Long): Long {
+    override fun readAtMostTo(
+        sink: Buffer,
+        byteCount: Long,
+    ): Long {
         if (!shouldContinue()) throw OperationStoppedException()
         return delegate.readAtMostTo(sink, byteCount)
     }

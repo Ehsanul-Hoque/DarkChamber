@@ -25,7 +25,9 @@ import java.io.IOException
  *   load does not close the reader: the player opens a new one for every seek.
  */
 @UnstableApi
-internal class SharedRangeReader(private val reader: RangeReader) : AutoCloseable {
+internal class SharedRangeReader(
+    private val reader: RangeReader,
+) : AutoCloseable {
     private val lock = Any()
     private var closed = false
 
@@ -44,11 +46,19 @@ internal class SharedRangeReader(private val reader: RangeReader) : AutoCloseabl
      * [VaultReadException] — the [IOException] a data source reports — after keeping its error; a read
      * after [close] throws without keeping anything, since nothing failed: the player was let go.
      */
-    fun read(position: Long, into: ByteArray, offset: Int, size: Int): Int =
+    fun read(
+        position: Long,
+        into: ByteArray,
+        offset: Int,
+        size: Int,
+    ): Int =
         synchronized(lock) {
             if (closed) throw IOException("the player was let go")
             when (val read = reader.readAt(position, into, offset, size)) {
-                is Outcome.Ok -> read.value
+                is Outcome.Ok -> {
+                    read.value
+                }
+
                 is Outcome.Err -> {
                     if (failure == null) failure = read.error
                     throw VaultReadException(read.error)
@@ -69,14 +79,21 @@ internal class SharedRangeReader(private val reader: RangeReader) : AutoCloseabl
 }
 
 /** A read the vault refused, carrying the vault's own [error]. */
-internal class VaultReadException(val error: VaultError) : IOException("the vault object could not be read")
+internal class VaultReadException(
+    val error: VaultError,
+) : IOException("the vault object could not be read")
 
 /**
  * A Media3 [DataSource] over a [SharedRangeReader]: the player asks for a byte range of the item and
  * gets its plaintext, decrypted chunk by chunk in memory. Nothing is cached and nothing is written.
  */
 @UnstableApi
-internal class VaultDataSource(private val shared: SharedRangeReader) : BaseDataSource(/* isNetwork = */ false) {
+internal class VaultDataSource(
+    private val shared: SharedRangeReader,
+) : BaseDataSource(
+        // isNetwork =
+        false,
+    ) {
     private var uri: Uri? = null
     private var opened = false
     private var position = 0L
@@ -96,7 +113,10 @@ internal class VaultDataSource(private val shared: SharedRangeReader) : BaseData
      * when [length] is [C.LENGTH_UNSET], never past the object's end. A start past the end is the
      * position-out-of-range error the player expects.
      */
-    internal fun start(position: Long, length: Long): Long {
+    internal fun start(
+        position: Long,
+        length: Long,
+    ): Long {
         val total = shared.length
         if (position < 0 || position > total) throw DataSourceException(OUT_OF_RANGE)
         this.position = position
@@ -105,7 +125,11 @@ internal class VaultDataSource(private val shared: SharedRangeReader) : BaseData
         return remaining
     }
 
-    override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+    override fun read(
+        buffer: ByteArray,
+        offset: Int,
+        length: Int,
+    ): Int {
         if (length == 0) return 0
         if (remaining == 0L) return C.RESULT_END_OF_INPUT
         val n = shared.read(position, buffer, offset, minOf(length.toLong(), remaining).toInt())

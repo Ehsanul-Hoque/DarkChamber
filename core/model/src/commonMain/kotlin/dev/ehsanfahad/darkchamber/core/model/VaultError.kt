@@ -61,7 +61,9 @@ sealed interface VaultError {
     }
 
     /** Underlying I/O failure while reading or writing a container. */
-    data class Io(val cause: Throwable) : VaultError
+    data class Io(
+        val cause: Throwable,
+    ) : VaultError
 
     /**
      * Catalog (SQLDelight) failure — schema create/migrate, query, or transaction.
@@ -71,7 +73,9 @@ sealed interface VaultError {
      * boundary (`core:logging`) to redact — this type is never logged directly (hard rule #4:
      * no SQL text, blob, id, or path in logs).
      */
-    data class Db(val cause: Throwable) : VaultError
+    data class Db(
+        val cause: Throwable,
+    ) : VaultError
 
     /**
      * A throwable that escaped a lower layer which should have returned an [Outcome] — the
@@ -80,5 +84,7 @@ sealed interface VaultError {
      * (docs/engineering/PATTERNS.md §5). The [cause] is carried only for the logging boundary to
      * redact — never logged directly (hard rule #4).
      */
-    data class Unexpected(val cause: Throwable) : VaultError
+    data class Unexpected(
+        val cause: Throwable,
+    ) : VaultError
 }

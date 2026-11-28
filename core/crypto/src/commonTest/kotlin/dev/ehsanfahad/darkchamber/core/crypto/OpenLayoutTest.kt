@@ -19,6 +19,7 @@ class OpenLayoutTest {
     private val codec = DchmCodec(CryptographyKotlinEngine())
     private val dek = ByteArray(32) { it.toByte() }
     private val fileId = "file-1".encodeToByteArray()
+
     // A fresh prefix for every seal in the run: the JDK provider refuses a second encryption under the
     // same key and nonce, so a reused one fails whichever test happens to come next.
     private val noncePrefix = ByteArray(8) { if (it == 0) nextPrefix++.toByte() else (0x40 + it).toByte() }
@@ -27,28 +28,48 @@ class OpenLayoutTest {
         var nextPrefix = 1
     }
 
-    private fun encode(data: ByteArray, chunkSize: Int = 16): ByteArray {
+    private fun encode(
+        data: ByteArray,
+        chunkSize: Int = 16,
+    ): ByteArray {
         val out = Buffer()
-        val result = codec.encryptContainer(
-            dek.copyOf(), noncePrefix.copyOf(), 0L, fileId.copyOf(), "a-name.bin", "application/octet-stream", chunkSize,
-            { Buffer().apply { write(data) } }, out,
-        )
+        val result =
+            codec.encryptContainer(
+                dek.copyOf(),
+                noncePrefix.copyOf(),
+                0L,
+                fileId.copyOf(),
+                "a-name.bin",
+                "application/octet-stream",
+                chunkSize,
+                { Buffer().apply { write(data) } },
+                out,
+            )
         assertIs<Outcome.Ok<Long>>(result)
         return out.readByteArray()
     }
 
     // Positioned reads over the container's bytes, counting how many bytes were asked for.
-    private class Bytes(private val container: ByteArray) {
+    private class Bytes(
+        private val container: ByteArray,
+    ) {
         var bytesRead = 0L
         val size: Long get() = container.size.toLong()
 
-        fun read(position: Long, length: Int): ByteArray {
+        fun read(
+            position: Long,
+            length: Int,
+        ): ByteArray {
             bytesRead += length
             return container.copyOfRange(position.toInt(), position.toInt() + length)
         }
     }
 
-    private fun open(container: ByteArray, key: ByteArray = dek, id: ByteArray = fileId): Outcome<OpenedContainer> {
+    private fun open(
+        container: ByteArray,
+        key: ByteArray = dek,
+        id: ByteArray = fileId,
+    ): Outcome<OpenedContainer> {
         val bytes = Bytes(container)
         return codec.openLayout(key.copyOf(), id.copyOf(), bytes.size, bytes::read)
     }
@@ -69,8 +90,21 @@ class OpenLayoutTest {
     }
 
     // What a full decrypt says about the same bytes — the error an open must agree with.
-    private fun fullDecryptError(container: ByteArray, key: ByteArray = dek, id: ByteArray = fileId): VaultError =
-        assertIs<Outcome.Err>(codec.decryptContainer(key.copyOf(), id.copyOf(), Buffer().apply { write(container) }, Buffer())).error
+    private fun fullDecryptError(
+        container: ByteArray,
+        key: ByteArray = dek,
+        id: ByteArray = fileId,
+    ): VaultError =
+        assertIs<Outcome.Err>(
+            codec.decryptContainer(
+                key.copyOf(),
+                id.copyOf(),
+                Buffer().apply {
+                    write(container)
+                },
+                Buffer(),
+            ),
+        ).error
 
     private fun assertFailsAtOpenLikeAFullDecrypt(
         expected: VaultError,
@@ -101,7 +135,11 @@ class OpenLayoutTest {
         // The header does not carry file_id — only chunk AAD does — so this is the last chunk's check.
         val container = encode(ByteArray(40) { it.toByte() })
 
-        assertFailsAtOpenLikeAFullDecrypt(VaultError.Crypto.IntegrityFailure, container, id = "file-2".encodeToByteArray())
+        assertFailsAtOpenLikeAFullDecrypt(
+            VaultError.Crypto.IntegrityFailure,
+            container,
+            id = "file-2".encodeToByteArray(),
+        )
     }
 
     @Test
@@ -149,29 +187,40 @@ class OpenLayoutTest {
     fun too_few_bytes_for_a_prelude_is_malformed() {
         val container = encode(ByteArray(40) { it.toByte() })
 
-        assertFailsAtOpenLikeAFullDecrypt(VaultError.Crypto.MalformedContainer, container.copyOf(DchmFormat.PRELUDE_SIZE - 1))
+        assertFailsAtOpenLikeAFullDecrypt(
+            VaultError.Crypto.MalformedContainer,
+            container.copyOf(DchmFormat.PRELUDE_SIZE - 1),
+        )
     }
 
     // A prelude and a header sealed properly under the right key, but carrying values no encoder
     // writes — the case where authentication passes and the numbers still cannot be trusted.
-    private fun sealedHeaderOnly(chunkSize: Int, plaintextSize: Long): ByteArray {
+    private fun sealedHeaderOnly(
+        chunkSize: Int,
+        plaintextSize: Long,
+    ): ByteArray {
         val engine = CryptographyKotlinEngine()
         val prefix = ByteArray(8) { if (it == 0) nextPrefix++.toByte() else 0x60 }
         val cbor = DchmHeaderCodec.encode(DchmHeader("n", "m", plaintextSize, 0L, ByteArray(32), chunkSize))
-        val prelude = Prelude(DchmFormat.VERSION, DchmFormat.CIPHER_AES_256_GCM, cbor.size + DchmFormat.GCM_TAG_SIZE, prefix)
+        val prelude =
+            Prelude(DchmFormat.VERSION, DchmFormat.CIPHER_AES_256_GCM, cbor.size + DchmFormat.GCM_TAG_SIZE, prefix)
         val preludeBytes = prelude.toByteArray()
         return preludeBytes + engine.aeadSeal(dek.copyOf(), headerNonce(prefix.copyOf()), preludeBytes, cbor)
     }
 
     @Test
     fun an_authenticated_header_with_impossible_numbers_is_malformed() {
-        val cases = listOf(
-            0 to 40L, // no chunk size
-            16 to -1L, // a negative size
-            16 to (DchmFormat.HEADER_NONCE_COUNTER.toLong() + 1) * 16, // more chunks than the nonce space allows
-        )
+        val cases =
+            listOf(
+                0 to 40L, // no chunk size
+                16 to -1L, // a negative size
+                16 to (DchmFormat.HEADER_NONCE_COUNTER.toLong() + 1) * 16, // more chunks than the nonce space allows
+            )
         for ((chunkSize, plaintextSize) in cases) {
-            assertFailsAtOpenLikeAFullDecrypt(VaultError.Crypto.MalformedContainer, sealedHeaderOnly(chunkSize, plaintextSize))
+            assertFailsAtOpenLikeAFullDecrypt(
+                VaultError.Crypto.MalformedContainer,
+                sealedHeaderOnly(chunkSize, plaintextSize),
+            )
         }
     }
 
@@ -202,16 +251,28 @@ class OpenLayoutTest {
     fun a_read_that_fails_is_an_Io_error_not_a_throw() {
         val container = encode(ByteArray(40) { it.toByte() })
 
-        val result = codec.openLayout(dek.copyOf(), fileId.copyOf(), container.size.toLong()) { _, _ -> throw IllegalStateException("gone") }
+        val result =
+            codec.openLayout(
+                dek.copyOf(),
+                fileId.copyOf(),
+                container.size.toLong(),
+            ) { _, _ -> throw IllegalStateException("gone") }
 
         assertIs<VaultError.Io>(assertIs<Outcome.Err>(result).error)
     }
 
     // The real engine, keeping hold of every plaintext its header open hands out.
-    private class RecordingEngine(private val real: CryptoEngine = CryptographyKotlinEngine()) : CryptoEngine by real {
+    private class RecordingEngine(
+        private val real: CryptoEngine = CryptographyKotlinEngine(),
+    ) : CryptoEngine by real {
         val opened = mutableListOf<ByteArray>()
 
-        override fun aeadOpen(key: ByteArray, nonce: ByteArray, aad: ByteArray, ciphertext: ByteArray): Outcome<ByteArray> =
+        override fun aeadOpen(
+            key: ByteArray,
+            nonce: ByteArray,
+            aad: ByteArray,
+            ciphertext: ByteArray,
+        ): Outcome<ByteArray> =
             real.aeadOpen(key, nonce, aad, ciphertext).also { if (it is Outcome.Ok) opened += it.value }
     }
 
@@ -221,7 +282,10 @@ class OpenLayoutTest {
         val engine = RecordingEngine()
         val bytes = Bytes(container)
 
-        val opened = assertIs<Outcome.Ok<OpenedContainer>>(DchmCodec(engine).openLayout(dek.copyOf(), fileId.copyOf(), bytes.size, bytes::read)).value
+        val opened =
+            assertIs<Outcome.Ok<OpenedContainer>>(
+                DchmCodec(engine).openLayout(dek.copyOf(), fileId.copyOf(), bytes.size, bytes::read),
+            ).value
 
         // The first plaintext out of the engine is the header's CBOR; the second is the last chunk, which the caller now owns.
         assertEquals(2, engine.opened.size)
@@ -233,6 +297,9 @@ class OpenLayoutTest {
     fun a_prelude_with_its_header_cut_short_fails_as_tampering() {
         val container = encode(ByteArray(40) { it.toByte() })
 
-        assertFailsAtOpenLikeAFullDecrypt(VaultError.Crypto.IntegrityFailure, container.copyOf(DchmFormat.PRELUDE_SIZE + 10))
+        assertFailsAtOpenLikeAFullDecrypt(
+            VaultError.Crypto.IntegrityFailure,
+            container.copyOf(DchmFormat.PRELUDE_SIZE + 10),
+        )
     }
 }

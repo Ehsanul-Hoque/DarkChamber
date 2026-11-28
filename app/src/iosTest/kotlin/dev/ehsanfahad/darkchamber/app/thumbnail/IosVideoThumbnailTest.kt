@@ -61,19 +61,31 @@ class IosVideoThumbnailTest {
 
     private val root = Path(SystemTemporaryDirectory, "ivt-${Random.nextULong()}")
     private val engine = CryptographyKotlinEngine()
-    private val session = VaultSession.createVault(
-        engine, DefaultKeyDerivation(engine), "frame test".encodeToByteArray(),
-        PassphraseKdfProfile.Argon2id(memoryKib = 256, iterations = 1, parallelism = 1),
-    ).session
-    private val objects = run {
-        SystemFileSystem.createDirectories(root)
-        VaultObjects(session, VaultStorage(root), (CatalogStore.create(testSqlDriver()) as Outcome.Ok).value,
-            DchmCodec(engine), clock = { 0L }, random = { n -> engine.randomBytes(n) })
-    }
+    private val session =
+        VaultSession
+            .createVault(
+                engine,
+                DefaultKeyDerivation(engine),
+                "frame test".encodeToByteArray(),
+                PassphraseKdfProfile.Argon2id(memoryKib = 256, iterations = 1, parallelism = 1),
+            ).session
+    private val objects =
+        run {
+            SystemFileSystem.createDirectories(root)
+            VaultObjects(
+                session,
+                VaultStorage(root),
+                (CatalogStore.create(testSqlDriver()) as Outcome.Ok).value,
+                DchmCodec(engine),
+                clock = { 0L },
+                random = { n -> engine.randomBytes(n) },
+            )
+        }
 
     @AfterTest
     fun cleanup() {
         session.close()
+
         fun delete(p: Path) {
             if (SystemFileSystem.metadataOrNull(p)?.isDirectory == true) SystemFileSystem.list(p).forEach(::delete)
             SystemFileSystem.delete(p, mustExist = false)
@@ -83,19 +95,32 @@ class IosVideoThumbnailTest {
 
     // Stores [bytes] as a vault object (64 KiB chunks, so even a small clip spans several) and opens it by position.
     private fun stored(bytes: ByteArray): RangeReader {
-        val id = objects.importObject(kind = 0, name = "clip", mime = "application/octet-stream", chunkSize = 64 * 1024,
-            openSource = { Buffer().apply { write(bytes) } })
+        val id =
+            objects.importObject(
+                kind = 0,
+                name = "clip",
+                mime = "application/octet-stream",
+                chunkSize = 64 * 1024,
+                openSource = { Buffer().apply { write(bytes) } },
+            )
         return (objects.openRange((id as Outcome.Ok).value) as Outcome.Ok).value
     }
 
-    private fun preview(clip: ByteArray, mime: String = "video/mp4"): CGImageRef? = previewThrough(stored(clip), mime)
+    private fun preview(
+        clip: ByteArray,
+        mime: String = "video/mp4",
+    ): CGImageRef? = previewThrough(stored(clip), mime)
 
-    private fun previewThrough(reader: RangeReader, mime: String = "video/mp4"): CGImageRef? {
-        val encoded = try {
-            encoder.encode(mime, 512, reader)
-        } finally {
-            reader.close()
-        } ?: return null
+    private fun previewThrough(
+        reader: RangeReader,
+        mime: String = "video/mp4",
+    ): CGImageRef? {
+        val encoded =
+            try {
+                encoder.encode(mime, 512, reader)
+            } finally {
+                reader.close()
+            } ?: return null
         val data = encoded.usePinned { NSData.create(bytes = it.addressOf(0), length = encoded.size.toULong()) }
         return UIImage.imageWithData(data)?.CGImage
     }
@@ -158,11 +183,17 @@ class IosVideoThumbnailTest {
     fun a_reader_that_fails_on_bytes_the_frame_needs_gives_no_preview() {
         // Index at the end: the frame needs the index, so a failure anywhere before the last few bytes stops it.
         for (failFrom in listOf(0L, 1024L, 2048L, 3072L, 4096L)) {
-            assertNull(previewThrough(ScriptedReader(VideoFixtures.colour, failFrom)), "index at the end, failing from $failFrom")
+            assertNull(
+                previewThrough(ScriptedReader(VideoFixtures.colour, failFrom)),
+                "index at the end, failing from $failFrom",
+            )
         }
         // Index at the start: the second's frame lies in the first 3 KB.
         for (failFrom in listOf(0L, 1024L, 2048L)) {
-            assertNull(previewThrough(ScriptedReader(VideoFixtures.colourFaststart, failFrom)), "index at the start, failing from $failFrom")
+            assertNull(
+                previewThrough(ScriptedReader(VideoFixtures.colourFaststart, failFrom)),
+                "index at the start, failing from $failFrom",
+            )
         }
     }
 
@@ -207,10 +238,18 @@ class IosVideoThumbnailTest {
     }
 
     // [bytes] by position, with every read at or after [failFrom] failing as a damaged chunk would.
-    private class ScriptedReader(private val bytes: ByteArray, private val failFrom: Long) : RangeReader {
+    private class ScriptedReader(
+        private val bytes: ByteArray,
+        private val failFrom: Long,
+    ) : RangeReader {
         override val length: Long = bytes.size.toLong()
 
-        override fun readAt(position: Long, into: ByteArray, offset: Int, size: Int): Outcome<Int> {
+        override fun readAt(
+            position: Long,
+            into: ByteArray,
+            offset: Int,
+            size: Int,
+        ): Outcome<Int> {
             if (position >= length) return Outcome.Ok(RangeReader.END)
             if (position >= failFrom) return Outcome.Err(VaultError.Crypto.IntegrityFailure)
             val n = minOf(size.toLong(), failFrom - position, length - position).toInt()
@@ -224,15 +263,24 @@ class IosVideoThumbnailTest {
     private fun CGImageRef.size(): Pair<Int, Int> = CGImageGetWidth(this).toInt() to CGImageGetHeight(this).toInt()
 
     // The pixel at (x, y) from the top left, drawn into an RGBA buffer of our own, named roughly.
-    private fun CGImageRef.colourAt(x: Int, y: Int): String {
+    private fun CGImageRef.colourAt(
+        x: Int,
+        y: Int,
+    ): String {
         val (width, height) = size()
         val pixels = ByteArray(width * height * 4)
         pixels.usePinned { pinned ->
             val space = CGColorSpaceCreateDeviceRGB()
-            val context = CGBitmapContextCreate(
-                pinned.addressOf(0), width.toULong(), height.toULong(), 8u, (width * 4).toULong(), space,
-                CGImageAlphaInfo.kCGImageAlphaPremultipliedLast.value,
-            )
+            val context =
+                CGBitmapContextCreate(
+                    pinned.addressOf(0),
+                    width.toULong(),
+                    height.toULong(),
+                    8u,
+                    (width * 4).toULong(),
+                    space,
+                    CGImageAlphaInfo.kCGImageAlphaPremultipliedLast.value,
+                )
             CGContextDrawImage(context, CGRectMake(0.0, 0.0, width.toDouble(), height.toDouble()), this)
             CGContextRelease(context)
             CGColorSpaceRelease(space)

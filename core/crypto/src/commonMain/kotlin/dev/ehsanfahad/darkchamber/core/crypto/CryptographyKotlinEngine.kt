@@ -34,13 +34,23 @@ class CryptographyKotlinEngine(
     // per-chunk counter, header counter reserved), which is the whole reason we must control the IV.
     // cryptography-kotlin's explicit-IV API is (iv, data, associatedData) — data before AAD.
     @OptIn(DelicateCryptographyApi::class)
-    override fun aeadSeal(key: ByteArray, nonce: ByteArray, aad: ByteArray, plaintext: ByteArray): ByteArray {
+    override fun aeadSeal(
+        key: ByteArray,
+        nonce: ByteArray,
+        aad: ByteArray,
+        plaintext: ByteArray,
+    ): ByteArray {
         requireGcmParams(key, nonce)
         return keyFrom(key).cipher().encryptWithIvBlocking(nonce, plaintext, aad)
     }
 
     @OptIn(DelicateCryptographyApi::class)
-    override fun aeadOpen(key: ByteArray, nonce: ByteArray, aad: ByteArray, ciphertext: ByteArray): Outcome<ByteArray> {
+    override fun aeadOpen(
+        key: ByteArray,
+        nonce: ByteArray,
+        aad: ByteArray,
+        ciphertext: ByteArray,
+    ): Outcome<ByteArray> {
         // Reject caller misuse (wrong key/nonce size) as a loud precondition failure *before* the
         // cipher, so it can't be swallowed and mislabeled as tampering by the catch below.
         requireGcmParams(key, nonce)
@@ -53,34 +63,53 @@ class CryptographyKotlinEngine(
         }
     }
 
-    private fun requireGcmParams(key: ByteArray, nonce: ByteArray) {
+    private fun requireGcmParams(
+        key: ByteArray,
+        nonce: ByteArray,
+    ) {
         require(key.size == AES_256_KEY_SIZE) { "AES-256 key must be $AES_256_KEY_SIZE bytes, was ${key.size}" }
         require(nonce.size == GCM_NONCE_SIZE) { "GCM nonce must be $GCM_NONCE_SIZE bytes, was ${nonce.size}" }
     }
 
     override fun sha256(bytes: ByteArray): ByteArray = sha256.hasher().hashBlocking(bytes)
 
-    override fun newSha256(): IncrementalHash = object : IncrementalHash {
-        private val function = sha256.hasher().createHashFunction()
+    override fun newSha256(): IncrementalHash =
+        object : IncrementalHash {
+            private val function = sha256.hasher().createHashFunction()
 
-        override fun update(data: ByteArray, startIndex: Int, endIndex: Int) =
-            function.update(data, startIndex, endIndex)
+            override fun update(
+                data: ByteArray,
+                startIndex: Int,
+                endIndex: Int,
+            ) = function.update(data, startIndex, endIndex)
 
-        override fun digest(): ByteArray = function.use { it.hashToByteArray() }
-    }
+            override fun digest(): ByteArray = function.use { it.hashToByteArray() }
+        }
 
     override fun randomBytes(n: Int): ByteArray = CryptographyRandom.Default.nextBytes(n)
 
-    override fun pbkdf2Sha256(password: ByteArray, salt: ByteArray, iterations: Int, dkLenBytes: Int): ByteArray {
+    override fun pbkdf2Sha256(
+        password: ByteArray,
+        salt: ByteArray,
+        iterations: Int,
+        dkLenBytes: Int,
+    ): ByteArray {
         require(iterations > 0) { "PBKDF2 iterations must be positive, was $iterations" }
         require(dkLenBytes > 0) { "PBKDF2 output length must be positive, was $dkLenBytes" }
-        return pbkdf2.secretDerivation(SHA256, iterations, dkLenBytes.bytes, salt)
+        return pbkdf2
+            .secretDerivation(SHA256, iterations, dkLenBytes.bytes, salt)
             .deriveSecretToByteArrayBlocking(password)
     }
 
-    override fun hkdfSha256(ikm: ByteArray, salt: ByteArray, info: ByteArray, lenBytes: Int): ByteArray {
+    override fun hkdfSha256(
+        ikm: ByteArray,
+        salt: ByteArray,
+        info: ByteArray,
+        lenBytes: Int,
+    ): ByteArray {
         require(lenBytes > 0) { "HKDF output length must be positive, was $lenBytes" }
-        return hkdf.secretDerivation(SHA256, lenBytes.bytes, salt, info)
+        return hkdf
+            .secretDerivation(SHA256, lenBytes.bytes, salt, info)
             .deriveSecretToByteArrayBlocking(ikm)
     }
 
@@ -103,7 +132,9 @@ class CryptographyKotlinEngine(
         // Salt floor + non-empty password keep the two actuals consistent (BouncyCastle accepts a
         // short salt / empty password; phc rejects them, and an empty ByteArray would crash the iOS
         // cinterop's addressOf(0)). Fail loudly here rather than forwarding to a native precondition.
-        require(salt.size >= ARGON2ID_MIN_SALT_SIZE) { "Argon2id salt must be >= $ARGON2ID_MIN_SALT_SIZE bytes, was ${salt.size}" }
+        require(salt.size >= ARGON2ID_MIN_SALT_SIZE) {
+            "Argon2id salt must be >= $ARGON2ID_MIN_SALT_SIZE bytes, was ${salt.size}"
+        }
         require(password.isNotEmpty()) { "Argon2id password must be non-empty" }
         return platformArgon2id(password, salt, memoryKib, iterations, parallelism, outLenBytes)
     }

@@ -19,13 +19,15 @@ class DchmHeader(
 ) {
     override fun equals(other: Any?): Boolean =
         this === other ||
-            (other is DchmHeader &&
-                originalName == other.originalName &&
-                mime == other.mime &&
-                plaintextSize == other.plaintextSize &&
-                createdAt == other.createdAt &&
-                sha256Plaintext.contentEquals(other.sha256Plaintext) &&
-                chunkSize == other.chunkSize)
+            (
+                other is DchmHeader &&
+                    originalName == other.originalName &&
+                    mime == other.mime &&
+                    plaintextSize == other.plaintextSize &&
+                    createdAt == other.createdAt &&
+                    sha256Plaintext.contentEquals(other.sha256Plaintext) &&
+                    chunkSize == other.chunkSize
+            )
 
     override fun hashCode(): Int {
         var result = originalName.hashCode()

@@ -17,8 +17,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryOrder
  * successive emissions, and the grid keys its tiles by id and animates the ones that arrive — so an
  * unstable tie order reshuffles the grid and replays that animation on items that never moved.
  */
-internal fun List<GalleryItem>.ordered(order: GalleryOrder): List<GalleryItem> =
-    sortedWith(comparatorFor(order))
+internal fun List<GalleryItem>.ordered(order: GalleryOrder): List<GalleryItem> = sortedWith(comparatorFor(order))
 
 private fun comparatorFor(order: GalleryOrder): Comparator<GalleryItem> =
     when (order) {
@@ -27,11 +26,13 @@ private fun comparatorFor(order: GalleryOrder): Comparator<GalleryItem> =
         // second control — a thirty-file import shares one timestamp, so it reads top to bottom
         // instead of shuffled.
         GalleryOrder.Newest -> compareByDescending<GalleryItem> { it.createdAt }.thenByName().thenById()
+
         GalleryOrder.Oldest -> compareBy<GalleryItem> { it.createdAt }.thenByName().thenById()
 
         // A tie within a name order is broken by date, newest first — the same default the vault
         // opens on, so two files called the same thing read in the order they arrived.
         GalleryOrder.NameAsc -> nameComparator(descending = false).thenByDateDescending().thenById()
+
         GalleryOrder.NameDesc -> nameComparator(descending = true).thenByDateDescending().thenById()
     }
 
@@ -54,11 +55,9 @@ private fun nameComparator(descending: Boolean): Comparator<GalleryItem> =
         }
     }
 
-private fun Comparator<GalleryItem>.thenByName(): Comparator<GalleryItem> =
-    then(nameComparator(descending = false))
+private fun Comparator<GalleryItem>.thenByName(): Comparator<GalleryItem> = then(nameComparator(descending = false))
 
-private fun Comparator<GalleryItem>.thenByDateDescending(): Comparator<GalleryItem> =
-    thenByDescending { it.createdAt }
+private fun Comparator<GalleryItem>.thenByDateDescending(): Comparator<GalleryItem> = thenByDescending { it.createdAt }
 
 // Descending, to agree with the catalog's own `created_at DESC, id DESC` rather than contradict the
 // query this is reordering. Lexicographic over unsigned bytes, which is how SQLite compares a BLOB —
@@ -66,7 +65,10 @@ private fun Comparator<GalleryItem>.thenByDateDescending(): Comparator<GalleryIt
 private fun Comparator<GalleryItem>.thenById(): Comparator<GalleryItem> =
     then { left, right -> compareIdsDescending(left.id, right.id) }
 
-private fun compareIdsDescending(left: ByteArray, right: ByteArray): Int {
+private fun compareIdsDescending(
+    left: ByteArray,
+    right: ByteArray,
+): Int {
     val shared = minOf(left.size, right.size)
     for (index in 0 until shared) {
         val difference = (left[index].toInt() and 0xFF) - (right[index].toInt() and 0xFF)

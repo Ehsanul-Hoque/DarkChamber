@@ -6,7 +6,6 @@ import kotlin.test.assertTrue
 
 /** The openers' own check, before an address reaches the platform: web addresses and nothing else. */
 class WebAddressTest {
-
     @Test
     fun http_and_https_addresses_in_any_case_are_web_addresses() {
         listOf(

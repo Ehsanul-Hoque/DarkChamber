@@ -54,7 +54,10 @@ class VaultBootstrap(
     )
 
     /** Whether a vault exists yet, and whether it carries a biometric HARDWARE slot (lock-screen UX). */
-    class VaultStatus(val exists: Boolean, val hasHardwareSlot: Boolean)
+    class VaultStatus(
+        val exists: Boolean,
+        val hasHardwareSlot: Boolean,
+    )
 
     /**
      * A lightweight look at the persisted keystore — **no catalog opened** (no driver to leak) — so the
@@ -63,17 +66,26 @@ class VaultBootstrap(
      */
     fun probe(): Outcome<VaultStatus> {
         return try {
-            val storage = when (val s = openStorage()) {
-                is Outcome.Err -> return s
-                is Outcome.Ok -> s.value.storage
-            }
-            val bytes = when (val b = storage.readKeyStore()) {
-                is Outcome.Err -> return b
-                is Outcome.Ok -> b.value
-            } ?: return Outcome.Ok(VaultStatus(exists = false, hasHardwareSlot = false))
+            val storage =
+                when (val s = openStorage()) {
+                    is Outcome.Err -> return s
+                    is Outcome.Ok -> s.value.storage
+                }
+            val bytes =
+                when (val b = storage.readKeyStore()) {
+                    is Outcome.Err -> return b
+                    is Outcome.Ok -> b.value
+                } ?: return Outcome.Ok(VaultStatus(exists = false, hasHardwareSlot = false))
             when (val blob = KeyStoreCodec.decode(bytes)) {
-                is Outcome.Err -> blob
-                is Outcome.Ok -> Outcome.Ok(VaultStatus(exists = true, hasHardwareSlot = blob.value.hardwareWrap != null))
+                is Outcome.Err -> {
+                    blob
+                }
+
+                is Outcome.Ok -> {
+                    Outcome.Ok(
+                        VaultStatus(exists = true, hasHardwareSlot = blob.value.hardwareWrap != null),
+                    )
+                }
             }
         } catch (e: Exception) {
             Outcome.Err(VaultError.Unexpected(e))
@@ -93,18 +105,21 @@ class VaultBootstrap(
         var catalog: CatalogStore? = null
         var handedOff = false
         try {
-            val at = when (val s = openStorage()) {
-                is Outcome.Err -> return s
-                is Outcome.Ok -> s.value
-            }
-            catalog = when (val c = catalogProvider.open(at.root)) {
-                is Outcome.Err -> return c
-                is Outcome.Ok -> c.value
-            }
-            val existing = when (val e = at.storage.readKeyStore()) {
-                is Outcome.Err -> return e
-                is Outcome.Ok -> e.value
-            }
+            val at =
+                when (val s = openStorage()) {
+                    is Outcome.Err -> return s
+                    is Outcome.Ok -> s.value
+                }
+            catalog =
+                when (val c = catalogProvider.open(at.root)) {
+                    is Outcome.Err -> return c
+                    is Outcome.Ok -> c.value
+                }
+            val existing =
+                when (val e = at.storage.readKeyStore()) {
+                    is Outcome.Err -> return e
+                    is Outcome.Ok -> e.value
+                }
             if (existing != null) {
                 // A vault is already here — the caller should have taken the unlock path.
                 return Outcome.Err(VaultError.Unexpected(IllegalStateException("vault already exists")))
@@ -115,7 +130,8 @@ class VaultBootstrap(
                     created.session.close()
                     return w
                 }
-                is Outcome.Ok -> Unit
+
+                is Outcome.Ok -> {}
             }
             handedOff = true
             return Outcome.Ok(CreatedVaultSession(OpenVault(created.session, at.storage, catalog), created.recoveryKey))
@@ -134,20 +150,32 @@ class VaultBootstrap(
      */
     fun unlock(passphrase: ByteArray): Outcome<OpenVault> {
         try {
-            val at = when (val s = openStorage()) {
-                is Outcome.Err -> return s
-                is Outcome.Ok -> s.value
-            }
-            val blob = when (val b = readKeyStore(at.storage)) {
-                is Outcome.Err -> return b
-                is Outcome.Ok -> b.value
-            }
+            val at =
+                when (val s = openStorage()) {
+                    is Outcome.Err -> return s
+                    is Outcome.Ok -> s.value
+                }
+            val blob =
+                when (val b = readKeyStore(at.storage)) {
+                    is Outcome.Err -> return b
+                    is Outcome.Ok -> b.value
+                }
             // Open the catalog only AFTER the secret verifies, so a wrong passphrase never opens (and
             // leaks) a driver — the common lock-screen failure path.
-            val session = when (val s = VaultSession.unlock(engine, DefaultKeyDerivation(engine), blob, passphrase, Slot.PASSPHRASE)) {
-                is Outcome.Err -> return s
-                is Outcome.Ok -> s.value
-            }
+            val session =
+                when (
+                    val s =
+                        VaultSession.unlock(
+                            engine,
+                            DefaultKeyDerivation(engine),
+                            blob,
+                            passphrase,
+                            Slot.PASSPHRASE,
+                        )
+                ) {
+                    is Outcome.Err -> return s
+                    is Outcome.Ok -> s.value
+                }
             return openVaultWith(session, at)
         } catch (e: Exception) {
             return Outcome.Err(VaultError.Unexpected(e))
@@ -163,19 +191,22 @@ class VaultBootstrap(
      */
     suspend fun unlockWithBiometric(authenticator: BiometricAuthenticator): Outcome<OpenVault> {
         return try {
-            val at = when (val s = openStorage()) {
-                is Outcome.Err -> return s
-                is Outcome.Ok -> s.value
-            }
-            val blob = when (val b = readKeyStore(at.storage)) {
-                is Outcome.Err -> return b
-                is Outcome.Ok -> b.value
-            }
+            val at =
+                when (val s = openStorage()) {
+                    is Outcome.Err -> return s
+                    is Outcome.Ok -> s.value
+                }
+            val blob =
+                when (val b = readKeyStore(at.storage)) {
+                    is Outcome.Err -> return b
+                    is Outcome.Ok -> b.value
+                }
             // Catalog only after the biometric succeeds — a cancel/invalidation never opens a driver.
-            val session = when (val s = VaultSession.unlockWithHardware(engine, blob, secureKeyStore, authenticator)) {
-                is Outcome.Err -> return s
-                is Outcome.Ok -> s.value
-            }
+            val session =
+                when (val s = VaultSession.unlockWithHardware(engine, blob, secureKeyStore, authenticator)) {
+                    is Outcome.Err -> return s
+                    is Outcome.Ok -> s.value
+                }
             openVaultWith(session, at)
         } catch (e: Exception) {
             Outcome.Err(VaultError.Unexpected(e))
@@ -187,23 +218,31 @@ class VaultBootstrap(
      * under the platform key (prompting through [authenticator]) and persist the updated keystore. A
      * cancelled prompt leaves the keystore unchanged.
      */
-    suspend fun enrollBiometric(vault: OpenVault, authenticator: BiometricAuthenticator): Outcome<Unit> {
+    suspend fun enrollBiometric(
+        vault: OpenVault,
+        authenticator: BiometricAuthenticator,
+    ): Outcome<Unit> {
         return try {
-            val blob = when (val b = readKeyStore(vault.storage)) {
-                is Outcome.Err -> return b
-                is Outcome.Ok -> b.value
-            }
-            val updated = when (val u = vault.session.addHardwareSlot(blob, secureKeyStore, authenticator)) {
-                is Outcome.Err -> return u
-                is Outcome.Ok -> u.value
-            }
+            val blob =
+                when (val b = readKeyStore(vault.storage)) {
+                    is Outcome.Err -> return b
+                    is Outcome.Ok -> b.value
+                }
+            val updated =
+                when (val u = vault.session.addHardwareSlot(blob, secureKeyStore, authenticator)) {
+                    is Outcome.Err -> return u
+                    is Outcome.Ok -> u.value
+                }
             vault.storage.writeKeyStore(KeyStoreCodec.encode(updated))
         } catch (e: Exception) {
             Outcome.Err(VaultError.Unexpected(e))
         }
     }
 
-    private class StorageAt(val root: Path, val storage: VaultStorage)
+    private class StorageAt(
+        val root: Path,
+        val storage: VaultStorage,
+    )
 
     /**
      * Resolve the root and open storage (no catalog, no session yet).
@@ -216,10 +255,11 @@ class VaultBootstrap(
      * because no session can be live while storage is being opened.
      */
     private fun openStorage(): Outcome<StorageAt> {
-        val root = when (val r = rootResolver.resolve()) {
-            is Outcome.Err -> return r
-            is Outcome.Ok -> r.value
-        }
+        val root =
+            when (val r = rootResolver.resolve()) {
+                is Outcome.Err -> return r
+                is Outcome.Ok -> r.value
+            }
         return try {
             val storage = VaultStorage(root)
             storage.purgeTmp() // best-effort: a scratch file we cannot delete must not block the open
@@ -233,21 +273,28 @@ class VaultBootstrap(
      * Open the catalog for an already-unlocked [session] and assemble the [OpenVault]. If the catalog
      * fails to open, close the session (zeroize MK) so no live MK is left behind — never a leak.
      */
-    private fun openVaultWith(session: VaultSession, at: StorageAt): Outcome<OpenVault> =
+    private fun openVaultWith(
+        session: VaultSession,
+        at: StorageAt,
+    ): Outcome<OpenVault> =
         when (val c = catalogProvider.open(at.root)) {
             is Outcome.Err -> {
                 session.close()
                 c
             }
-            is Outcome.Ok -> Outcome.Ok(OpenVault(session, at.storage, c.value))
+
+            is Outcome.Ok -> {
+                Outcome.Ok(OpenVault(session, at.storage, c.value))
+            }
         }
 
     /** Read + decode the persisted keystore; a missing keystore is `Unexpected` (no vault to unlock). */
     private fun readKeyStore(storage: VaultStorage): Outcome<KeyStoreBlob> {
-        val bytes = when (val r = storage.readKeyStore()) {
-            is Outcome.Err -> return r
-            is Outcome.Ok -> r.value
-        } ?: return Outcome.Err(VaultError.Unexpected(IllegalStateException("no vault to unlock")))
+        val bytes =
+            when (val r = storage.readKeyStore()) {
+                is Outcome.Err -> return r
+                is Outcome.Ok -> r.value
+            } ?: return Outcome.Err(VaultError.Unexpected(IllegalStateException("no vault to unlock")))
         return KeyStoreCodec.decode(bytes)
     }
 }

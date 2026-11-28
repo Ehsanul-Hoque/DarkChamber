@@ -32,7 +32,10 @@ internal class FileItems(
      * [albumId] is the destination, or `null` to unfile. Returns how many of [ids] actually moved —
      * fewer than asked for when something was shredded between the selection and this call.
      */
-    suspend operator fun invoke(ids: List<ByteArray>, albumId: ByteArray?): Outcome<AssignSummary> {
+    suspend operator fun invoke(
+        ids: List<ByteArray>,
+        albumId: ByteArray?,
+    ): Outcome<AssignSummary> {
         if (ids.isEmpty()) return Outcome.Ok(AssignSummary(requested = 0, assigned = 0))
         return withContext(ioContext) { vault.assignItems(ids, albumId) }
     }

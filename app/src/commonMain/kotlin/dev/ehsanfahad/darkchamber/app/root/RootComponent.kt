@@ -55,8 +55,13 @@ interface RootComponent {
 
 /** The two — and only two — gate children. */
 sealed interface RootChild {
-    class Locked(val component: LockedComponent) : RootChild
-    class Unlocked(val component: UnlockedComponent) : RootChild
+    class Locked(
+        val component: LockedComponent,
+    ) : RootChild
+
+    class Unlocked(
+        val component: UnlockedComponent,
+    ) : RootChild
 }
 
 /**
@@ -79,8 +84,8 @@ class DefaultRootComponent(
     // Injected so host tests can drive the abandoned-handoff watchdog on virtual time.
     mainContext: CoroutineContext = Dispatchers.Main,
     private val handoffGrace: Duration = HANDOFF_GRACE,
-) : RootComponent, ComponentContext by componentContext {
-
+) : RootComponent,
+    ComponentContext by componentContext {
     // The active child owns its own lifecycle; a transition destroys the outgoing child — disposing
     // anything scoped to it (the Koin session scope) — before the new one is built. Standalone
     // contexts (not childContext) so the registry is ours to destroy; the session is never persisted
@@ -125,13 +130,13 @@ class DefaultRootComponent(
         )
     }
 
-    private fun createLocked(): LockedComponent =
-        lockedFactory(newChildContext()) { vault -> toUnlocked(vault) }
+    private fun createLocked(): LockedComponent = lockedFactory(newChildContext()) { vault -> toUnlocked(vault) }
 
     private fun toUnlocked(vault: VaultBootstrap.OpenVault) {
-        _child.value = RootChild.Unlocked(
-            unlockedFactory(newChildContext(), vault, notSaved) { toLocked() },
-        )
+        _child.value =
+            RootChild.Unlocked(
+                unlockedFactory(newChildContext(), vault, notSaved) { toLocked() },
+            )
     }
 
     private fun toLocked() {
@@ -165,14 +170,15 @@ class DefaultRootComponent(
         // first — still armed, no longer cancellable by onForeground — and it would lock the vault
         // out from under the user minutes after they came back.
         if (pendingLock?.isActive == true) return
-        pendingLock = scope.launch {
-            delay(handoffGrace)
-            pendingLock = null
-            // Still deferred when the grace ran out — the handoff never came back. Lock regardless
-            // of `handoff.inFlight`: a picker sitting open for this long is an abandoned phone, and
-            // the pick's own cancellation releases the exemption on the way down.
-            (_child.value as? RootChild.Unlocked)?.component?.lock()
-        }
+        pendingLock =
+            scope.launch {
+                delay(handoffGrace)
+                pendingLock = null
+                // Still deferred when the grace ran out — the handoff never came back. Lock regardless
+                // of `handoff.inFlight`: a picker sitting open for this long is an abandoned phone, and
+                // the pick's own cancellation releases the exemption on the way down.
+                (_child.value as? RootChild.Unlocked)?.component?.lock()
+            }
     }
 
     private companion object {

@@ -44,13 +44,36 @@ internal fun microphonePermissionFor(status: AVAuthorizationStatus): MicrophoneP
  * interruption, a session that stopped, a device that went away — keeps the clip only when
  * AVFoundation says the recording still finished, and names no cause otherwise.
  */
-internal fun recordingEndFor(errorCode: Long?, finishedSuccessfully: Boolean?): RecordingEnd =
+internal fun recordingEndFor(
+    errorCode: Long?,
+    finishedSuccessfully: Boolean?,
+): RecordingEnd =
     when (errorCode) {
-        null -> RecordingEnd.Finalized
-        AVErrorMaximumFileSizeReached -> RecordingEnd.FinalizedAtSizeLimit
-        AVErrorDiskFull -> RecordingEnd.Failed(RecordingFailure.StorageFull)
-        AVErrorNoDataCaptured -> RecordingEnd.NoFrames
-        else -> if (finishedSuccessfully == true) RecordingEnd.Finalized else RecordingEnd.Failed(RecordingFailure.Other)
+        null -> {
+            RecordingEnd.Finalized
+        }
+
+        AVErrorMaximumFileSizeReached -> {
+            RecordingEnd.FinalizedAtSizeLimit
+        }
+
+        AVErrorDiskFull -> {
+            RecordingEnd.Failed(RecordingFailure.StorageFull)
+        }
+
+        AVErrorNoDataCaptured -> {
+            RecordingEnd.NoFrames
+        }
+
+        else -> {
+            if (finishedSuccessfully ==
+                true
+            ) {
+                RecordingEnd.Finalized
+            } else {
+                RecordingEnd.Failed(RecordingFailure.Other)
+            }
+        }
     }
 
 /**

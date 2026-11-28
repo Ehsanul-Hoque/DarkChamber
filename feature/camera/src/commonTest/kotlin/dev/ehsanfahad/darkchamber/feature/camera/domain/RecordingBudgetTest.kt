@@ -5,7 +5,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class RecordingBudgetTest {
-
     /**
      * The clip and its encrypted copy both need the disk until the encrypt ends, so the clip may
      * take only half of what is left after the reserve — otherwise a full-length clip would be
@@ -65,9 +64,18 @@ class RecordingBudgetTest {
 
     @Test
     fun sound_is_on_only_with_the_microphone_granted_and_the_hint_follows_what_would_help() {
-        assertEquals(RecordingSound(withAudio = true, hint = MicrophoneHint.None), recordingSound(MicrophonePermission.Granted, soundWanted = true))
-        assertEquals(RecordingSound(withAudio = false, hint = MicrophoneHint.Ask), recordingSound(MicrophonePermission.NotAsked, soundWanted = true))
-        assertEquals(RecordingSound(withAudio = false, hint = MicrophoneHint.Ask), recordingSound(MicrophonePermission.Denied, soundWanted = true))
+        assertEquals(
+            RecordingSound(withAudio = true, hint = MicrophoneHint.None),
+            recordingSound(MicrophonePermission.Granted, soundWanted = true),
+        )
+        assertEquals(
+            RecordingSound(withAudio = false, hint = MicrophoneHint.Ask),
+            recordingSound(MicrophonePermission.NotAsked, soundWanted = true),
+        )
+        assertEquals(
+            RecordingSound(withAudio = false, hint = MicrophoneHint.Ask),
+            recordingSound(MicrophonePermission.Denied, soundWanted = true),
+        )
         assertEquals(
             RecordingSound(withAudio = false, hint = MicrophoneHint.Settings),
             recordingSound(MicrophonePermission.PermanentlyDenied, soundWanted = true),

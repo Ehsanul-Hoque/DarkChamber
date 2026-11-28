@@ -21,20 +21,24 @@ import kotlin.test.assertTrue
 
 /**
  * On Apple platforms kotlinx-io reports a failed native write only as a message — the errno's
- * `strerror` text, in a few shapes. The shapes below are copied from kotlinx-io 0.9.1's own sources
- * (`PathsNative.kt`'s `throwIOExceptionForErrno`, `FileSystemApple.kt`'s mkdir), not from our
- * classifier; re-check them when that dependency moves. The device's own text comes from
- * `strerror`, so no string here is hand-typed.
+ * `strerror` text, in a few shapes. The shapes below are copied from kotlinx-io 0.9.3's own sources
+ * (`PathsNative.kt`'s `throwIOExceptionForErrno` for write and close, `FileSystemNative.kt`'s open,
+ * `FileSystemApple.kt`'s mkdir), not from our classifier; re-check them when that dependency moves.
+ * The write shape was also confirmed against a real failing write on the simulator. The device's own
+ * text comes from `strerror`, so no string here is hand-typed.
  */
 @OptIn(ExperimentalForeignApi::class)
 class OutOfSpaceTest {
     private val noSpace = strerror(ENOSPC)!!.toKString()
     private val ioError = strerror(EIO)!!.toKString()
 
-    private fun shapes(err: Int, text: String) = listOf(
-        IOException("file write failed with errno $err ($text)"),
-        IOException("fflush failed with errno $err ($text)"),
-        IOException("fclose failed with errno $err ($text)"),
+    private fun shapes(
+        err: Int,
+        text: String,
+    ) = listOf(
+        IOException("write failed with errno $err ($text)"),
+        IOException("close failed with errno $err ($text)"),
+        IOException("Failed to open /vault/objects/0a1b with $text"),
         IOException("mkdir failed: $text"),
     )
 
@@ -53,12 +57,14 @@ class OutOfSpaceTest {
 
     @Test
     fun no_other_failure_is_called_a_full_disk() {
-        val others = shapes(EIO, ioError) + listOf(
-            IOException("Stream Closed"),
-            IOException("Unknown error"),
-            IOException(),
-            IllegalStateException("closed"),
-        )
+        val others =
+            shapes(EIO, ioError) +
+                listOf(
+                    IOException("Stream Closed"),
+                    IOException("Unknown error"),
+                    IOException(),
+                    IllegalStateException("closed"),
+                )
         for (failure in others) {
             assertFalse(isOutOfSpace(failure), failure.message)
         }

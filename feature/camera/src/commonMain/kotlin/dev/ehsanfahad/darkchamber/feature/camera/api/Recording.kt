@@ -32,7 +32,9 @@ interface Recording {
  *
  * Main-thread confined, like the controller that owns it.
  */
-class ReportedRecording(private val onStop: () -> Unit) : Recording {
+class ReportedRecording(
+    private val onStop: () -> Unit,
+) : Recording {
     private val _progress = MutableStateFlow(RecordingProgress.Zero)
     override val progress: StateFlow<RecordingProgress> = _progress.asStateFlow()
 
@@ -68,7 +70,10 @@ class ReportedRecording(private val onStop: () -> Unit) : Recording {
      * recording was already abandoned, [discard] deletes the file: both platforms create it lazily,
      * so it can appear after the caller's delete at the lock. Returns what [finish] returns.
      */
-    fun finishFromPlatform(end: RecordingEnd, discard: () -> Unit): Boolean {
+    fun finishFromPlatform(
+        end: RecordingEnd,
+        discard: () -> Unit,
+    ): Boolean {
         if (finish(end)) return true
         if (first == RecordingEnd.Abandoned) discard()
         return false
@@ -82,7 +87,10 @@ class ReportedRecording(private val onStop: () -> Unit) : Recording {
 }
 
 /** How far a recording has got: bytes in the file so far, and the length of the clip they hold. */
-data class RecordingProgress(val bytesRecorded: Long, val duration: Duration) {
+data class RecordingProgress(
+    val bytesRecorded: Long,
+    val duration: Duration,
+) {
     companion object {
         val Zero: RecordingProgress = RecordingProgress(0, Duration.ZERO)
     }
@@ -105,7 +113,9 @@ sealed interface RecordingEnd {
      * is not to be trusted. Carries no platform message, for the same reason [CaptureResult.Failed]
      * does not.
      */
-    data class Failed(val reason: RecordingFailure) : RecordingEnd
+    data class Failed(
+        val reason: RecordingFailure,
+    ) : RecordingEnd
 
     /** Torn down without finalizing — a lock, or the camera released mid-recording. Nothing is kept. */
     data object Abandoned : RecordingEnd

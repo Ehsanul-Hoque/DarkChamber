@@ -20,8 +20,10 @@ import dev.ehsanfahad.darkchamber.core.designsystem.DarkChamberTheme
  * problems on its own message line, and a notice there would sit on the shutter row. Something lost
  * while a camera is open stays recorded and is shown once that camera closes.
  */
-internal fun notSavedNoticeLines(cameraInFront: Boolean, summary: NotSavedSummary): List<String> =
-    if (cameraInFront) emptyList() else notSavedLines(summary)
+internal fun notSavedNoticeLines(
+    cameraInFront: Boolean,
+    summary: NotSavedSummary,
+): List<String> = if (cameraInFront) emptyList() else notSavedLines(summary)
 
 /**
  * What did not make it into the vault, on the first unlocked screen that can show it — straight
@@ -35,14 +37,19 @@ internal fun notSavedNoticeLines(cameraInFront: Boolean, summary: NotSavedSummar
  * own.
  */
 @Composable
-internal fun NotSavedNotice(lines: List<String>, onDismiss: () -> Unit, modifier: Modifier = Modifier) {
+internal fun NotSavedNotice(
+    lines: List<String>,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val spacing = DarkChamberTheme.spacing
     Surface(
         color = DarkChamberTheme.colors.surfaceRaised,
         shape = DarkChamberTheme.shapes.large,
-        modifier = modifier
-            .padding(spacing.spaceMd)
-            .semantics { liveRegion = LiveRegionMode.Polite },
+        modifier =
+            modifier
+                .padding(spacing.spaceMd)
+                .semantics { liveRegion = LiveRegionMode.Polite },
     ) {
         Column(
             modifier = Modifier.padding(start = spacing.spaceMd, end = spacing.spaceXs, top = spacing.spaceSm),

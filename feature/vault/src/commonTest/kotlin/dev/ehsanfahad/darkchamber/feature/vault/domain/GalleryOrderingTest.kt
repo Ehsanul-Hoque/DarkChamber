@@ -16,7 +16,6 @@ import kotlin.test.assertEquals
  * reshuffle on a re-emission and replay the arrival animation on items that never moved.
  */
 class GalleryOrderingTest {
-
     private fun item(
         id: Byte,
         name: String? = "a.txt",
@@ -82,11 +81,12 @@ class GalleryOrderingTest {
 
     @Test
     fun a_name_order_breaks_a_tie_by_date_newest_first() {
-        val items = listOf(
-            item(1, name = "same.txt", createdAt = 10L),
-            item(2, name = "same.txt", createdAt = 30L),
-            item(3, name = "same.txt", createdAt = 20L),
-        )
+        val items =
+            listOf(
+                item(1, name = "same.txt", createdAt = 10L),
+                item(2, name = "same.txt", createdAt = 30L),
+                item(3, name = "same.txt", createdAt = 20L),
+            )
 
         assertEquals(listOf<Byte>(2, 3, 1), items.ordered(GalleryOrder.NameAsc).ids())
         assertEquals(listOf<Byte>(2, 3, 1), items.ordered(GalleryOrder.NameDesc).ids())
@@ -107,13 +107,14 @@ class GalleryOrderingTest {
         // Kotlin's Byte is signed, so a raw comparison sorts 0x80 (-128) below 0x01 — while SQLite
         // compares a BLOB as unsigned bytes. The two must agree, or this reordering contradicts the
         // query it is reordering and the tie order flips between emissions.
-        val high = GalleryItem(
-            id = byteArrayOf(0x80.toByte()),
-            kind = VaultItemKind.FILE,
-            size = 1L,
-            createdAt = 100L,
-            meta = GalleryItemMeta.Readable("a.txt", "text/plain"),
-        )
+        val high =
+            GalleryItem(
+                id = byteArrayOf(0x80.toByte()),
+                kind = VaultItemKind.FILE,
+                size = 1L,
+                createdAt = 100L,
+                meta = GalleryItemMeta.Readable("a.txt", "text/plain"),
+            )
         val low = item(0x01)
 
         assertEquals(
@@ -126,13 +127,14 @@ class GalleryOrderingTest {
     @Test
     fun a_longer_id_outranks_the_prefix_it_shares() {
         val short = item(4)
-        val long = GalleryItem(
-            id = byteArrayOf(4, 0),
-            kind = VaultItemKind.FILE,
-            size = 1L,
-            createdAt = 100L,
-            meta = GalleryItemMeta.Readable("a.txt", "text/plain"),
-        )
+        val long =
+            GalleryItem(
+                id = byteArrayOf(4, 0),
+                kind = VaultItemKind.FILE,
+                size = 1L,
+                createdAt = 100L,
+                meta = GalleryItemMeta.Readable("a.txt", "text/plain"),
+            )
 
         assertEquals(
             listOf(2, 1),
@@ -152,11 +154,12 @@ class GalleryOrderingTest {
 
     @Test
     fun several_unreadable_items_keep_a_stable_order_among_themselves() {
-        val items = listOf(
-            item(1, name = null, createdAt = 10L),
-            item(2, name = null, createdAt = 30L),
-            item(3, name = "a.txt", createdAt = 20L),
-        )
+        val items =
+            listOf(
+                item(1, name = null, createdAt = 10L),
+                item(2, name = null, createdAt = 30L),
+                item(3, name = "a.txt", createdAt = 20L),
+            )
 
         assertEquals(listOf<Byte>(3, 2, 1), items.ordered(GalleryOrder.NameAsc).ids())
     }
@@ -164,22 +167,24 @@ class GalleryOrderingTest {
     @Test
     fun a_date_order_treats_an_unreadable_item_like_any_other() {
         // Its plaintext columns are intact, so there is nothing honest about demoting it here.
-        val items = listOf(
-            item(1, name = "a.txt", createdAt = 10L),
-            item(2, name = null, createdAt = 30L),
-            item(3, name = "z.txt", createdAt = 20L),
-        )
+        val items =
+            listOf(
+                item(1, name = "a.txt", createdAt = 10L),
+                item(2, name = null, createdAt = 30L),
+                item(3, name = "z.txt", createdAt = 20L),
+            )
 
         assertEquals(listOf<Byte>(2, 3, 1), items.ordered(GalleryOrder.Newest).ids())
     }
 
     @Test
     fun ordering_an_already_ordered_list_changes_nothing() {
-        val items = listOf(
-            item(1, name = "b.txt", createdAt = 20L),
-            item(2, name = "a.txt", createdAt = 10L),
-            item(3, name = null, createdAt = 30L),
-        )
+        val items =
+            listOf(
+                item(1, name = "b.txt", createdAt = 20L),
+                item(2, name = "a.txt", createdAt = 10L),
+                item(3, name = null, createdAt = 30L),
+            )
 
         for (order in GalleryOrder.entries) {
             val once = items.ordered(order)

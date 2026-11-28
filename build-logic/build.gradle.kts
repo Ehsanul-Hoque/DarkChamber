@@ -23,6 +23,10 @@ dependencies {
     // on this compile classpath for a precompiled script to id("…")-apply them.
     implementation(libs.plugins.composeMultiplatform.asDependency())
     implementation(libs.plugins.composeCompiler.asDependency())
+    // Spotless, detekt and Kover — applied by id from the darkchamber.quality convention plugin.
+    implementation(libs.plugins.spotless.asDependency())
+    implementation(libs.plugins.detekt.asDependency())
+    implementation(libs.plugins.kover.asDependency())
     // AGP is compileOnly: the android.application plugin only *configures* an app
     // module reactively (plugins.withId), it never applies com.android.application
     // itself. Applying it here would leak the Android/Kotlin plugin classpath into the
@@ -31,6 +35,7 @@ dependencies {
 }
 
 /** Turns a version-catalog plugin alias into its plugin-marker artifact coordinate. */
-fun Provider<PluginDependency>.asDependency(): Provider<String> = map { dep ->
-    "${dep.pluginId}:${dep.pluginId}.gradle.plugin:${dep.version}"
-}
+fun Provider<PluginDependency>.asDependency(): Provider<String> =
+    map { dep ->
+        "${dep.pluginId}:${dep.pluginId}.gradle.plugin:${dep.version}"
+    }

@@ -31,7 +31,6 @@ import org.koin.core.context.GlobalContext
  * being persisted (hard rule #5 — the session never touches saved state).
  */
 class MainActivity : FragmentActivity() {
-
     private val koin get() = GlobalContext.get()
     private lateinit var root: RootComponent
 

@@ -141,7 +141,6 @@ import kotlin.time.Duration.Companion.seconds
  */
 @OptIn(ExperimentalForeignApi::class)
 class IosCameraController : CameraController {
-
     private val _permission = MutableStateFlow(currentPermission())
     override val permission: StateFlow<CameraPermission> = _permission.asStateFlow()
 
@@ -164,9 +163,10 @@ class IosCameraController : CameraController {
     private val session = AVCaptureSession()
     private val photoOutput = AVCapturePhotoOutput()
     private val movieOutput = AVCaptureMovieFileOutput()
-    private val previewLayer = AVCaptureVideoPreviewLayer(session = session).apply {
-        videoGravity = AVLayerVideoGravityResizeAspect
-    }
+    private val previewLayer =
+        AVCaptureVideoPreviewLayer(session = session).apply {
+            videoGravity = AVLayerVideoGravityResizeAspect
+        }
 
     private var input: AVCaptureDeviceInput? = null
     private var audioInput: AVCaptureDeviceInput? = null
@@ -261,7 +261,11 @@ class IosCameraController : CameraController {
         applyTorch()
     }
 
-    override fun record(file: Path, sizeLimitBytes: Long, withAudio: Boolean): Recording {
+    override fun record(
+        file: Path,
+        sizeLimitBytes: Long,
+        withAudio: Boolean,
+    ): Recording {
         if (!started || input == null || mode != CaptureMode.Video || active != null || movieOutput.recording) {
             return ReportedRecording.refused()
         }
@@ -280,16 +284,17 @@ class IosCameraController : CameraController {
         val reported = ReportedRecording(onStop = { if (movieOutput.recording) movieOutput.stopRecording() })
         val url = NSURL.fileURLWithPath(file.toString())
         lateinit var delegate: MovieDelegate
-        delegate = MovieDelegate { errorCode, finishedSuccessfully ->
-            recordings.remove(delegate)
-            if (active === reported) active = null
-            if (active == null && audioInput != null) reconfigure { detachAudio() }
-            // The movie output starts asynchronously and finishes the file as the session stops, both
-            // possibly after the lock deleted it, so an abandoned recording's file goes again here.
-            reported.finishFromPlatform(recordingEndFor(errorCode, finishedSuccessfully)) {
-                NSFileManager.defaultManager.removeItemAtURL(url, error = null)
+        delegate =
+            MovieDelegate { errorCode, finishedSuccessfully ->
+                recordings.remove(delegate)
+                if (active === reported) active = null
+                if (active == null && audioInput != null) reconfigure { detachAudio() }
+                // The movie output starts asynchronously and finishes the file as the session stops, both
+                // possibly after the lock deleted it, so an abandoned recording's file goes again here.
+                reported.finishFromPlatform(recordingEndFor(errorCode, finishedSuccessfully)) {
+                    NSFileManager.defaultManager.removeItemAtURL(url, error = null)
+                }
             }
-        }
         recordings += delegate
         active = reported
         movieOutput.startRecordingToOutputFileURL(url, recordingDelegate = delegate)
@@ -315,12 +320,17 @@ class IosCameraController : CameraController {
     override fun setZoom(ratio: Float) {
         val device = input?.device ?: return
         if (!device.lockForConfiguration(null)) return
-        device.videoZoomFactor = ratio.toDouble()
-            .coerceIn(device.minAvailableVideoZoomFactor, device.maxAvailableVideoZoomFactor)
+        device.videoZoomFactor =
+            ratio
+                .toDouble()
+                .coerceIn(device.minAvailableVideoZoomFactor, device.maxAvailableVideoZoomFactor)
         device.unlockForConfiguration()
     }
 
-    override fun focusAt(x: Float, y: Float) {
+    override fun focusAt(
+        x: Float,
+        y: Float,
+    ) {
         val device = input?.device ?: return
         val (width, height) = previewLayer.bounds.useContents { size.width to size.height }
         val point = previewLayer.captureDevicePointOfInterestForPoint(CGPointMake(x * width, y * height))
@@ -348,17 +358,28 @@ class IosCameraController : CameraController {
         }
         return suspendCancellableCoroutine { continuation ->
             lateinit var delegate: PhotoDelegate
-            delegate = PhotoDelegate { jpeg ->
-                captures.remove(delegate)
-                when {
-                    // Lock arrived while the photo was being taken: drop the copy, report nothing.
-                    !continuation.isActive -> jpeg?.fill(0)
-                    jpeg == null -> continuation.resume(CaptureResult.Failed)
-                    else -> continuation.resume(CaptureResult.Captured(CapturedPhoto(jpeg, rotationDegrees = null))) { _, _, _ ->
-                        jpeg.fill(0)
+            delegate =
+                PhotoDelegate { jpeg ->
+                    captures.remove(delegate)
+                    when {
+                        // Lock arrived while the photo was being taken: drop the copy, report nothing.
+                        !continuation.isActive -> {
+                            jpeg?.fill(0)
+                        }
+
+                        jpeg == null -> {
+                            continuation.resume(CaptureResult.Failed)
+                        }
+
+                        else -> {
+                            continuation.resume(
+                                CaptureResult.Captured(CapturedPhoto(jpeg, rotationDegrees = null)),
+                            ) { _, _, _ ->
+                                jpeg.fill(0)
+                            }
+                        }
                     }
                 }
-            }
             captures += delegate
             photoOutput.capturePhotoWithSettings(settings, delegate = delegate)
         }
@@ -400,6 +421,7 @@ class IosCameraController : CameraController {
                 detachAudio()
                 if (session.canAddOutput(photoOutput)) session.addOutput(photoOutput)
             }
+
             CaptureMode.Video -> {
                 removeOutput(photoOutput)
                 if (session.canAddOutput(movieOutput)) session.addOutput(movieOutput)
@@ -411,13 +433,28 @@ class IosCameraController : CameraController {
     // Inside a configuration. Video falls back from the chosen quality to the nearest the lens can
     // record, keeping the choice for a lens that can.
     private fun applyPreset() {
-        val candidates = when (mode) {
-            CaptureMode.Photo -> listOf(AVCaptureSessionPresetPhoto)
-            CaptureMode.Video -> when (quality) {
-                VideoQuality.UHD -> listOf(AVCaptureSessionPreset3840x2160, AVCaptureSessionPreset1920x1080, AVCaptureSessionPresetHigh)
-                VideoQuality.HD -> listOf(AVCaptureSessionPreset1920x1080, AVCaptureSessionPresetHigh)
+        val candidates =
+            when (mode) {
+                CaptureMode.Photo -> {
+                    listOf(AVCaptureSessionPresetPhoto)
+                }
+
+                CaptureMode.Video -> {
+                    when (quality) {
+                        VideoQuality.UHD -> {
+                            listOf(
+                                AVCaptureSessionPreset3840x2160,
+                                AVCaptureSessionPreset1920x1080,
+                                AVCaptureSessionPresetHigh,
+                            )
+                        }
+
+                        VideoQuality.HD -> {
+                            listOf(AVCaptureSessionPreset1920x1080, AVCaptureSessionPresetHigh)
+                        }
+                    }
+                }
             }
-        }
         candidates.firstOrNull { session.canSetSessionPreset(it) }?.let { session.sessionPreset = it }
     }
 
@@ -430,9 +467,11 @@ class IosCameraController : CameraController {
     private fun attachAudio() {
         if (audioInput != null || _microphonePermission.value != MicrophonePermission.Granted) return
         val device = AVCaptureDevice.defaultDeviceWithMediaType(AVMediaTypeAudio) ?: return
-        val added = AVCaptureDeviceInput.deviceInputWithDevice(device, error = null)
-            ?.takeIf { session.canAddInput(it) }
-            ?.also { session.addInput(it) }
+        val added =
+            AVCaptureDeviceInput
+                .deviceInputWithDevice(device, error = null)
+                ?.takeIf { session.canAddInput(it) }
+                ?.also { session.addInput(it) }
         audioInput = added
     }
 
@@ -443,16 +482,18 @@ class IosCameraController : CameraController {
 
     // Inside a configuration. Falls back to whichever lens exists; none at all is unavailable.
     private fun attach(wanted: Lens) {
-        val lenses = buildSet {
-            if (device(Lens.Back) != null) add(Lens.Back)
-            if (device(Lens.Front) != null) add(Lens.Front)
-        }
+        val lenses =
+            buildSet {
+                if (device(Lens.Back) != null) add(Lens.Back)
+                if (device(Lens.Front) != null) add(Lens.Front)
+            }
         val chosen = if (wanted in lenses) wanted else lenses.firstOrNull()
         val device = chosen?.let(::device)
-        val added = device
-            ?.let { AVCaptureDeviceInput.deviceInputWithDevice(it, error = null) }
-            ?.takeIf { session.canAddInput(it) }
-            ?.also { session.addInput(it) }
+        val added =
+            device
+                ?.let { AVCaptureDeviceInput.deviceInputWithDevice(it, error = null) }
+                ?.takeIf { session.canAddInput(it) }
+                ?.also { session.addInput(it) }
         input = added
         if (chosen == null || device == null || added == null) {
             _capabilities.value = CameraCapabilities.None
@@ -461,16 +502,18 @@ class IosCameraController : CameraController {
         }
         lens = chosen
         rotation = AVCaptureDeviceRotationCoordinator(device = device, previewLayer = previewLayer)
-        _capabilities.value = CameraCapabilities(
-            lenses = lenses,
-            hasFlash = device.hasFlash,
-            minZoom = device.minAvailableVideoZoomFactor.toFloat(),
-            maxZoom = device.maxAvailableVideoZoomFactor.toFloat(),
-            videoQualities = videoQualitiesFor(
-                fullHd = device.supportsAVCaptureSessionPreset(AVCaptureSessionPreset1920x1080),
-                ultraHd = device.supportsAVCaptureSessionPreset(AVCaptureSessionPreset3840x2160),
-            ),
-        )
+        _capabilities.value =
+            CameraCapabilities(
+                lenses = lenses,
+                hasFlash = device.hasFlash,
+                minZoom = device.minAvailableVideoZoomFactor.toFloat(),
+                maxZoom = device.maxAvailableVideoZoomFactor.toFloat(),
+                videoQualities =
+                    videoQualitiesFor(
+                        fullHd = device.supportsAVCaptureSessionPreset(AVCaptureSessionPreset1920x1080),
+                        ultraHd = device.supportsAVCaptureSessionPreset(AVCaptureSessionPreset3840x2160),
+                    ),
+            )
         _availability.value = CameraAvailability.Available
     }
 
@@ -505,18 +548,23 @@ class IosCameraController : CameraController {
     private fun observe() {
         val center = NSNotificationCenter.defaultCenter
         val main = NSOperationQueue.mainQueue
-        observers = listOf(
-            center.addObserverForName(AVCaptureSessionWasInterruptedNotification, session, main) { note: NSNotification? ->
-                val reason = (note?.userInfo?.get(AVCaptureSessionInterruptionReasonKey) as? NSNumber)?.longValue
-                _availability.value = availabilityForInterruption(reason ?: -1L)
-            },
-            center.addObserverForName(AVCaptureSessionInterruptionEndedNotification, session, main) { _ ->
-                _availability.value = availabilityForInterruption(null)
-            },
-            center.addObserverForName(AVCaptureSessionRuntimeErrorNotification, session, main) { _ ->
-                _availability.value = CameraAvailability.Unavailable
-            },
-        )
+        observers =
+            listOf(
+                center.addObserverForName(
+                    AVCaptureSessionWasInterruptedNotification,
+                    session,
+                    main,
+                ) { note: NSNotification? ->
+                    val reason = (note?.userInfo?.get(AVCaptureSessionInterruptionReasonKey) as? NSNumber)?.longValue
+                    _availability.value = availabilityForInterruption(reason ?: -1L)
+                },
+                center.addObserverForName(AVCaptureSessionInterruptionEndedNotification, session, main) { _ ->
+                    _availability.value = availabilityForInterruption(null)
+                },
+                center.addObserverForName(AVCaptureSessionRuntimeErrorNotification, session, main) { _ ->
+                    _availability.value = CameraAvailability.Unavailable
+                },
+            )
     }
 
     private fun FlashMode.toAv(): AVCaptureFlashMode =
@@ -538,16 +586,24 @@ class IosCameraController : CameraController {
 // The photo output calls back on a queue of its own, not the main one, so [done] — which touches the
 // controller's main-confined state — is handed to the main queue. The copy is made here, while the
 // photo's data is certain to be alive.
-private class PhotoDelegate(private val done: (ByteArray?) -> Unit) : NSObject(), AVCapturePhotoCaptureDelegateProtocol {
+private class PhotoDelegate(
+    private val done: (ByteArray?) -> Unit,
+) : NSObject(),
+    AVCapturePhotoCaptureDelegateProtocol {
     @ObjCSignatureOverride
-    override fun captureOutput(output: AVCapturePhotoOutput, didFinishProcessingPhoto: AVCapturePhoto, error: NSError?) {
+    override fun captureOutput(
+        output: AVCapturePhotoOutput,
+        didFinishProcessingPhoto: AVCapturePhoto,
+        error: NSError?,
+    ) {
         val data = if (error == null) didFinishProcessingPhoto.fileDataRepresentation() else null
         val length = data?.length?.toInt() ?: 0
-        val bytes = if (data == null || length == 0) {
-            null
-        } else {
-            ByteArray(length).also { copy -> copy.usePinned { memcpy(it.addressOf(0), data.bytes, data.length) } }
-        }
+        val bytes =
+            if (data == null || length == 0) {
+                null
+            } else {
+                ByteArray(length).also { copy -> copy.usePinned { memcpy(it.addressOf(0), data.bytes, data.length) } }
+            }
         dispatch_async(dispatch_get_main_queue()) { done(bytes) }
     }
 }
@@ -559,7 +615,8 @@ private class PhotoDelegate(private val done: (ByteArray?) -> Unit) : NSObject()
  */
 private class MovieDelegate(
     private val done: (errorCode: Long?, finishedSuccessfully: Boolean?) -> Unit,
-) : NSObject(), AVCaptureFileOutputRecordingDelegateProtocol {
+) : NSObject(),
+    AVCaptureFileOutputRecordingDelegateProtocol {
     @ObjCSignatureOverride
     override fun captureOutput(
         output: AVCaptureFileOutput,
@@ -575,7 +632,9 @@ private class MovieDelegate(
 
 /** A view whose only content is the preview layer, kept the size of the view. */
 @OptIn(ExperimentalForeignApi::class)
-private class PreviewHost(private val preview: AVCaptureVideoPreviewLayer) : UIView(frame = CGRectMake(0.0, 0.0, 0.0, 0.0)) {
+private class PreviewHost(
+    private val preview: AVCaptureVideoPreviewLayer,
+) : UIView(frame = CGRectMake(0.0, 0.0, 0.0, 0.0)) {
     init {
         layer.addSublayer(preview)
     }

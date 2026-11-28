@@ -12,26 +12,31 @@ class MarkdownRowsTest {
 
     private fun para(text: String) = MdBlock.Paragraph(words(text))
 
-    private fun rows(vararg blocks: MdBlock, maxChars: Int = 2_000) = MarkdownRows.rows(MarkdownDocument(blocks.toList()), maxChars)
+    private fun rows(
+        vararg blocks: MdBlock,
+        maxChars: Int = 2_000,
+    ) = MarkdownRows.rows(MarkdownDocument(blocks.toList()), maxChars)
 
-    private fun MdRow.text(): String = when (this) {
-        is MdRow.Words -> spans.joinToString("") { it.text }
-        is MdRow.Code -> text
-        is MdRow.Raw -> text
-        else -> ""
-    }
+    private fun MdRow.text(): String =
+        when (this) {
+            is MdRow.Words -> spans.joinToString("") { it.text }
+            is MdRow.Code -> text
+            is MdRow.Raw -> text
+            else -> ""
+        }
 
     // ---- one block, one row ----------------------------------------------------------------------
 
     @Test
     fun headings_take_their_size_from_their_level_and_paragraphs_are_body() {
-        val r = rows(
-            MdBlock.Heading(1, words("One"), "one"),
-            MdBlock.Heading(2, words("Two"), "two"),
-            MdBlock.Heading(3, words("Three"), "three"),
-            MdBlock.Heading(6, words("Six"), "six"),
-            para("Body"),
-        )
+        val r =
+            rows(
+                MdBlock.Heading(1, words("One"), "one"),
+                MdBlock.Heading(2, words("Two"), "two"),
+                MdBlock.Heading(3, words("Three"), "three"),
+                MdBlock.Heading(6, words("Six"), "six"),
+                para("Body"),
+            )
         assertEquals(
             listOf(MdTextSize.Title1, MdTextSize.Title2, MdTextSize.Title3, MdTextSize.Title3, MdTextSize.Body),
             r.map { (it as MdRow.Words).size },
@@ -77,8 +82,17 @@ class MarkdownRowsTest {
     /** A cut that falls where one run ends and the next begins leaves no empty run behind. */
     @Test
     fun a_cut_on_a_run_boundary_leaves_no_empty_run() {
-        val r = rows(MdBlock.Paragraph(listOf(MdSpan("a".repeat(10)), MdSpan("b".repeat(10), emphasis = true))), maxChars = 10)
-        assertEquals(listOf(listOf(MdSpan("a".repeat(10))), listOf(MdSpan("b".repeat(10), emphasis = true))), r.map { (it as MdRow.Words).spans })
+        val r =
+            rows(
+                MdBlock.Paragraph(listOf(MdSpan("a".repeat(10)), MdSpan("b".repeat(10), emphasis = true))),
+                maxChars = 10,
+            )
+        assertEquals(
+            listOf(listOf(MdSpan("a".repeat(10))), listOf(MdSpan("b".repeat(10), emphasis = true))),
+            r.map {
+                (it as MdRow.Words).spans
+            },
+        )
     }
 
     @Test
@@ -105,7 +119,11 @@ class MarkdownRowsTest {
         val pieces = r.map { it as MdRow.Code }
         assertEquals(code, pieces.joinToString("\n") { it.text }, "whole lines, every one")
         assertTrue(pieces.all { it.text.length <= 100 })
-        assertEquals(setOf("line 30".length + 30), pieces.map { it.widthChars }.toSet(), "the longest line, for every piece")
+        assertEquals(
+            setOf("line 30".length + 30),
+            pieces.map { it.widthChars }.toSet(),
+            "the longest line, for every piece",
+        )
         assertEquals(listOf(true) + List(pieces.size - 1) { false }, pieces.map { it.first })
         assertEquals(List(pieces.size - 1) { false } + listOf(true), pieces.map { it.last })
     }
@@ -155,26 +173,38 @@ class MarkdownRowsTest {
     fun a_table_piece_ends_before_its_cells_pass_a_rows_characters() {
         val header = listOf(words("h"), words("h"))
         val body = List(7) { listOf(words("x".repeat(20)), words("y".repeat(20))) }
-        val pieces = rows(MdBlock.Table(listOf(CellAlign.Start, CellAlign.Start), header, body), maxChars = 100)
-            .map { (it as MdRow.TableRows).rows.size }
+        val pieces =
+            rows(MdBlock.Table(listOf(CellAlign.Start, CellAlign.Start), header, body), maxChars = 100)
+                .map { (it as MdRow.TableRows).rows.size }
         // 2 + 40 + 40 = 82 in the first; then 40 + 40 = 80 a piece.
         assertEquals(listOf(2, 2, 2, 1), pieces)
 
         val long = listOf(listOf(words("z".repeat(150)), words("")), listOf(words("a"), words("b")))
-        val alone = rows(MdBlock.Table(listOf(CellAlign.Start, CellAlign.Start), header, long), maxChars = 100)
-            .map { (it as MdRow.TableRows).rows }
+        val alone =
+            rows(MdBlock.Table(listOf(CellAlign.Start, CellAlign.Start), header, long), maxChars = 100)
+                .map { (it as MdRow.TableRows).rows }
         assertEquals(listOf(emptyList(), long.take(1), long.drop(1)), alone, "after the header's own piece")
 
         // With no header words, the first piece takes the long row itself rather than staying empty.
         val bare = listOf(words(""), words(""))
-        val first = rows(MdBlock.Table(listOf(CellAlign.Start, CellAlign.Start), bare, long), maxChars = 100)
-            .map { (it as MdRow.TableRows).rows }
+        val first =
+            rows(MdBlock.Table(listOf(CellAlign.Start, CellAlign.Start), bare, long), maxChars = 100)
+                .map { (it as MdRow.TableRows).rows }
         assertEquals(listOf(long.take(1), long.drop(1)), first)
 
         // A long header with a long first row: the header's piece holds the header alone.
         val wideHeader = listOf(words("H".repeat(60)), words(""))
-        val after = rows(MdBlock.Table(listOf(CellAlign.Start, CellAlign.Start), wideHeader, List(3) { listOf(words("x".repeat(50)), words("")) }), maxChars = 100)
-            .map { it as MdRow.TableRows }
+        val after =
+            rows(
+                MdBlock.Table(
+                    listOf(CellAlign.Start, CellAlign.Start),
+                    wideHeader,
+                    List(3) {
+                        listOf(words("x".repeat(50)), words(""))
+                    },
+                ),
+                maxChars = 100,
+            ).map { it as MdRow.TableRows }
         assertEquals(listOf(0, 2, 1), after.map { it.rows.size })
         assertEquals(wideHeader, after[0].header)
     }
@@ -183,13 +213,33 @@ class MarkdownRowsTest {
     @Test
     fun a_row_prints_counts_never_the_files_words() {
         val secret = "SECRET"
-        val printed = listOf(
-            // A list mark is the app's own (a bullet, a number, "Done"), not the file's words.
-            MdRow.Words(0, 0, 0, false, MdTextSize.Body, listOf(MdSpan(secret)), marker = "1.", markerSpoken = "1."),
-            MdRow.Code(0, 0, 0, false, group = 0, text = secret, widthChars = 6, first = true, last = true),
-            MdRow.TableRows(0, 0, 0, false, 0, listOf(6), listOf(CellAlign.Start), listOf(listOf(MdSpan(secret))), listOf(listOf(listOf(MdSpan(secret))))),
-            MdRow.Raw(0, 0, 0, false, secret),
-        ).map { it.toString() }
+        val printed =
+            listOf(
+                // A list mark is the app's own (a bullet, a number, "Done"), not the file's words.
+                MdRow.Words(
+                    0,
+                    0,
+                    0,
+                    false,
+                    MdTextSize.Body,
+                    listOf(MdSpan(secret)),
+                    marker = "1.",
+                    markerSpoken = "1.",
+                ),
+                MdRow.Code(0, 0, 0, false, group = 0, text = secret, widthChars = 6, first = true, last = true),
+                MdRow.TableRows(
+                    0,
+                    0,
+                    0,
+                    false,
+                    0,
+                    listOf(6),
+                    listOf(CellAlign.Start),
+                    listOf(listOf(MdSpan(secret))),
+                    listOf(listOf(listOf(MdSpan(secret)))),
+                ),
+                MdRow.Raw(0, 0, 0, false, secret),
+            ).map { it.toString() }
         for (text in printed) assertTrue(secret !in text, text)
         assertEquals("Raw(block=0, 6 chars)", printed.last())
     }
@@ -211,7 +261,14 @@ class MarkdownRowsTest {
     /** A row may hold fewer cells than the header names; the column is still measured from what is there. */
     @Test
     fun a_table_with_a_short_row_measures_every_column() {
-        val r = rows(MdBlock.Table(listOf(CellAlign.Start, CellAlign.Center), listOf(words("A"), words("Bee")), listOf(listOf(words("long one")))))
+        val r =
+            rows(
+                MdBlock.Table(
+                    listOf(CellAlign.Start, CellAlign.Center),
+                    listOf(words("A"), words("Bee")),
+                    listOf(listOf(words("long one"))),
+                ),
+            )
         assertEquals(listOf(8, 3), (r.single() as MdRow.TableRows).widths)
     }
 
@@ -222,39 +279,61 @@ class MarkdownRowsTest {
         val table = MdBlock.Table(listOf(CellAlign.Start), listOf(words("h")), List(60) { listOf(words("c")) })
         val item = MdListItem(null, listOf(MdBlock.Code(code, null), MdBlock.Code(code, null)))
         val r = rows(MdBlock.ListBlock(null, false, listOf(item)), table, maxChars = 100)
-        val groups = r.mapNotNull {
-            when (it) {
-                is MdRow.Code -> it.group
-                is MdRow.TableRows -> it.group
-                else -> null
+        val groups =
+            r.mapNotNull {
+                when (it) {
+                    is MdRow.Code -> it.group
+                    is MdRow.TableRows -> it.group
+                    else -> null
+                }
             }
-        }
         val codeGroups = r.filterIsInstance<MdRow.Code>().map { it.group }
         val tableGroups = r.filterIsInstance<MdRow.TableRows>().map { it.group }
-        assertEquals(3, groups.toSet().size, "two code blocks and a table: ${groups}")
+        assertEquals(3, groups.toSet().size, "two code blocks and a table: $groups")
         assertEquals(1, tableGroups.toSet().size)
-        assertTrue(codeGroups.zipWithNext().count { (a, b) -> a != b } == 1, "the second code block starts a group of its own")
+        assertTrue(
+            codeGroups.zipWithNext().count { (a, b) ->
+                a != b
+            } == 1,
+            "the second code block starts a group of its own",
+        )
     }
 
     // ---- lists and quotes ------------------------------------------------------------------------
 
     @Test
     fun a_bulleted_list_marks_each_items_first_row_and_indents_its_blocks() {
-        val list = MdBlock.ListBlock(
-            start = null,
-            loose = false,
-            items = listOf(MdListItem(null, listOf(para("one"), para("more"))), MdListItem(null, listOf(para("two")))),
-        )
+        val list =
+            MdBlock.ListBlock(
+                start = null,
+                loose = false,
+                items =
+                    listOf(
+                        MdListItem(null, listOf(para("one"), para("more"))),
+                        MdListItem(null, listOf(para("two"))),
+                    ),
+            )
         val r = rows(list).map { it as MdRow.Words }
         assertEquals(listOf("one", "more", "two"), r.map { it.text() })
         assertEquals(listOf(MarkdownRows.bullet(0), null, MarkdownRows.bullet(0)), r.map { it.marker })
         assertEquals(listOf(1, 1, 1), r.map { it.indent })
-        assertEquals(listOf(false, true, false), r.map { it.gapAbove }, "tight: no space between items; blocks in an item still part")
+        assertEquals(
+            listOf(false, true, false),
+            r.map {
+                it.gapAbove
+            },
+            "tight: no space between items; blocks in an item still part",
+        )
     }
 
     @Test
     fun a_loose_numbered_list_counts_from_its_start_with_space_between_items() {
-        val list = MdBlock.ListBlock(start = 7, loose = true, items = listOf(MdListItem(null, listOf(para("a"))), MdListItem(null, listOf(para("b")))))
+        val list =
+            MdBlock.ListBlock(
+                start = 7,
+                loose = true,
+                items = listOf(MdListItem(null, listOf(para("a"))), MdListItem(null, listOf(para("b")))),
+            )
         val r = rows(para("before"), list).drop(1).map { it as MdRow.Words }
         assertEquals(listOf("7.", "8."), r.map { it.marker })
         assertEquals(listOf("7.", "8."), r.map { it.markerSpoken })
@@ -263,7 +342,12 @@ class MarkdownRowsTest {
 
     @Test
     fun a_task_is_marked_with_its_box_and_said_as_done_or_not() {
-        val list = MdBlock.ListBlock(null, false, listOf(MdListItem(true, listOf(para("did"))), MdListItem(false, listOf(para("todo")))))
+        val list =
+            MdBlock.ListBlock(
+                null,
+                false,
+                listOf(MdListItem(true, listOf(para("did"))), MdListItem(false, listOf(para("todo")))),
+            )
         val r = rows(list).map { it as MdRow.Words }
         assertEquals(listOf("" + Char(0x2611), "" + Char(0x2610)), r.map { it.marker })
         assertEquals(listOf("Done", "Not done"), r.map { it.markerSpoken })

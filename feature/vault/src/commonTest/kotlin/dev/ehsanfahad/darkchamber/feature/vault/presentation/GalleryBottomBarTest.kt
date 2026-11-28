@@ -13,26 +13,28 @@ import kotlin.test.assertEquals
  * there. The layout branches on [bottomBar] alone, so this is the whole rule.
  */
 class GalleryBottomBarTest {
+    private val batches: List<ImportState> =
+        listOf(
+            ImportState.Idle,
+            ImportState.Picking,
+            ImportState.PickerUnavailable,
+            ImportState.Running(index = 0, total = 2, name = "a.jpg", fileFraction = 0.5f),
+            ImportState.Finished(imported = 1, failed = emptyList()),
+        )
 
-    private val batches: List<ImportState> = listOf(
-        ImportState.Idle,
-        ImportState.Picking,
-        ImportState.PickerUnavailable,
-        ImportState.Running(index = 0, total = 2, name = "a.jpg", fileFraction = 0.5f),
-        ImportState.Finished(imported = 1, failed = emptyList()),
-    )
+    private val selections =
+        listOf(
+            GallerySelection(),
+            GallerySelection(active = true, ids = listOf(byteArrayOf(1))),
+        )
 
-    private val selections = listOf(
-        GallerySelection(),
-        GallerySelection(active = true, ids = listOf(byteArrayOf(1))),
-    )
-
-    private val filings: List<Filing?> = listOf(
-        null,
-        Filing.Choosing(),
-        Filing.Moving,
-        Filing.Moved(requested = 1, moved = 1, destination = FilingDestination.Album),
-    )
+    private val filings: List<Filing?> =
+        listOf(
+            null,
+            Filing.Choosing(),
+            Filing.Moving,
+            Filing.Moved(requested = 1, moved = 1, destination = FilingDestination.Album),
+        )
 
     /**
      * Every batch state × selection × filing. A move in flight or just reported outranks everything;
@@ -42,18 +44,23 @@ class GalleryBottomBarTest {
      */
     @Test
     fun each_state_gets_exactly_one_bar() {
-        for (batch in batches) for (selection in selections) for (filing in filings) {
-            val state = GalleryState(loading = false, batch = batch, selection = selection, filing = filing)
-            val expected = when {
-                filing is Filing.Moving || filing is Filing.Moved -> GalleryBottomBar.FilingReport
-                selection.active -> GalleryBottomBar.Selection
-                batch is ImportState.Running -> GalleryBottomBar.Progress
-                batch == ImportState.Picking -> GalleryBottomBar.Picking
-                batch is ImportState.Finished -> GalleryBottomBar.Summary
-                batch == ImportState.PickerUnavailable -> GalleryBottomBar.PickerUnavailable
-                else -> GalleryBottomBar.Actions
+        for (batch in batches) {
+            for (selection in selections) {
+                for (filing in filings) {
+                    val state = GalleryState(loading = false, batch = batch, selection = selection, filing = filing)
+                    val expected =
+                        when {
+                            filing is Filing.Moving || filing is Filing.Moved -> GalleryBottomBar.FilingReport
+                            selection.active -> GalleryBottomBar.Selection
+                            batch is ImportState.Running -> GalleryBottomBar.Progress
+                            batch == ImportState.Picking -> GalleryBottomBar.Picking
+                            batch is ImportState.Finished -> GalleryBottomBar.Summary
+                            batch == ImportState.PickerUnavailable -> GalleryBottomBar.PickerUnavailable
+                            else -> GalleryBottomBar.Actions
+                        }
+                    assertEquals(expected, state.bottomBar(), "$batch / selecting=${selection.active} / $filing")
+                }
             }
-            assertEquals(expected, state.bottomBar(), "$batch / selecting=${selection.active} / $filing")
         }
     }
 

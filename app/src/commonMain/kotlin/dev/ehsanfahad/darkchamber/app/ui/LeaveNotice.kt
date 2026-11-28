@@ -43,18 +43,20 @@ internal fun LeaveNotice(modifier: Modifier = Modifier) {
     Surface(
         color = DarkChamberTheme.colors.surfaceRaised,
         shape = DarkChamberTheme.shapes.large,
-        modifier = modifier
-            .padding(DarkChamberTheme.spacing.spaceMd)
-            .semantics { liveRegion = LiveRegionMode.Polite },
+        modifier =
+            modifier
+                .padding(DarkChamberTheme.spacing.spaceMd)
+                .semantics { liveRegion = LiveRegionMode.Polite },
     ) {
         Text(
             leaveNoticeText(),
             style = DarkChamberTheme.typography.body,
             color = DarkChamberTheme.colors.textPrimary,
-            modifier = Modifier.padding(
-                horizontal = DarkChamberTheme.spacing.spaceMd,
-                vertical = DarkChamberTheme.spacing.spaceSm,
-            ),
+            modifier =
+                Modifier.padding(
+                    horizontal = DarkChamberTheme.spacing.spaceMd,
+                    vertical = DarkChamberTheme.spacing.spaceSm,
+                ),
         )
     }
 }

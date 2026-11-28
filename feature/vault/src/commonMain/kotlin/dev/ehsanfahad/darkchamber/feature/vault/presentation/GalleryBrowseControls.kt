@@ -23,6 +23,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -85,7 +86,10 @@ internal fun GalleryState.showsBrowseControls(): Boolean =
  * was. A row with no callback for a control simply left it out, while a menu lists whatever it is
  * handed — and an entry that does nothing is the kind of thing no test in this module can see.
  */
-internal data class AlbumActions(val rename: Boolean, val delete: Boolean) {
+internal data class AlbumActions(
+    val rename: Boolean,
+    val delete: Boolean,
+) {
     val any: Boolean get() = rename || delete
 }
 
@@ -105,9 +109,13 @@ internal data class AlbumActions(val rename: Boolean, val delete: Boolean) {
  */
 internal fun GalleryState.albumActions(): AlbumActions =
     when (val album = album) {
-        is AlbumState.Present ->
+        is AlbumState.Present -> {
             AlbumActions(rename = album.name is AlbumTileName.Readable, delete = true)
-        AlbumState.Gone, null -> AlbumActions(rename = false, delete = false)
+        }
+
+        AlbumState.Gone, null -> {
+            AlbumActions(rename = false, delete = false)
+        }
     }
 
 /**
@@ -120,8 +128,7 @@ internal fun GalleryState.albumActions(): AlbumActions =
  *
  * An empty whole-vault listing still has no row: nothing to browse and no album to act on.
  */
-internal fun GalleryState.showsControlsRow(): Boolean =
-    showsBrowseControls() || albumActions().any
+internal fun GalleryState.showsControlsRow(): Boolean = showsBrowseControls() || albumActions().any
 
 /**
  * The way back to seeing a batch that has just landed, when a control would keep it out of sight.
@@ -258,7 +265,9 @@ internal fun rememberBrowsingScroll(
 }
 
 /** The state behind [rememberBrowsingScroll]; see there for why each half exists. */
-internal class BrowsingScroll(private val gridState: LazyGridState) {
+internal class BrowsingScroll(
+    private val gridState: LazyGridState,
+) {
     private var wanted: Place? = null
     private var lastSearch: GallerySearch? = null
     private var lastListing: List<GalleryItem>? = null
@@ -283,7 +292,10 @@ internal class BrowsingScroll(private val gridState: LazyGridState) {
      * it: filing one item sent the grid from the top back to the end of the listing, which is where it
      * had been when the order was re-chosen. Measured on a device before this guard existed.
      */
-    fun rememberPlaceBeforeReordering(from: GalleryOrder, to: GalleryOrder) {
+    fun rememberPlaceBeforeReordering(
+        from: GalleryOrder,
+        to: GalleryOrder,
+    ) {
         if (from == to) return
         // **A grid with nothing in it has no position to hold** — and, worse, no way to tell the new
         // listing from the old one: an empty listing is the same instance every time (the ordering
@@ -327,7 +339,10 @@ internal class BrowsingScroll(private val gridState: LazyGridState) {
         isReordering = false
     }
 
-    private data class Place(val index: Int, val offset: Int)
+    private data class Place(
+        val index: Int,
+        val offset: Int,
+    )
 }
 
 /**
@@ -343,12 +358,13 @@ internal class BrowsingScroll(private val gridState: LazyGridState) {
  * the effective needle rather than the raw string is what keeps this agreeing with the listing: if the
  * items did not change, neither does where the user is looking.
  */
-internal fun scrollsToTop(previous: GallerySearch, next: GallerySearch): Boolean =
-    previous.needle() != next.needle()
+internal fun scrollsToTop(
+    previous: GallerySearch,
+    next: GallerySearch,
+): Boolean = previous.needle() != next.needle()
 
 /** The text the listing actually filters by, which is nothing at all unless something was typed. */
-private fun GallerySearch.needle(): String =
-    if (isFiltering()) (this as GallerySearch.Open).query.trim() else ""
+private fun GallerySearch.needle(): String = if (isFiltering()) (this as GallerySearch.Open).query.trim() else ""
 
 /**
  * One row of the order menu: an order to choose, and whether it is the one already in force.
@@ -356,7 +372,10 @@ private fun GallerySearch.needle(): String =
  * [inForce] is carried rather than recomputed at the point of drawing, so that "exactly one option is
  * marked" is a property of a value a test can hold rather than of a comparison buried in a layout.
  */
-internal data class OrderOption(val order: GalleryOrder, val inForce: Boolean)
+internal data class OrderOption(
+    val order: GalleryOrder,
+    val inForce: Boolean,
+)
 
 /**
  * Every order the menu offers, in the enum's own order, with the one in force marked.
@@ -386,8 +405,7 @@ internal fun orderOptions(current: GalleryOrder): List<OrderOption> =
  * search itself trims before matching, so anything else here would claim a filter the listing is not
  * applying.
  */
-internal fun GallerySearch.isFiltering(): Boolean =
-    this is GallerySearch.Open && query.isNotBlank()
+internal fun GallerySearch.isFiltering(): Boolean = this is GallerySearch.Open && query.isNotBlank()
 
 /**
  * What an empty grid should say, out of the five answers the formatter holds.
@@ -428,7 +446,7 @@ internal fun GalleryBrowseControls(
     search: GallerySearch,
     onChooseOrder: (GalleryOrder) -> Unit,
     onOpenSearch: () -> Unit,
-    onSearchFocused: () -> Unit,
+    onSearchFocus: () -> Unit,
     onEditSearch: (String) -> Unit,
     onCloseSearch: () -> Unit,
     // Whether the order and search controls themselves belong on the row — see [showsBrowseControls].
@@ -442,75 +460,81 @@ internal fun GalleryBrowseControls(
 ) {
     val spacing = DarkChamberTheme.spacing
     val colors = DarkChamberTheme.colors
+    // As of the latest composition, for the focus effect below, which outlives one.
+    val currentOnSearchFocus by rememberUpdatedState(onSearchFocus)
 
     Column(modifier = modifier.fillMaxWidth()) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = spacing.spaceMd, vertical = spacing.spaceXxs),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = spacing.spaceMd, vertical = spacing.spaceXxs),
         ) {
             if (!showsControls) {
                 // The row with nothing to browse: it holds the album's own actions and no more, so
                 // the overflow sits where it always does rather than sliding to the left edge.
                 Spacer(modifier = Modifier.weight(1f))
             }
-            if (showsControls) when (search) {
-                GallerySearch.Closed -> {
-                    OrderControl(order = order, onChooseOrder = onChooseOrder)
-                    Spacer(modifier = Modifier.weight(1f))
-                    TextButton(
-                        onClick = onOpenSearch,
-                        modifier = Modifier.heightIn(min = spacing.spaceXxl),
-                    ) {
-                        Text(
-                            text = GalleryFormat.searchNames(),
-                            style = DarkChamberTheme.typography.label,
-                            color = colors.accent,
-                        )
-                    }
-                }
-
-                is GallerySearch.Open -> {
-                    // Focused as it appears. The field is here because the user asked for it, and a
-                    // field that has to be tapped a second time to type into makes the first tap
-                    // look like it did nothing. Only then, though: this row is drawn again whenever
-                    // the grid comes back (from the viewer, say), and focusing it each time would
-                    // bring the keyboard up over the item the grid has just scrolled to.
-                    val focus = remember { FocusRequester() }
-                    LaunchedEffect(search.takesFocus) {
-                        if (search.takesFocus) {
-                            focus.requestFocus()
-                            onSearchFocused()
+            if (showsControls) {
+                when (search) {
+                    GallerySearch.Closed -> {
+                        OrderControl(order = order, onChooseOrder = onChooseOrder)
+                        Spacer(modifier = Modifier.weight(1f))
+                        TextButton(
+                            onClick = onOpenSearch,
+                            modifier = Modifier.heightIn(min = spacing.spaceXxl),
+                        ) {
+                            Text(
+                                text = GalleryFormat.searchNames(),
+                                style = DarkChamberTheme.typography.label,
+                                color = colors.accent,
+                            )
                         }
                     }
 
-                    OutlinedTextField(
-                        value = search.query,
-                        onValueChange = onEditSearch,
-                        label = { Text(GalleryFormat.searchNames()) },
-                        singleLine = true,
-                        // No automatic capitalisation: this is matched against a file name, and the
-                        // match is case-folded anyway, so a capital letter the user did not type is
-                        // noise in a field they are reading back.
-                        keyboardOptions = KeyboardOptions(
-                            capitalization = KeyboardCapitalization.None,
-                            imeAction = ImeAction.Done,
-                        ),
-                        // No keyboard action of its own: results narrow as each character arrives,
-                        // so there is nothing for a submit key to do. Done gets the platform's own
-                        // behaviour — put the keyboard away — rather than a handler doing nothing.
-                        modifier = Modifier.weight(1f).focusRequester(focus),
-                    )
-                    TextButton(
-                        onClick = onCloseSearch,
-                        modifier = Modifier.heightIn(min = spacing.spaceXxl),
-                    ) {
-                        Text(
-                            text = GalleryFormat.clearSearch(),
-                            style = DarkChamberTheme.typography.label,
-                            color = colors.accent,
+                    is GallerySearch.Open -> {
+                        // Focused as it appears. The field is here because the user asked for it, and a
+                        // field that has to be tapped a second time to type into makes the first tap
+                        // look like it did nothing. Only then, though: this row is drawn again whenever
+                        // the grid comes back (from the viewer, say), and focusing it each time would
+                        // bring the keyboard up over the item the grid has just scrolled to.
+                        val focus = remember { FocusRequester() }
+                        LaunchedEffect(search.takesFocus) {
+                            if (search.takesFocus) {
+                                focus.requestFocus()
+                                currentOnSearchFocus()
+                            }
+                        }
+
+                        OutlinedTextField(
+                            value = search.query,
+                            onValueChange = onEditSearch,
+                            label = { Text(GalleryFormat.searchNames()) },
+                            singleLine = true,
+                            // No automatic capitalisation: this is matched against a file name, and the
+                            // match is case-folded anyway, so a capital letter the user did not type is
+                            // noise in a field they are reading back.
+                            keyboardOptions =
+                                KeyboardOptions(
+                                    capitalization = KeyboardCapitalization.None,
+                                    imeAction = ImeAction.Done,
+                                ),
+                            // No keyboard action of its own: results narrow as each character arrives,
+                            // so there is nothing for a submit key to do. Done gets the platform's own
+                            // behaviour — put the keyboard away — rather than a handler doing nothing.
+                            modifier = Modifier.weight(1f).focusRequester(focus),
                         )
+                        TextButton(
+                            onClick = onCloseSearch,
+                            modifier = Modifier.heightIn(min = spacing.spaceXxl),
+                        ) {
+                            Text(
+                                text = GalleryFormat.clearSearch(),
+                                style = DarkChamberTheme.typography.label,
+                                color = colors.accent,
+                            )
+                        }
                     }
                 }
             }
@@ -533,11 +557,12 @@ internal fun GalleryBrowseControls(
                 // one place those items are *absent*, so a neutral footnote would be the quietest
                 // possible way to report a signal the vault is built to surface.
                 color = colors.danger,
-                modifier = Modifier.padding(
-                    start = spacing.spaceMd,
-                    end = spacing.spaceMd,
-                    bottom = spacing.spaceXs,
-                ),
+                modifier =
+                    Modifier.padding(
+                        start = spacing.spaceMd,
+                        end = spacing.spaceMd,
+                        bottom = spacing.spaceXs,
+                    ),
             )
         }
     }
@@ -552,7 +577,10 @@ internal fun GalleryBrowseControls(
  * that did not.
  */
 @Composable
-private fun OrderControl(order: GalleryOrder, onChooseOrder: (GalleryOrder) -> Unit) {
+private fun OrderControl(
+    order: GalleryOrder,
+    onChooseOrder: (GalleryOrder) -> Unit,
+) {
     val spacing = DarkChamberTheme.spacing
     val colors = DarkChamberTheme.colors
     var open by remember { mutableStateOf(false) }
@@ -560,11 +588,12 @@ private fun OrderControl(order: GalleryOrder, onChooseOrder: (GalleryOrder) -> U
     Box {
         TextButton(
             onClick = { open = true },
-            modifier = Modifier
-                .heightIn(min = spacing.spaceXxl)
-                // The caret is a drawing, and the label alone is a value rather than a control, so
-                // the spoken name is supplied instead of inferred from either.
-                .semantics { contentDescription = GalleryFormat.orderControlDescription(order) },
+            modifier =
+                Modifier
+                    .heightIn(min = spacing.spaceXxl)
+                    // The caret is a drawing, and the label alone is a value rather than a control, so
+                    // the spoken name is supplied instead of inferred from either.
+                    .semantics { contentDescription = GalleryFormat.orderControlDescription(order) },
         ) {
             Text(
                 text = GalleryFormat.orderLabel(order),
@@ -576,15 +605,16 @@ private fun OrderControl(order: GalleryOrder, onChooseOrder: (GalleryOrder) -> U
                 // that this opens a choice, so a second thing to announce would only repeat it.
                 contentDescription = null,
                 tint = colors.textPrimary,
-                modifier = Modifier
-                    .padding(start = spacing.spaceXxs)
-                    // **Not its natural 24 dp.** The label beside it is 12 sp, and a 24 dp chevron
-                    // next to 12 sp type is the loudest thing in the row — the opposite failure to
-                    // the one being fixed. 16 dp from the scale is about half again the label's
-                    // height, which is the proportion a disclosure caret has in Material's own
-                    // controls. Being a filled outline, it keeps its shape at that size rather than
-                    // thinning the way a stroke-drawn icon would.
-                    .size(spacing.spaceMd),
+                modifier =
+                    Modifier
+                        .padding(start = spacing.spaceXxs)
+                        // **Not its natural 24 dp.** The label beside it is 12 sp, and a 24 dp chevron
+                        // next to 12 sp type is the loudest thing in the row — the opposite failure to
+                        // the one being fixed. 16 dp from the scale is about half again the label's
+                        // height, which is the proportion a disclosure caret has in Material's own
+                        // controls. Being a filled outline, it keeps its shape at that size rather than
+                        // thinning the way a stroke-drawn icon would.
+                        .size(spacing.spaceMd),
             )
         }
 
@@ -639,7 +669,11 @@ private fun OrderControl(order: GalleryOrder, onChooseOrder: (GalleryOrder) -> U
  * than one that did not.
  */
 @Composable
-private fun AlbumOverflow(actions: AlbumActions, onRename: () -> Unit, onDelete: () -> Unit) {
+private fun AlbumOverflow(
+    actions: AlbumActions,
+    onRename: () -> Unit,
+    onDelete: () -> Unit,
+) {
     val spacing = DarkChamberTheme.spacing
     var open by remember { mutableStateOf(false) }
 

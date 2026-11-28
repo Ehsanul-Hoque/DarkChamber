@@ -41,7 +41,12 @@ interface VaultViewerComponent {
      * What the PDF shown has on screen: the pages [visible], shown [shownWidthPx] wide at [zoom], on a
      * screen [screenWidthPx] wide. The pages near them are drawn to fit; the rest are let go.
      */
-    fun pdfViewport(visible: IntRange, shownWidthPx: Int, zoom: Float, screenWidthPx: Int)
+    fun pdfViewport(
+        visible: IntRange,
+        shownWidthPx: Int,
+        zoom: Float,
+        screenWidthPx: Int,
+    )
 
     /**
      * The text of the text file shown, keyed like [pictures] — **at most one, and only while a text
@@ -54,13 +59,19 @@ interface VaultViewerComponent {
     fun toggleFormatted()
 
     /** The PDF shown was scrolled to [page], [offsetPx] down it — where reading resumes if it is left and come back to. */
-    fun pdfScrolled(page: Int, offsetPx: Int)
+    fun pdfScrolled(
+        page: Int,
+        offsetPx: Int,
+    )
 
     /**
      * The size of the area a picture is drawn in, in pixels. Nothing is decoded until this is known,
      * because the decode is sized from it.
      */
-    fun viewportMeasured(widthPx: Int, heightPx: Int)
+    fun viewportMeasured(
+        widthPx: Int,
+        heightPx: Int,
+    )
 
     /** The pager settled on the page at [index]. */
     fun showPage(index: Int)

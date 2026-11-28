@@ -1,5 +1,6 @@
 plugins {
     alias(libs.plugins.kotlinJvm)
+    id("darkchamber.quality")
 }
 
 // No jvmToolchain: this module compiles with whatever JDK runs Gradle (17 locally, 21 on CI),

@@ -36,7 +36,6 @@ import kotlin.test.assertTrue
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class DefaultVaultAlbumsComponentTest {
-
     private val lifecycle = LifecycleRegistry().apply { resume() }
 
     private fun TestScope.component(
@@ -56,10 +55,14 @@ class DefaultVaultAlbumsComponentTest {
         )
 
     /** One album in the grid, as the catalog would report it. */
-    private fun FakeVaultItems.hasAlbum(id: ByteArray, name: Outcome<String>) {
-        albums.value = listOf(
-            AlbumSummary(id = id, name = name, itemCount = 0, coverItemId = null, createdAt = 1L),
-        )
+    private fun FakeVaultItems.hasAlbum(
+        id: ByteArray,
+        name: Outcome<String>,
+    ) {
+        albums.value =
+            listOf(
+                AlbumSummary(id = id, name = name, itemCount = 0, coverItemId = null, createdAt = 1L),
+            )
     }
 
     /**
@@ -68,39 +71,46 @@ class DefaultVaultAlbumsComponentTest {
      * listing's documented contract.
      */
     @Test
-    fun a_broken_listing_is_reported_rather_than_shown_as_an_empty_grid() = runTest {
-        val component = DefaultVaultAlbumsComponent(
-            componentContext = DefaultComponentContext(lifecycle),
-            observeAlbums = ObserveAlbums(ExplodingVaultItems()),
-            createAlbum = CreateAlbum(ExplodingVaultItems(), ioContext = UnconfinedTestDispatcher(testScheduler)),
-            mainContext = UnconfinedTestDispatcher(testScheduler),
-            onOpenAlbum = { _, _ -> },
-            onOpenUnfiled = {},
-        )
-        advanceUntilIdle()
+    fun a_broken_listing_is_reported_rather_than_shown_as_an_empty_grid() =
+        runTest {
+            val component =
+                DefaultVaultAlbumsComponent(
+                    componentContext = DefaultComponentContext(lifecycle),
+                    observeAlbums = ObserveAlbums(ExplodingVaultItems()),
+                    createAlbum =
+                        CreateAlbum(
+                            ExplodingVaultItems(),
+                            ioContext = UnconfinedTestDispatcher(testScheduler),
+                        ),
+                    mainContext = UnconfinedTestDispatcher(testScheduler),
+                    onOpenAlbum = { _, _ -> },
+                    onOpenUnfiled = {},
+                )
+            advanceUntilIdle()
 
-        assertEquals(AlbumsError.ListingFailed, component.state.value.error)
-        assertFalse(component.state.value.loading, "it has stopped waiting")
-        assertTrue(component.state.value.listingUnreadable, "and the grid knows why it is empty")
+            assertEquals(AlbumsError.ListingFailed, component.state.value.error)
+            assertFalse(component.state.value.loading, "it has stopped waiting")
+            assertTrue(component.state.value.listingUnreadable, "and the grid knows why it is empty")
 
-        // Dismissing the banner acknowledges the message, not the condition: the failure ended the flow,
-        // so nothing will arrive afterwards, and a screen that forgot would put "No albums yet" back up
-        // over a vault whose albums it never managed to read.
-        component.dismissError()
-        assertNull(component.state.value.error, "the banner is the user's to dismiss")
-        assertTrue(component.state.value.listingUnreadable, "why the grid is empty is not")
-    }
+            // Dismissing the banner acknowledges the message, not the condition: the failure ended the flow,
+            // so nothing will arrive afterwards, and a screen that forgot would put "No albums yet" back up
+            // over a vault whose albums it never managed to read.
+            component.dismissError()
+            assertNull(component.state.value.error, "the banner is the user's to dismiss")
+            assertTrue(component.state.value.listingUnreadable, "why the grid is empty is not")
+        }
 
     @Test
-    fun the_grid_has_no_draft_until_one_is_asked_for() = runTest {
-        val component = component(FakeVaultItems())
+    fun the_grid_has_no_draft_until_one_is_asked_for() =
+        runTest {
+            val component = component(FakeVaultItems())
 
-        assertNull(component.state.value.draft, "no dialog until the affordance is used")
+            assertNull(component.state.value.draft, "no dialog until the affordance is used")
 
-        component.startCreate()
+            component.startCreate()
 
-        assertEquals("", assertNotNull(component.state.value.draft).name, "it opens empty")
-    }
+            assertEquals("", assertNotNull(component.state.value.draft).name, "it opens empty")
+        }
 
     /**
      * A second tap on the affordance keeps what was typed.
@@ -109,29 +119,31 @@ class DefaultVaultAlbumsComponentTest {
      * stray touch by discarding a half-typed name is the worst of the three available behaviours.
      */
     @Test
-    fun starting_a_create_twice_keeps_what_was_typed() = runTest {
-        val component = component(FakeVaultItems())
+    fun starting_a_create_twice_keeps_what_was_typed() =
+        runTest {
+            val component = component(FakeVaultItems())
 
-        component.startCreate()
-        component.editAlbumName("Receip")
-        component.startCreate()
+            component.startCreate()
+            component.editAlbumName("Receip")
+            component.startCreate()
 
-        assertEquals("Receip", assertNotNull(component.state.value.draft).name)
-    }
+            assertEquals("Receip", assertNotNull(component.state.value.draft).name)
+        }
 
     @Test
-    fun a_confirmed_name_creates_the_album_and_closes_the_dialog() = runTest {
-        val vault = FakeVaultItems()
-        val component = component(vault)
+    fun a_confirmed_name_creates_the_album_and_closes_the_dialog() =
+        runTest {
+            val vault = FakeVaultItems()
+            val component = component(vault)
 
-        component.startCreate()
-        component.editAlbumName("  Receipts ")
-        component.confirmCreate()
-        advanceUntilIdle()
+            component.startCreate()
+            component.editAlbumName("  Receipts ")
+            component.confirmCreate()
+            advanceUntilIdle()
 
-        assertEquals(listOf("Receipts"), vault.createdNames, "trimmed on the way down")
-        assertNull(component.state.value.draft, "the dialog closes on success")
-    }
+            assertEquals(listOf("Receipts"), vault.createdNames, "trimmed on the way down")
+            assertNull(component.state.value.draft, "the dialog closes on success")
+        }
 
     /**
      * The new album arrives through the **listing**, not from the create's return value.
@@ -140,31 +152,37 @@ class DefaultVaultAlbumsComponentTest {
      * else, and it is why the success path above does not insert anything into state.
      */
     @Test
-    fun a_created_album_appears_through_the_listing() = runTest {
-        val vault = FakeVaultItems()
-        val component = component(vault)
+    fun a_created_album_appears_through_the_listing() =
+        runTest {
+            val vault = FakeVaultItems()
+            val component = component(vault)
 
-        component.startCreate()
-        component.editAlbumName("Receipts")
-        component.confirmCreate()
-        advanceUntilIdle()
+            component.startCreate()
+            component.editAlbumName("Receipts")
+            component.confirmCreate()
+            advanceUntilIdle()
 
-        assertTrue(component.state.value.albums.isEmpty(), "the fake catalog has not emitted yet")
+            assertTrue(
+                component.state.value.albums
+                    .isEmpty(),
+                "the fake catalog has not emitted yet",
+            )
 
-        // What the real catalog's notification would do: re-emit with the row that now exists.
-        vault.albums.value = listOf(
-            AlbumSummary(
-                id = byteArrayOf(42),
-                name = Outcome.Ok("Receipts"),
-                itemCount = 0,
-                coverItemId = null,
-                createdAt = 1L,
-            ),
-        )
-        advanceUntilIdle()
+            // What the real catalog's notification would do: re-emit with the row that now exists.
+            vault.albums.value =
+                listOf(
+                    AlbumSummary(
+                        id = byteArrayOf(42),
+                        name = Outcome.Ok("Receipts"),
+                        itemCount = 0,
+                        coverItemId = null,
+                        createdAt = 1L,
+                    ),
+                )
+            advanceUntilIdle()
 
-        assertEquals(1, component.state.value.albums.size, "the listing carries it, nothing else does")
-    }
+            assertEquals(1, component.state.value.albums.size, "the listing carries it, nothing else does")
+        }
 
     /**
      * An empty name is refused with something to read, not swallowed.
@@ -173,34 +191,36 @@ class DefaultVaultAlbumsComponentTest {
      * half of this the component cannot see on its own.
      */
     @Test
-    fun an_empty_name_is_refused_with_a_message_and_no_call() = runTest {
-        val vault = FakeVaultItems()
-        val component = component(vault)
+    fun an_empty_name_is_refused_with_a_message_and_no_call() =
+        runTest {
+            val vault = FakeVaultItems()
+            val component = component(vault)
 
-        component.startCreate()
-        component.confirmCreate()
-        advanceUntilIdle()
+            component.startCreate()
+            component.confirmCreate()
+            advanceUntilIdle()
 
-        val draft = assertNotNull(component.state.value.draft, "the dialog stays open to be fixed")
-        assertEquals(AlbumDraftProblem.NameMissing, draft.problem)
-        assertFalse(draft.saving, "it is not still trying")
-        assertTrue(vault.createdNames.isEmpty(), "nothing was attempted")
-    }
+            val draft = assertNotNull(component.state.value.draft, "the dialog stays open to be fixed")
+            assertEquals(AlbumDraftProblem.NameMissing, draft.problem)
+            assertFalse(draft.saving, "it is not still trying")
+            assertTrue(vault.createdNames.isEmpty(), "nothing was attempted")
+        }
 
     /** Editing the name clears the complaint about the name that was there before. */
     @Test
-    fun editing_the_name_clears_the_problem() = runTest {
-        val component = component(FakeVaultItems())
+    fun editing_the_name_clears_the_problem() =
+        runTest {
+            val component = component(FakeVaultItems())
 
-        component.startCreate()
-        component.confirmCreate()
-        advanceUntilIdle()
-        assertEquals(AlbumDraftProblem.NameMissing, assertNotNull(component.state.value.draft).problem)
+            component.startCreate()
+            component.confirmCreate()
+            advanceUntilIdle()
+            assertEquals(AlbumDraftProblem.NameMissing, assertNotNull(component.state.value.draft).problem)
 
-        component.editAlbumName("R")
+            component.editAlbumName("R")
 
-        assertNull(assertNotNull(component.state.value.draft).problem, "the message went with the text")
-    }
+            assertNull(assertNotNull(component.state.value.draft).problem, "the message went with the text")
+        }
 
     /**
      * A refused create is surfaced, and the typed name survives it.
@@ -209,20 +229,21 @@ class DefaultVaultAlbumsComponentTest {
      * because the ordinary next move after a failure is to try it again.
      */
     @Test
-    fun a_failed_create_is_surfaced_with_the_name_kept() = runTest {
-        val vault = FakeVaultItems(createResult = Outcome.Err(VaultError.Crypto.IntegrityFailure))
-        val component = component(vault)
+    fun a_failed_create_is_surfaced_with_the_name_kept() =
+        runTest {
+            val vault = FakeVaultItems(createResult = Outcome.Err(VaultError.Crypto.IntegrityFailure))
+            val component = component(vault)
 
-        component.startCreate()
-        component.editAlbumName("Receipts")
-        component.confirmCreate()
-        advanceUntilIdle()
+            component.startCreate()
+            component.editAlbumName("Receipts")
+            component.confirmCreate()
+            advanceUntilIdle()
 
-        val draft = assertNotNull(component.state.value.draft, "a failure keeps the dialog up")
-        assertEquals(AlbumDraftProblem.CreateFailed, draft.problem)
-        assertEquals("Receipts", draft.name, "the name is kept so it can be retried")
-        assertFalse(draft.saving)
-    }
+            val draft = assertNotNull(component.state.value.draft, "a failure keeps the dialog up")
+            assertEquals(AlbumDraftProblem.CreateFailed, draft.problem)
+            assertEquals("Receipts", draft.name, "the name is kept so it can be retried")
+            assertFalse(draft.saving)
+        }
 
     /**
      * A double tap on Create makes one album.
@@ -235,36 +256,38 @@ class DefaultVaultAlbumsComponentTest {
      * is a window a context that ran to completion would never leave open.
      */
     @Test
-    fun a_second_confirm_while_one_is_running_does_not_create_twice() = runTest {
-        val io = ManualDispatcher()
-        val vault = FakeVaultItems()
-        val component = component(vault, ioContext = io)
+    fun a_second_confirm_while_one_is_running_does_not_create_twice() =
+        runTest {
+            val io = ManualDispatcher()
+            val vault = FakeVaultItems()
+            val component = component(vault, ioContext = io)
 
-        component.startCreate()
-        component.editAlbumName("Receipts")
-        component.confirmCreate()
+            component.startCreate()
+            component.editAlbumName("Receipts")
+            component.confirmCreate()
 
-        assertTrue(assertNotNull(component.state.value.draft).saving, "this is the window under test")
+            assertTrue(assertNotNull(component.state.value.draft).saving, "this is the window under test")
 
-        component.confirmCreate()
-        io.drain()
-        advanceUntilIdle()
+            component.confirmCreate()
+            io.drain()
+            advanceUntilIdle()
 
-        assertEquals(listOf("Receipts"), vault.createdNames, "one album, not two")
-        assertNull(component.state.value.draft)
-    }
+            assertEquals(listOf("Receipts"), vault.createdNames, "one album, not two")
+            assertNull(component.state.value.draft)
+        }
 
     /** Cancelling abandons the draft. */
     @Test
-    fun cancelling_closes_the_dialog() = runTest {
-        val component = component(FakeVaultItems())
+    fun cancelling_closes_the_dialog() =
+        runTest {
+            val component = component(FakeVaultItems())
 
-        component.startCreate()
-        component.editAlbumName("Receipts")
-        component.cancelCreate()
+            component.startCreate()
+            component.editAlbumName("Receipts")
+            component.cancelCreate()
 
-        assertNull(component.state.value.draft)
-    }
+            assertNull(component.state.value.draft)
+        }
 
     /**
      * Cancel is refused while the create is in flight, and so is a keystroke.
@@ -274,25 +297,26 @@ class DefaultVaultAlbumsComponentTest {
      * another.
      */
     @Test
-    fun a_create_in_flight_cannot_be_cancelled_or_edited() = runTest {
-        val io = ManualDispatcher()
-        val vault = FakeVaultItems()
-        val component = component(vault, ioContext = io)
+    fun a_create_in_flight_cannot_be_cancelled_or_edited() =
+        runTest {
+            val io = ManualDispatcher()
+            val vault = FakeVaultItems()
+            val component = component(vault, ioContext = io)
 
-        component.startCreate()
-        component.editAlbumName("Receipts")
-        component.confirmCreate()
+            component.startCreate()
+            component.editAlbumName("Receipts")
+            component.confirmCreate()
 
-        component.cancelCreate()
-        component.editAlbumName("Something else")
+            component.cancelCreate()
+            component.editAlbumName("Something else")
 
-        val draft = assertNotNull(component.state.value.draft, "it cannot be called back, so it stays")
-        assertEquals("Receipts", draft.name, "and it cannot be renamed underneath the write")
+            val draft = assertNotNull(component.state.value.draft, "it cannot be called back, so it stays")
+            assertEquals("Receipts", draft.name, "and it cannot be renamed underneath the write")
 
-        io.drain()
-        advanceUntilIdle()
-        assertEquals(listOf("Receipts"), vault.createdNames)
-    }
+            io.drain()
+            advanceUntilIdle()
+            assertEquals(listOf("Receipts"), vault.createdNames)
+        }
 
     /**
      * A listing emission does not close an open dialog.
@@ -302,27 +326,29 @@ class DefaultVaultAlbumsComponentTest {
      * dialog away from someone mid-word.
      */
     @Test
-    fun a_listing_emission_leaves_an_open_draft_alone() = runTest {
-        val vault = FakeVaultItems()
-        val component = component(vault)
+    fun a_listing_emission_leaves_an_open_draft_alone() =
+        runTest {
+            val vault = FakeVaultItems()
+            val component = component(vault)
 
-        component.startCreate()
-        component.editAlbumName("Receip")
+            component.startCreate()
+            component.editAlbumName("Receip")
 
-        vault.albums.value = listOf(
-            AlbumSummary(
-                id = byteArrayOf(1),
-                name = Outcome.Ok("Holiday"),
-                itemCount = 2,
-                coverItemId = null,
-                createdAt = 1L,
-            ),
-        )
-        advanceUntilIdle()
+            vault.albums.value =
+                listOf(
+                    AlbumSummary(
+                        id = byteArrayOf(1),
+                        name = Outcome.Ok("Holiday"),
+                        itemCount = 2,
+                        coverItemId = null,
+                        createdAt = 1L,
+                    ),
+                )
+            advanceUntilIdle()
 
-        assertEquals(1, component.state.value.albums.size, "the listing still landed")
-        assertEquals("Receip", assertNotNull(component.state.value.draft).name, "and the draft survived it")
-    }
+            assertEquals(1, component.state.value.albums.size, "the listing still landed")
+            assertEquals("Receip", assertNotNull(component.state.value.draft).name, "and the draft survived it")
+        }
 
     /**
      * Opening an album reports **what the tile said it was called**, beside its id.
@@ -335,38 +361,44 @@ class DefaultVaultAlbumsComponentTest {
      * configuration, which carries ids only.
      */
     @Test
-    fun opening_an_album_reports_the_name_the_grid_is_showing() = runTest {
-        val vault = FakeVaultItems()
-        vault.hasAlbum(byteArrayOf(1, 2), Outcome.Ok("Receipts"))
-        var opened: Pair<ByteArray, AlbumTileName?>? = null
-        val component = component(vault, onOpenAlbum = { id, name -> opened = id to name })
-        advanceUntilIdle()
+    fun opening_an_album_reports_the_name_the_grid_is_showing() =
+        runTest {
+            val vault = FakeVaultItems()
+            vault.hasAlbum(byteArrayOf(1, 2), Outcome.Ok("Receipts"))
+            var opened: Pair<ByteArray, AlbumTileName?>? = null
+            val component = component(vault, onOpenAlbum = { id, name -> opened = id to name })
+            advanceUntilIdle()
 
-        component.openAlbum(byteArrayOf(1, 2))
+            component.openAlbum(byteArrayOf(1, 2))
 
-        val (id, name) = assertNotNull(opened)
-        assertTrue(byteArrayOf(1, 2).contentEquals(id), "the album that was tapped")
-        assertEquals(AlbumTileName.Readable("Receipts"), name, "by the name on its tile")
-    }
+            val (id, name) = assertNotNull(opened)
+            assertTrue(byteArrayOf(1, 2).contentEquals(id), "the album that was tapped")
+            assertEquals(AlbumTileName.Readable("Receipts"), name, "by the name on its tile")
+        }
 
     /**
      * A name that will not open is carried **as unreadable**, not as nothing: the screen opened says
      * the same honest thing about it as the tile did, and from the same first frame.
      */
     @Test
-    fun opening_an_album_whose_name_will_not_open_carries_that_too() = runTest {
-        val vault = FakeVaultItems()
-        vault.hasAlbum(byteArrayOf(3), Outcome.Err(VaultError.Crypto.IntegrityFailure))
-        var name: AlbumTileName? = null
-        var opened = false
-        val component = component(vault, onOpenAlbum = { _, carried -> name = carried; opened = true })
-        advanceUntilIdle()
+    fun opening_an_album_whose_name_will_not_open_carries_that_too() =
+        runTest {
+            val vault = FakeVaultItems()
+            vault.hasAlbum(byteArrayOf(3), Outcome.Err(VaultError.Crypto.IntegrityFailure))
+            var name: AlbumTileName? = null
+            var opened = false
+            val component =
+                component(vault, onOpenAlbum = { _, carried ->
+                    name = carried
+                    opened = true
+                })
+            advanceUntilIdle()
 
-        component.openAlbum(byteArrayOf(3))
+            component.openAlbum(byteArrayOf(3))
 
-        assertTrue(opened, "it still opens")
-        assertEquals(AlbumTileName.Unreadable, name)
-    }
+            assertTrue(opened, "it still opens")
+            assertEquals(AlbumTileName.Unreadable, name)
+        }
 
     /**
      * An id this grid is not showing carries **no name**, rather than a guess or the wrong tile's.
@@ -377,17 +409,22 @@ class DefaultVaultAlbumsComponentTest {
      * catalog, which is what every screen did before this.
      */
     @Test
-    fun opening_an_album_the_grid_does_not_have_carries_no_name() = runTest {
-        val vault = FakeVaultItems()
-        vault.hasAlbum(byteArrayOf(1, 2), Outcome.Ok("Receipts"))
-        var name: AlbumTileName? = AlbumTileName.Readable("not this")
-        var opened = false
-        val component = component(vault, onOpenAlbum = { _, carried -> name = carried; opened = true })
-        advanceUntilIdle()
+    fun opening_an_album_the_grid_does_not_have_carries_no_name() =
+        runTest {
+            val vault = FakeVaultItems()
+            vault.hasAlbum(byteArrayOf(1, 2), Outcome.Ok("Receipts"))
+            var name: AlbumTileName? = AlbumTileName.Readable("not this")
+            var opened = false
+            val component =
+                component(vault, onOpenAlbum = { _, carried ->
+                    name = carried
+                    opened = true
+                })
+            advanceUntilIdle()
 
-        component.openAlbum(byteArrayOf(9, 9))
+            component.openAlbum(byteArrayOf(9, 9))
 
-        assertTrue(opened, "the id is still passed on")
-        assertNull(name, "and nothing is claimed about its name")
-    }
+            assertTrue(opened, "the id is still passed on")
+            assertNull(name, "and nothing is claimed about its name")
+        }
 }

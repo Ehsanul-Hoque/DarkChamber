@@ -26,18 +26,20 @@ import kotlinx.coroutines.flow.map
  * are opaque blobs to the catalog. That is affordable only because there are few albums and each
  * costs one small decrypt, which is the same reason the album grid is cheap at all.
  */
-internal class ObserveAlbums(private val vault: VaultItems) {
-
+internal class ObserveAlbums(
+    private val vault: VaultItems,
+) {
     operator fun invoke(): Flow<List<AlbumTile>> =
         vault.observeAlbums().map { summaries -> summaries.map(::toTile).sortedWith(TILE_ORDER) }
 
     private fun toTile(summary: AlbumSummary): AlbumTile =
         AlbumTile(
             id = summary.id,
-            name = when (val name = summary.name) {
-                is Outcome.Ok -> AlbumTileName.Readable(name.value)
-                is Outcome.Err -> AlbumTileName.Unreadable
-            },
+            name =
+                when (val name = summary.name) {
+                    is Outcome.Ok -> AlbumTileName.Readable(name.value)
+                    is Outcome.Err -> AlbumTileName.Unreadable
+                },
             itemCount = summary.itemCount,
             coverItemId = summary.coverItemId,
             createdAt = summary.createdAt,
@@ -60,13 +62,14 @@ internal class ObserveAlbums(private val vault: VaultItems) {
          * ordinary case rather than a corner, and without a total order SQLite's row order would
          * leak through and the two could swap places between emissions.
          */
-        val TILE_ORDER: Comparator<AlbumTile> = compareBy<AlbumTile>(
-            { it.name is AlbumTileName.Unreadable },
-            { (it.name as? AlbumTileName.Readable)?.value?.lowercase() ?: "" },
-            { it.createdAt },
-            // `thenComparator`, not `thenComparing`: the latter is a JVM-only extension on
-            // Comparator and does not exist for the native targets, where this module also compiles.
-        ).thenComparator { left, right -> left.id.compareContent(right.id) }
+        val TILE_ORDER: Comparator<AlbumTile> =
+            compareBy<AlbumTile>(
+                { it.name is AlbumTileName.Unreadable },
+                { (it.name as? AlbumTileName.Readable)?.value?.lowercase() ?: "" },
+                { it.createdAt },
+                // `thenComparator`, not `thenComparing`: the latter is a JVM-only extension on
+                // Comparator and does not exist for the native targets, where this module also compiles.
+            ).thenComparator { left, right -> left.id.compareContent(right.id) }
 
         /** Lexicographic over the bytes: a total order, so equal-named albums never swap places. */
         private fun ByteArray.compareContent(other: ByteArray): Int {

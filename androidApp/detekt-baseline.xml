@@ -1,0 +1,7 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>EmptyFunctionBlock:VideoThumbnailInstrumentedTest.kt:VideoThumbnailInstrumentedTest.&lt;no name provided&gt;${}</ID>
+  </CurrentIssues>
+</SmellBaseline>

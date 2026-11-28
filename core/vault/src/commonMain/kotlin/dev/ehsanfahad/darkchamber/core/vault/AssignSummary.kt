@@ -12,7 +12,10 @@ package dev.ehsanfahad.darkchamber.core.vault
  * transaction, so it cannot half-apply: either every present id moved or none did and the whole thing
  * is an `Err`. What can be partial is **coverage** of the ids asked for, which is what this reports.
  */
-data class AssignSummary(val requested: Int, val assigned: Int) {
+data class AssignSummary(
+    val requested: Int,
+    val assigned: Int,
+) {
     /** Ids that were asked for but no longer exist in the catalog. */
     val skipped: Int get() = requested - assigned
 

@@ -11,12 +11,16 @@ import kotlin.test.assertFalse
  * the vault locks once the browser has the address. Nothing here may promise what the app cannot keep.
  */
 class LinkDialogCopyTest {
-
     private val dialog: List<String>
-        get() = listOf(
-            ViewerFormat.linkTitle(), ViewerFormat.linkSite("example.com"), ViewerFormat.linkLeaves(),
-            ViewerFormat.linkLocks(), ViewerFormat.linkOpen(), ViewerFormat.cancel(),
-        )
+        get() =
+            listOf(
+                ViewerFormat.linkTitle(),
+                ViewerFormat.linkSite("example.com"),
+                ViewerFormat.linkLeaves(),
+                ViewerFormat.linkLocks(),
+                ViewerFormat.linkOpen(),
+                ViewerFormat.cancel(),
+            )
 
     @Test
     fun the_dialog_asks_and_says_where_it_goes() {
@@ -58,7 +62,20 @@ class LinkDialogCopyTest {
     @Test
     fun the_dialog_promises_nothing_the_app_cannot_keep() {
         val words = (dialog + ViewerFormat.linkNotOpened()).joinToString(" ").lowercase()
-        for (claim in listOf("safe", "secure", "private", "encrypt", "protect", "anonym", "trust", "verified", "won't", "will not", "never", "will know")) {
+        for (claim in listOf(
+            "safe",
+            "secure",
+            "private",
+            "encrypt",
+            "protect",
+            "anonym",
+            "trust",
+            "verified",
+            "won't",
+            "will not",
+            "never",
+            "will know",
+        )) {
             assertFalse(claim in words, "the dialog must not say \"$claim\"")
         }
     }

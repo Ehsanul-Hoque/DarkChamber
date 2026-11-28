@@ -63,12 +63,16 @@ class VaultStorage internal constructor(
      * the temp file is `atomicMove`d onto the target, on any throw it is cleaned up and the prior
      * object (if any) is left intact.
      */
-    fun writeObject(fileId: ByteArray, block: (RawSink) -> Unit): Outcome<Unit> =
-        objects.write(fileId, block)
+    fun writeObject(
+        fileId: ByteArray,
+        block: (RawSink) -> Unit,
+    ): Outcome<Unit> = objects.write(fileId, block)
 
     /** Opens the encrypted object for reading; the source is closed when [block] returns. */
-    fun <R> readObject(fileId: ByteArray, block: (RawSource) -> R): Outcome<R> =
-        objects.read(fileId, block)
+    fun <R> readObject(
+        fileId: ByteArray,
+        block: (RawSource) -> R,
+    ): Outcome<R> = objects.read(fileId, block)
 
     /**
      * Opens the encrypted object for reads at any position — what a seek into a large object needs,
@@ -91,12 +95,16 @@ class VaultStorage internal constructor(
      * `Err(Io)` guarantees as [writeObject]; thumbnails are always encrypted `.tdchm` blobs (hard
      * rule #1 — no plaintext thumbnails anywhere).
      */
-    fun writeThumbnail(fileId: ByteArray, block: (RawSink) -> Unit): Outcome<Unit> =
-        thumbnails.write(fileId, block)
+    fun writeThumbnail(
+        fileId: ByteArray,
+        block: (RawSink) -> Unit,
+    ): Outcome<Unit> = thumbnails.write(fileId, block)
 
     /** Opens the encrypted thumbnail for reading; the source is closed when [block] returns. */
-    fun <R> readThumbnail(fileId: ByteArray, block: (RawSource) -> R): Outcome<R> =
-        thumbnails.read(fileId, block)
+    fun <R> readThumbnail(
+        fileId: ByteArray,
+        block: (RawSource) -> R,
+    ): Outcome<R> = thumbnails.read(fileId, block)
 
     /** Deletes the thumbnail blob (idempotent). */
     fun deleteThumbnail(fileId: ByteArray): Outcome<Unit> = thumbnails.delete(fileId)
@@ -198,7 +206,10 @@ class VaultStorage internal constructor(
      * like [useTempFile] — reporting it as an `Io` would blame the spill for a caller's failure —
      * and the scratch file is deleted either way.
      */
-    fun <R> useSpilledCopy(source: RawSource, block: (openSource: () -> RawSource) -> R): Outcome<R> =
+    fun <R> useSpilledCopy(
+        source: RawSource,
+        block: (openSource: () -> RawSource) -> R,
+    ): Outcome<R> =
         useTempFile { path ->
             try {
                 source.use { src -> fs.sink(path).buffered().use { it.transferFrom(src) } }

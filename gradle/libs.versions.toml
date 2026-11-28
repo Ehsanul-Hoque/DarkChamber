@@ -1,20 +1,22 @@
 [versions]
-agp = "9.1.0"
-android-compileSdk = "36"
+agp = "9.3.3"
+android-compileSdk = "37"
 android-minSdk = "24"
 android-targetSdk = "36"
 androidx-activity = "1.13.0"
-androidx-appcompat = "1.7.1"
-androidx-core = "1.19.0"
+androidx-appcompat = "1.8.0"
+androidx-core = "1.19.1"
 androidx-espresso = "3.7.0"
 androidx-exifinterface = "1.4.2"
-androidx-lifecycle = "2.11.0-beta01"
+androidx-lifecycle = "2.11.0"
 androidx-testExt = "1.3.0"
 androidx-testRunner = "1.7.0"
-composeMultiplatform = "1.11.1"
+composeMultiplatform = "1.12.2"
 junit = "4.13.2"
-kotlin = "2.4.10"
-material3 = "1.11.0-alpha07"
+kotlin = "2.4.21"
+# The JetBrains material3 line has no stable release after 1.9.0; this is the version Compose Multiplatform
+# 1.12.2 pairs with (its release notes' dependency list).
+material3 = "1.12.0-alpha03"
 
 # --- Phase 0+ target dependencies (docs/engineering/MODULES.md §6) ------------
 # Declared now for the whole target architecture; most stay UNUSED until their
@@ -22,41 +24,61 @@ material3 = "1.11.0-alpha07"
 # (ADR-004 / hard rule #3) — the catalog being the only dependency source is what
 # keeps that enforceable.
 cryptographyKotlin = "0.6.0"   # pinned EXACTLY (pre-1.0) — wrapped by CryptoEngine; do not bump casually
-sqldelight = "2.3.2"
+sqldelight = "2.4.1"
 koin = "4.2.2"
-decompose = "3.5.0"
-coil3 = "3.5.0"
+decompose = "3.6.2"
+coil3 = "3.6.3"
 media3 = "1.11.1"
-kermit = "2.1.0"
+kermit = "2.2.0"
 turbine = "1.2.1"
-detekt = "1.23.8"
-konsist = "0.17.3"
-kover = "0.9.9"
-buildkonfig = "0.22.0"
+konsist = "0.18.1"
+# Compose UI tests, test-only: Robolectric gives the JVM host an Android framework to compose on, and
+# the androidx test manifest declares the activity the tests host content in. Its version is the
+# Jetpack Compose UI that Compose Multiplatform resolves to on Android, so the two stay one Compose.
+robolectric = "4.18.1"
+androidxComposeUi = "1.12.1"
+buildkonfig = "0.24.1"
+# --- Quality tooling (the darkchamber.quality convention plugin) ----
+# Spotless runs ktlint; its formatting rules live in the root .editorconfig. Build-time only —
+# nothing of these ships in the app.
+spotless = "8.12.0"
+ktlint = "1.8.0"
+# Compose rules for ktlint (Compose naming, modifiers, state) — loaded as a ktlint rule set. Not loaded
+# into detekt as well: its detekt build is the same rules, so every finding would be reported twice.
+composeRules = "0.6.8"
+# Static analysis. A pre-release, pinned exactly: 1.23.x cannot read the metadata of Kotlin 2.3 and later
+# and gets no more releases. Only the plain `detekt` task runs (no type resolution) — the alpha's open
+# false positives on expect/actual pairs are in the type-resolution tasks.
+detekt = "2.0.0-alpha.6"
+# Coverage of what the JVM host tests run, each module gated at what was measured for it. Not 0.9.10: it
+# reports 0 % under the configuration cache, which this build keeps on.
+kover = "0.9.11"
 # core:crypto: .dchm streaming IO + CBOR header. JetBrains-official, KMP, GPLv3-OK.
-kotlinxIo = "0.9.1"
-kotlinxSerialization = "1.11.0"   # serialization runtime (cbor); the compiler plugin tracks `kotlin`
+kotlinxIo = "0.9.3"
+kotlinxSerialization = "1.13.0"   # serialization runtime (cbor); the compiler plugin tracks `kotlin`
 # core:db: reactive catalog Flow (sqldelight-coroutines) + host/iOS test drivers.
 kotlinxCoroutines = "1.11.0"
 # core:crypto: pure-JVM Argon2id for the Android/host passphrase-wrap actual. GPLv3-OK
 # (BouncyCastle is MIT-style). iOS uses the vendored phc-winner-argon2 cinterop instead.
-bouncycastle = "1.85.2"
+bouncycastle = "1.87"
 # --- Session gate + biometric --------------------------------------
 # androidx.biometric BASE (not -ktx: no stable -ktx exists; our BiometricAuthenticator
 # seam already exposes suspend, so the -ktx coroutine helpers aren't needed). 1.1.0 is
 # the stable line carrying BiometricPrompt + CryptoObject (crypto-bound auth). Apache-2.0.
 androidxBiometric = "1.1.0"
 # fragment-ktx — BiometricPrompt requires a FragmentActivity host (MainActivity). Apache-2.0.
-androidxFragment = "1.9.0"
-# Essenty lifecycle — the Decompose component-tree lifecycle. 2.5.0 matches decompose 3.5.0's
-# transitive pin; declared explicitly because :app drives a LifecycleRegistry directly. Apache-2.0.
-essenty = "2.5.0"
+androidxFragment = "1.9.1"
+# Essenty lifecycle — the Decompose component-tree lifecycle. 2.7.1 matches decompose 3.6.2's
+# transitive pin (move the two together); declared explicitly because :app drives a
+# LifecycleRegistry directly. Apache-2.0.
+essenty = "2.7.1"
 # --- Camera --------------------------------------------------------
 # CameraX, the Android side of :feature:camera's CameraController seam (implemented in :app's
-# androidMain). 1.6.2 is the newest stable line (the 1.7.0 series is still alpha). Apache-2.0. Photos
-# are captured in memory only — never ImageCapture's file saver, which stages through a file. Video
-# records to one app-private tmp/ file, deleted once it is encrypted (docs/THREAT_MODEL.md).
-androidxCamera = "1.6.2"
+# androidMain). 1.7.0 is the newest stable line; it raised its own minSdk to 24, which is ours.
+# Apache-2.0. Photos are captured in memory only — never ImageCapture's file saver, which stages
+# through a file. Video records to one app-private tmp/ file, deleted once it is encrypted
+# (docs/THREAT_MODEL.md).
+androidxCamera = "1.7.0"
 # --- Text viewer ---------------------------------------------------
 # JetBrains' CommonMark/GFM parser: text in, a syntax tree out — no UI, no I/O, no network, and only
 # the Kotlin standard library underneath; JVM (what Android consumes) and both iOS targets. The viewer
@@ -147,6 +169,11 @@ kermit = { module = "co.touchlab:kermit", version.ref = "kermit" }
 # Test-only.
 turbine = { module = "app.cash.turbine:turbine", version.ref = "turbine" }
 konsist = { module = "com.lemonappdev:konsist", version.ref = "konsist" }
+compose-uiTest = { module = "org.jetbrains.compose.ui:ui-test", version.ref = "composeMultiplatform" }
+androidx-compose-uiTestManifest = { module = "androidx.compose.ui:ui-test-manifest", version.ref = "androidxComposeUi" }
+robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
+# Build-time only: the ktlint rule set Spotless loads (see the `spotless` version above).
+compose-rules-ktlint = { module = "io.nlopez.compose.rules:ktlint", version.ref = "composeRules" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }
@@ -157,9 +184,11 @@ kotlinMultiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref =
 # :konsist is a plain JVM test-only module (the architecture rules run as JUnit tests).
 kotlinJvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlinSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+# Formatting, static analysis and coverage — applied by the darkchamber.quality convention plugin.
+spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
+detekt = { id = "dev.detekt", version.ref = "detekt" }
+kover = { id = "org.jetbrains.kotlinx.kover", version.ref = "kover" }
 
 # --- Phase 0+ target plugins (declared now, applied later) ----------
 sqldelight = { id = "app.cash.sqldelight", version.ref = "sqldelight" }
-detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
-kover = { id = "org.jetbrains.kotlinx.kover", version.ref = "kover" }
 buildkonfig = { id = "com.codingfeline.buildkonfig", version.ref = "buildkonfig" }

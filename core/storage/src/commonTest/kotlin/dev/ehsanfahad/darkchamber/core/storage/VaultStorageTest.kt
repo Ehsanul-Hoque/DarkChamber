@@ -50,8 +50,7 @@ class VaultStorageTest {
         SystemFileSystem.delete(path, mustExist = false)
     }
 
-    private fun isDir(path: Path): Boolean =
-        SystemFileSystem.metadataOrNull(path)?.isDirectory == true
+    private fun isDir(path: Path): Boolean = SystemFileSystem.metadataOrNull(path)?.isDirectory == true
 
     @Test
     fun construction_creates_the_four_layout_dirs() {
@@ -106,19 +105,22 @@ class VaultStorageTest {
         val storage = VaultStorage(root)
         val id = randomId()
 
-        val result = storage.writeObject(id) { sink ->
-            sink.buffered().use { it.write(Random.nextBytes(16)) }
-            throw IllegalStateException("boom")
-        }
+        val result =
+            storage.writeObject(id) { sink ->
+                sink.buffered().use { it.write(Random.nextBytes(16)) }
+                throw IllegalStateException("boom")
+            }
 
         assertIs<Outcome.Err>(result)
         assertFalse(storage.objectExists(id), "no final object")
         val hex = id.toHexString()
         val shardDir = Path(root, "objects", hex.substring(0, 2), hex.substring(2, 4))
         // No stray .tmp under the shard dir.
-        val stray = SystemFileSystem.metadataOrNull(shardDir)
-            ?.let { SystemFileSystem.list(shardDir) }
-            ?.any { it.name.endsWith(".tmp") } ?: false
+        val stray =
+            SystemFileSystem
+                .metadataOrNull(shardDir)
+                ?.let { SystemFileSystem.list(shardDir) }
+                ?.any { it.name.endsWith(".tmp") } ?: false
         assertFalse(stray, "no stray .tmp")
     }
 
@@ -268,12 +270,13 @@ class VaultStorageTest {
         val storage = VaultStorage(freshRoot())
         var captured: Path? = null
 
-        val result = storage.useTempFile { path ->
-            captured = path
-            SystemFileSystem.sink(path).buffered().use { it.write(Random.nextBytes(8)) }
-            assertTrue(exists(path), "scratch present inside the scope")
-            "done"
-        }
+        val result =
+            storage.useTempFile { path ->
+                captured = path
+                SystemFileSystem.sink(path).buffered().use { it.write(Random.nextBytes(8)) }
+                assertTrue(exists(path), "scratch present inside the scope")
+                "done"
+            }
 
         assertEquals("done", result)
         assertFalse(exists(captured!!), "scratch deleted after normal return")
@@ -340,7 +343,11 @@ class VaultStorageTest {
         val head = first.readByteArray(10)
 
         assertContentEquals(bytes, second.readByteArray(), "a second open starts from the beginning")
-        assertContentEquals(bytes.copyOfRange(10, bytes.size), first.readByteArray(), "and leaves the first where it was")
+        assertContentEquals(
+            bytes.copyOfRange(10, bytes.size),
+            first.readByteArray(),
+            "and leaves the first where it was",
+        )
         first.close()
         second.close()
         assertContentEquals(bytes.copyOf(10), head)
@@ -401,10 +408,11 @@ class VaultStorageTest {
         val data = Random.nextBytes(5000)
         val oneShot = OneShotSource(data)
 
-        val reads = storage.useSpilledCopy(oneShot) { openSource ->
-            // The point of the spill: the codec opens the payload twice.
-            List(2) { openSource().buffered().use { src -> src.readByteArray() } }
-        }
+        val reads =
+            storage.useSpilledCopy(oneShot) { openSource ->
+                // The point of the spill: the codec opens the payload twice.
+                List(2) { openSource().buffered().use { src -> src.readByteArray() } }
+            }
 
         assertIs<Outcome.Ok<List<ByteArray>>>(reads)
         reads.value.forEach { assertContentEquals(data, it, "each re-open must yield the whole source") }
@@ -473,25 +481,31 @@ class VaultStorageTest {
 
     private fun randomId(): ByteArray = Random.nextBytes(16)
 
-    private fun isRegularFile(path: Path): Boolean =
-        SystemFileSystem.metadataOrNull(path)?.isRegularFile == true
+    private fun isRegularFile(path: Path): Boolean = SystemFileSystem.metadataOrNull(path)?.isRegularFile == true
 
     private fun exists(path: Path): Boolean = SystemFileSystem.exists(path)
 
-    private fun VaultStorage.putObject(id: ByteArray, bytes: ByteArray): Outcome<Unit> =
-        writeObject(id) { sink -> sink.buffered().use { it.write(bytes) } }
+    private fun VaultStorage.putObject(
+        id: ByteArray,
+        bytes: ByteArray,
+    ): Outcome<Unit> = writeObject(id) { sink -> sink.buffered().use { it.write(bytes) } }
 
     private fun VaultStorage.getObject(id: ByteArray): Outcome<ByteArray> =
         readObject(id) { source -> source.buffered().use { it.readByteArray() } }
 }
 
 /** A source that can be read exactly once — the shape of a provider stream that will not re-open. */
-private class OneShotSource(data: ByteArray) : RawSource {
+private class OneShotSource(
+    data: ByteArray,
+) : RawSource {
     private val buffer = Buffer().apply { write(data) }
     var closed = false
         private set
 
-    override fun readAtMostTo(sink: Buffer, byteCount: Long): Long = buffer.readAtMostTo(sink, byteCount)
+    override fun readAtMostTo(
+        sink: Buffer,
+        byteCount: Long,
+    ): Long = buffer.readAtMostTo(sink, byteCount)
 
     override fun close() {
         closed = true
@@ -501,7 +515,10 @@ private class OneShotSource(data: ByteArray) : RawSource {
 
 /** A source that blows up mid-read, standing in for a provider stream that dies during the copy. */
 private class FailingSource : RawSource {
-    override fun readAtMostTo(sink: Buffer, byteCount: Long): Long = throw IOException("read failed")
+    override fun readAtMostTo(
+        sink: Buffer,
+        byteCount: Long,
+    ): Long = throw IOException("read failed")
 
     override fun close() = Unit
 }

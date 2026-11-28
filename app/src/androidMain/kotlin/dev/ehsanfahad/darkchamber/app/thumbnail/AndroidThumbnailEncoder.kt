@@ -37,7 +37,11 @@ import java.io.ByteArrayOutputStream
  * `null` rather than throwing, so the absence of an exception proves nothing here.
  */
 internal class AndroidThumbnailEncoder : ThumbnailEncoder {
-    override fun encode(mime: String, maxEdgePx: Int, openSource: () -> RawSource): ByteArray? {
+    override fun encode(
+        mime: String,
+        maxEdgePx: Int,
+        openSource: () -> RawSource,
+    ): ByteArray? {
         if (!mime.startsWith(IMAGE_MIME_PREFIX, ignoreCase = true)) return null
 
         val transform = readTransform(mime, openSource)
@@ -46,19 +50,22 @@ internal class AndroidThumbnailEncoder : ThumbnailEncoder {
         openSource().buffered().asInputStream().use { BitmapFactory.decodeStream(it, null, bounds) }
         // The target is chosen against the picture as it will be *seen*. Feeding it the sensor's own
         // numbers for a quarter-turned photo would fit the wrong edge to the tile.
-        val target = if (transform.swapsEdges) {
-            thumbnailTargetSize(bounds.outHeight, bounds.outWidth, maxEdgePx)?.swapped()
-        } else {
-            thumbnailTargetSize(bounds.outWidth, bounds.outHeight, maxEdgePx)
-        } ?: return null
+        val target =
+            if (transform.swapsEdges) {
+                thumbnailTargetSize(bounds.outHeight, bounds.outWidth, maxEdgePx)?.swapped()
+            } else {
+                thumbnailTargetSize(bounds.outWidth, bounds.outHeight, maxEdgePx)
+            } ?: return null
 
-        val options = BitmapFactory.Options().apply {
-            // Still in the decoded bitmap's own orientation, which is what the decoder subsamples.
-            inSampleSize = sampleSizeFor(bounds.outWidth, bounds.outHeight, target)
-        }
-        val decoded = openSource().buffered().asInputStream().use {
-            BitmapFactory.decodeStream(it, null, options)
-        } ?: return null
+        val options =
+            BitmapFactory.Options().apply {
+                // Still in the decoded bitmap's own orientation, which is what the decoder subsamples.
+                inSampleSize = sampleSizeFor(bounds.outWidth, bounds.outHeight, target)
+            }
+        val decoded =
+            openSource().buffered().asInputStream().use {
+                BitmapFactory.decodeStream(it, null, options)
+            } ?: return null
 
         // Scale first, rotate second: the rotation then runs on a bitmap already down at tile size
         // rather than on the subsampled one, and both steps can return their own receiver, so each
@@ -76,7 +83,11 @@ internal class AndroidThumbnailEncoder : ThumbnailEncoder {
     }
 
     /** A frame about a second in ([videoFrame]), encoded like a photo's preview. */
-    override fun encode(mime: String, maxEdgePx: Int, reader: RangeReader): ByteArray? {
+    override fun encode(
+        mime: String,
+        maxEdgePx: Int,
+        reader: RangeReader,
+    ): ByteArray? {
         if (!mime.startsWith(VIDEO_MIME_PREFIX, ignoreCase = true)) return null
         val frame = videoFrame(maxEdgePx, reader) ?: return null
         return try {
@@ -97,7 +108,10 @@ internal class AndroidThumbnailEncoder : ThumbnailEncoder {
      * A failure here is never an error: an unreadable tag means the preview is drawn the way the
      * decoder produced it, which is exactly what happened before any of this existed.
      */
-    private fun readTransform(mime: String, openSource: () -> RawSource): ThumbnailTransform {
+    private fun readTransform(
+        mime: String,
+        openSource: () -> RawSource,
+    ): ThumbnailTransform {
         if (!carriesOrientation(mime)) return UPRIGHT
         return readOrientation { openSource().buffered().asInputStream() }
     }

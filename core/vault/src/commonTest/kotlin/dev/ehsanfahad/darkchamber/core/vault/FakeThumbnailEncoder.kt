@@ -52,7 +52,11 @@ class FakeThumbnailEncoder(
     var lastSource: ByteArray? = null
         private set
 
-    override fun encode(mime: String, maxEdgePx: Int, openSource: () -> RawSource): ByteArray? {
+    override fun encode(
+        mime: String,
+        maxEdgePx: Int,
+        openSource: () -> RawSource,
+    ): ByteArray? {
         encodeCount++
         lastMime = mime
         lastMaxEdgePx = maxEdgePx
@@ -82,7 +86,11 @@ class FakeThumbnailEncoder(
      * reading all of it is what lets a test see every chunk reached. A read error ends the reading and
      * the call returns `null`, as the platform encoders do when their reader fails.
      */
-    override fun encode(mime: String, maxEdgePx: Int, reader: RangeReader): ByteArray? {
+    override fun encode(
+        mime: String,
+        maxEdgePx: Int,
+        reader: RangeReader,
+    ): ByteArray? {
         rangedCount++
         lastReader = reader
         lastMime = mime
@@ -98,6 +106,7 @@ class FakeThumbnailEncoder(
                     lastRanged = out.readByteArray()
                     return null
                 }
+
                 is dev.ehsanfahad.darkchamber.core.model.Outcome.Ok -> {
                     if (read.value == RangeReader.END) break
                     out.write(step, 0, read.value)
@@ -109,10 +118,11 @@ class FakeThumbnailEncoder(
         return outcome()
     }
 
-    private fun outcome(): ByteArray? = when (mode) {
-        Mode.Encode -> thumbnail
-        Mode.Decline -> null
-        Mode.Empty -> ByteArray(0)
-        Mode.Throw -> error("decoder failed")
-    }
+    private fun outcome(): ByteArray? =
+        when (mode) {
+            Mode.Encode -> thumbnail
+            Mode.Decline -> null
+            Mode.Empty -> ByteArray(0)
+            Mode.Throw -> error("decoder failed")
+        }
 }

@@ -35,7 +35,10 @@ import platform.ImageIO.kCGImageSourceThumbnailMaxPixelSize
  * Every CoreFoundation object made here is released here; none is ARC-managed from Kotlin.
  */
 @OptIn(ExperimentalForeignApi::class)
-internal fun imageIoThumbnail(data: NSData, maxPixelSize: Int): CGImageRef? {
+internal fun imageIoThumbnail(
+    data: NSData,
+    maxPixelSize: Int,
+): CGImageRef? {
     val cfData = CFBridgingRetain(data)
     try {
         val source = CGImageSourceCreateWithData(cfData?.reinterpret<__CFData>(), null) ?: return null
@@ -71,5 +74,4 @@ private fun thumbnailOptions(maxPixelSize: Int): CFDictionaryRef? =
  * balance: +1 here, -1 as ARC takes it over.
  */
 @OptIn(ExperimentalForeignApi::class)
-private fun platform.CoreFoundation.CFStringRef?.toKey(): Any? =
-    CFBridgingRelease(CFRetain(this))
+private fun platform.CoreFoundation.CFStringRef?.toKey(): Any? = CFBridgingRelease(CFRetain(this))

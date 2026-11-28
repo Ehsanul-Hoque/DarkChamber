@@ -29,13 +29,17 @@ object KeyStoreCodec {
     @OptIn(ExperimentalSerializationApi::class)
     fun encode(blob: KeyStoreBlob): ByteArray = darkChamberCbor.encodeToByteArray(KeyStoreBlob.serializer(), blob)
 
+    // detekt's complexity and return-count rules are suppressed: every refusal returns its typed error
+    // where it is found, in the order FORMAT.md gives them, and verified decoding is not reshaped.
+    @Suppress("ComplexCondition", "CyclomaticComplexMethod", "ReturnCount")
     @OptIn(ExperimentalSerializationApi::class)
     fun decode(bytes: ByteArray): Outcome<KeyStoreBlob> {
-        val blob = try {
-            darkChamberCbor.decodeFromByteArray(KeyStoreBlob.serializer(), bytes)
-        } catch (_: Throwable) {
-            return Outcome.Err(VaultError.Crypto.MalformedContainer)
-        }
+        val blob =
+            try {
+                darkChamberCbor.decodeFromByteArray(KeyStoreBlob.serializer(), bytes)
+            } catch (_: Throwable) {
+                return Outcome.Err(VaultError.Crypto.MalformedContainer)
+            }
 
         // A version below the first real one isn't a version — it's a corrupt/garbage blob.
         if (blob.formatVersion < 1) return Outcome.Err(VaultError.Crypto.MalformedContainer)

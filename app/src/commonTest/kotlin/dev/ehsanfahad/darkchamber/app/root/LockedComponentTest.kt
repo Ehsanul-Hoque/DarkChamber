@@ -19,10 +19,10 @@ import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
-import kotlin.coroutines.CoroutineContext
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 import kotlinx.io.files.SystemTemporaryDirectory
+import kotlin.coroutines.CoroutineContext
 import kotlin.random.Random
 import kotlin.random.nextULong
 import kotlin.test.AfterTest
@@ -79,72 +79,76 @@ class LockedComponentTest {
     }
 
     @Test
-    fun copying_the_recovery_key_puts_exactly_the_shown_key_on_the_clipboard() = runTest {
-        val clipboard = FakeSecretClipboard()
-        val c = component(clipboard = clipboard)
+    fun copying_the_recovery_key_puts_exactly_the_shown_key_on_the_clipboard() =
+        runTest {
+            val clipboard = FakeSecretClipboard()
+            val c = component(clipboard = clipboard)
 
-        c.submitCreate(pw())
-        val recovery = assertIs<LockStep.Recovery>(c.state.value.step)
+            c.submitCreate(pw())
+            val recovery = assertIs<LockStep.Recovery>(c.state.value.step)
 
-        c.copyRecoveryKey()
+            c.copyRecoveryKey()
 
-        // Character for character: a key the user pastes must be the key they were shown, or they
-        // will find out the difference only when they need it most.
-        assertEquals(recovery.recoveryKey, clipboard.lastCopied)
-        assertTrue(c.state.value.recoveryKeyCopied, "the screen needs to know it happened")
-        // A bug this once shipped with: the gate's spinner follows `busy`, and nothing is running
-        // here. Copying is synchronous, so routing it through the busy guard would put a progress
-        // indicator on a screen with no work to report.
-        assertFalse(c.state.value.busy, "copying is not work to report progress for")
-    }
+            // Character for character: a key the user pastes must be the key they were shown, or they
+            // will find out the difference only when they need it most.
+            assertEquals(recovery.recoveryKey, clipboard.lastCopied)
+            assertTrue(c.state.value.recoveryKeyCopied, "the screen needs to know it happened")
+            // A bug this once shipped with: the gate's spinner follows `busy`, and nothing is running
+            // here. Copying is synchronous, so routing it through the busy guard would put a progress
+            // indicator on a screen with no work to report.
+            assertFalse(c.state.value.busy, "copying is not work to report progress for")
+        }
 
     /**
      * Copying is an addition, not a shortcut past the step. The key is the only way back into a
      * vault whose passphrase is forgotten, so "I've saved it" stays a deliberate act.
      */
     @Test
-    fun copying_does_not_advance_the_step_or_count_as_saving_it() = runTest {
-        val clipboard = FakeSecretClipboard()
-        val c = component(clipboard = clipboard)
+    fun copying_does_not_advance_the_step_or_count_as_saving_it() =
+        runTest {
+            val clipboard = FakeSecretClipboard()
+            val c = component(clipboard = clipboard)
 
-        c.submitCreate(pw())
-        c.copyRecoveryKey()
+            c.submitCreate(pw())
+            c.copyRecoveryKey()
 
-        assertIs<LockStep.Recovery>(c.state.value.step, "copying must not move the flow along")
+            assertIs<LockStep.Recovery>(c.state.value.step, "copying must not move the flow along")
 
-        c.confirmRecoverySaved()
-        assertEquals(LockStep.EnableBiometric, c.state.value.step)
-        assertFalse(c.state.value.recoveryKeyCopied, "the flag belongs to the step that showed the key")
-    }
-
-    @Test
-    fun there_is_nothing_to_copy_outside_the_recovery_step() = runTest {
-        val clipboard = FakeSecretClipboard()
-        val c = component(clipboard = clipboard)
-
-        // On the create step there is no key yet; the intent must be inert rather than copying
-        // whatever happens to be lying around.
-        c.copyRecoveryKey()
-
-        assertEquals(emptyList(), clipboard.copied)
-    }
+            c.confirmRecoverySaved()
+            assertEquals(LockStep.EnableBiometric, c.state.value.step)
+            assertFalse(c.state.value.recoveryKeyCopied, "the flag belongs to the step that showed the key")
+        }
 
     @Test
-    fun create_flow_shows_recovery_then_enable_then_unlocks() = runTest {
-        var unlocked: VaultBootstrap.OpenVault? = null
-        val c = component(onUnlocked = { unlocked = it })
+    fun there_is_nothing_to_copy_outside_the_recovery_step() =
+        runTest {
+            val clipboard = FakeSecretClipboard()
+            val c = component(clipboard = clipboard)
 
-        c.submitCreate(pw())
-        val recovery = assertIs<LockStep.Recovery>(c.state.value.step)
-        assertTrue(recovery.recoveryKey.isNotBlank(), "recovery key must be shown once")
+            // On the create step there is no key yet; the intent must be inert rather than copying
+            // whatever happens to be lying around.
+            c.copyRecoveryKey()
 
-        c.confirmRecoverySaved()
-        assertEquals(LockStep.EnableBiometric, c.state.value.step)
+            assertEquals(emptyList(), clipboard.copied)
+        }
 
-        c.skipBiometric()
-        assertTrue(unlocked != null, "skipping biometric must still unlock")
-        unlocked.session.close()
-    }
+    @Test
+    fun create_flow_shows_recovery_then_enable_then_unlocks() =
+        runTest {
+            var unlocked: VaultBootstrap.OpenVault? = null
+            val c = component(onUnlocked = { unlocked = it })
+
+            c.submitCreate(pw())
+            val recovery = assertIs<LockStep.Recovery>(c.state.value.step)
+            assertTrue(recovery.recoveryKey.isNotBlank(), "recovery key must be shown once")
+
+            c.confirmRecoverySaved()
+            assertEquals(LockStep.EnableBiometric, c.state.value.step)
+
+            c.skipBiometric()
+            assertTrue(unlocked != null, "skipping biometric must still unlock")
+            unlocked.session.close()
+        }
 
     /**
      * A device whose biometrics the app cannot use — none, none enrolled, or only a kind that cannot
@@ -152,17 +156,19 @@ class LockedComponentTest {
      * recovery key goes straight into the vault.
      */
     @Test
-    fun create_flow_skips_the_biometric_offer_where_the_device_cannot_use_it() = runTest {
-        var unlocked: VaultBootstrap.OpenVault? = null
-        val c = component(authenticator = FakeBiometricAuthenticator(usable = false), onUnlocked = { unlocked = it })
+    fun create_flow_skips_the_biometric_offer_where_the_device_cannot_use_it() =
+        runTest {
+            var unlocked: VaultBootstrap.OpenVault? = null
+            val c =
+                component(authenticator = FakeBiometricAuthenticator(usable = false), onUnlocked = { unlocked = it })
 
-        c.submitCreate(pw())
-        c.confirmRecoverySaved()
+            c.submitCreate(pw())
+            c.confirmRecoverySaved()
 
-        assertTrue(unlocked != null, "into the vault without the offer")
-        assertTrue(c.state.value.step !is LockStep.EnableBiometric)
-        unlocked.session.close()
-    }
+            assertTrue(unlocked != null, "into the vault without the offer")
+            assertTrue(c.state.value.step !is LockStep.EnableBiometric)
+            unlocked.session.close()
+        }
 
     // Argon2id at the production cost is ~1 s of CPU on a fast device. Run on the main context it
     // freezes the UI — including the progress indicator that is meant to be reporting it — and
@@ -171,124 +177,138 @@ class LockedComponentTest {
     // alone would already have produced the result.
 
     @Test
-    fun creating_a_vault_derives_off_the_main_context() = runTest {
-        val workScheduler = TestCoroutineScheduler()
-        val c = component(
-            mainContext = StandardTestDispatcher(testScheduler),
-            workContext = StandardTestDispatcher(workScheduler),
-        )
+    fun creating_a_vault_derives_off_the_main_context() =
+        runTest {
+            val workScheduler = TestCoroutineScheduler()
+            val c =
+                component(
+                    mainContext = StandardTestDispatcher(testScheduler),
+                    workContext = StandardTestDispatcher(workScheduler),
+                )
 
-        c.submitCreate(pw())
-        advanceUntilIdle() // drain the main context only
+            c.submitCreate(pw())
+            advanceUntilIdle() // drain the main context only
 
-        assertEquals(LockStep.Create, c.state.value.step, "derivation must not have run on the main context")
-        assertTrue(c.state.value.busy, "the gate is busy while the work context holds the derivation")
+            assertEquals(LockStep.Create, c.state.value.step, "derivation must not have run on the main context")
+            assertTrue(c.state.value.busy, "the gate is busy while the work context holds the derivation")
 
-        workScheduler.advanceUntilIdle() // now let the derivation run
-        advanceUntilIdle() // and the state write land back on the main context
+            workScheduler.advanceUntilIdle() // now let the derivation run
+            advanceUntilIdle() // and the state write land back on the main context
 
-        assertIs<LockStep.Recovery>(c.state.value.step, "the derivation's result still has to arrive")
-    }
-
-    @Test
-    fun unlocking_derives_off_the_main_context() = runTest {
-        component().submitCreate(pw()) // seed a vault on the default unconfined contexts
-        val workScheduler = TestCoroutineScheduler()
-        var unlocked: VaultBootstrap.OpenVault? = null
-        val c = component(
-            mainContext = StandardTestDispatcher(testScheduler),
-            workContext = StandardTestDispatcher(workScheduler),
-            onUnlocked = { unlocked = it },
-        )
-
-        c.submitPassphraseUnlock(pw())
-        advanceUntilIdle()
-
-        assertTrue(unlocked == null, "the passphrase must not be verified on the main context")
-
-        workScheduler.advanceUntilIdle()
-        advanceUntilIdle()
-
-        assertTrue(unlocked != null, "the unlock still has to complete")
-        unlocked?.session?.close()
-    }
+            assertIs<LockStep.Recovery>(c.state.value.step, "the derivation's result still has to arrive")
+        }
 
     @Test
-    fun enable_biometric_enrolls_then_unlocks() = runTest {
-        var unlocked: VaultBootstrap.OpenVault? = null
-        val c = component(onUnlocked = { unlocked = it })
-        c.submitCreate(pw())
-        c.confirmRecoverySaved()
+    fun unlocking_derives_off_the_main_context() =
+        runTest {
+            component().submitCreate(pw()) // seed a vault on the default unconfined contexts
+            val workScheduler = TestCoroutineScheduler()
+            var unlocked: VaultBootstrap.OpenVault? = null
+            val c =
+                component(
+                    mainContext = StandardTestDispatcher(testScheduler),
+                    workContext = StandardTestDispatcher(workScheduler),
+                    onUnlocked = { unlocked = it },
+                )
 
-        c.enableBiometric()
+            c.submitPassphraseUnlock(pw())
+            advanceUntilIdle()
 
-        assertTrue(unlocked != null, "enabling biometric must unlock")
-        unlocked.session.close()
-    }
+            assertTrue(unlocked == null, "the passphrase must not be verified on the main context")
 
-    @Test
-    fun returning_user_unlocks_with_the_passphrase() = runTest {
-        // Seed a vault first.
-        component().submitCreate(pw()).also { }
-        var unlocked: VaultBootstrap.OpenVault? = null
-        val c = component(onUnlocked = { unlocked = it })
-        assertEquals(LockStep.Unlock, c.state.value.step)
+            workScheduler.advanceUntilIdle()
+            advanceUntilIdle()
 
-        c.submitPassphraseUnlock(pw())
-        assertTrue(unlocked != null, "correct passphrase must unlock")
-        unlocked.session.close()
-    }
-
-    @Test
-    fun a_wrong_passphrase_shows_an_error_and_does_not_unlock() = runTest {
-        component().submitCreate(pw())
-        var unlocked: VaultBootstrap.OpenVault? = null
-        val c = component(onUnlocked = { unlocked = it })
-
-        c.submitPassphraseUnlock("wrong".encodeToByteArray())
-        assertEquals(LockError.WrongPassphrase, c.state.value.error)
-        assertTrue(unlocked == null)
-    }
+            assertTrue(unlocked != null, "the unlock still has to complete")
+            unlocked?.session?.close()
+        }
 
     @Test
-    fun after_enrollment_biometric_unlock_succeeds_and_offers_biometric() = runTest {
-        // Create + enroll, then a fresh returning component sees the hardware slot.
-        val c1 = component()
-        c1.submitCreate(pw())
-        c1.confirmRecoverySaved()
-        c1.enableBiometric()
+    fun enable_biometric_enrolls_then_unlocks() =
+        runTest {
+            var unlocked: VaultBootstrap.OpenVault? = null
+            val c = component(onUnlocked = { unlocked = it })
+            c.submitCreate(pw())
+            c.confirmRecoverySaved()
 
-        var unlocked: VaultBootstrap.OpenVault? = null
-        val c2 = component(onUnlocked = { unlocked = it })
-        assertTrue(c2.state.value.hasBiometric, "an enrolled vault offers biometric")
+            c.enableBiometric()
 
-        c2.startBiometricUnlock()
-        assertTrue(unlocked != null, "approved biometric must unlock")
-        unlocked.session.close()
-    }
+            assertTrue(unlocked != null, "enabling biometric must unlock")
+            unlocked.session.close()
+        }
 
     @Test
-    fun a_denied_biometric_shows_an_error_without_unlocking() = runTest {
-        val c1 = component()
-        c1.submitCreate(pw()); c1.confirmRecoverySaved(); c1.enableBiometric()
+    fun returning_user_unlocks_with_the_passphrase() =
+        runTest {
+            // Seed a vault first.
+            component().submitCreate(pw()).also { }
+            var unlocked: VaultBootstrap.OpenVault? = null
+            val c = component(onUnlocked = { unlocked = it })
+            assertEquals(LockStep.Unlock, c.state.value.step)
 
-        val c2 = component(authenticator = FakeBiometricAuthenticator(FakeBiometricAuthenticator.Mode.Deny))
-        c2.startBiometricUnlock()
-        assertEquals(LockError.BiometricCanceled, c2.state.value.error)
-    }
+            c.submitPassphraseUnlock(pw())
+            assertTrue(unlocked != null, "correct passphrase must unlock")
+            unlocked.session.close()
+        }
 
     @Test
-    fun an_invalidated_hardware_key_forces_the_passphrase() = runTest {
-        val c1 = component()
-        c1.submitCreate(pw()); c1.confirmRecoverySaved(); c1.enableBiometric()
+    fun a_wrong_passphrase_shows_an_error_and_does_not_unlock() =
+        runTest {
+            component().submitCreate(pw())
+            var unlocked: VaultBootstrap.OpenVault? = null
+            val c = component(onUnlocked = { unlocked = it })
 
-        val c2 = component(authenticator = FakeBiometricAuthenticator(FakeBiometricAuthenticator.Mode.Invalidated))
-        c2.startBiometricUnlock()
+            c.submitPassphraseUnlock("wrong".encodeToByteArray())
+            assertEquals(LockError.WrongPassphrase, c.state.value.error)
+            assertTrue(unlocked == null)
+        }
 
-        assertEquals(LockError.HardwareInvalidated, c2.state.value.error)
-        assertTrue(c2.state.value.forcePassphrase, "§3.3: invalidation forces the passphrase path")
-        assertTrue(!c2.state.value.hasBiometric, "the dead hardware slot is dropped from the UI")
-    }
+    @Test
+    fun after_enrollment_biometric_unlock_succeeds_and_offers_biometric() =
+        runTest {
+            // Create + enroll, then a fresh returning component sees the hardware slot.
+            val c1 = component()
+            c1.submitCreate(pw())
+            c1.confirmRecoverySaved()
+            c1.enableBiometric()
+
+            var unlocked: VaultBootstrap.OpenVault? = null
+            val c2 = component(onUnlocked = { unlocked = it })
+            assertTrue(c2.state.value.hasBiometric, "an enrolled vault offers biometric")
+
+            c2.startBiometricUnlock()
+            assertTrue(unlocked != null, "approved biometric must unlock")
+            unlocked.session.close()
+        }
+
+    @Test
+    fun a_denied_biometric_shows_an_error_without_unlocking() =
+        runTest {
+            val c1 = component()
+            c1.submitCreate(pw())
+            c1.confirmRecoverySaved()
+            c1.enableBiometric()
+
+            val c2 = component(authenticator = FakeBiometricAuthenticator(FakeBiometricAuthenticator.Mode.Deny))
+            c2.startBiometricUnlock()
+            assertEquals(LockError.BiometricCanceled, c2.state.value.error)
+        }
+
+    @Test
+    fun an_invalidated_hardware_key_forces_the_passphrase() =
+        runTest {
+            val c1 = component()
+            c1.submitCreate(pw())
+            c1.confirmRecoverySaved()
+            c1.enableBiometric()
+
+            val c2 = component(authenticator = FakeBiometricAuthenticator(FakeBiometricAuthenticator.Mode.Invalidated))
+            c2.startBiometricUnlock()
+
+            assertEquals(LockError.HardwareInvalidated, c2.state.value.error)
+            assertTrue(c2.state.value.forcePassphrase, "§3.3: invalidation forces the passphrase path")
+            assertTrue(!c2.state.value.hasBiometric, "the dead hardware slot is dropped from the UI")
+        }
 
     /**
      * A key that could not be used this time — just after the phone was unlocked, say — is not a key
@@ -296,17 +316,20 @@ class LockedComponentTest {
      * biometric button would take away the retry that works.
      */
     @Test
-    fun a_key_that_could_not_be_used_this_time_offers_a_retry() = runTest {
-        val c1 = component()
-        c1.submitCreate(pw()); c1.confirmRecoverySaved(); c1.enableBiometric()
+    fun a_key_that_could_not_be_used_this_time_offers_a_retry() =
+        runTest {
+            val c1 = component()
+            c1.submitCreate(pw())
+            c1.confirmRecoverySaved()
+            c1.enableBiometric()
 
-        val c2 = component(authenticator = FakeBiometricAuthenticator(FakeBiometricAuthenticator.Mode.NotUsable))
-        c2.startBiometricUnlock()
+            val c2 = component(authenticator = FakeBiometricAuthenticator(FakeBiometricAuthenticator.Mode.NotUsable))
+            c2.startBiometricUnlock()
 
-        assertEquals(LockError.BiometricFailed, c2.state.value.error)
-        assertTrue(!c2.state.value.forcePassphrase, "biometric unlock stays offered")
-        assertTrue(c2.state.value.hasBiometric, "and its button stays")
-    }
+            assertEquals(LockError.BiometricFailed, c2.state.value.error)
+            assertTrue(!c2.state.value.forcePassphrase, "biometric unlock stays offered")
+            assertTrue(c2.state.value.hasBiometric, "and its button stays")
+        }
 
     private fun deleteRecursively(path: Path) {
         val md = SystemFileSystem.metadataOrNull(path) ?: return

@@ -143,10 +143,16 @@ sealed interface OriginalDelete {
      * moved, a grant that no longer covers it. Reporting only the intent would tell someone a file
      * is gone while it is still sitting there.
      */
-    data class Done(val deleted: Int, val requested: Int) : OriginalDelete
+    data class Done(
+        val deleted: Int,
+        val requested: Int,
+    ) : OriginalDelete
 }
 
 /** A file the batch could not import, and why. */
-data class FailedImport(val name: String, val error: VaultError) {
+data class FailedImport(
+    val name: String,
+    val error: VaultError,
+) {
     override fun toString(): String = "FailedImport(name=${name.length} chars, error=$error)"
 }

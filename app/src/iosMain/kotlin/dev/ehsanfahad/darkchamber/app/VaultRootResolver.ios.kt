@@ -1,3 +1,7 @@
+// Named to pair with the common VaultRootResolver.kt, as each platform's side of a shared file is,
+// rather than after the one class it holds.
+@file:Suppress("ktlint:standard:filename")
+
 package dev.ehsanfahad.darkchamber.app
 
 import dev.ehsanfahad.darkchamber.core.model.Outcome
@@ -18,18 +22,21 @@ import platform.Foundation.NSUserDomainMask
 @OptIn(ExperimentalForeignApi::class)
 class IosVaultRootResolver : VaultRootResolver {
     override fun resolve(): Outcome<Path> {
-        val documents = NSFileManager.defaultManager.URLForDirectory(
-            directory = NSDocumentDirectory,
-            inDomain = NSUserDomainMask,
-            appropriateForURL = null,
-            create = true,
-            error = null,
-        ) ?: return Outcome.Err(VaultError.Io(IllegalStateException("Documents directory unavailable")))
+        val documents =
+            NSFileManager.defaultManager.URLForDirectory(
+                directory = NSDocumentDirectory,
+                inDomain = NSUserDomainMask,
+                appropriateForURL = null,
+                create = true,
+                error = null,
+            ) ?: return Outcome.Err(VaultError.Io(IllegalStateException("Documents directory unavailable")))
 
-        val vaultUrl = documents.URLByAppendingPathComponent("vault", isDirectory = true)
-            ?: return Outcome.Err(VaultError.Io(IllegalStateException("vault URL unavailable")))
-        val vaultPath = vaultUrl.path
-            ?: return Outcome.Err(VaultError.Io(IllegalStateException("vault path unavailable")))
+        val vaultUrl =
+            documents.URLByAppendingPathComponent("vault", isDirectory = true)
+                ?: return Outcome.Err(VaultError.Io(IllegalStateException("vault URL unavailable")))
+        val vaultPath =
+            vaultUrl.path
+                ?: return Outcome.Err(VaultError.Io(IllegalStateException("vault path unavailable")))
 
         return DirectoryVaultRootResolver(
             vaultRoot = Path(vaultPath),

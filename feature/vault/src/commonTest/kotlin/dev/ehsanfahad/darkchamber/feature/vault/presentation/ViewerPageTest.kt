@@ -21,7 +21,11 @@ class ViewerPageTest {
     @Test
     fun an_image_within_the_cap_is_decoded() {
         assertEquals(OpenPlan.Decode, openPlan(readable("image/jpeg"), size = 1_000, cap = cap))
-        assertEquals(OpenPlan.Decode, openPlan(readable("image/heic"), size = cap, cap = cap), "at the cap is within it")
+        assertEquals(
+            OpenPlan.Decode,
+            openPlan(readable("image/heic"), size = cap, cap = cap),
+            "at the cap is within it",
+        )
     }
 
     /** Other kinds get their own viewers later; until then the page says so, and reads nothing. */
@@ -48,7 +52,10 @@ class ViewerPageTest {
     @Test
     fun an_item_whose_details_will_not_open_is_still_tried_within_the_cap() {
         assertEquals(OpenPlan.Decode, openPlan(GalleryItemMeta.Unreadable, size = 1_000, cap = cap))
-        assertEquals(OpenPlan.Show(ViewerPage.TooLarge), openPlan(GalleryItemMeta.Unreadable, size = cap + 1, cap = cap))
+        assertEquals(
+            OpenPlan.Show(ViewerPage.TooLarge),
+            openPlan(GalleryItemMeta.Unreadable, size = cap + 1, cap = cap),
+        )
     }
 
     // ---- a PDF, before it is read ----------------------------------------------------------------

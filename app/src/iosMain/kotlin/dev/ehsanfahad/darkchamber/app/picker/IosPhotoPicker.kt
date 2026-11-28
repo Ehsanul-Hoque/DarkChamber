@@ -40,7 +40,6 @@ class IosPhotoPicker(
     private val presenter: () -> UIViewController?,
     private val scratchDirectory: () -> Path?,
 ) : PhotoPicker {
-
     /**
      * Strong references to the delegates of presentations still in flight — the same weak-delegate
      * hazard the document picker hit first: `PHPickerViewController.delegate` does not retain
@@ -52,26 +51,29 @@ class IosPhotoPicker(
     override suspend fun pickPhotos(): List<PickedFile> {
         val host = presenter() ?: error("no view controller to present the picker from")
 
-        val results = suspendCancellableCoroutine { continuation ->
-            val configuration = PHPickerConfiguration().apply {
-                // 0 means "as many as the user likes", which is the point of a batch import.
-                setSelectionLimit(0)
+        val results =
+            suspendCancellableCoroutine { continuation ->
+                val configuration =
+                    PHPickerConfiguration().apply {
+                        // 0 means "as many as the user likes", which is the point of a batch import.
+                        setSelectionLimit(0)
+                    }
+                val controller = PHPickerViewController(configuration = configuration)
+                var delegate: PhotoPickerDelegate? = null
+                delegate =
+                    PhotoPickerDelegate { picked ->
+                        delegate?.let(activeDelegates::remove)
+                        controller.dismissViewControllerAnimated(true, null)
+                        continuation.resume(picked)
+                    }
+                activeDelegates += delegate
+                controller.delegate = delegate
+                continuation.invokeOnCancellation {
+                    activeDelegates.remove(delegate)
+                    controller.dismissViewControllerAnimated(true, null)
+                }
+                host.presentViewController(controller, animated = true, completion = null)
             }
-            val controller = PHPickerViewController(configuration = configuration)
-            var delegate: PhotoPickerDelegate? = null
-            delegate = PhotoPickerDelegate { picked ->
-                delegate?.let(activeDelegates::remove)
-                controller.dismissViewControllerAnimated(true, null)
-                continuation.resume(picked)
-            }
-            activeDelegates += delegate
-            controller.delegate = delegate
-            continuation.invokeOnCancellation {
-                activeDelegates.remove(delegate)
-                controller.dismissViewControllerAnimated(true, null)
-            }
-            host.presentViewController(controller, animated = true, completion = null)
-        }
 
         // Resolved once per pick, not once per item: the root does not move underneath a selection,
         // and it is the same directory for every file in it.
@@ -106,7 +108,11 @@ private suspend fun platform.Foundation.NSItemProvider.resolveToFile(scratchDire
     }
 
 @OptIn(ExperimentalForeignApi::class)
-internal fun pickedFileFrom(url: NSURL?, isInPlace: Boolean, scratchDirectory: Path?): IosPickedFile? {
+internal fun pickedFileFrom(
+    url: NSURL?,
+    isInPlace: Boolean,
+    scratchDirectory: Path?,
+): IosPickedFile? {
     if (url == null) return null
 
     if (isInPlace) {
@@ -155,10 +161,14 @@ internal fun pickedFileFrom(url: NSURL?, isInPlace: Boolean, scratchDirectory: P
  */
 private class PhotoPickerDelegate(
     private val onResult: (List<PHPickerResult>) -> Unit,
-) : NSObject(), PHPickerViewControllerDelegateProtocol {
+) : NSObject(),
+    PHPickerViewControllerDelegateProtocol {
     private var resumed = false
 
-    override fun picker(picker: PHPickerViewController, didFinishPicking: List<*>) {
+    override fun picker(
+        picker: PHPickerViewController,
+        didFinishPicking: List<*>,
+    ) {
         if (resumed) return
         resumed = true
         onResult(didFinishPicking.filterIsInstance<PHPickerResult>())

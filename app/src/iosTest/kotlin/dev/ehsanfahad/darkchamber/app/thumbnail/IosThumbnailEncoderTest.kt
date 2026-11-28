@@ -93,10 +93,11 @@ class IosThumbnailEncoderTest {
     fun a_type_that_is_not_an_image_is_declined_without_reading_the_file() {
         var opens = 0
 
-        val thumbnail = encoder.encode("application/pdf", maxEdgePx = 512) {
-            opens++
-            Buffer()
-        }
+        val thumbnail =
+            encoder.encode("application/pdf", maxEdgePx = 512) {
+                opens++
+                Buffer()
+            }
 
         assertNull(thumbnail)
         assertEquals(0, opens, "a declined type must not cost a read of the payload")
@@ -133,14 +134,21 @@ class IosThumbnailEncoderTest {
 
     // --- fixtures -------------------------------------------------------------------------------
 
-    private fun solidImageJpeg(width: Double, height: Double): ByteArray =
-        UIImageJPEGRepresentation(solidImage(width, height), 0.9)!!.toByteArray()
+    private fun solidImageJpeg(
+        width: Double,
+        height: Double,
+    ): ByteArray = UIImageJPEGRepresentation(solidImage(width, height), 0.9)!!.toByteArray()
 
-    private fun solidImagePng(width: Double, height: Double): ByteArray =
-        UIImagePNGRepresentation(solidImage(width, height))!!.toByteArray()
+    private fun solidImagePng(
+        width: Double,
+        height: Double,
+    ): ByteArray = UIImagePNGRepresentation(solidImage(width, height))!!.toByteArray()
 
     /** Half the canvas painted, half left transparent — so the result genuinely carries alpha. */
-    private fun transparentImagePng(width: Double, height: Double): ByteArray {
+    private fun transparentImagePng(
+        width: Double,
+        height: Double,
+    ): ByteArray {
         UIGraphicsBeginImageContextWithOptions(CGSizeMake(width, height), false, 1.0)
         UIColor.orangeColor.setFill()
         platform.UIKit.UIRectFill(CGRectMake(0.0, 0.0, width / 2, height))
@@ -149,7 +157,10 @@ class IosThumbnailEncoderTest {
         return UIImagePNGRepresentation(image)!!.toByteArray()
     }
 
-    private fun solidImage(width: Double, height: Double): UIImage {
+    private fun solidImage(
+        width: Double,
+        height: Double,
+    ): UIImage {
         // scale = 1.0 so the produced pixels are exactly the requested size, whatever the
         // simulator's screen scale happens to be.
         UIGraphicsBeginImageContextWithOptions(CGSizeMake(width, height), true, 1.0)

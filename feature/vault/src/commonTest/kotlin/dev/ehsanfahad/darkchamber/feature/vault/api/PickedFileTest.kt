@@ -14,7 +14,6 @@ import kotlin.test.assertFalse
  * than inheriting a claim it cannot honour (hard rule #6).
  */
 class PickedFileTest {
-
     @Test
     fun a_picked_file_that_says_nothing_about_deletion_cannot_delete() {
         assertFalse(SilentPickedFile().deletable)

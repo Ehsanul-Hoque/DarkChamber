@@ -84,7 +84,10 @@ class PlayerChromeTest {
             listOf(ReaderAction.ToggleControls, ReaderAction.Back, ReaderAction.Forward),
             PlayerChrome.readerActions(Video, hasPlayer = true),
         )
-        assertEquals(listOf(ReaderAction.Back, ReaderAction.Forward), PlayerChrome.readerActions(Audio, hasPlayer = true))
+        assertEquals(
+            listOf(ReaderAction.Back, ReaderAction.Forward),
+            PlayerChrome.readerActions(Audio, hasPlayer = true),
+        )
     }
 
     @Test

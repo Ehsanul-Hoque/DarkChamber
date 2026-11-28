@@ -6,7 +6,6 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 class ItemFilterTest {
-
     /**
      * The reason [ItemFilter.Album] writes its own `equals` instead of being a `data class`:
      * `ByteArray` compares by identity, so the generated one would call two filters over the same

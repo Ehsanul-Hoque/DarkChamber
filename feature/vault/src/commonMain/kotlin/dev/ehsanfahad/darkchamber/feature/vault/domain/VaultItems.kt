@@ -58,7 +58,10 @@ internal interface VaultItems {
      * Rename the album with [id]. Same contract as [createAlbum] for [name]: already usable, or the
      * vault throws. An album that is not there is a failure rather than a create.
      */
-    fun renameAlbum(id: ByteArray, name: String): Outcome<Unit>
+    fun renameAlbum(
+        id: ByteArray,
+        name: String,
+    ): Outcome<Unit>
 
     /**
      * Delete the album with [id]. **Its items are kept** — they become unfiled, and nothing of theirs
@@ -83,7 +86,10 @@ internal interface VaultItems {
      * in between is an ordinary race, skipped rather than failed — and a caller that cannot see the
      * difference can only report a half-move as a clean one.
      */
-    fun assignItems(ids: List<ByteArray>, albumId: ByteArray?): Outcome<AssignSummary>
+    fun assignItems(
+        ids: List<ByteArray>,
+        albumId: ByteArray?,
+    ): Outcome<AssignSummary>
 
     /**
      * Stream-encrypt a payload into the vault, returning the new object's id.
@@ -137,7 +143,10 @@ internal interface VaultItems {
      * what reached the sink means nothing until this returns `Ok`: on `Err` it may hold the first part
      * of a tampered or truncated object, and must be dropped, never drawn.
      */
-    fun open(id: ByteArray, sink: RawSink): Outcome<Unit>
+    fun open(
+        id: ByteArray,
+        sink: RawSink,
+    ): Outcome<Unit>
 
     /**
      * Open the object [id] for reads of any byte range, decrypting only the chunks a read touches — what

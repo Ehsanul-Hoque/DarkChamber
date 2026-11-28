@@ -69,7 +69,11 @@ internal data class ImportSummary(
  *
  * The name is decrypted vault content, so it must not reach a log line (hard rule #4).
  */
-internal data class PickedFileFacts(val name: String, val mime: String, val size: Long?) {
+internal data class PickedFileFacts(
+    val name: String,
+    val mime: String,
+    val size: Long?,
+) {
     override fun toString(): String = "PickedFileFacts(name=${name.length} chars, mime=$mime, size=$size)"
 }
 
@@ -104,7 +108,6 @@ internal class ImportQueue(
      */
     private val ioContext: CoroutineContext = Dispatchers.Default,
 ) {
-
     suspend operator fun invoke(
         files: List<PickedFile>,
         /**
@@ -143,12 +146,13 @@ internal class ImportQueue(
                 // The snapshot goes with the file rather than being re-read downstream: nothing in
                 // the seam promises these are cached, and an implementation that queries on every
                 // access would otherwise pay for one per progress frame.
-                val result = importFile(file, facts, albumId, isActive) { phase, bytes ->
-                    val stage = phase.toStage()
-                    onProgress(
-                        ImportProgress(index, files.size, facts.name, stage, facts.size.fractionAt(stage, bytes)),
-                    )
-                }
+                val result =
+                    importFile(file, facts, albumId, isActive) { phase, bytes ->
+                        val stage = phase.toStage()
+                        onProgress(
+                            ImportProgress(index, files.size, facts.name, stage, facts.size.fractionAt(stage, bytes)),
+                        )
+                    }
                 when (result) {
                     is ImportResult.Imported -> {
                         imported++
@@ -158,12 +162,16 @@ internal class ImportQueue(
                         // offer would be one spent on nothing.
                         if (withContext(ioContext) { file.deletable }) deletable += file
                     }
-                    is ImportResult.Failed -> failed += FailedImport(facts.name, result.error)
+
+                    is ImportResult.Failed -> {
+                        failed += FailedImport(facts.name, result.error)
+                    }
+
                     // Neither list. Nothing was wrong with this file — the batch was stopped while it
                     // was being fetched or encrypted — and telling the user it failed would blame a
                     // file for their own decision. Which of the two it was is settled upstream,
                     // where the stop flag lives.
-                    ImportResult.Stopped -> Unit
+                    ImportResult.Stopped -> {}
                 }
             }
         } finally {
@@ -190,11 +198,12 @@ internal class ImportQueue(
          * is not what a user is waiting to hear. What they are told is that the file is nearly in —
          * the bytes are already sealed by this point, and everything after it is a convenience.
          */
-        fun ImportPhase.toStage(): ImportStage = when (this) {
-            ImportPhase.COPYING -> ImportStage.COPYING
-            ImportPhase.ENCRYPTING -> ImportStage.ENCRYPTING
-            ImportPhase.PREVIEWING -> ImportStage.FINISHING
-        }
+        fun ImportPhase.toStage(): ImportStage =
+            when (this) {
+                ImportPhase.COPYING -> ImportStage.COPYING
+                ImportPhase.ENCRYPTING -> ImportStage.ENCRYPTING
+                ImportPhase.PREVIEWING -> ImportStage.FINISHING
+            }
 
         /**
          * The fraction of the **current stage**, or null when there is nothing honest to divide by.
@@ -210,7 +219,10 @@ internal class ImportQueue(
          * bytes has no value to take, and an empty file is imported faster than a bar can be seen
          * either way.
          */
-        fun Long?.fractionAt(stage: ImportStage, bytes: Long): Float? {
+        fun Long?.fractionAt(
+            stage: ImportStage,
+            bytes: Long,
+        ): Float? {
             // Nothing to measure: no byte exists yet, or the reads being made have no declared
             // total. A bar drawn here would be invented (hard rule #6). The stage itself is asked,
             // rather than the stages being listed a second time here, so that what a screen is told

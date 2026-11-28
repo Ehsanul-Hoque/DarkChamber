@@ -42,17 +42,17 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: main            # always release from main's HEAD
           fetch-depth: 0       # full history for commit analysis
           fetch-tags: true     # ensure tags are present for `git describe`
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "21"
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v5
 
       - name: Determine version bump
         id: bump
@@ -81,7 +81,8 @@ jobs:
         if: inputs.dry_run == false && steps.bump.outputs.level != 'none'
         run: |
           if [ "${{ inputs.threat_model_reviewed }}" != "true" ]; then
-            echo "::error::Release blocked: tick 'threat_model_reviewed' after confirming the release introduces no undocumented threat-model change (docs/THREAT_MODEL.md)."
+            echo "::error::Release blocked: tick 'threat_model_reviewed' after confirming the release" \
+              "introduces no undocumented threat-model change (docs/THREAT_MODEL.md)."
             exit 1
           fi
 

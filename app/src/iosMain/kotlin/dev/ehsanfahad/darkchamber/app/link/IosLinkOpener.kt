@@ -21,7 +21,6 @@ internal class IosLinkOpener(
         UIApplication.sharedApplication.openURL(url, options = emptyMap<Any?, Any>(), completionHandler = answer)
     },
 ) : LinkOpener {
-
     override suspend fun open(address: String): LinkOpened {
         if (!isWebAddress(address)) return LinkOpened.NotOpened
         val url = NSURL.URLWithString(address) ?: return LinkOpened.NotOpened

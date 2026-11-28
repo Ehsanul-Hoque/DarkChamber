@@ -35,19 +35,20 @@ class AndroidSecretClipboard(
     private val scope: CoroutineScope = CoroutineScope(Dispatchers.Main + SupervisorJob()),
     private val lifetime: Duration = SECRET_CLIP_LIFETIME,
 ) : SecretClipboard {
-
     private var pendingClear: Job? = null
 
     override fun copySecret(text: String) {
         val manager = context.getSystemService(ClipboardManager::class.java) ?: return
 
-        val clip = ClipData.newPlainText(EMPTY_LABEL, text).apply {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                description.extras = PersistableBundle().apply {
-                    putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true)
+        val clip =
+            ClipData.newPlainText(EMPTY_LABEL, text).apply {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    description.extras =
+                        PersistableBundle().apply {
+                            putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true)
+                        }
                 }
             }
-        }
 
         try {
             manager.setPrimaryClip(clip)
@@ -63,10 +64,11 @@ class AndroidSecretClipboard(
         val ours = currentTimestamp(manager)
 
         pendingClear?.cancel() // one pending clear at a time; a second copy resets the clock
-        pendingClear = scope.launch {
-            delay(lifetime)
-            clearIfStillOurs(manager, ours)
-        }
+        pendingClear =
+            scope.launch {
+                delay(lifetime)
+                clearIfStillOurs(manager, ours)
+            }
     }
 
     private fun currentTimestamp(manager: ClipboardManager): Long? =
@@ -80,7 +82,10 @@ class AndroidSecretClipboard(
             null
         }
 
-    private fun clearIfStillOurs(manager: ClipboardManager, ours: Long?) {
+    private fun clearIfStillOurs(
+        manager: ClipboardManager,
+        ours: Long?,
+    ) {
         if (!shouldClearClip(ours = ours, current = currentTimestamp(manager))) return
 
         try {
@@ -113,5 +118,7 @@ class AndroidSecretClipboard(
  *   the two mistakes — the window is a minute, so the chance of discarding someone else's clip is
  *   small and the cost of keeping ours is not.
  */
-internal fun shouldClearClip(ours: Long?, current: Long?): Boolean =
-    ours == null || current == null || current == ours
+internal fun shouldClearClip(
+    ours: Long?,
+    current: Long?,
+): Boolean = ours == null || current == null || current == ours

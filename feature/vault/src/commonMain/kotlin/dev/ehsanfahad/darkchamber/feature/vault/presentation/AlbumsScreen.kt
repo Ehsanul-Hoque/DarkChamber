@@ -57,7 +57,11 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.label
  * Deliberately plainer than the item grid: albums are few, nothing here animates on arrival, and the
  * one affordance makes an album rather than importing a file — an album list is something a user
  * returns to rather than watches fill.
+ *
+ * ktlint's Compose rules read `onOpenUnfiled` as past tense; "unfiled" names the items in no album, so
+ * that rule is suppressed here and on [AlbumGrid].
  */
+@Suppress("ktlint:compose:parameter-naming")
 @Composable
 internal fun AlbumsScreen(
     state: AlbumsState,
@@ -87,22 +91,27 @@ internal fun AlbumsScreen(
             }
 
             when {
-                state.loading -> CenteredNotice("Reading your albums…")
+                state.loading -> {
+                    CenteredNotice("Reading your albums…")
+                }
+
                 // No albums is not an empty screen: Unfiled still leads somewhere, because files
                 // imported before any album existed are exactly what a user arriving here is looking
                 // for. So the grid renders either way and the explanation sits above it.
-                else -> AlbumGrid(
-                    albums = state.albums,
-                    // After a failed listing the grid is empty because it could not be read, which the
-                    // banner above already says — and "No albums yet" would be an absence nobody
-                    // established. Not the banner's error, which the user can dismiss: the reason the
-                    // grid is empty outlives the acknowledgement.
-                    unreadable = state.listingUnreadable,
-                    imageLoader = imageLoader,
-                    bottomInset = barHeight,
-                    onOpenAlbum = onOpenAlbum,
-                    onOpenUnfiled = onOpenUnfiled,
-                )
+                else -> {
+                    AlbumGrid(
+                        albums = state.albums,
+                        // After a failed listing the grid is empty because it could not be read, which the
+                        // banner above already says — and "No albums yet" would be an absence nobody
+                        // established. Not the banner's error, which the user can dismiss: the reason the
+                        // grid is empty outlives the acknowledgement.
+                        unreadable = state.listingUnreadable,
+                        imageLoader = imageLoader,
+                        bottomInset = barHeight,
+                        onOpenAlbum = onOpenAlbum,
+                        onOpenUnfiled = onOpenUnfiled,
+                    )
+                }
             }
         }
 
@@ -111,11 +120,12 @@ internal fun AlbumsScreen(
         // behind a catalog error leaves the user with a screen that can only be left.
         Box(
             contentAlignment = Alignment.BottomEnd,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .fillMaxWidth()
-                .onSizeChanged { barHeight = with(density) { it.height.toDp() } }
-                .padding(spacing.spaceLg),
+            modifier =
+                Modifier
+                    .align(Alignment.BottomEnd)
+                    .fillMaxWidth()
+                    .onSizeChanged { barHeight = with(density) { it.height.toDp() } }
+                    .padding(spacing.spaceLg),
         ) {
             ExtendedFloatingActionButton(
                 onClick = onStartCreate,
@@ -143,6 +153,7 @@ internal fun AlbumsScreen(
     }
 }
 
+@Suppress("ktlint:compose:parameter-naming") // "unfiled" in `onOpenUnfiled`: see [AlbumsScreen]
 @Composable
 private fun AlbumGrid(
     albums: List<AlbumTile>,
@@ -156,13 +167,14 @@ private fun AlbumGrid(
     val spacing = DarkChamberTheme.spacing
     LazyVerticalGrid(
         columns = GridCells.Adaptive(minSize = ALBUM_MIN_WIDTH),
-        contentPadding = PaddingValues(
-            start = spacing.spaceMd,
-            end = spacing.spaceMd,
-            top = spacing.spaceMd,
-            // Room for the floating affordance, so the last row can be scrolled clear of it.
-            bottom = spacing.spaceMd + bottomInset,
-        ),
+        contentPadding =
+            PaddingValues(
+                start = spacing.spaceMd,
+                end = spacing.spaceMd,
+                top = spacing.spaceMd,
+                // Room for the floating affordance, so the last row can be scrolled clear of it.
+                bottom = spacing.spaceMd + bottomInset,
+            ),
         horizontalArrangement = Arrangement.spacedBy(spacing.spaceSm),
         verticalArrangement = Arrangement.spacedBy(spacing.spaceSm),
         modifier = Modifier.fillMaxSize(),
@@ -211,22 +223,26 @@ private fun AlbumGrid(
  * because it is not an album.
  */
 @Composable
-private fun UnfiledTileView(onOpen: () -> Unit, modifier: Modifier = Modifier) {
+private fun UnfiledTileView(
+    onOpen: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val colors = DarkChamberTheme.colors
     val spacing = DarkChamberTheme.spacing
 
     Column(modifier = modifier.fillMaxWidth().clickable(onClick = onOpen)) {
         Box(
             contentAlignment = Alignment.Center,
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(1f)
-                .background(color = colors.surface, shape = DarkChamberTheme.shapes.medium)
-                .border(
-                    width = ALBUM_BORDER,
-                    color = colors.outline,
-                    shape = DarkChamberTheme.shapes.medium,
-                ),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(1f)
+                    .background(color = colors.surface, shape = DarkChamberTheme.shapes.medium)
+                    .border(
+                        width = ALBUM_BORDER,
+                        color = colors.outline,
+                        shape = DarkChamberTheme.shapes.medium,
+                    ),
         ) {
             Text(
                 text = "Unfiled",
@@ -274,18 +290,18 @@ private fun AlbumTileView(
     Column(modifier = modifier.fillMaxWidth().clickable(onClick = onOpen)) {
         Box(
             contentAlignment = Alignment.Center,
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(1f)
-                .background(
-                    color = if (damaged) colors.surface else colors.surfaceRaised,
-                    shape = DarkChamberTheme.shapes.medium,
-                )
-                .border(
-                    width = ALBUM_BORDER,
-                    color = if (damaged) colors.danger else colors.outline,
-                    shape = DarkChamberTheme.shapes.medium,
-                ),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(1f)
+                    .background(
+                        color = if (damaged) colors.surface else colors.surfaceRaised,
+                        shape = DarkChamberTheme.shapes.medium,
+                    ).border(
+                        width = ALBUM_BORDER,
+                        color = if (damaged) colors.danger else colors.outline,
+                        shape = DarkChamberTheme.shapes.medium,
+                    ),
         ) {
             val cover = album.coverItemId
             if (cover == null) {
@@ -326,24 +342,24 @@ private fun AlbumTileView(
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(spacing.spaceXxs),
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(spacing.spaceXs)
-                    .background(
-                        color = colors.surface,
-                        // Rounded, never a circle: the full-circle radius belongs to the aperture
-                        // alone (docs/DESIGN.md §4).
-                        shape = DarkChamberTheme.shapes.small,
-                    )
-                    .border(
-                        width = ALBUM_BORDER,
-                        color = colors.outline,
-                        shape = DarkChamberTheme.shapes.small,
-                    )
-                    // Vertical as well as horizontal. It had only the horizontal inset, so the
-                    // caption sat on the border above and below it — and a border touching its own
-                    // text reads as a clipped box rather than a badge.
-                    .padding(horizontal = spacing.spaceXs, vertical = spacing.spaceXxs),
+                modifier =
+                    Modifier
+                        .align(Alignment.TopStart)
+                        .padding(spacing.spaceXs)
+                        .background(
+                            color = colors.surface,
+                            // Rounded, never a circle: the full-circle radius belongs to the aperture
+                            // alone (docs/DESIGN.md §4).
+                            shape = DarkChamberTheme.shapes.small,
+                        ).border(
+                            width = ALBUM_BORDER,
+                            color = colors.outline,
+                            shape = DarkChamberTheme.shapes.small,
+                        )
+                        // Vertical as well as horizontal. It had only the horizontal inset, so the
+                        // caption sat on the border above and below it — and a border touching its own
+                        // text reads as a clipped box rather than a badge.
+                        .padding(horizontal = spacing.spaceXs, vertical = spacing.spaceXxs),
             ) {
                 AlbumMark(
                     // Decorative here: the word beside it says the same thing, and a reader that
@@ -397,19 +413,24 @@ private fun CenteredNotice(text: String) {
  * them, and claiming the user has none would be the fail-closed rule's exact target.
  */
 @Composable
-private fun AlbumsErrorBanner(error: AlbumsError, onDismiss: () -> Unit) {
+private fun AlbumsErrorBanner(
+    error: AlbumsError,
+    onDismiss: () -> Unit,
+) {
     val colors = DarkChamberTheme.colors
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(colors.surface)
-            .clickable(onClick = onDismiss)
-            .padding(DarkChamberTheme.spacing.spaceMd),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(colors.surface)
+                .clickable(onClick = onDismiss)
+                .padding(DarkChamberTheme.spacing.spaceMd),
     ) {
         Text(
-            text = when (error) {
-                AlbumsError.ListingFailed -> "Couldn't read your albums. Tap to dismiss."
-            },
+            text =
+                when (error) {
+                    AlbumsError.ListingFailed -> "Couldn't read your albums. Tap to dismiss."
+                },
             style = DarkChamberTheme.typography.body,
             color = colors.danger,
         )

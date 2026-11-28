@@ -17,7 +17,8 @@ class VaultLoadErrorPolicyTest {
 
     @Test
     fun it_is_final_however_deep_the_player_wrapped_it() {
-        val wrapped = IOException("loader", RuntimeException("source", VaultReadException(VaultError.Crypto.IntegrityFailure)))
+        val wrapped =
+            IOException("loader", RuntimeException("source", VaultReadException(VaultError.Crypto.IntegrityFailure)))
         assertTrue(isVaultVerdict(wrapped))
     }
 

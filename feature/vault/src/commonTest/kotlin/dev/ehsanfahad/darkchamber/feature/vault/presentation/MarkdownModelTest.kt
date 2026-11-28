@@ -21,7 +21,6 @@ import kotlin.time.TestTimeSource
  * the code; each expected model is read off the specification's own HTML for that example.
  */
 class MarkdownModelTest {
-
     /** A backslash, built rather than typed, so no escape sequence is ever written into this file. */
     private val bs = Char(0x5C)
 
@@ -53,7 +52,10 @@ class MarkdownModelTest {
     @Test
     fun setext_headings_carry_inline_styles() { // Example 80
         assertEquals(
-            listOf(1 to listOf(plain("Foo "), MdSpan("bar", emphasis = true)), 2 to listOf(plain("Foo "), MdSpan("bar", emphasis = true))),
+            listOf(
+                1 to listOf(plain("Foo "), MdSpan("bar", emphasis = true)),
+                2 to listOf(plain("Foo "), MdSpan("bar", emphasis = true)),
+            ),
             headings("Foo *bar*\n=========\n\nFoo *bar*\n---------\n"),
         )
     }
@@ -79,7 +81,10 @@ class MarkdownModelTest {
 
     @Test
     fun blank_lines_only_separate() { // Example 227
-        assertEquals(listOf(para(plain("aaa")), MdBlock.Heading(1, listOf(plain("aaa")), "aaa")), blocks("  \n\naaa\n  \n\n# aaa\n\n  \n"))
+        assertEquals(
+            listOf(para(plain("aaa")), MdBlock.Heading(1, listOf(plain("aaa")), "aaa")),
+            blocks("  \n\naaa\n  \n\n# aaa\n\n  \n"),
+        )
     }
 
     /** Two trailing spaces or a backslash end a line; a backslash at the paragraph's end is just a backslash. */
@@ -102,14 +107,24 @@ class MarkdownModelTest {
     @Test
     fun strong_and_emphasis_nest() {
         assertEquals(
-            listOf(para(plain("a "), MdSpan("strong ", strong = true), MdSpan("both", strong = true, emphasis = true), plain(" b"))),
+            listOf(
+                para(
+                    plain("a "),
+                    MdSpan("strong ", strong = true),
+                    MdSpan("both", strong = true, emphasis = true),
+                    plain(" b"),
+                ),
+            ),
             blocks("a **strong *both*** b\n"),
         )
     }
 
     @Test
     fun strikethrough() { // GitHub's strikethrough example
-        assertEquals(listOf(para(MdSpan("Hi", strike = true), plain(" Hello, world!"))), blocks("~~Hi~~ Hello, world!\n"))
+        assertEquals(
+            listOf(para(MdSpan("Hi", strike = true), plain(" Hello, world!"))),
+            blocks("~~Hi~~ Hello, world!\n"),
+        )
     }
 
     @Test
@@ -135,7 +150,7 @@ class MarkdownModelTest {
 
     @Test
     fun a_code_span_is_not_styled_inside() {
-        assertEquals(listOf(para(MdSpan("*a* ${bs}*", code = true))), blocks("`*a* $bs*`\n"))
+        assertEquals(listOf(para(MdSpan("*a* $bs*", code = true))), blocks("`*a* $bs*`\n"))
     }
 
     // --- Escapes and entities ---
@@ -144,7 +159,10 @@ class MarkdownModelTest {
     fun backslash_escapes_show_the_character() { // Examples 12, 14
         val punctuation = "!\"#$%&'()*+,-./:;<=>?@[$bs]^_`{|}~"
         assertEquals(listOf(para(plain(punctuation))), blocks(punctuation.map { "$bs$it" }.joinToString("") + "\n"))
-        assertEquals(listOf(para(plain("*not emphasized* [not a link](/foo) `not code`"))), blocks("$bs*not emphasized*\n$bs[not a link](/foo)\n$bs`not code`\n"))
+        assertEquals(
+            listOf(para(plain("*not emphasized* [not a link](/foo) `not code`"))),
+            blocks("$bs*not emphasized*\n$bs[not a link](/foo)\n$bs`not code`\n"),
+        )
     }
 
     /** Only punctuation can be escaped; before anything else a backslash is itself. */
@@ -158,8 +176,15 @@ class MarkdownModelTest {
         val nbsp = Char(0xA0)
         assertEquals(listOf(para(plain("$nbsp & © Æ Ď"))), blocks("&nbsp; &amp; &copy; &AElig; &Dcaron;\n"))
         val replacement = Char(0xFFFD)
-        assertEquals(listOf(para(plain("# " + Char(1234) + " " + Char(992) + " " + replacement))), blocks("&#35; &#1234; &#992; &#0;\n"))
-        assertEquals(listOf(para(plain(Char(0xD83D).toString() + Char(0xDE00)))), blocks("&#x1F600;\n"), "outside the basic plane")
+        assertEquals(
+            listOf(para(plain("# " + Char(1234) + " " + Char(992) + " " + replacement))),
+            blocks("&#35; &#1234; &#992; &#0;\n"),
+        )
+        assertEquals(
+            listOf(para(plain(Char(0xD83D).toString() + Char(0xDE00)))),
+            blocks("&#x1F600;\n"),
+            "outside the basic plane",
+        )
     }
 
     /** What only looks like a reference stays as written. */
@@ -176,8 +201,15 @@ class MarkdownModelTest {
     @Test
     fun a_reference_to_an_impossible_character_reads_as_a_replacement() {
         val replacement = Char(0xFFFD).toString()
-        assertEquals(listOf(para(plain("$replacement $replacement $replacement"))), blocks("&#x110000; &#xD800; &#57343;\n"))
-        assertEquals(listOf(para(plain(Char(0xDBFF).toString() + Char(0xDFFF)))), blocks("&#x10FFFF;\n"), "the last character there is")
+        assertEquals(
+            listOf(para(plain("$replacement $replacement $replacement"))),
+            blocks("&#x110000; &#xD800; &#57343;\n"),
+        )
+        assertEquals(
+            listOf(para(plain(Char(0xDBFF).toString() + Char(0xDFFF)))),
+            blocks("&#x10FFFF;\n"),
+            "the last character there is",
+        )
     }
 
     @Test
@@ -189,7 +221,8 @@ class MarkdownModelTest {
 
     @Test
     fun a_block_quote_holds_blocks_and_takes_a_lazy_line() { // Examples 228, 229, 232
-        val quote = listOf(MdBlock.Quote(listOf(MdBlock.Heading(1, listOf(plain("Foo")), "foo"), para(plain("bar baz")))))
+        val quote =
+            listOf(MdBlock.Quote(listOf(MdBlock.Heading(1, listOf(plain("Foo")), "foo"), para(plain("bar baz")))))
         assertEquals(quote, blocks("> # Foo\n> bar\n> baz\n"))
         assertEquals(quote, blocks("># Foo\n>bar\n> baz\n"))
         assertEquals(quote, blocks("> # Foo\n> bar\nbaz\n"), "the lazy line stays in the quote")
@@ -205,7 +238,10 @@ class MarkdownModelTest {
 
     @Test
     fun fenced_code_keeps_every_character_and_its_language() { // Examples 142, 119, 147
-        assertEquals(listOf(MdBlock.Code("def foo(x)\n  return 3\nend", "ruby")), blocks("```ruby\ndef foo(x)\n  return 3\nend\n```\n"))
+        assertEquals(
+            listOf(MdBlock.Code("def foo(x)\n  return 3\nend", "ruby")),
+            blocks("```ruby\ndef foo(x)\n  return 3\nend\n```\n"),
+        )
         assertEquals(listOf(MdBlock.Code("<\n >", null)), blocks("```\n<\n >\n```\n"))
         assertEquals(listOf(MdBlock.Code("``` aaa", null)), blocks("```\n``` aaa\n```\n"))
     }
@@ -227,7 +263,10 @@ class MarkdownModelTest {
 
     @Test
     fun indented_code_loses_only_its_indent() { // Examples 107, 115
-        assertEquals(listOf(MdBlock.Code("a simple\n  indented code block", null)), blocks("    a simple\n      indented code block\n"))
+        assertEquals(
+            listOf(MdBlock.Code("a simple\n  indented code block", null)),
+            blocks("    a simple\n      indented code block\n"),
+        )
         assertEquals(
             listOf(MdBlock.Heading(1, listOf(plain("Heading")), "heading"), MdBlock.Code("foo", null)),
             blocks("# Heading\n    foo\n"),
@@ -244,7 +283,10 @@ class MarkdownModelTest {
 
     @Test
     fun code_inside_a_quote() { // Example 128
-        assertEquals(listOf(MdBlock.Quote(listOf(MdBlock.Code("aaa", null))), para(plain("bbb"))), blocks("> ```\n> aaa\n\nbbb\n"))
+        assertEquals(
+            listOf(MdBlock.Quote(listOf(MdBlock.Code("aaa", null))), para(plain("bbb"))),
+            blocks("> ```\n> aaa\n\nbbb\n"),
+        )
     }
 
     @Test
@@ -254,14 +296,23 @@ class MarkdownModelTest {
         assertEquals(listOf(MdBlock.Rule), blocks(" - - -\n"))
     }
 
-    private fun item(vararg blocks: MdBlock, task: Boolean? = null) = MdListItem(task, blocks.toList())
+    private fun item(
+        vararg blocks: MdBlock,
+        task: Boolean? = null,
+    ) = MdListItem(task, blocks.toList())
 
-    private fun itemText(text: String, task: Boolean? = null) = item(para(plain(text)), task = task)
+    private fun itemText(
+        text: String,
+        task: Boolean? = null,
+    ) = item(para(plain(text)), task = task)
 
     @Test
     fun a_change_of_bullet_starts_a_new_list() { // Example 301
         assertEquals(
-            listOf(MdBlock.ListBlock(null, false, listOf(itemText("foo"), itemText("bar"))), MdBlock.ListBlock(null, false, listOf(itemText("baz")))),
+            listOf(
+                MdBlock.ListBlock(null, false, listOf(itemText("foo"), itemText("bar"))),
+                MdBlock.ListBlock(null, false, listOf(itemText("baz"))),
+            ),
             blocks("- foo\n- bar\n+ baz\n"),
         )
     }
@@ -269,7 +320,10 @@ class MarkdownModelTest {
     @Test
     fun numbered_lists_keep_their_first_number() { // Example 302
         assertEquals(
-            listOf(MdBlock.ListBlock(1, false, listOf(itemText("foo"), itemText("bar"))), MdBlock.ListBlock(3, false, listOf(itemText("baz")))),
+            listOf(
+                MdBlock.ListBlock(1, false, listOf(itemText("foo"), itemText("bar"))),
+                MdBlock.ListBlock(3, false, listOf(itemText("baz"))),
+            ),
             blocks("1. foo\n2. bar\n3) baz\n"),
         )
     }
@@ -313,8 +367,15 @@ class MarkdownModelTest {
         assertEquals(
             listOf(
                 MdBlock.ListBlock(
-                    1, true,
-                    listOf(item(para(plain("A paragraph with two lines.")), MdBlock.Code("indented code", null), MdBlock.Quote(listOf(para(plain("A block quote.")))))),
+                    1,
+                    true,
+                    listOf(
+                        item(
+                            para(plain("A paragraph with two lines.")),
+                            MdBlock.Code("indented code", null),
+                            MdBlock.Quote(listOf(para(plain("A block quote.")))),
+                        ),
+                    ),
                 ),
             ),
             blocks("1.  A paragraph\n    with two lines.\n\n        indented code\n\n    > A block quote.\n"),
@@ -327,7 +388,11 @@ class MarkdownModelTest {
             listOf(MdBlock.ListBlock(null, false, listOf(itemText("foo", task = false), itemText("bar", task = true)))),
             blocks("- [ ] foo\n- [x] bar\n"),
         )
-        assertEquals(listOf(MdBlock.ListBlock(null, false, listOf(itemText("bar", task = true)))), blocks("- [X] bar\n"), "either case")
+        assertEquals(
+            listOf(MdBlock.ListBlock(null, false, listOf(itemText("bar", task = true)))),
+            blocks("- [X] bar\n"),
+            "either case",
+        )
     }
 
     private fun cells(vararg texts: String) = texts.map { if (it.isEmpty()) emptyList() else listOf(plain(it)) }
@@ -335,7 +400,13 @@ class MarkdownModelTest {
     @Test
     fun a_table_has_its_header_and_rows() { // GitHub's table examples
         assertEquals(
-            listOf(MdBlock.Table(listOf(CellAlign.Start, CellAlign.Start), cells("foo", "bar"), listOf(cells("baz", "bim")))),
+            listOf(
+                MdBlock.Table(
+                    listOf(CellAlign.Start, CellAlign.Start),
+                    cells("foo", "bar"),
+                    listOf(cells("baz", "bim")),
+                ),
+            ),
             blocks("| foo | bar |\n| --- | --- |\n| baz | bim |"),
         )
     }
@@ -343,7 +414,13 @@ class MarkdownModelTest {
     @Test
     fun a_tables_columns_keep_their_alignment() {
         assertEquals(
-            listOf(MdBlock.Table(listOf(CellAlign.Center, CellAlign.End), cells("abc", "defghi"), listOf(cells("bar", "baz")))),
+            listOf(
+                MdBlock.Table(
+                    listOf(CellAlign.Center, CellAlign.End),
+                    cells("abc", "defghi"),
+                    listOf(cells("bar", "baz")),
+                ),
+            ),
             blocks("| abc | defghi |\n:-: | -----------:\nbar | baz"),
         )
         assertEquals(listOf(CellAlign.Start), (blocks("| a |\n| :-- |\n| b |").single() as MdBlock.Table).alignments)
@@ -353,13 +430,20 @@ class MarkdownModelTest {
     @Test
     fun every_row_has_the_headers_number_of_cells() {
         assertEquals(
-            listOf(MdBlock.Table(listOf(CellAlign.Start, CellAlign.Start), cells("abc", "def"), listOf(cells("bar", ""), cells("bar", "baz")))),
+            listOf(
+                MdBlock.Table(
+                    listOf(CellAlign.Start, CellAlign.Start),
+                    cells("abc", "def"),
+                    listOf(cells("bar", ""), cells("bar", "baz")),
+                ),
+            ),
             blocks("| abc | def |\n| --- | --- |\n| bar |\n| bar | baz | boo |"),
         )
     }
 
     /** A table of [columns] one-letter columns, with one body row. */
-    private fun table(columns: Int) = "a|".repeat(columns - 1) + "a\n" + "-|".repeat(columns - 1) + "-\n" + "b|".repeat(columns - 1) + "b\n"
+    private fun table(columns: Int) =
+        "a|".repeat(columns - 1) + "a\n" + "-|".repeat(columns - 1) + "-\n" + "b|".repeat(columns - 1) + "b\n"
 
     /**
      * A table wider than can be drawn is shown as written, every character of it, rather than as one
@@ -402,7 +486,13 @@ class MarkdownModelTest {
     @Test
     fun a_table_cell_holds_inline_styles_and_an_escaped_pipe() {
         assertEquals(
-            listOf(MdBlock.Table(listOf(CellAlign.Start), listOf(listOf(plain("f|oo"))), listOf(listOf(listOf(plain("b "), MdSpan("|", strong = true), plain(" im")))))),
+            listOf(
+                MdBlock.Table(
+                    listOf(CellAlign.Start),
+                    listOf(listOf(plain("f|oo"))),
+                    listOf(listOf(listOf(plain("b "), MdSpan("|", strong = true), plain(" im")))),
+                ),
+            ),
             blocks("| f$bs|oo  |\n| ------ |\n| b **$bs|** im |"),
         )
     }
@@ -436,7 +526,11 @@ class MarkdownModelTest {
     @Test
     fun repeated_titles_are_numbered_and_never_collide() {
         assertEquals(listOf("a", "a-1", "a-2"), anchors("# a\n# a\n# a\n"))
-        assertEquals(listOf("a-1", "a", "a-2"), anchors("# a-1\n# a\n# a\n"), "a title already called a-1 is skipped over")
+        assertEquals(
+            listOf("a-1", "a", "a-2"),
+            anchors("# a-1\n# a\n# a\n"),
+            "a title already called a-1 is skipped over",
+        )
         assertEquals(listOf("a", "a-1", "a-1-1"), anchors("# a\n# a\n# a-1\n"))
     }
 
@@ -447,7 +541,10 @@ class MarkdownModelTest {
 
     // --- Links and images ---
 
-    private fun link(text: String, address: String) = MdSpan(text, link = address)
+    private fun link(
+        text: String,
+        address: String,
+    ) = MdSpan(text, link = address)
 
     @Test
     fun an_inline_link_keeps_its_address() { // Example 483
@@ -511,8 +608,14 @@ class MarkdownModelTest {
     @Test
     fun autolinks() { // Examples 594, 604; GitHub's extended autolinks
         assertEquals(listOf(para(link("http://foo.bar.baz", "http://foo.bar.baz"))), blocks("<http://foo.bar.baz>\n"))
-        assertEquals(listOf(para(link("foo@bar.example.com", "mailto:foo@bar.example.com"))), blocks("<foo@bar.example.com>\n"))
-        assertEquals(listOf(para(link("www.commonmark.org", "http://www.commonmark.org"))), blocks("www.commonmark.org\n"))
+        assertEquals(
+            listOf(para(link("foo@bar.example.com", "mailto:foo@bar.example.com"))),
+            blocks("<foo@bar.example.com>\n"),
+        )
+        assertEquals(
+            listOf(para(link("www.commonmark.org", "http://www.commonmark.org"))),
+            blocks("www.commonmark.org\n"),
+        )
         assertEquals(
             listOf(para(plain("Visit "), link("https://e.f/x", "https://e.f/x"), plain(" now"))),
             blocks("Visit https://e.f/x now\n"),
@@ -528,7 +631,10 @@ class MarkdownModelTest {
     @Test
     fun an_image_is_its_description_never_its_address() { // Examples 572, 573, 574, 575
         assertEquals(listOf(para(MdSpan("foo", image = true))), blocks("![foo](/url \"title\")\n"))
-        assertEquals(listOf(para(MdSpan("foo bar", image = true))), blocks("![foo *bar*]\n\n[foo *bar*]: train.jpg \"train & tracks\"\n"))
+        assertEquals(
+            listOf(para(MdSpan("foo bar", image = true))),
+            blocks("![foo *bar*]\n\n[foo *bar*]: train.jpg \"train & tracks\"\n"),
+        )
         assertEquals(listOf(para(MdSpan("foo bar", image = true))), blocks("![foo ![bar](/url)](/url2)\n"))
         assertEquals(listOf(para(MdSpan("foo bar", image = true))), blocks("![foo [bar](/url)](/url2)\n"))
     }
@@ -555,7 +661,10 @@ class MarkdownModelTest {
 
     @Test
     fun an_image_inside_a_link_carries_the_links_address() {
-        assertEquals(listOf(para(MdSpan("alt", image = true, link = "https://x"))), blocks("[![alt](i.png)](https://x)\n"))
+        assertEquals(
+            listOf(para(MdSpan("alt", image = true, link = "https://x"))),
+            blocks("[![alt](i.png)](https://x)\n"),
+        )
     }
 
     // --- HTML and footnotes: shown as written ---
@@ -564,7 +673,11 @@ class MarkdownModelTest {
     fun inline_html_is_shown_as_written() { // Example 613
         assertEquals(listOf(para(plain("<a><bab><c2c>"))), blocks("<a><bab><c2c>\n"))
         assertEquals(listOf(para(plain("a <span>hi</span> b"))), blocks("a <span>hi</span> b\n"))
-        assertEquals(listOf(para(plain("<span title=\"&amp;\">x"))), blocks("<span title=\"&amp;\">x\n"), "a tag's references are not read")
+        assertEquals(
+            listOf(para(plain("<span title=\"&amp;\">x"))),
+            blocks("<span title=\"&amp;\">x\n"),
+            "a tag's references are not read",
+        )
     }
 
     /** A block the reader has no drawing for — here GitHub's alert — is shown as written, never dropped. */
@@ -592,14 +705,23 @@ class MarkdownModelTest {
         assertNull(MarkdownModel.from("> ".repeat(MARKDOWN_MAX_NESTING + 1) + "x\n"))
         assertNull(MarkdownModel.from(">".repeat(MARKDOWN_MAX_NESTING + 1) + " x\n"), "quote marks need no spaces")
         assertNotNull(MarkdownModel.from("> - ".repeat(MARKDOWN_MAX_NESTING / 2) + "x\n"))
-        assertNull(MarkdownModel.from("> - ".repeat(MARKDOWN_MAX_NESTING / 2) + "> x\n"), "quotes and list items count together")
+        assertNull(
+            MarkdownModel.from("> - ".repeat(MARKDOWN_MAX_NESTING / 2) + "> x\n"),
+            "quotes and list items count together",
+        )
         assertNull(MarkdownModel.from("1. ".repeat(MARKDOWN_MAX_NESTING + 1) + "x\n"))
         assertNull(MarkdownModel.from("1) ".repeat(MARKDOWN_MAX_NESTING + 1) + "x\n"))
         assertNull(MarkdownModel.from("-\t".repeat(MARKDOWN_MAX_NESTING + 1) + "x\n"), "a tab after the marker")
         assertNull(MarkdownModel.from("ok\r" + "> ".repeat(MARKDOWN_MAX_NESTING + 1) + "x\r"), "after a lone CR")
-        assertNotNull(MarkdownModel.from("1.".repeat(MARKDOWN_MAX_NESTING + 1) + " x\n"), "a number is a marker only before . or ) and a space")
+        assertNotNull(
+            MarkdownModel.from("1.".repeat(MARKDOWN_MAX_NESTING + 1) + " x\n"),
+            "a number is a marker only before . or ) and a space",
+        )
         assertNull(MarkdownModel.from("+ ".repeat(MARKDOWN_MAX_NESTING + 1) + "x\n"))
-        assertNull(MarkdownModel.from("ok\n\n" + "* ".repeat(MARKDOWN_MAX_NESTING + 1) + "x\n"), "on any line, not only the first")
+        assertNull(
+            MarkdownModel.from("ok\n\n" + "* ".repeat(MARKDOWN_MAX_NESTING + 1) + "x\n"),
+            "on any line, not only the first",
+        )
     }
 
     @Test
@@ -608,7 +730,10 @@ class MarkdownModelTest {
         assertNull(MarkdownModel.from(" ".repeat(MARKDOWN_MAX_INDENT + 1) + "x\n"))
         assertNotNull(MarkdownModel.from("\t".repeat(MARKDOWN_MAX_INDENT / 4) + "x\n"), "a tab is four columns")
         assertNull(MarkdownModel.from("\t".repeat(MARKDOWN_MAX_INDENT / 4) + " x\n"))
-        assertNull(MarkdownModel.from("> " + " ".repeat(MARKDOWN_MAX_INDENT) + "x\n"), "indentation after a marker counts too")
+        assertNull(
+            MarkdownModel.from("> " + " ".repeat(MARKDOWN_MAX_INDENT) + "x\n"),
+            "indentation after a marker counts too",
+        )
     }
 
     /** What only looks like nesting is not limited: marks after a line's start, and a long rule. */
@@ -621,17 +746,28 @@ class MarkdownModelTest {
 
     /** On a background thread, as the viewer reads it: the deepest nesting allowed reads without overflowing. */
     @Test
-    fun the_deepest_nesting_allowed_reads_on_a_background_thread() = runTest {
-        withContext(Dispatchers.Default) {
-            assertNotNull(MarkdownModel.from("> ".repeat(MARKDOWN_MAX_NESTING) + "x\n"))
-            assertNotNull(MarkdownModel.from((0 until MARKDOWN_MAX_INDENT / 2).joinToString("\n") { "  ".repeat(it) + "- x" }))
-            assertNotNull(MarkdownModel.from(nested("**", MARKDOWN_MAX_INLINE_NESTING)))
-            assertNotNull(MarkdownModel.from("*_".repeat(5_000)), "unmatched marks nest nothing")
+    fun the_deepest_nesting_allowed_reads_on_a_background_thread() =
+        runTest {
+            withContext(Dispatchers.Default) {
+                assertNotNull(MarkdownModel.from("> ".repeat(MARKDOWN_MAX_NESTING) + "x\n"))
+                assertNotNull(
+                    MarkdownModel.from(
+                        (0 until MARKDOWN_MAX_INDENT / 2).joinToString("\n") {
+                            "  ".repeat(it) +
+                                "- x"
+                        },
+                    ),
+                )
+                assertNotNull(MarkdownModel.from(nested("**", MARKDOWN_MAX_INLINE_NESTING)))
+                assertNotNull(MarkdownModel.from("*_".repeat(5_000)), "unmatched marks nest nothing")
+            }
         }
-    }
 
     /** [n] levels of [mark] around one word: `**a **a b a** a**` for two levels of `**`. */
-    private fun nested(mark: String, n: Int) = "$mark${"a "}".repeat(n) + "b" + " a$mark".repeat(n)
+    private fun nested(
+        mark: String,
+        n: Int,
+    ) = "$mark${"a "}".repeat(n) + "b" + " a$mark".repeat(n)
 
     /**
      * Styles nest inside each other only as far as the limit; one level more and the
@@ -650,11 +786,12 @@ class MarkdownModelTest {
 
     /** Far past the limit, on a background thread as the viewer reads it — the stack the iOS app has there. */
     @Test
-    fun a_file_nested_thousands_deep_is_cant_format_not_a_crash() = runTest {
-        withContext(Dispatchers.Default) {
-            for (mark in listOf("**", "*", "~~")) assertNull(MarkdownModel.from(nested(mark, 20_000)), mark)
+    fun a_file_nested_thousands_deep_is_cant_format_not_a_crash() =
+        runTest {
+            withContext(Dispatchers.Default) {
+                for (mark in listOf("**", "*", "~~")) assertNull(MarkdownModel.from(nested(mark, 20_000)), mark)
+            }
         }
-    }
 
     @Test
     fun the_inline_nesting_limit_is_sixty_four() {
@@ -667,7 +804,10 @@ class MarkdownModelTest {
         val markdown = "# a\n\ntext *b*\n\n- c\n- d\n\n> e\n"
         val clock = TestTimeSource()
         // Each check the parser makes moves the clock on a second.
-        val ticking = { clock += 1.seconds; false }
+        val ticking = {
+            clock += 1.seconds
+            false
+        }
         assertNull(MarkdownModel.from(markdown, budget = 2.seconds, cancelled = ticking, clock = clock))
         assertNotNull(MarkdownModel.from(markdown, budget = 1_000.seconds, cancelled = ticking, clock = clock))
         // The budget is spent once it is reached, not only once it is passed: a zero budget never parses.
@@ -696,7 +836,11 @@ class MarkdownModelTest {
     fun the_time_budget_covers_reading_the_tree_too() {
         val clock = TestTimeSource()
         var checks = 0
-        val ticking = { checks += 1; clock += 1.seconds; false }
+        val ticking = {
+            checks += 1
+            clock += 1.seconds
+            false
+        }
         assertNull(MarkdownModel.from(manyTokens, budget = 1_000.seconds, cancelled = ticking, clock = clock))
         assertTrue(checks >= 1_000, "the reading checked as it went, up to the budget")
     }
@@ -705,7 +849,12 @@ class MarkdownModelTest {
     @Test
     fun a_cancel_during_the_parse_stops_it() {
         var checks = 0
-        assertFailsWith<CancellationException> { MarkdownModel.from("a\n\n".repeat(200), cancelled = { ++checks > 1_000 }) }
+        assertFailsWith<CancellationException> {
+            MarkdownModel.from(
+                "a\n\n".repeat(200),
+                cancelled = { ++checks > 1_000 },
+            )
+        }
     }
 
     @Test
@@ -722,17 +871,18 @@ class MarkdownModelTest {
     fun the_model_prints_counts_never_the_files_words() {
         val secret = "SECRET"
         val span = MdSpan(secret, strong = true, link = "https://$secret.example/")
-        val printed = listOf(
-            span,
-            MdBlock.Heading(1, listOf(span), secret),
-            MdBlock.Paragraph(listOf(span)),
-            MdBlock.Code(secret, secret),
-            MdBlock.Quote(listOf(MdBlock.Paragraph(listOf(span)))),
-            MdBlock.ListBlock(1, false, listOf(MdListItem(null, listOf(MdBlock.Paragraph(listOf(span)))))),
-            MdListItem(true, listOf(MdBlock.Raw(secret))),
-            MdBlock.Table(listOf(CellAlign.Start), listOf(listOf(span)), listOf(listOf(listOf(span)))),
-            MdBlock.Raw(secret),
-        ).map { it.toString() }
+        val printed =
+            listOf(
+                span,
+                MdBlock.Heading(1, listOf(span), secret),
+                MdBlock.Paragraph(listOf(span)),
+                MdBlock.Code(secret, secret),
+                MdBlock.Quote(listOf(MdBlock.Paragraph(listOf(span)))),
+                MdBlock.ListBlock(1, false, listOf(MdListItem(null, listOf(MdBlock.Paragraph(listOf(span)))))),
+                MdListItem(true, listOf(MdBlock.Raw(secret))),
+                MdBlock.Table(listOf(CellAlign.Start), listOf(listOf(span)), listOf(listOf(listOf(span)))),
+                MdBlock.Raw(secret),
+            ).map { it.toString() }
         for (text in printed) assertTrue(secret !in text, text)
         assertEquals("MdSpan(6 chars, strong, link)", printed[0])
         assertEquals("Raw(6 chars)", printed.last())
@@ -740,6 +890,9 @@ class MarkdownModelTest {
 
     @Test
     fun an_html_block_is_shown_as_written() { // Example 160
-        assertEquals(listOf(MdBlock.Raw("<table><tr><td>\nfoo\n</td></tr></table>")), blocks("<table><tr><td>\nfoo\n</td></tr></table>\n"))
+        assertEquals(
+            listOf(MdBlock.Raw("<table><tr><td>\nfoo\n</td></tr></table>")),
+            blocks("<table><tr><td>\nfoo\n</td></tr></table>\n"),
+        )
     }
 }

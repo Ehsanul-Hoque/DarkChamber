@@ -18,10 +18,20 @@ import kotlin.test.assertTrue
 class IosViewerImageDecoderTest {
     private val decoder = IosViewerImageDecoder()
 
-    private enum class Quadrant(val color: Color) { RED(Color.Red), GREEN(Color.Green), BLUE(Color.Blue), YELLOW(Color.Yellow) }
+    private enum class Quadrant(
+        val color: Color,
+    ) {
+        RED(Color.Red),
+        GREEN(Color.Green),
+        BLUE(Color.Blue),
+        YELLOW(Color.Yellow),
+    }
 
     /** The quadrant colour nearest the pixel at a fraction of the image's width and height. */
-    private fun ImageBitmap.quadrantAt(fx: Float, fy: Float): Quadrant {
+    private fun ImageBitmap.quadrantAt(
+        fx: Float,
+        fy: Float,
+    ): Quadrant {
         val pixel = toPixelMap()[(width * fx).toInt(), (height * fy).toInt()]
         return Quadrant.entries.minBy { q ->
             abs(q.color.red - pixel.red) + abs(q.color.green - pixel.green) + abs(q.color.blue - pixel.blue)
@@ -29,12 +39,13 @@ class IosViewerImageDecoderTest {
     }
 
     /** Sampled away from the generator's labels: they sit mid-edge and in the centre. */
-    private fun ImageBitmap.corners() = listOf(
-        quadrantAt(0.2f, 0.2f),
-        quadrantAt(0.8f, 0.2f),
-        quadrantAt(0.2f, 0.8f),
-        quadrantAt(0.8f, 0.8f),
-    )
+    private fun ImageBitmap.corners() =
+        listOf(
+            quadrantAt(0.2f, 0.2f),
+            quadrantAt(0.8f, 0.2f),
+            quadrantAt(0.2f, 0.8f),
+            quadrantAt(0.8f, 0.8f),
+        )
 
     private val upright = listOf(Quadrant.RED, Quadrant.GREEN, Quadrant.BLUE, Quadrant.YELLOW)
 

@@ -16,7 +16,9 @@ import kotlinx.io.files.Path
  * Every failure comes back as `Err(Io)`; nothing throws across it. Not thread-safe: one reader
  * serves one caller.
  */
-class ObjectReader internal constructor(private val file: PlatformFile) : AutoCloseable {
+class ObjectReader internal constructor(
+    private val file: PlatformFile,
+) : AutoCloseable {
     private var closed = false
 
     /** The object's size in bytes, as stored. */
@@ -27,7 +29,12 @@ class ObjectReader internal constructor(private val file: PlatformFile) : AutoCl
      * copied, or `-1` when [position] is at or past the end. A read may return fewer bytes than
      * asked, as the platform's own read may; a caller that needs them all loops.
      */
-    fun readAt(position: Long, into: ByteArray, offset: Int, length: Int): Outcome<Int> {
+    fun readAt(
+        position: Long,
+        into: ByteArray,
+        offset: Int,
+        length: Int,
+    ): Outcome<Int> {
         // Refused here, not left to the platform: a closed POSIX descriptor's number is reused by the
         // next open, so a read through it would return some other file's bytes as if they were ours.
         if (closed) return Outcome.Err(VaultError.Io(IllegalStateException("reader is closed")))
@@ -57,7 +64,12 @@ internal interface PlatformFile {
     val size: Long
 
     /** As [ObjectReader.readAt], without the `Outcome`. */
-    fun read(position: Long, into: ByteArray, offset: Int, length: Int): Int
+    fun read(
+        position: Long,
+        into: ByteArray,
+        offset: Int,
+        length: Int,
+    ): Int
 
     fun close()
 }

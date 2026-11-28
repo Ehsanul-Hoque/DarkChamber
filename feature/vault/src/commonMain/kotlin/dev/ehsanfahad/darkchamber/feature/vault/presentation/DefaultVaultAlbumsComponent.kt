@@ -52,8 +52,8 @@ internal class DefaultVaultAlbumsComponent(
     // for the catalog as it always did.
     private val onOpenAlbum: (ByteArray, AlbumTileName?) -> Unit,
     private val onOpenUnfiled: () -> Unit,
-) : VaultAlbumsComponent, ComponentContext by componentContext {
-
+) : VaultAlbumsComponent,
+    ComponentContext by componentContext {
     // SupervisorJob parented to the caller's Job, exactly as the gallery's is: the app scopes
     // feature work to the vault session, and cancelling that must cancel this before the session it
     // reads through is zeroized.
@@ -75,18 +75,23 @@ internal class DefaultVaultAlbumsComponent(
                 // Two fields: the banner is dismissible, the fact is not. catch ends the flow, so an
                 // empty list is all the screen would otherwise have to go on — and an empty list is
                 // what a vault with no albums looks like too.
-                _state.value = _state.value.copy(
-                    loading = false,
-                    error = AlbumsError.ListingFailed,
-                    listingUnreadable = true,
-                )
-            }
-            .onEach(::onAlbums)
+                _state.value =
+                    _state.value.copy(
+                        loading = false,
+                        error = AlbumsError.ListingFailed,
+                        listingUnreadable = true,
+                    )
+            }.onEach(::onAlbums)
             .launchIn(scope)
     }
 
     override fun openAlbum(id: ByteArray) =
-        onOpenAlbum(id, _state.value.albums.firstOrNull { it.id.contentEquals(id) }?.name)
+        onOpenAlbum(
+            id,
+            _state.value.albums
+                .firstOrNull { it.id.contentEquals(id) }
+                ?.name,
+        )
 
     override fun openUnfiled() = onOpenUnfiled()
 
@@ -121,10 +126,16 @@ internal class DefaultVaultAlbumsComponent(
             when (val made = createAlbum(draft.name)) {
                 // Closed, and nothing is inserted here: the album arrives through the live listing
                 // like any other change to the catalog.
-                is CreateAlbumResult.Created -> publish(draft = null)
-                is CreateAlbumResult.NameMissing -> publish(
-                    draft.copy(saving = false, problem = AlbumDraftProblem.NameMissing),
-                )
+                is CreateAlbumResult.Created -> {
+                    publish(draft = null)
+                }
+
+                is CreateAlbumResult.NameMissing -> {
+                    publish(
+                        draft.copy(saving = false, problem = AlbumDraftProblem.NameMissing),
+                    )
+                }
+
                 is CreateAlbumResult.Failed -> {
                     // The error code and a stage name. **Never the album's name** — it is exactly the
                     // kind of user content hard rule 4 keeps out of logs.
@@ -155,16 +166,17 @@ internal class DefaultVaultAlbumsComponent(
         // The draft is carried across: a listing re-emits on every catalog change, including the
         // create this dialog just made and any import happening elsewhere, and rebuilding the state
         // wholesale would close the dialog out from under whoever is typing in it.
-        _state.value = AlbumsState(
-            albums = albums,
-            loading = false,
-            error = null,
-            draft = _state.value.draft,
-            // A listing that arrives is a listing that was read. Stated rather than left to the
-            // default: it is the one thing that disproves the flag, and a reader should not have to
-            // check a constructor default to know that an empty list here means empty.
-            listingUnreadable = false,
-        )
+        _state.value =
+            AlbumsState(
+                albums = albums,
+                loading = false,
+                error = null,
+                draft = _state.value.draft,
+                // A listing that arrives is a listing that was read. Stated rather than left to the
+                // default: it is the one thing that disproves the flag, and a reader should not have to
+                // check a constructor default to know that an empty list here means empty.
+                listingUnreadable = false,
+            )
     }
 
     /** Publish a new draft, leaving everything the listing owns alone. */

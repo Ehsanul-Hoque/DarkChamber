@@ -11,7 +11,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.io.RawSource
 
 /** [CaptureVault] over the session's [VaultObjects] — a pass-through, so it holds no rule of its own. */
-internal class VaultObjectsCaptures(private val objects: VaultObjects) : CaptureVault {
+internal class VaultObjectsCaptures(
+    private val objects: VaultObjects,
+) : CaptureVault {
     override fun import(
         kind: Int,
         name: String,

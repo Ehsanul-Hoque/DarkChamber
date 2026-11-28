@@ -11,12 +11,13 @@ class PreludeTest {
 
     @Test
     fun prelude_round_trips_through_bytes() {
-        val prelude = Prelude(
-            version = DchmFormat.VERSION,
-            cipherId = DchmFormat.CIPHER_AES_256_GCM,
-            headerLen = 300,
-            noncePrefix = noncePrefix,
-        )
+        val prelude =
+            Prelude(
+                version = DchmFormat.VERSION,
+                cipherId = DchmFormat.CIPHER_AES_256_GCM,
+                headerLen = 300,
+                noncePrefix = noncePrefix,
+            )
         val bytes = prelude.toByteArray()
         assertEquals(DchmFormat.PRELUDE_SIZE, bytes.size)
 

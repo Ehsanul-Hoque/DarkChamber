@@ -21,7 +21,9 @@ import kotlin.time.TimeSource
  * so the screen never reads the parser's tree and nothing here can open a link or fetch an image — a
  * link is its address, kept for the confirmation to show; an image is its description.
  */
-internal class MarkdownDocument(val blocks: List<MdBlock>) {
+internal class MarkdownDocument(
+    val blocks: List<MdBlock>,
+) {
     /** Counts only: the blocks hold vault content. */
     override fun toString(): String = "MarkdownDocument(${blocks.size} blocks)"
 }
@@ -32,38 +34,62 @@ internal class MarkdownDocument(val blocks: List<MdBlock>) {
  */
 internal sealed interface MdBlock {
     /** [anchor] is the `#section` name a link inside the document reaches it by. */
-    data class Heading(val level: Int, val spans: List<MdSpan>, val anchor: String) : MdBlock {
+    data class Heading(
+        val level: Int,
+        val spans: List<MdSpan>,
+        val anchor: String,
+    ) : MdBlock {
         override fun toString(): String = "Heading(level=$level, ${spans.size} runs)"
     }
 
-    data class Paragraph(val spans: List<MdSpan>) : MdBlock
+    data class Paragraph(
+        val spans: List<MdSpan>,
+    ) : MdBlock
 
     /** Fenced or indented code, exactly as written; [language] is the fence's word, if any. */
-    data class Code(val code: String, val language: String?) : MdBlock {
+    data class Code(
+        val code: String,
+        val language: String?,
+    ) : MdBlock {
         override fun toString(): String = "Code(${code.length} chars)"
     }
 
-    data class Quote(val blocks: List<MdBlock>) : MdBlock
+    data class Quote(
+        val blocks: List<MdBlock>,
+    ) : MdBlock
 
     /**
      * [start] is the first item's number for a numbered list, `null` for bullets. A [loose] list
      * (blank lines between its items) is drawn with space between them, as Markdown means it.
      */
-    data class ListBlock(val start: Int?, val loose: Boolean, val items: List<MdListItem>) : MdBlock
+    data class ListBlock(
+        val start: Int?,
+        val loose: Boolean,
+        val items: List<MdListItem>,
+    ) : MdBlock
 
     /** Each column's alignment, the header's cells, then the body's rows of cells. */
-    data class Table(val alignments: List<CellAlign>, val header: List<List<MdSpan>>, val rows: List<List<List<MdSpan>>>) : MdBlock
+    data class Table(
+        val alignments: List<CellAlign>,
+        val header: List<List<MdSpan>>,
+        val rows: List<List<List<MdSpan>>>,
+    ) : MdBlock
 
     data object Rule : MdBlock
 
     /** Shown exactly as written, in monospace: HTML blocks and footnote definitions. */
-    data class Raw(val text: String) : MdBlock {
+    data class Raw(
+        val text: String,
+    ) : MdBlock {
         override fun toString(): String = "Raw(${text.length} chars)"
     }
 }
 
 /** [task] is `null` for a plain item, else whether its box is ticked. */
-internal data class MdListItem(val task: Boolean?, val blocks: List<MdBlock>)
+internal data class MdListItem(
+    val task: Boolean?,
+    val blocks: List<MdBlock>,
+)
 
 internal enum class CellAlign { Start, Center, End }
 
@@ -82,14 +108,15 @@ internal data class MdSpan(
 ) {
     /** Its length and style only — never its words or its address: both are vault content. */
     override fun toString(): String {
-        val kinds = listOfNotNull(
-            "strong".takeIf { strong },
-            "emphasis".takeIf { emphasis },
-            "strike".takeIf { strike },
-            "code".takeIf { code },
-            "link".takeIf { link != null },
-            "image".takeIf { image },
-        )
+        val kinds =
+            listOfNotNull(
+                "strong".takeIf { strong },
+                "emphasis".takeIf { emphasis },
+                "strike".takeIf { strike },
+                "code".takeIf { code },
+                "link".takeIf { link != null },
+                "image".takeIf { image },
+            )
         return "MdSpan(${(listOf("${text.length} chars") + kinds).joinToString(", ")})"
     }
 }
@@ -121,7 +148,6 @@ internal const val MARKDOWN_MAX_INLINE_NESTING = 64
 internal const val MARKDOWN_MAX_TABLE_COLUMNS = 64
 
 internal object MarkdownModel {
-
     /**
      * Reads [text] as GitHub-flavoured Markdown, or answers `null` — "can't format": shown as plain
      * text with a note — when it nests deeper than the limits allow or reading it takes [budget].
@@ -154,8 +180,12 @@ internal object MarkdownModel {
         // The parser's String overload is deprecated in favour of this one; the text is the same.
         val chars: CharSequence = text
         return try {
-            val tree = MarkdownParser(GFMFlavourDescriptor(), assertionsEnabled = false, cancellationToken = CancellationToken { stop() })
-                .buildMarkdownTreeFromString(chars)
+            val tree =
+                MarkdownParser(
+                    GFMFlavourDescriptor(),
+                    assertionsEnabled = false,
+                    cancellationToken = CancellationToken { stop() },
+                ).buildMarkdownTreeFromString(chars)
             MarkdownDocument(TreeReader(text, tree, stop).blocks(tree.children))
         } catch (_: CantFormat) {
             null
@@ -176,10 +206,29 @@ internal object MarkdownModel {
                 val c = text[i]
                 val next = text.getOrNull(i + 1)
                 when {
-                    c == ' ' -> { columns += 1; i += 1 }
-                    c == '\t' -> { columns += 4 - columns % 4; i += 1 }
-                    c == '>' -> { markers += 1; columns += 1; i += 1 }
-                    (c == '-' || c == '*' || c == '+') && (next == ' ' || next == '\t') -> { markers += 1; columns += 1; i += 1 }
+                    c == ' ' -> {
+                        columns += 1
+                        i += 1
+                    }
+
+                    c == '\t' -> {
+                        columns += 4 - columns % 4
+                        i += 1
+                    }
+
+                    c == '>' -> {
+                        markers += 1
+                        columns += 1
+                        i += 1
+                    }
+
+                    (c == '-' || c == '*' || c == '+') && (next == ' ' || next == '\t') -> {
+                        markers += 1
+                        columns += 1
+                        i +=
+                            1
+                    }
+
                     c in '0'..'9' -> {
                         var end = i
                         while (end < text.length && text[end] in '0'..'9') end += 1
@@ -193,7 +242,10 @@ internal object MarkdownModel {
                             break@opening
                         }
                     }
-                    else -> break@opening
+
+                    else -> {
+                        break@opening
+                    }
                 }
             }
             if (markers > MARKDOWN_MAX_NESTING || columns > MARKDOWN_MAX_INDENT) return true
@@ -212,63 +264,97 @@ private class CantFormat : RuntimeException()
  * stop the reading — a lock, a swipe, the time budget — and is called for every piece of a block's text,
  * where nearly all of a tree's nodes are; the rest of the reading is short and in step with the file.
  */
-private class TreeReader(private val src: String, root: ASTNode, private val check: () -> Unit) {
-
+private class TreeReader(
+    private val src: String,
+    root: ASTNode,
+    private val check: () -> Unit,
+) {
     private val anchorsTaken = mutableMapOf<String, Int>()
 
     /**
      * Every link definition's address by its label — wherever it sits (a quote, a list), and the first
      * one for a label winning. Walked with a stack: nesting depth is the file's choice.
      */
-    private val definitions: Map<String, String> = buildMap {
-        val pending = ArrayDeque(listOf(root))
-        while (pending.isNotEmpty()) {
-            val node = pending.removeLast()
-            if (node.type == MarkdownElementTypes.LINK_DEFINITION) {
-                val label = node.firstChild(MarkdownElementTypes.LINK_LABEL)?.let { labelKey(source(it)) }
-                val address = node.firstChild(MarkdownElementTypes.LINK_DESTINATION)?.let(::address)
-                if (label != null && address != null && label !in this) put(label, address)
-            } else {
-                // Reversed onto the stack so the document's first definition is met first.
-                node.children.asReversed().forEach { pending.addLast(it) }
+    private val definitions: Map<String, String> =
+        buildMap {
+            val pending = ArrayDeque(listOf(root))
+            while (pending.isNotEmpty()) {
+                val node = pending.removeLast()
+                if (node.type == MarkdownElementTypes.LINK_DEFINITION) {
+                    val label = node.firstChild(MarkdownElementTypes.LINK_LABEL)?.let { labelKey(source(it)) }
+                    val address = node.firstChild(MarkdownElementTypes.LINK_DESTINATION)?.let(::address)
+                    if (label != null && address != null && label !in this) put(label, address)
+                } else {
+                    // Reversed onto the stack so the document's first definition is met first.
+                    node.children.asReversed().forEach { pending.addLast(it) }
+                }
             }
         }
-    }
 
     fun blocks(nodes: List<ASTNode>): List<MdBlock> = nodes.mapNotNull { block(it) }
 
     private fun block(node: ASTNode): MdBlock? =
         when (node.type) {
             MarkdownElementTypes.PARAGRAPH -> MdBlock.Paragraph(inline(node.children))
+
             in ATX_LEVELS -> heading(ATX_LEVELS.getValue(node.type), node.firstChild(MarkdownTokenTypes.ATX_CONTENT))
+
             MarkdownElementTypes.SETEXT_1 -> heading(1, node.firstChild(MarkdownTokenTypes.SETEXT_CONTENT))
+
             MarkdownElementTypes.SETEXT_2 -> heading(2, node.firstChild(MarkdownTokenTypes.SETEXT_CONTENT))
+
             MarkdownElementTypes.BLOCK_QUOTE -> MdBlock.Quote(blocks(node.children))
+
             MarkdownElementTypes.CODE_FENCE -> fencedCode(node)
+
             MarkdownElementTypes.CODE_BLOCK -> indentedCode(node)
+
             MarkdownTokenTypes.HORIZONTAL_RULE -> MdBlock.Rule
+
             MarkdownElementTypes.UNORDERED_LIST, MarkdownElementTypes.ORDERED_LIST -> list(node)
+
             GFMElementTypes.TABLE -> table(node)
+
             MarkdownElementTypes.HTML_BLOCK -> MdBlock.Raw(source(node))
+
             // A definition is not shown — except a footnote's, which is read as written.
             MarkdownElementTypes.LINK_DEFINITION -> if (isFootnote(node)) MdBlock.Raw(source(node)) else null
+
             in LAYOUT_TOKENS -> null
+
             // Anything else the parser may produce is shown as written rather than lost.
             else -> MdBlock.Raw(source(node))
         }
 
     /** The lines between the fence's opening line and its closing one, exactly as written. */
     private fun fencedCode(node: ASTNode): MdBlock.Code {
-        val language = node.firstChild(MarkdownTokenTypes.FENCE_LANG)?.let { unescape(source(it)).trim().substringBefore(' ') }
+        val language =
+            node
+                .firstChild(
+                    MarkdownTokenTypes.FENCE_LANG,
+                )?.let { unescape(source(it)).trim().substringBefore(' ') }
         val lines = mutableListOf<String>()
         val line = StringBuilder()
         var opened = false
         for (child in node.children) {
             when (child.type) {
-                MarkdownTokenTypes.CODE_FENCE_END -> break
-                MarkdownTokenTypes.EOL -> if (opened) { lines += line.toString(); line.setLength(0) } else opened = true
+                MarkdownTokenTypes.CODE_FENCE_END -> {
+                    break
+                }
+
+                MarkdownTokenTypes.EOL -> {
+                    if (opened) {
+                        lines += line.toString()
+                        line.setLength(0)
+                    } else {
+                        opened = true
+                    }
+                }
+
                 // Content comes only after the opening line's end, so it needs no guard of its own.
-                MarkdownTokenTypes.CODE_FENCE_CONTENT -> line.append(source(child))
+                MarkdownTokenTypes.CODE_FENCE_CONTENT -> {
+                    line.append(source(child))
+                }
             }
         }
         if (line.isNotEmpty()) lines += line.toString()
@@ -288,7 +374,10 @@ private class TreeReader(private val src: String, root: ASTNode, private val che
     }
 
     /** [line] without up to [columns] columns of leading spaces; a tab reaches the next multiple of four. */
-    private fun withoutIndent(line: String, columns: Int): String {
+    private fun withoutIndent(
+        line: String,
+        columns: Int,
+    ): String {
         var column = 0
         var i = 0
         while (i < line.length && column < columns) {
@@ -304,16 +393,24 @@ private class TreeReader(private val src: String, root: ASTNode, private val che
 
     private fun list(node: ASTNode): MdBlock.ListBlock {
         val items = node.children.filter { it.type == MarkdownElementTypes.LIST_ITEM }
-        val start = if (node.type == MarkdownElementTypes.ORDERED_LIST) {
-            items.firstOrNull()?.firstChild(MarkdownTokenTypes.LIST_NUMBER)?.let { source(it).takeWhile(Char::isDigit).toIntOrNull() } ?: 1
-        } else {
-            null
-        }
+        val start =
+            if (node.type == MarkdownElementTypes.ORDERED_LIST) {
+                items.firstOrNull()?.firstChild(MarkdownTokenTypes.LIST_NUMBER)?.let {
+                    source(it).takeWhile(Char::isDigit).toIntOrNull()
+                }
+                    ?: 1
+            } else {
+                null
+            }
         val loose = (node as? ListCompositeNode)?.loose ?: false
-        return MdBlock.ListBlock(start, loose, items.map { item ->
-            val box = item.firstChild(GFMTokenTypes.CHECK_BOX)
-            MdListItem(box?.let { source(it).any { c -> c == 'x' || c == 'X' } }, blocks(item.children))
-        })
+        return MdBlock.ListBlock(
+            start,
+            loose,
+            items.map { item ->
+                val box = item.firstChild(GFMTokenTypes.CHECK_BOX)
+                MdListItem(box?.let { source(it).any { c -> c == 'x' || c == 'X' } }, blocks(item.children))
+            },
+        )
     }
 
     /**
@@ -323,22 +420,32 @@ private class TreeReader(private val src: String, root: ASTNode, private val che
     private fun table(node: ASTNode): MdBlock {
         val header = node.firstChild(GFMElementTypes.HEADER)
         // Counted before any cell is read: a table can be a quarter of a million columns wide.
-        if ((header?.children?.count { it.type == GFMTokenTypes.CELL } ?: 0) > MARKDOWN_MAX_TABLE_COLUMNS) return MdBlock.Raw(source(node))
+        if ((header?.children?.count { it.type == GFMTokenTypes.CELL } ?: 0) >
+            MARKDOWN_MAX_TABLE_COLUMNS
+        ) {
+            return MdBlock.Raw(source(node))
+        }
         val headerCells = header?.let(::cells) ?: emptyList()
         val delimiter = node.children.firstOrNull { it.type == GFMTokenTypes.TABLE_SEPARATOR }?.let(::source) ?: ""
-        val alignments = delimiter.split('|').map { it.trim() }.filter { it.isNotEmpty() }.map {
-            when {
-                it.startsWith(':') && it.endsWith(':') -> CellAlign.Center
-                it.endsWith(':') -> CellAlign.End
-                else -> CellAlign.Start
+        val alignments =
+            delimiter.split('|').map { it.trim() }.filter { it.isNotEmpty() }.map {
+                when {
+                    it.startsWith(':') && it.endsWith(':') -> CellAlign.Center
+                    it.endsWith(':') -> CellAlign.End
+                    else -> CellAlign.Start
+                }
             }
-        }
         val columns = headerCells.size
-        val rows = node.children.filter { it.type == GFMElementTypes.ROW }.map { row ->
-            val cells = cells(row)
-            List(columns) { cells.getOrElse(it) { emptyList() } }
-        }
-        val tooLong = (listOf(headerCells) + rows).any { row -> row.sumOf { cell -> cell.sumOf { it.text.length } } > TextReading.ROW_MAX_CHARS }
+        val rows =
+            node.children.filter { it.type == GFMElementTypes.ROW }.map { row ->
+                val cells = cells(row)
+                List(columns) { cells.getOrElse(it) { emptyList() } }
+            }
+        val tooLong =
+            (listOf(headerCells) + rows).any { row ->
+                row.sumOf { cell -> cell.sumOf { it.text.length } } >
+                    TextReading.ROW_MAX_CHARS
+            }
         if (tooLong) return MdBlock.Raw(source(node))
         return MdBlock.Table(List(columns) { alignments.getOrElse(it) { CellAlign.Start } }, headerCells, rows)
     }
@@ -346,7 +453,10 @@ private class TreeReader(private val src: String, root: ASTNode, private val che
     private fun cells(row: ASTNode): List<List<MdSpan>> =
         row.children.filter { it.type == GFMTokenTypes.CELL }.map { inline(it.children) }
 
-    private fun heading(level: Int, content: ASTNode?): MdBlock.Heading {
+    private fun heading(
+        level: Int,
+        content: ASTNode?,
+    ): MdBlock.Heading {
         val spans = content?.let { inline(it.children) } ?: emptyList()
         return MdBlock.Heading(level, spans, anchorFor(spans.joinToString("") { it.text }))
     }
@@ -356,14 +466,15 @@ private class TreeReader(private val src: String, root: ASTNode, private val che
      * letters, digits, marks, `-` and `_` dropped, each space a hyphen; a repeat gets `-1`, `-2`, ….
      */
     private fun anchorFor(title: String): String {
-        val base = buildString {
-            for (c in title.lowercase()) {
-                when {
-                    c == ' ' -> append('-')
-                    c.isLetterOrDigit() || c == '-' || c == '_' || c.category in MARKS -> append(c)
+        val base =
+            buildString {
+                for (c in title.lowercase()) {
+                    when {
+                        c == ' ' -> append('-')
+                        c.isLetterOrDigit() || c == '-' || c == '_' || c.category in MARKS -> append(c)
+                    }
                 }
             }
-        }
         // GitHub's own loop: count up from the base until the name is free, and take that name too.
         var anchor = base
         while (anchor in anchorsTaken) {
@@ -377,10 +488,16 @@ private class TreeReader(private val src: String, root: ASTNode, private val che
 
     // --- Inline content ---
 
-    private fun inline(nodes: List<ASTNode>): List<MdSpan> = Runs().also { inline(nodes, MdSpan(""), it, depth = 0) }.spans
+    private fun inline(nodes: List<ASTNode>): List<MdSpan> =
+        Runs().also { inline(nodes, MdSpan(""), it, depth = 0) }.spans
 
     /** Appends [nodes] to [out] in [style] (a span whose text is unused), [depth] levels inside a block's text. */
-    private fun inline(all: List<ASTNode>, style: MdSpan, out: Runs, depth: Int) {
+    private fun inline(
+        all: List<ASTNode>,
+        style: MdSpan,
+        out: Runs,
+        depth: Int,
+    ) {
         if (depth > MARKDOWN_MAX_INLINE_NESTING) throw CantFormat()
         val inner = depth + 1
         // A quote's `>` at the start of each continued line is layout; read the line as starting after it.
@@ -388,45 +505,112 @@ private class TreeReader(private val src: String, root: ASTNode, private val che
         for ((i, node) in nodes.withIndex()) {
             check()
             // The angle brackets around an email address belong to the autolink, not the text.
-            if (node.type == MarkdownTokenTypes.LT && nodes.getOrNull(i + 1)?.type == MarkdownTokenTypes.EMAIL_AUTOLINK) continue
-            if (node.type == MarkdownTokenTypes.GT && nodes.getOrNull(i - 1)?.type == MarkdownTokenTypes.EMAIL_AUTOLINK) continue
+            if (node.type == MarkdownTokenTypes.LT &&
+                nodes.getOrNull(i + 1)?.type == MarkdownTokenTypes.EMAIL_AUTOLINK
+            ) {
+                continue
+            }
+            if (node.type == MarkdownTokenTypes.GT &&
+                nodes.getOrNull(i - 1)?.type == MarkdownTokenTypes.EMAIL_AUTOLINK
+            ) {
+                continue
+            }
             when (node.type) {
-                MarkdownTokenTypes.WHITE_SPACE ->
+                MarkdownTokenTypes.WHITE_SPACE -> {
                     // Whitespace that starts or ends a line, or the whole run, is layout, not text.
-                    if (i > 0 && i < nodes.lastIndex && nodes[i - 1].type != MarkdownTokenTypes.EOL && nodes[i + 1].type != MarkdownTokenTypes.EOL) {
+                    if (i > 0 && i < nodes.lastIndex && nodes[i - 1].type != MarkdownTokenTypes.EOL &&
+                        nodes[i + 1].type != MarkdownTokenTypes.EOL
+                    ) {
                         out.add(source(node), style)
                     }
-                MarkdownTokenTypes.EOL ->
+                }
+
+                MarkdownTokenTypes.EOL -> {
                     // A soft break reads as a space; after a hard break the line has already ended.
-                    if (i > 0 && i < nodes.lastIndex && nodes[i - 1].type != MarkdownTokenTypes.HARD_LINE_BREAK) out.add(" ", style)
-                MarkdownTokenTypes.HARD_LINE_BREAK -> out.add("\n", style)
-                MarkdownElementTypes.EMPH -> inline(node.children.trim(1), style.copy(emphasis = true), out, inner)
-                MarkdownElementTypes.STRONG -> inline(node.children.trim(2), style.copy(strong = true), out, inner)
-                GFMElementTypes.STRIKETHROUGH ->
-                    inline(node.children.dropWhile { it.type == GFMTokenTypes.TILDE }.dropLastWhile { it.type == GFMTokenTypes.TILDE }, style.copy(strike = true), out, inner)
-                MarkdownElementTypes.CODE_SPAN -> out.add(codeSpan(node), style.copy(code = true))
-                MarkdownTokenTypes.HTML_TAG -> out.add(source(node), style)
+                    if (i > 0 && i < nodes.lastIndex &&
+                        nodes[i - 1].type != MarkdownTokenTypes.HARD_LINE_BREAK
+                    ) {
+                        out.add(" ", style)
+                    }
+                }
+
+                MarkdownTokenTypes.HARD_LINE_BREAK -> {
+                    out.add("\n", style)
+                }
+
+                MarkdownElementTypes.EMPH -> {
+                    inline(node.children.trim(1), style.copy(emphasis = true), out, inner)
+                }
+
+                MarkdownElementTypes.STRONG -> {
+                    inline(node.children.trim(2), style.copy(strong = true), out, inner)
+                }
+
+                GFMElementTypes.STRIKETHROUGH -> {
+                    inline(
+                        node.children.dropWhile { it.type == GFMTokenTypes.TILDE }.dropLastWhile {
+                            it.type ==
+                                GFMTokenTypes.TILDE
+                        },
+                        style.copy(strike = true),
+                        out,
+                        inner,
+                    )
+                }
+
+                MarkdownElementTypes.CODE_SPAN -> {
+                    out.add(codeSpan(node), style.copy(code = true))
+                }
+
+                MarkdownTokenTypes.HTML_TAG -> {
+                    out.add(source(node), style)
+                }
+
                 MarkdownElementTypes.INLINE_LINK -> {
                     val address = node.firstChild(MarkdownElementTypes.LINK_DESTINATION)?.let(::address) ?: ""
                     inline(linkText(node), style.copy(link = address), out, inner)
                 }
+
                 MarkdownElementTypes.FULL_REFERENCE_LINK, MarkdownElementTypes.SHORT_REFERENCE_LINK -> {
                     val address = referenceAddress(node)
                     // With no definition it is not a link at all: its brackets and words, as written.
-                    if (address == null) inline(node.children, style, out, inner) else inline(linkText(node), style.copy(link = address), out, inner)
+                    if (address ==
+                        null
+                    ) {
+                        inline(node.children, style, out, inner)
+                    } else {
+                        inline(linkText(node), style.copy(link = address), out, inner)
+                    }
                 }
+
                 MarkdownElementTypes.AUTOLINK -> {
                     val target = node.firstChild(MarkdownTokenTypes.AUTOLINK)?.let(::source) ?: ""
                     out.add(target, style.copy(link = target))
                 }
+
                 GFMTokenTypes.GFM_AUTOLINK -> {
                     val target = source(node)
                     out.add(target, style.copy(link = if (target.startsWith("www.")) "http://$target" else target))
                 }
-                MarkdownTokenTypes.EMAIL_AUTOLINK -> out.add(source(node), style.copy(link = "mailto:${source(node)}"))
-                MarkdownElementTypes.IMAGE -> image(node, style, out, inner)
-                else ->
-                    if (node.children.isEmpty()) out.add(unescape(source(node)), style) else inline(node.children, style, out, inner)
+
+                MarkdownTokenTypes.EMAIL_AUTOLINK -> {
+                    out.add(source(node), style.copy(link = "mailto:${source(node)}"))
+                }
+
+                MarkdownElementTypes.IMAGE -> {
+                    image(node, style, out, inner)
+                }
+
+                else -> {
+                    if (node.children.isEmpty()) {
+                        out.add(
+                            unescape(source(node)),
+                            style,
+                        )
+                    } else {
+                        inline(node.children, style, out, inner)
+                    }
+                }
             }
         }
     }
@@ -446,12 +630,25 @@ private class TreeReader(private val src: String, root: ASTNode, private val che
 
     /** CommonMark matches labels without regard to case or runs of whitespace. */
     private fun labelKey(label: String): String =
-        label.removePrefix("[").removeSuffix("]").trim().lowercase().split(WHITESPACE_RUN).joinToString(" ")
+        label
+            .removePrefix("[")
+            .removeSuffix("]")
+            .trim()
+            .lowercase()
+            .split(WHITESPACE_RUN)
+            .joinToString(" ")
 
     /** A destination as written, without its angle brackets, Markdown's escapes and references read. */
     private fun address(destination: ASTNode): String {
         val text = source(destination)
-        val bare = if (text.length >= 2 && text.first() == '<' && text.last() == '>') text.substring(1, text.length - 1) else text
+        val bare =
+            if (text.length >= 2 && text.first() == '<' &&
+                text.last() == '>'
+            ) {
+                text.substring(1, text.length - 1)
+            } else {
+                text
+            }
         return unescape(bare)
     }
 
@@ -462,7 +659,12 @@ private class TreeReader(private val src: String, root: ASTNode, private val che
      * An image stands as its description — the plain words of its brackets, styles dropped, as
      * CommonMark's `alt` is — never as anything fetched. It keeps a place even with no words.
      */
-    private fun image(node: ASTNode, style: MdSpan, out: Runs, depth: Int) {
+    private fun image(
+        node: ASTNode,
+        style: MdSpan,
+        out: Runs,
+        depth: Int,
+    ) {
         val link = node.children.firstOrNull { it.type != MarkdownTokenTypes.EXCLAMATION_MARK }
         if (link == null || (link.type != MarkdownElementTypes.INLINE_LINK && referenceAddress(link) == null)) {
             // An image reference with no definition is its text as written.
@@ -471,7 +673,13 @@ private class TreeReader(private val src: String, root: ASTNode, private val che
         }
         // Inside an image's brackets the parser reads an inner image as `!` then a link; the `!` is its mark.
         val text = linkText(link)
-        val words = text.filterIndexed { i, n -> !(n.type == MarkdownTokenTypes.EXCLAMATION_MARK && text.getOrNull(i + 1)?.type in LINKS) }
+        val words =
+            text.filterIndexed { i, n ->
+                !(
+                    n.type == MarkdownTokenTypes.EXCLAMATION_MARK &&
+                        text.getOrNull(i + 1)?.type in LINKS
+                )
+            }
         out.addImage(Runs().also { inline(words, MdSpan(""), it, depth) }.spans.joinToString("") { it.text }, style)
     }
 
@@ -480,10 +688,20 @@ private class TreeReader(private val src: String, root: ASTNode, private val che
      * space stripped from each end when both ends have one and it is not all spaces.
      */
     private fun codeSpan(node: ASTNode): String {
-        val inner = node.children.dropWhile { it.type == MarkdownTokenTypes.BACKTICK }.dropLastWhile { it.type == MarkdownTokenTypes.BACKTICK }
+        val inner =
+            node.children.dropWhile { it.type == MarkdownTokenTypes.BACKTICK }.dropLastWhile {
+                it.type ==
+                    MarkdownTokenTypes.BACKTICK
+            }
         if (inner.isEmpty()) return ""
         val text = src.substring(inner.first().startOffset, inner.last().endOffset).replace('\n', ' ')
-        return if (text.length >= 2 && text.first() == ' ' && text.last() == ' ' && text.isNotBlank()) text.substring(1, text.length - 1) else text
+        return if (text.length >= 2 && text.first() == ' ' && text.last() == ' ' &&
+            text.isNotBlank()
+        ) {
+            text.substring(1, text.length - 1)
+        } else {
+            text
+        }
     }
 
     private fun source(node: ASTNode): String = src.substring(node.startOffset, node.endOffset)
@@ -494,25 +712,39 @@ private class TreeReader(private val src: String, root: ASTNode, private val che
     private fun List<ASTNode>.trim(n: Int): List<ASTNode> = if (size >= 2 * n) subList(n, size - n) else emptyList()
 
     private companion object {
-        val ATX_LEVELS = mapOf(
-            MarkdownElementTypes.ATX_1 to 1, MarkdownElementTypes.ATX_2 to 2, MarkdownElementTypes.ATX_3 to 3,
-            MarkdownElementTypes.ATX_4 to 4, MarkdownElementTypes.ATX_5 to 5, MarkdownElementTypes.ATX_6 to 6,
-        )
-        val MARKS = setOf(CharCategory.NON_SPACING_MARK, CharCategory.COMBINING_SPACING_MARK, CharCategory.ENCLOSING_MARK)
+        val ATX_LEVELS =
+            mapOf(
+                MarkdownElementTypes.ATX_1 to 1,
+                MarkdownElementTypes.ATX_2 to 2,
+                MarkdownElementTypes.ATX_3 to 3,
+                MarkdownElementTypes.ATX_4 to 4,
+                MarkdownElementTypes.ATX_5 to 5,
+                MarkdownElementTypes.ATX_6 to 6,
+            )
+        val MARKS =
+            setOf(CharCategory.NON_SPACING_MARK, CharCategory.COMBINING_SPACING_MARK, CharCategory.ENCLOSING_MARK)
 
         /** Tokens that only shape a block — line ends, indents, a quote's `>`, a list's marker — and carry no text. */
-        val LAYOUT_TOKENS = setOf(
-            MarkdownTokenTypes.EOL, MarkdownTokenTypes.WHITE_SPACE, MarkdownTokenTypes.BLOCK_QUOTE,
-            MarkdownTokenTypes.LIST_BULLET, MarkdownTokenTypes.LIST_NUMBER, GFMTokenTypes.CHECK_BOX,
-        )
+        val LAYOUT_TOKENS =
+            setOf(
+                MarkdownTokenTypes.EOL,
+                MarkdownTokenTypes.WHITE_SPACE,
+                MarkdownTokenTypes.BLOCK_QUOTE,
+                MarkdownTokenTypes.LIST_BULLET,
+                MarkdownTokenTypes.LIST_NUMBER,
+                GFMTokenTypes.CHECK_BOX,
+            )
 
         const val INDENTED_CODE_COLUMNS = 4
 
         val WHITESPACE_RUN = Regex("\\s+")
 
-        val LINKS = setOf(
-            MarkdownElementTypes.INLINE_LINK, MarkdownElementTypes.FULL_REFERENCE_LINK, MarkdownElementTypes.SHORT_REFERENCE_LINK,
-        )
+        val LINKS =
+            setOf(
+                MarkdownElementTypes.INLINE_LINK,
+                MarkdownElementTypes.FULL_REFERENCE_LINK,
+                MarkdownElementTypes.SHORT_REFERENCE_LINK,
+            )
     }
 }
 
@@ -534,7 +766,10 @@ private class Runs {
             return closed
         }
 
-    fun add(text: String, style: MdSpan) {
+    fun add(
+        text: String,
+        style: MdSpan,
+    ) {
         if (text.isEmpty()) return
         val key = style.copy(text = "")
         if (key != openStyle) {
@@ -545,7 +780,10 @@ private class Runs {
     }
 
     /** An image is its own run, never joined to text beside it — and kept even with no words. */
-    fun addImage(description: String, style: MdSpan) {
+    fun addImage(
+        description: String,
+        style: MdSpan,
+    ) {
         close()
         closed += style.copy(text = description, image = true)
     }
@@ -599,10 +837,19 @@ private fun codePointOf(reference: MatchResult): Int? {
     }
 }
 
-private fun appendCodePoint(out: StringBuilder, codePoint: Int) {
+private fun appendCodePoint(
+    out: StringBuilder,
+    codePoint: Int,
+) {
     when {
-        codePoint == 0 || codePoint > 0x10FFFF || codePoint in 0xD800..0xDFFF -> out.append(Char(0xFFFD))
-        codePoint < 0x10000 -> out.append(Char(codePoint))
+        codePoint == 0 || codePoint > 0x10FFFF || codePoint in 0xD800..0xDFFF -> {
+            out.append(Char(0xFFFD))
+        }
+
+        codePoint < 0x10000 -> {
+            out.append(Char(codePoint))
+        }
+
         else -> {
             val v = codePoint - 0x10000
             out.append(Char(0xD800 + (v shr 10))).append(Char(0xDC00 + (v and 0x3FF)))
@@ -611,6 +858,7 @@ private fun appendCodePoint(out: StringBuilder, codePoint: Int) {
 }
 
 private val BACKSLASH = Char(0x5C)
+
 /** ASCII punctuation: the only characters a backslash escapes (the backslash itself among them). */
 private val ESCAPABLE = "!\"#$%&'()*+,-./:;<=>?@[]^_`{|}~" + BACKSLASH
 private val REFERENCE = Regex("&(?:([a-zA-Z][a-zA-Z0-9]*)|#([0-9]{1,7})|#[xX]([0-9a-fA-F]{1,6}));")

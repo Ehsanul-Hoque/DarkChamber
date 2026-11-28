@@ -38,7 +38,6 @@ import kotlin.time.Duration
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class GallerySelectionTest {
-
     private val lifecycle = LifecycleRegistry().apply { resume() }
     private val backDispatcher = BackDispatcher()
 
@@ -69,58 +68,62 @@ class GallerySelectionTest {
     }
 
     @Test
-    fun a_long_press_enters_selecting_mode_with_that_item_selected() = runTest {
-        val vault = FakeVaultItems()
-        val component = component(vault)
-        vault.emit(1, 2, 3)
+    fun a_long_press_enters_selecting_mode_with_that_item_selected() =
+        runTest {
+            val vault = FakeVaultItems()
+            val component = component(vault)
+            vault.emit(1, 2, 3)
 
-        component.selectItem(byteArrayOf(2))
+            component.selectItem(byteArrayOf(2))
 
-        val selection = component.state.value.selection
-        assertTrue(selection.active)
-        assertEquals(1, selection.count)
-        assertTrue(selection.contains(byteArrayOf(2)), "by content — the tile asks with its own array")
-        assertFalse(selection.contains(byteArrayOf(1)))
-    }
-
-    @Test
-    fun the_count_follows_the_selection() = runTest {
-        val vault = FakeVaultItems()
-        val component = component(vault)
-        vault.emit(1, 2, 3)
-
-        component.selectItem(byteArrayOf(1))
-        component.toggleItem(byteArrayOf(2))
-        assertEquals(2, component.state.value.selection.count)
-
-        component.toggleItem(byteArrayOf(1))
-        assertEquals(1, component.state.value.selection.count)
-    }
+            val selection = component.state.value.selection
+            assertTrue(selection.active)
+            assertEquals(1, selection.count)
+            assertTrue(selection.contains(byteArrayOf(2)), "by content — the tile asks with its own array")
+            assertFalse(selection.contains(byteArrayOf(1)))
+        }
 
     @Test
-    fun select_all_takes_everything_the_screen_is_showing() = runTest {
-        val vault = FakeVaultItems()
-        val component = component(vault)
-        vault.emit(1, 2, 3)
-        component.selectItem(byteArrayOf(1))
+    fun the_count_follows_the_selection() =
+        runTest {
+            val vault = FakeVaultItems()
+            val component = component(vault)
+            vault.emit(1, 2, 3)
 
-        component.selectAllItems()
+            component.selectItem(byteArrayOf(1))
+            component.toggleItem(byteArrayOf(2))
+            assertEquals(2, component.state.value.selection.count)
 
-        assertEquals(3, component.state.value.selection.count)
-    }
+            component.toggleItem(byteArrayOf(1))
+            assertEquals(1, component.state.value.selection.count)
+        }
 
     @Test
-    fun clearing_leaves_the_mode() = runTest {
-        val vault = FakeVaultItems()
-        val component = component(vault)
-        vault.emit(1, 2)
-        component.selectItem(byteArrayOf(1))
+    fun select_all_takes_everything_the_screen_is_showing() =
+        runTest {
+            val vault = FakeVaultItems()
+            val component = component(vault)
+            vault.emit(1, 2, 3)
+            component.selectItem(byteArrayOf(1))
 
-        component.clearSelection()
+            component.selectAllItems()
 
-        assertFalse(component.state.value.selection.active)
-        assertEquals(0, component.state.value.selection.count)
-    }
+            assertEquals(3, component.state.value.selection.count)
+        }
+
+    @Test
+    fun clearing_leaves_the_mode() =
+        runTest {
+            val vault = FakeVaultItems()
+            val component = component(vault)
+            vault.emit(1, 2)
+            component.selectItem(byteArrayOf(1))
+
+            component.clearSelection()
+
+            assertFalse(component.state.value.selection.active)
+            assertEquals(0, component.state.value.selection.count)
+        }
 
     /**
      * Back leaves the mode rather than navigating, and **only** while selecting — otherwise back
@@ -128,20 +131,21 @@ class GallerySelectionTest {
      * screen.
      */
     @Test
-    fun back_exits_selecting_mode_and_is_otherwise_not_handled() = runTest {
-        val vault = FakeVaultItems()
-        val component = component(vault)
-        vault.emit(1, 2)
+    fun back_exits_selecting_mode_and_is_otherwise_not_handled() =
+        runTest {
+            val vault = FakeVaultItems()
+            val component = component(vault)
+            vault.emit(1, 2)
 
-        assertFalse(backDispatcher.isEnabled, "nothing selected: back is not ours")
+            assertFalse(backDispatcher.isEnabled, "nothing selected: back is not ours")
 
-        component.selectItem(byteArrayOf(1))
-        assertTrue(backDispatcher.isEnabled, "selecting: back is ours")
+            component.selectItem(byteArrayOf(1))
+            assertTrue(backDispatcher.isEnabled, "selecting: back is ours")
 
-        assertTrue(backDispatcher.back(), "and it was handled here")
-        assertFalse(component.state.value.selection.active, "which left the mode")
-        assertFalse(backDispatcher.isEnabled, "and handed back back")
-    }
+            assertTrue(backDispatcher.back(), "and it was handled here")
+            assertFalse(component.state.value.selection.active, "which left the mode")
+            assertFalse(backDispatcher.isEnabled, "and handed back back")
+        }
 
     /**
      * The one rule beyond the selection itself: the grid grows underneath an import, so a selection
@@ -149,93 +153,108 @@ class GallerySelectionTest {
      * progress card.
      */
     @Test
-    fun a_long_press_during_a_running_batch_does_nothing() = runTest {
-        val vault = FakeVaultItems()
-        val imports = StubImports()
-        val component = component(vault, imports)
-        vault.emit(1, 2)
-        imports.emit(
-            ImportState.Running(index = 0, total = 2, name = "a.jpg", stage = ImportStage.ENCRYPTING, fileFraction = 0.5f),
-        )
+    fun a_long_press_during_a_running_batch_does_nothing() =
+        runTest {
+            val vault = FakeVaultItems()
+            val imports = StubImports()
+            val component = component(vault, imports)
+            vault.emit(1, 2)
+            imports.emit(
+                ImportState.Running(
+                    index = 0,
+                    total = 2,
+                    name = "a.jpg",
+                    stage = ImportStage.ENCRYPTING,
+                    fileFraction = 0.5f,
+                ),
+            )
 
-        component.selectItem(byteArrayOf(1))
+            component.selectItem(byteArrayOf(1))
 
-        assertFalse(component.state.value.selection.active, "no mode")
-        assertEquals(0, component.state.value.selection.count)
-        assertFalse(backDispatcher.isEnabled, "and back was never taken over")
-    }
+            assertFalse(component.state.value.selection.active, "no mode")
+            assertEquals(0, component.state.value.selection.count)
+            assertFalse(backDispatcher.isEnabled, "and back was never taken over")
+        }
 
     /** A pick in flight counts as a batch: items can land the moment it returns. */
     @Test
-    fun a_long_press_while_a_pick_is_in_flight_does_nothing() = runTest {
-        val vault = FakeVaultItems()
-        val imports = StubImports()
-        val component = component(vault, imports)
-        vault.emit(1)
-        imports.emit(ImportState.Picking)
+    fun a_long_press_while_a_pick_is_in_flight_does_nothing() =
+        runTest {
+            val vault = FakeVaultItems()
+            val imports = StubImports()
+            val component = component(vault, imports)
+            vault.emit(1)
+            imports.emit(ImportState.Picking)
 
-        component.selectItem(byteArrayOf(1))
+            component.selectItem(byteArrayOf(1))
 
-        assertFalse(component.state.value.selection.active)
-    }
+            assertFalse(component.state.value.selection.active)
+        }
 
     /** A finished batch is not a running one — the summary is on screen and selecting is fine again. */
     @Test
-    fun a_long_press_after_a_batch_finishes_works() = runTest {
-        val vault = FakeVaultItems()
-        val imports = StubImports()
-        val component = component(vault, imports)
-        vault.emit(1)
-        imports.emit(ImportState.Finished(imported = 1, failed = emptyList()))
+    fun a_long_press_after_a_batch_finishes_works() =
+        runTest {
+            val vault = FakeVaultItems()
+            val imports = StubImports()
+            val component = component(vault, imports)
+            vault.emit(1)
+            imports.emit(ImportState.Finished(imported = 1, failed = emptyList()))
 
-        component.selectItem(byteArrayOf(1))
+            component.selectItem(byteArrayOf(1))
 
-        assertTrue(component.state.value.selection.active)
-    }
+            assertTrue(component.state.value.selection.active)
+        }
 
     /**
      * The live-list intersection, through the component: an item shredded while selected leaves the
      * selection, so the count cannot overstate what an action would touch.
      */
     @Test
-    fun an_item_that_leaves_the_listing_leaves_the_selection() = runTest {
-        val vault = FakeVaultItems()
-        val component = component(vault)
-        vault.emit(1, 2)
-        component.selectItem(byteArrayOf(1))
-        component.toggleItem(byteArrayOf(2))
-        assertEquals(2, component.state.value.selection.count)
+    fun an_item_that_leaves_the_listing_leaves_the_selection() =
+        runTest {
+            val vault = FakeVaultItems()
+            val component = component(vault)
+            vault.emit(1, 2)
+            component.selectItem(byteArrayOf(1))
+            component.toggleItem(byteArrayOf(2))
+            assertEquals(2, component.state.value.selection.count)
 
-        vault.emit(2)
+            vault.emit(2)
 
-        assertEquals(1, component.state.value.selection.count)
-        assertFalse(component.state.value.selection.contains(byteArrayOf(1)))
-        assertTrue(component.state.value.selection.active, "the mode survives — the user did not ask to leave")
-    }
+            assertEquals(1, component.state.value.selection.count)
+            assertFalse(
+                component.state.value.selection
+                    .contains(byteArrayOf(1)),
+            )
+            assertTrue(component.state.value.selection.active, "the mode survives — the user did not ask to leave")
+        }
 
     @Test
-    fun a_tap_outside_selecting_mode_selects_nothing() = runTest {
-        val vault = FakeVaultItems()
-        val component = component(vault)
-        vault.emit(1)
+    fun a_tap_outside_selecting_mode_selects_nothing() =
+        runTest {
+            val vault = FakeVaultItems()
+            val component = component(vault)
+            vault.emit(1)
 
-        component.toggleItem(byteArrayOf(1))
+            component.toggleItem(byteArrayOf(1))
 
-        assertFalse(component.state.value.selection.active, "a tap is not a long-press")
-    }
+            assertFalse(component.state.value.selection.active, "a tap is not a long-press")
+        }
 
     /** The state's own equality has to see a selection change, or the screen will not redraw. */
     @Test
-    fun selecting_changes_the_published_state() = runTest {
-        val vault = FakeVaultItems()
-        val component = component(vault)
-        vault.emit(1, 2)
-        val before = component.state.value
+    fun selecting_changes_the_published_state() =
+        runTest {
+            val vault = FakeVaultItems()
+            val component = component(vault)
+            vault.emit(1, 2)
+            val before = component.state.value
 
-        component.selectItem(byteArrayOf(1))
+            component.selectItem(byteArrayOf(1))
 
-        assertFalse(before == component.state.value, "a selection is a state change")
-    }
+            assertFalse(before == component.state.value, "a selection is a state change")
+        }
 }
 
 /** A batch that only reports what it is told to, so a test can park the gallery in any state. */

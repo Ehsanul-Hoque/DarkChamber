@@ -9,9 +9,10 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class GalleryContractTest {
-
-    private fun item(id: ByteArray, meta: GalleryItemMeta = GalleryItemMeta.Readable("a.txt", "text/plain")) =
-        GalleryItem(id = id, kind = VaultItemKind.FILE, size = 7L, createdAt = 11L, meta = meta)
+    private fun item(
+        id: ByteArray,
+        meta: GalleryItemMeta = GalleryItemMeta.Readable("a.txt", "text/plain"),
+    ) = GalleryItem(id = id, kind = VaultItemKind.FILE, size = 7L, createdAt = 11L, meta = meta)
 
     /**
      * An opening vault must not flash "no items yet" at someone whose vault is full, so the initial
@@ -51,7 +52,11 @@ class GalleryContractTest {
     /** Nothing derived from vault content may reach a log or a crash string (hard rule #4). */
     @Test
     fun toString_never_leaks_the_name_or_mime() {
-        val rendered = item(byteArrayOf(1, 2), GalleryItemMeta.Readable("passport-scan.pdf", "application/pdf")).toString()
+        val rendered =
+            item(
+                byteArrayOf(1, 2),
+                GalleryItemMeta.Readable("passport-scan.pdf", "application/pdf"),
+            ).toString()
 
         assertFalse(rendered.contains("passport-scan"), "the name must not appear in $rendered")
         assertFalse(rendered.contains("application/pdf"), "the mime must not appear in $rendered")

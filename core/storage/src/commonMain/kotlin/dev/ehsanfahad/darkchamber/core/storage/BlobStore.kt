@@ -32,7 +32,10 @@ internal class BlobStore(
      * success `atomicMove`s it onto the target (never overwrites in place). Any throw / early
      * return deletes the `.tmp` and surfaces `Err(Io)` — the target (if any) is left intact.
      */
-    fun write(fileId: ByteArray, block: (RawSink) -> Unit): Outcome<Unit> {
+    fun write(
+        fileId: ByteArray,
+        block: (RawSink) -> Unit,
+    ): Outcome<Unit> {
         if (fileId.isEmpty()) return emptyIdErr()
         val target: Path
         val tmp: Path
@@ -59,7 +62,10 @@ internal class BlobStore(
     }
 
     /** Scoped read: opens a source, runs [block], closes in a `finally`. Missing file → `Err(Io)`. */
-    fun <R> read(fileId: ByteArray, block: (RawSource) -> R): Outcome<R> {
+    fun <R> read(
+        fileId: ByteArray,
+        block: (RawSource) -> R,
+    ): Outcome<R> {
         if (fileId.isEmpty()) return emptyIdErr()
         return try {
             fs.source(pathFor(fileId)).use { Outcome.Ok(block(it)) }
@@ -110,6 +116,5 @@ internal class BlobStore(
     }
 
     // The cause carries no vault content — the id/path is never placed in the message (#4).
-    private fun emptyIdErr(): Outcome.Err =
-        Outcome.Err(VaultError.Io(IllegalArgumentException("empty fileId")))
+    private fun emptyIdErr(): Outcome.Err = Outcome.Err(VaultError.Io(IllegalArgumentException("empty fileId")))
 }

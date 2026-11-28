@@ -14,7 +14,6 @@ import kotlin.test.assertEquals
  * about the item, and is a retry that names no cause.
  */
 class KeychainReadFailureTest {
-
     @Test
     fun a_read_refused_while_the_device_is_locked_is_a_retry() {
         assertEquals(VaultError.Auth.Failed, keychainReadFailure(errSecInteractionNotAllowed))

@@ -17,26 +17,39 @@ internal fun notSavedLines(summary: NotSavedSummary): List<String> =
         val photos = summary.count(NotSavedKind.Photo, reason)
         val videos = summary.count(NotSavedKind.Video, reason)
         if (photos + videos == 0) return@mapNotNull null
-        val things = listOfNotNull(
-            counted(photos, "photo"),
-            counted(videos, "video"),
-        ).joinToString(" and ")
+        val things =
+            listOfNotNull(
+                counted(photos, "photo"),
+                counted(videos, "video"),
+            ).joinToString(" and ")
         val one = photos + videos == 1
         when (reason) {
-            NotSavedReason.Locked ->
+            NotSavedReason.Locked -> {
                 "$things ${if (one) "wasn't" else "weren't"} saved because the vault locked."
-            NotSavedReason.OutOfSpace ->
+            }
+
+            NotSavedReason.OutOfSpace -> {
                 "$things ${if (one) "wasn't" else "weren't"} saved — your phone ran out of space."
-            NotSavedReason.TooShort ->
+            }
+
+            NotSavedReason.TooShort -> {
                 "$things ${if (one) "was" else "were"} too short to save."
-            NotSavedReason.CouldNotSave ->
+            }
+
+            NotSavedReason.CouldNotSave -> {
                 "$things couldn't be saved."
-            NotSavedReason.SavedUnfiled ->
+            }
+
+            NotSavedReason.SavedUnfiled -> {
                 "$things ${if (one) "was" else "were"} saved to Unfiled — ${if (one) "its" else "their"} album was deleted."
+            }
         }
     }
 
-private fun counted(count: Int, noun: String): String? =
+private fun counted(
+    count: Int,
+    noun: String,
+): String? =
     when (count) {
         0 -> null
         1 -> "1 $noun"

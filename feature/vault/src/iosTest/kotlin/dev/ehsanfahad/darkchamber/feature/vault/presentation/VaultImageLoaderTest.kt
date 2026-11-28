@@ -7,8 +7,8 @@ import dev.ehsanfahad.darkchamber.feature.vault.FakeVaultItems
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
-import kotlin.test.assertTrue
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * The one assertion about previews that cannot be wrong: the gallery's loader has **no disk

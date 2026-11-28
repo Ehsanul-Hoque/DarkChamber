@@ -1,0 +1,79 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>ComplexCondition:AndroidCameraController.kt:AndroidCameraController$camera == null || mode != CaptureMode.Video || output == null || active != null</ID>
+    <ID>ComplexCondition:IosCameraController.kt:IosCameraController$!started || input == null || mode != CaptureMode.Video || active != null || movieOutput.recording</ID>
+    <ID>CyclomaticComplexMethod:IosCameraController.kt:IosCameraController$override fun record: Recording</ID>
+    <ID>CyclomaticComplexMethod:IosPickedFile.kt:internal fun mimeForExtension: String</ID>
+    <ID>FunctionNaming:MainViewController.kt:@Suppress("ktlint:standard:function-naming") @OptIn(ExperimentalForeignApi::class) fun MainViewController: UIViewController</ID>
+    <ID>FunctionOnlyReturningConstant:LeaveNotice.kt:internal fun leaveNoticeText: String</ID>
+    <ID>LongMethod:UnlockedComponent.kt:DefaultUnlockedComponent$private fun createChild: UnlockedChild</ID>
+    <ID>MagicNumber:CameraMapping.kt:135</ID>
+    <ID>MagicNumber:CameraMapping.kt:180</ID>
+    <ID>MagicNumber:CameraMapping.kt:225</ID>
+    <ID>MagicNumber:CameraMapping.kt:270</ID>
+    <ID>MagicNumber:CameraMapping.kt:315</ID>
+    <ID>MagicNumber:CameraMapping.kt:45</ID>
+    <ID>MagicNumber:CameraMapping.kt:90</ID>
+    <ID>MagicNumber:Clock.ios.kt:1000.0</ID>
+    <ID>MagicNumber:IosCameraMapping.kt:4</ID>
+    <ID>MagicNumber:IosCameraMapping.kt:90</ID>
+    <ID>MagicNumber:IosVaultPlayer.kt:IosVaultPlayer$1_000</ID>
+    <ID>MagicNumber:IosVaultPlayer.kt:IosVaultPlayer$1_000.0</ID>
+    <ID>MagicNumber:IosVideoFrames.kt:1_000_000</ID>
+    <ID>MagicNumber:PdfPageGeometry.kt:PdfPageGeometry$180</ID>
+    <ID>MagicNumber:PdfPageGeometry.kt:PdfPageGeometry$270</ID>
+    <ID>MagicNumber:PdfPageGeometry.kt:PdfPageGeometry$360</ID>
+    <ID>MagicNumber:PdfPageGeometry.kt:PdfPageGeometry$90</ID>
+    <ID>MagicNumber:ThumbnailOrientation.kt:180</ID>
+    <ID>MagicNumber:ThumbnailOrientation.kt:270</ID>
+    <ID>MagicNumber:ThumbnailOrientation.kt:90</ID>
+    <ID>MagicNumber:UnlockedComponent.kt:4</ID>
+    <ID>MagicNumber:VideoFrameTime.kt:1_000</ID>
+    <ID>MagicNumber:VideoThumbnails.kt:180</ID>
+    <ID>ReturnCount:AndroidBiometricAuthenticator.kt:AndroidBiometricAuthenticator$override suspend fun authenticate: Outcome&lt;BiometricAuth&gt;</ID>
+    <ID>ReturnCount:AndroidCameraController.kt:AndroidCameraController$override fun record: Recording</ID>
+    <ID>ReturnCount:AndroidLinkOpener.kt:AndroidLinkOpener$override suspend fun open: LinkOpened</ID>
+    <ID>ReturnCount:AndroidPdfRenderer.kt:AndroidPdfDocument$@Synchronized override fun render: ImageBitmap?</ID>
+    <ID>ReturnCount:AndroidPlayerDisplay.kt:AndroidPlayerDisplay$override fun brightness: Float</ID>
+    <ID>ReturnCount:AndroidThumbnailEncoder.kt:AndroidThumbnailEncoder$override fun encode: ByteArray?</ID>
+    <ID>ReturnCount:AndroidViewerImageDecoder.kt:AndroidViewerImageDecoder$private fun decodeUpright: Bitmap?</ID>
+    <ID>ReturnCount:IosCameraController.kt:IosCameraController$private fun applyTorch</ID>
+    <ID>ReturnCount:IosLinkOpener.kt:IosLinkOpener$override suspend fun open: LinkOpened</ID>
+    <ID>ReturnCount:IosPdfRenderer.kt:IosPdfBuffer$override fun open: PdfOpened</ID>
+    <ID>ReturnCount:IosPdfRenderer.kt:IosPdfBuffer$private fun openDocument: CPointer&lt;CGPDFDocument&gt;?</ID>
+    <ID>ReturnCount:IosPdfRenderer.kt:IosPdfDocument$override fun render: ImageBitmap?</ID>
+    <ID>ReturnCount:IosPhotoPicker.kt:@OptIn(ExperimentalForeignApi::class) internal fun pickedFileFrom: IosPickedFile?</ID>
+    <ID>ReturnCount:IosThumbnailEncoder.kt:IosThumbnailEncoder$@OptIn(ExperimentalForeignApi::class) override fun encode: ByteArray?</ID>
+    <ID>ReturnCount:IosVideoThumbnailTest.kt:IosVideoThumbnailTest.ScriptedReader$override fun readAt: Outcome&lt;Int&gt;</ID>
+    <ID>ReturnCount:IosViewerImageDecoder.kt:IosViewerImageDecoder$@OptIn(ExperimentalForeignApi::class) private fun CGImageRef.toImageBitmap: ImageBitmap?</ID>
+    <ID>ReturnCount:ThumbnailSizing.kt:internal fun thumbnailTargetSize: ThumbnailSize?</ID>
+    <ID>ReturnCount:UnlockedComponentTest.kt:UnlockedComponentTest$private fun dchmCount: Int</ID>
+    <ID>ReturnCount:VaultBootstrap.kt:VaultBootstrap$fun createVault: Outcome&lt;CreatedVaultSession&gt;</ID>
+    <ID>ReturnCount:VaultBootstrap.kt:VaultBootstrap$fun probe: Outcome&lt;VaultStatus&gt;</ID>
+    <ID>ReturnCount:VaultBootstrap.kt:VaultBootstrap$fun unlock: Outcome&lt;OpenVault&gt;</ID>
+    <ID>ReturnCount:VaultBootstrap.kt:VaultBootstrap$private fun readKeyStore: Outcome&lt;KeyStoreBlob&gt;</ID>
+    <ID>ReturnCount:VaultBootstrap.kt:VaultBootstrap$suspend fun enrollBiometric: Outcome&lt;Unit&gt;</ID>
+    <ID>ReturnCount:VaultBootstrap.kt:VaultBootstrap$suspend fun unlockWithBiometric: Outcome&lt;OpenVault&gt;</ID>
+    <ID>ReturnCount:VaultDataSource.kt:VaultDataSource$override fun read: Int</ID>
+    <ID>ReturnCount:VaultDataSourceTest.kt:VaultDataSourceTest.ScriptedReader$override fun readAt: Outcome&lt;Int&gt;</ID>
+    <ID>ReturnCount:VaultRootResolver.ios.kt:IosVaultRootResolver$override fun resolve: Outcome&lt;Path&gt;</ID>
+    <ID>ReturnCount:VideoThumbnails.kt:internal fun videoFrame: Bitmap?</ID>
+    <ID>ReturnCount:VideoThumbnails.kt:private fun MediaMetadataRetriever.frameNear: Bitmap?</ID>
+    <ID>ReturnCount:VideoThumbnails.kt:private fun displayedSize: ThumbnailSize?</ID>
+    <ID>SwallowedException:AndroidCameraController.kt:AndroidCameraController$e: IllegalArgumentException</ID>
+    <ID>SwallowedException:AndroidCameraController.kt:AndroidCameraController$e: IllegalStateException</ID>
+    <ID>SwallowedException:AndroidCameraController.kt:AndroidCameraController$e: SecurityException</ID>
+    <ID>TooGenericExceptionCaught:AndroidPdfRenderer.kt:MemoryFileBuffer$e: Throwable</ID>
+    <ID>TooGenericExceptionCaught:PlatformModule.android.kt:e: Exception</ID>
+    <ID>TooGenericExceptionCaught:PlatformModule.ios.kt:e: Exception</ID>
+    <ID>TooGenericExceptionCaught:VaultBootstrap.kt:VaultBootstrap$e: Exception</ID>
+    <ID>TooGenericExceptionThrown:AndroidLinkOpenerTest.kt:AndroidLinkOpenerTest$throw RuntimeException("transaction too large")</ID>
+    <ID>TooManyFunctions:AndroidCameraController.kt:AndroidCameraController : CameraController</ID>
+    <ID>TooManyFunctions:IosCameraController.kt:IosCameraController : CameraController</ID>
+    <ID>TooManyFunctions:LockScreens.kt:dev.ehsanfahad.darkchamber.app.ui.LockScreens.kt</ID>
+    <ID>TooManyFunctions:LockedComponent.kt:DefaultLockedComponent : LockedComponentComponentContext</ID>
+    <ID>TooManyFunctions:UnavailableCamera.kt:UnavailableCamera : CameraController</ID>
+  </CurrentIssues>
+</SmellBaseline>

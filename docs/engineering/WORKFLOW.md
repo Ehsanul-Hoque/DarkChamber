@@ -27,23 +27,43 @@ A rule of your own can run beside it: make an executable `hooks/commit-msg.local
 (`.git/hooks/commit-msg.local` in a plain clone). The shared hook runs it after the shared check, with the
 same message file. It lives inside `.git/`, so it is never committed and applies to your clone alone.
 
-**`pre-commit`** refuses a commit that leaves a doc comment cut off its declaration — one doc comment
-directly followed by another, which is what an insertion between a function and its comment leaves
-behind: the comment then describes the wrong function. It runs
-[`scripts/check-doc-comments.sh`](../../scripts/check-doc-comments.sh) on the Kotlin files the commit
-stages, as staged. There is no exception: a comment about the whole file goes **above its `package`
-line**, where the package and imports stand between it and the first declaration's own comment. Put a
-stray comment back on the declaration it describes, or delete it if it is a stale copy.
+**`pre-commit`** runs formatting and static analysis — `./gradlew spotlessCheck detekt`, the checks CI's
+`quality` job runs ([`TESTING.md`](./TESTING.md) §5) — when the commit stages a `.kt` or `.kts` file, or one of
+the files that configure those checks (`.editorconfig`, `config/detekt/`, a module's `detekt-baseline.xml`,
+`build-logic/`, `gradle/libs.versions.toml`, a build script), through
+[`scripts/check-formatting.sh`](../../scripts/check-formatting.sh). About a second with Gradle's daemon warm,
+longer the first time or after a configuration change. Those checks read the files on disk, not what is staged, so
+before they run the hook refuses a staged Kotlin file that also has unstaged changes, and any change to that
+configuration that is not staged (an edit, a deletion, a new file not yet added): stage it (`git add`) or set it
+aside (`git stash push --keep-index --include-untracked`), and commit again. Then every file the checks read is
+either as committed or Kotlin the commit does not touch, which can make them fail, never pass. Run `./gradlew spotlessApply` to fix what ktlint can; a finding it cannot fix is fixed by hand, or
+suppressed at the site with the reason beside it. Coverage (`koverVerify`) is not checked here — it needs the whole
+test suite, and runs in CI.
+
+One of ktlint's rules deserves saying out loud, because it guards against a mistake that reads as correct: **a doc
+comment directly followed by another is refused** (`kdoc`, which refuses a KDoc that documents nothing, and
+`no-consecutive-comments`). It is what an insertion between a
+function and its comment leaves behind — the comment then describes the wrong function. Put a stray comment back
+on the declaration it describes, or delete it if it is a stale copy. A comment about the whole file is a block
+comment (`/* … */`, not `/**`) above the `package` line.
 
 Each checker has its own fixtures, which CI runs before using it:
 
 ```bash
 bash scripts/test-check-commits.sh
-bash scripts/test-check-doc-comments.sh
+bash scripts/test-check-formatting.sh
 ```
 
 Hooks are convenience, not the gate — CI re-checks every commit on the PR, so a skipped hook
-(`--no-verify`) changes nothing. Formatting and static-analysis hooks arrive with that tooling.
+(`--no-verify`) changes nothing.
+
+**Blame past the reformat.** The whole repository was reformatted in one commit that changed formatting only,
+listed in [`.git-blame-ignore-revs`](../../.git-blame-ignore-revs). GitHub's blame skips it by itself; for
+`git blame` in your clone, once:
+
+```bash
+git config blame.ignoreRevsFile .git-blame-ignore-revs
+```
 
 ## 2. Commit conventions
 

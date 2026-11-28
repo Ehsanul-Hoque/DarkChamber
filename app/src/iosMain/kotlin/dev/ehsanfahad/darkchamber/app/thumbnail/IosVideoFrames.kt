@@ -1,9 +1,9 @@
 package dev.ehsanfahad.darkchamber.app.thumbnail
 
-import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.cinterop.readValue
 import dev.ehsanfahad.darkchamber.app.media.ReaderLoader
 import dev.ehsanfahad.darkchamber.core.vault.RangeReader
+import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.readValue
 import platform.AVFoundation.AVAssetImageGenerator
 import platform.AVFoundation.AVURLAsset
 import platform.AVFoundation.resourceLoader
@@ -44,26 +44,32 @@ import platform.darwin.dispatch_time
  * **Unverified on a device**; exercised on the simulator, whose AVFoundation reads files the same way.
  */
 @OptIn(ExperimentalForeignApi::class)
-internal fun videoFrame(mime: String, maxEdgePx: Int, reader: RangeReader): CGImageRef? {
+internal fun videoFrame(
+    mime: String,
+    maxEdgePx: Int,
+    reader: RangeReader,
+): CGImageRef? {
     val queue = dispatch_queue_create("dev.ehsanfahad.darkchamber.preview", null)
     val quickTime = mime.equals(QUICKTIME_MIME, ignoreCase = true)
-    val loader = ReaderLoader(
-        reader = reader,
-        contentType = if (quickTime) QUICKTIME_TYPE else MPEG4_TYPE,
-        queue = queue,
-    )
+    val loader =
+        ReaderLoader(
+            reader = reader,
+            contentType = if (quickTime) QUICKTIME_TYPE else MPEG4_TYPE,
+            queue = queue,
+        )
     // The extension in the URL's *path*: AVFoundation's format probe reads it, and declines an asset
     // without one ("This media format is not supported") whatever content type is declared. In
     // `scheme://clip.mp4` the name is the host, which is how that was found.
     val url = NSURL.URLWithString("$PREVIEW_SCHEME:///clip.${if (quickTime) "mov" else "mp4"}") ?: return null
     val asset = AVURLAsset(uRL = url, options = null)
     asset.resourceLoader().setDelegate(loader, queue)
-    val generator = AVAssetImageGenerator(asset = asset).apply {
-        appliesPreferredTrackTransform = true
-        maximumSize = CGSizeMake(maxEdgePx.toDouble(), maxEdgePx.toDouble())
-        requestedTimeToleranceBefore = kCMTimeZero.readValue()
-        requestedTimeToleranceAfter = kCMTimePositiveInfinity.readValue()
-    }
+    val generator =
+        AVAssetImageGenerator(asset = asset).apply {
+            appliesPreferredTrackTransform = true
+            maximumSize = CGSizeMake(maxEdgePx.toDouble(), maxEdgePx.toDouble())
+            requestedTimeToleranceBefore = kCMTimeZero.readValue()
+            requestedTimeToleranceAfter = kCMTimePositiveInfinity.readValue()
+        }
     return try {
         generator.frameAt(PREVIEW_FRAME_US) ?: generator.frameAt(0)
     } finally {

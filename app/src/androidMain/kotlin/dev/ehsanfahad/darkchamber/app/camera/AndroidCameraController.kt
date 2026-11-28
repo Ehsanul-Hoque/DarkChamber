@@ -105,7 +105,6 @@ class AndroidCameraController(
     private val context: Context,
     private val activity: () -> FragmentActivity?,
 ) : CameraController {
-
     private val _permission = MutableStateFlow(CameraPermission.NotAsked)
     override val permission: StateFlow<CameraPermission> = _permission.asStateFlow()
 
@@ -129,7 +128,8 @@ class AndroidCameraController(
     // Built on first use rather than here: constructing a use case reaches into the framework, and
     // this object is built by the composition root at startup, camera or no camera.
     private val imageCapture by lazy {
-        ImageCapture.Builder()
+        ImageCapture
+            .Builder()
             // A private camera is used for a quick shot; latency matters more than the last bit of
             // quality, and the photo is re-encoded by nobody.
             .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
@@ -288,22 +288,29 @@ class AndroidCameraController(
         applyTorch()
     }
 
-    override fun record(file: Path, sizeLimitBytes: Long, withAudio: Boolean): Recording {
+    override fun record(
+        file: Path,
+        sizeLimitBytes: Long,
+        withAudio: Boolean,
+    ): Recording {
         val output = videoCapture?.output
         if (camera == null || mode != CaptureMode.Video || output == null || active != null) {
             return ReportedRecording.refused()
         }
-        val options = FileOutputOptions.Builder(File(file.toString()))
-            .setFileSizeLimit(sizeLimitBytes)
-            .build()
+        val options =
+            FileOutputOptions
+                .Builder(File(file.toString()))
+                .setFileSizeLimit(sizeLimitBytes)
+                .build()
         val pending = output.prepareRecording(context, options).withSoundIf(withAudio)
         var recording: ActiveRecording? = null
         val reported = ReportedRecording(onStop = { recording?.platform?.stop() })
-        val platform = try {
-            pending.start(mainExecutor) { event -> recording?.let { onRecordingEvent(it, event) } }
-        } catch (e: IllegalStateException) {
-            return ReportedRecording.refused()
-        }
+        val platform =
+            try {
+                pending.start(mainExecutor) { event -> recording?.let { onRecordingEvent(it, event) } }
+            } catch (e: IllegalStateException) {
+                return ReportedRecording.refused()
+            }
         recording = ActiveRecording(reported, platform, File(file.toString()))
         active = recording
         return reported
@@ -324,7 +331,10 @@ class AndroidCameraController(
         camera?.cameraControl?.setZoomRatio(ratio)
     }
 
-    override fun focusAt(x: Float, y: Float) {
+    override fun focusAt(
+        x: Float,
+        y: Float,
+    ) {
         val view = previewView ?: return
         val control = camera?.cameraControl ?: return
         val point = view.meteringPointFactory.createPoint(x * view.width, y * view.height)
@@ -397,7 +407,10 @@ class AndroidCameraController(
         )
     }
 
-    private fun onRecordingEvent(recording: ActiveRecording, event: VideoRecordEvent) {
+    private fun onRecordingEvent(
+        recording: ActiveRecording,
+        event: VideoRecordEvent,
+    ) {
         val stats = event.recordingStats
         recording.reported.report(recordingProgressFor(stats.numBytesRecorded, stats.recordedDurationNanos))
         when (event) {
@@ -405,13 +418,17 @@ class AndroidCameraController(
                 recording.sounded = true
                 sounds?.play(MediaActionSound.START_VIDEO_RECORDING)
             }
+
             is VideoRecordEvent.Finalize -> {
                 if (active === recording) active = null
                 // Only for a recording that ended on its own or was stopped to be kept: an abandoned
                 // one has already reported, and its end is not what CameraX says now. CameraX opens
                 // the file on the first encoded data, which can be after the lock deleted it, so an
                 // abandoned one's file goes again here.
-                val first = recording.reported.finishFromPlatform(recordingEndFor(event.error)) { recording.file.delete() }
+                val first =
+                    recording.reported.finishFromPlatform(
+                        recordingEndFor(event.error),
+                    ) { recording.file.delete() }
                 if (first && recording.sounded) {
                     sounds?.play(MediaActionSound.STOP_VIDEO_RECORDING)
                 }
@@ -431,11 +448,13 @@ class AndroidCameraController(
     }
 
     private fun microphoneGranted(): Boolean =
-        ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED
 
     private fun refreshPermission() {
-        val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
-            PackageManager.PERMISSION_GRANTED
+        val granted =
+            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
+                PackageManager.PERMISSION_GRANTED
         val rationale = activity()?.shouldShowRequestPermissionRationale(Manifest.permission.CAMERA) ?: false
         _permission.value = permissionState(granted, asked, rationale)
     }
@@ -457,7 +476,8 @@ class AndroidCameraController(
         configured = true
         runCatching {
             ProcessCameraProvider.configureInstance(
-                CameraXConfig.Builder.fromConfig(Camera2Config.defaultConfig())
+                CameraXConfig.Builder
+                    .fromConfig(Camera2Config.defaultConfig())
                     .setMinimumLoggingLevel(Log.ERROR)
                     .build(),
             )
@@ -471,10 +491,11 @@ class AndroidCameraController(
     private fun bind(provider: ProcessCameraProvider) {
         provider.unbindAll()
         forgetCamera()
-        val lenses = buildSet {
-            if (provider.has(CameraSelector.DEFAULT_BACK_CAMERA)) add(Lens.Back)
-            if (provider.has(CameraSelector.DEFAULT_FRONT_CAMERA)) add(Lens.Front)
-        }
+        val lenses =
+            buildSet {
+                if (provider.has(CameraSelector.DEFAULT_BACK_CAMERA)) add(Lens.Back)
+                if (provider.has(CameraSelector.DEFAULT_FRONT_CAMERA)) add(Lens.Front)
+            }
         if (lenses.isEmpty()) {
             _capabilities.value = CameraCapabilities.None
             _availability.value = CameraAvailability.Unavailable
@@ -489,18 +510,20 @@ class AndroidCameraController(
         val nextPreview = PreviewUseCase.Builder().setResolutionSelector(resolutionFor(mode)).build()
         nextPreview.surfaceProvider = previewView?.surfaceProvider
         preview = nextPreview
-        val capture: UseCase = when (mode) {
-            CaptureMode.Photo -> imageCapture.also { videoCapture = null }
-            CaptureMode.Video -> buildVideoCapture().also { videoCapture = it }
-        }
+        val capture: UseCase =
+            when (mode) {
+                CaptureMode.Photo -> imageCapture.also { videoCapture = null }
+                CaptureMode.Video -> buildVideoCapture().also { videoCapture = it }
+            }
 
-        val bound = try {
-            provider.bindToLifecycle(owner, selector, nextPreview, capture)
-        } catch (e: IllegalArgumentException) {
-            null
-        } catch (e: IllegalStateException) {
-            null
-        }
+        val bound =
+            try {
+                provider.bindToLifecycle(owner, selector, nextPreview, capture)
+            } catch (e: IllegalArgumentException) {
+                null
+            } catch (e: IllegalStateException) {
+                null
+            }
         camera = bound
         if (bound == null) {
             _availability.value = CameraAvailability.Unavailable
@@ -514,13 +537,14 @@ class AndroidCameraController(
         }
         bound.cameraInfo.zoomState.observe(owner) { zoom ->
             if (camera === bound) {
-                _capabilities.value = CameraCapabilities(
-                    lenses = lenses,
-                    hasFlash = bound.cameraInfo.hasFlashUnit(),
-                    minZoom = zoom.minZoomRatio,
-                    maxZoom = zoom.maxZoomRatio,
-                    videoQualities = qualities,
-                )
+                _capabilities.value =
+                    CameraCapabilities(
+                        lenses = lenses,
+                        hasFlash = bound.cameraInfo.hasFlashUnit(),
+                        minZoom = zoom.minZoomRatio,
+                        maxZoom = zoom.maxZoomRatio,
+                        videoQualities = qualities,
+                    )
             }
         }
     }
@@ -529,15 +553,20 @@ class AndroidCameraController(
     // than failing to bind. Rotated by the tilt, as the photo is.
     private fun buildVideoCapture(): VideoCapture<Recorder> {
         val wanted = qualityOf(quality)
-        val recorder = Recorder.Builder()
-            .setQualitySelector(QualitySelector.from(wanted, FallbackStrategy.lowerQualityOrHigherThan(wanted)))
-            .setAspectRatio(aspectRatioFor(CaptureMode.Video))
-            .build()
+        val recorder =
+            Recorder
+                .Builder()
+                .setQualitySelector(QualitySelector.from(wanted, FallbackStrategy.lowerQualityOrHigherThan(wanted)))
+                .setAspectRatio(aspectRatioFor(CaptureMode.Video))
+                .build()
         return VideoCapture.Builder(recorder).setTargetRotation(rotation).build()
     }
 
     // What the lens records, asked of CameraX before binding so the offer is known with the camera.
-    private fun qualitiesOf(provider: ProcessCameraProvider, selector: CameraSelector): Set<VideoQuality> {
+    private fun qualitiesOf(
+        provider: ProcessCameraProvider,
+        selector: CameraSelector,
+    ): Set<VideoQuality> {
         val info = runCatching { provider.getCameraInfo(selector) }.getOrNull() ?: return emptySet()
         val supported = Recorder.getVideoCapabilities(info).getSupportedQualities(DynamicRange.SDR)
         return videoQualitiesFor(fullHd = Quality.FHD in supported, ultraHd = Quality.UHD in supported)
@@ -576,12 +605,17 @@ class AndroidCameraController(
         }
 
     private fun resolutionFor(mode: CaptureMode): ResolutionSelector =
-        ResolutionSelector.Builder()
+        ResolutionSelector
+            .Builder()
             .setAspectRatioStrategy(AspectRatioStrategy(aspectRatioFor(mode), AspectRatioStrategy.FALLBACK_RULE_AUTO))
             .build()
 
     /** One recording: the caller's handle, CameraX's, and whether its start sound has played. */
-    private class ActiveRecording(val reported: ReportedRecording, val platform: PlatformRecording, val file: File) {
+    private class ActiveRecording(
+        val reported: ReportedRecording,
+        val platform: PlatformRecording,
+        val file: File,
+    ) {
         var sounded = false
     }
 

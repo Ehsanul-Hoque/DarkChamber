@@ -6,36 +6,25 @@
 
 | Workflow         | Trigger                                    | Purpose                                                                                                             |
 |------------------|--------------------------------------------|---------------------------------------------------------------------------------------------------------------------|
-| `pr.yml`         | every PR to `main`                         | quality gates: lint, architecture, tests, format vectors, migration gate, coverage, commit check, dependency review |
+| `pr.yml`         | every PR to `main`                         | quality gates: lint, architecture, tests, format vectors, coverage, commit check, dependency review                 |
 | `release.yml`    | manual `workflow_dispatch`                 | compute version from commits since last tag → build signed APK → tag + GitHub Release                               |
 | `test-build.yml` | manual `workflow_dispatch` from any branch | throwaway-versioned APK published as a GitHub **pre-release** for testers                                           |
 
 ## 2. PR validation — `pr.yml`
 
-Fast checks on Linux; the expensive macOS job runs only when shared/iOS code changed (path filter via `dorny/paths-filter` setting a job-gating output).
+Fast checks on Linux; the expensive macOS job runs only when shared/iOS code changed (path filter via `dorny/paths-filter` setting a job-gating output). The workflow file is the source of truth, its comments the reasons; the jobs, in short:
 
-```yaml
-jobs:
-  quality:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with: { distribution: temurin, java-version: "21" }
-      - uses: gradle/actions/setup-gradle@v4
-      - run: ./gradlew :konsist:test            # architecture + security invariants
-      - run: ./gradlew ktlintCheck detekt
-      - run: ./gradlew testDebugUnitTest migrationTest koverVerify   # incl. format vectors
-      - name: Conventional-commit re-check (all PR commits)
-        run: ./scripts/check-commits.sh "${{ github.event.pull_request.base.sha }}" "${{ github.sha }}"
-      - name: Dependency review                 # supply-chain gate on PRs
-        uses: actions/dependency-review-action@v4
-  ios-tests:
-    runs-on: macos-latest
-    needs: quality
-    if: needs.quality.outputs.shared_changed == 'true'
-    steps: [ …, ./gradlew iosSimulatorArm64Test ]
-```
+| Job                 | Runs                                                                                                        |
+|---------------------|-------------------------------------------------------------------------------------------------------------|
+| `changes`           | the path filter that decides whether `ios-tests` runs                                                       |
+| `commit-messages`   | the commit checker's fixtures and the check over the PR; the pre-commit formatting check's fixtures          |
+| `dependency-review` | the supply-chain gate on new dependencies (public repositories only)                                        |
+| `build`             | `:konsist:test` first (the security-invariant rules), then `assembleFossDebug` and the host suite            |
+| `quality`           | the workflow files validated, then `spotlessCheck detekt`, then `koverVerify` with each module's report kept |
+| `ios-tests`         | the iOS suite on a simulator, and the device-architecture compile — non-draft PRs that touch shared code     |
+
+`migrationTest` joins the iOS job as a step once the first release has shipped a fixture vault
+([`TESTING.md`](./TESTING.md) §3.2).
 
 ## 3. Versioning — tag-based SemVer
 

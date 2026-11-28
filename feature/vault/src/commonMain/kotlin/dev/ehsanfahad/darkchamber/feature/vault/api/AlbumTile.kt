@@ -56,7 +56,9 @@ class AlbumTile(
  */
 sealed interface AlbumTileName {
     /** The name opened and verified. */
-    data class Readable(val value: String) : AlbumTileName {
+    data class Readable(
+        val value: String,
+    ) : AlbumTileName {
         // The name is decrypted vault content, so the generated data-class toString would print it
         // into any log line that rendered this (hard rule #4).
         override fun toString(): String = "Readable(${value.length} chars)"

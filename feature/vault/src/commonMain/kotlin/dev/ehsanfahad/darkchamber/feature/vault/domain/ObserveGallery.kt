@@ -54,8 +54,9 @@ internal data class GalleryControls(
  * controls downstream makes that structural rather than a comment — and `ObserveGalleryTest` pins it
  * by counting subscriptions.
  */
-internal class ObserveGallery(private val vault: VaultItems) {
-
+internal class ObserveGallery(
+    private val vault: VaultItems,
+) {
     operator fun invoke(
         filter: ItemFilter = ItemFilter.All,
         controls: Flow<GalleryControls> = flowOf(GalleryControls()),
@@ -90,10 +91,11 @@ internal class ObserveGallery(private val vault: VaultItems) {
             kind = kind,
             size = size,
             createdAt = createdAt,
-            meta = when (val meta = meta) {
-                is Outcome.Ok -> GalleryItemMeta.Readable(meta.value.name, meta.value.mime)
-                is Outcome.Err -> GalleryItemMeta.Unreadable
-            },
+            meta =
+                when (val meta = meta) {
+                    is Outcome.Ok -> GalleryItemMeta.Readable(meta.value.name, meta.value.mime)
+                    is Outcome.Err -> GalleryItemMeta.Unreadable
+                },
             album = album,
         )
 }

@@ -49,7 +49,12 @@ class StorageDirectoryInstrumentedTest {
         val result = storage.writeObject(ByteArray(16) { it.toByte() }) { wrote = true }
 
         val error = (result as Outcome.Err).error
-        val errno = ((error as VaultError.Io).cause.causeChain().firstOrNull { it is ErrnoException } as ErrnoException?)?.errno
+        val errno =
+            (
+                (error as VaultError.Io).cause.causeChain().firstOrNull {
+                    it is ErrnoException
+                } as ErrnoException?
+            )?.errno
         assertEquals("the mkdir's own errno, not an open's ENOENT", OsConstants.EACCES, errno)
         assertFalse("nothing is written under a directory that is not there", wrote)
     }

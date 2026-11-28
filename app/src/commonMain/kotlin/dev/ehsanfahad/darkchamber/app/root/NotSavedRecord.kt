@@ -20,7 +20,11 @@ class NotSavedRecord : NotSavedReporter {
     private val _summary = MutableStateFlow(NotSavedSummary.Empty)
     val summary: StateFlow<NotSavedSummary> = _summary.asStateFlow()
 
-    override fun report(kind: NotSavedKind, reason: NotSavedReason, count: Int) {
+    override fun report(
+        kind: NotSavedKind,
+        reason: NotSavedReason,
+        count: Int,
+    ) {
         if (count <= 0) return
         _summary.update { it.plus(kind, reason, count) }
     }
@@ -37,9 +41,16 @@ class NotSavedSummary private constructor(
 ) {
     fun isEmpty(): Boolean = counts.isEmpty()
 
-    fun count(kind: NotSavedKind, reason: NotSavedReason): Int = counts[reason]?.get(kind) ?: 0
+    fun count(
+        kind: NotSavedKind,
+        reason: NotSavedReason,
+    ): Int = counts[reason]?.get(kind) ?: 0
 
-    fun plus(kind: NotSavedKind, reason: NotSavedReason, count: Int): NotSavedSummary {
+    fun plus(
+        kind: NotSavedKind,
+        reason: NotSavedReason,
+        count: Int,
+    ): NotSavedSummary {
         val byKind = counts[reason].orEmpty()
         return NotSavedSummary(counts + (reason to byKind + (kind to (byKind[kind] ?: 0) + count)))
     }

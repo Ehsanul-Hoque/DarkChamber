@@ -63,11 +63,12 @@ enum class ImportStage {
      * question instead of silently inheriting someone else's denominator.
      */
     internal val passes: Int?
-        get() = when (this) {
-            COPYING -> 1
-            ENCRYPTING -> 2
-            FETCHING, FINISHING -> null
-        }
+        get() =
+            when (this) {
+                COPYING -> 1
+                ENCRYPTING -> 2
+                FETCHING, FINISHING -> null
+            }
 
     /**
      * Whether this stage has a total to divide by.

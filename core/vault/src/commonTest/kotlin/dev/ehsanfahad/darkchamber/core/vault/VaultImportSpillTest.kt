@@ -13,10 +13,10 @@ import dev.ehsanfahad.darkchamber.core.storage.VaultStorage
 import kotlinx.io.Buffer
 import kotlinx.io.IOException
 import kotlinx.io.RawSource
-import kotlinx.io.readByteArray
 import kotlinx.io.files.Path
 import kotlinx.io.files.SystemFileSystem
 import kotlinx.io.files.SystemTemporaryDirectory
+import kotlinx.io.readByteArray
 import kotlin.random.Random
 import kotlin.random.nextULong
 import kotlin.test.AfterTest
@@ -54,7 +54,10 @@ class VaultImportSpillTest {
     private fun newSession(): VaultSession =
         VaultSession.createVault(engine, kdf, "correct horse battery".encodeToByteArray(), cheapKdf).session
 
-    private fun objects(storage: VaultStorage, catalog: CatalogStore): VaultObjects =
+    private fun objects(
+        storage: VaultStorage,
+        catalog: CatalogStore,
+    ): VaultObjects =
         VaultObjects(
             session = newSession(),
             storage = storage,
@@ -66,7 +69,10 @@ class VaultImportSpillTest {
 
     private fun tmpEntries(): List<Path> = SystemFileSystem.list(Path(testDir, "tmp")).toList()
 
-    private fun VaultObjects.import(name: String, opener: SourceOpener): Outcome<ByteArray> =
+    private fun VaultObjects.import(
+        name: String,
+        opener: SourceOpener,
+    ): Outcome<ByteArray> =
         importObject(
             kind = VaultItemKind.FILE.code,
             name = name,
@@ -164,25 +170,27 @@ class VaultImportSpillTest {
     @Test
     fun a_throw_from_inside_the_spill_is_an_error_and_still_releases_the_held_source() {
         val session = newSession()
-        val vo = VaultObjects(
-            session = session,
-            storage = newStorage(),
-            catalog = newCatalog(),
-            codec = DchmCodec(engine),
-            clock = { 42L },
-            random = Random(5).let { r -> { n: Int -> r.nextBytes(n) } },
-        )
+        val vo =
+            VaultObjects(
+                session = session,
+                storage = newStorage(),
+                catalog = newCatalog(),
+                codec = DchmCodec(engine),
+                clock = { 42L },
+                random = Random(5).let { r -> { n: Int -> r.nextBytes(n) } },
+            )
         // The lock lands between the copy and the encrypt: the MK is gone by the time the container
         // asks for a DEK.
         val opener = SourceOpener(ByteArray(64) { it.toByte() }, maxOpens = 1, onFullyRead = session::close)
 
-        val result = vo.importObject(
-            kind = VaultItemKind.FILE.code,
-            name = "doomed.bin",
-            mime = "application/octet-stream",
-            chunkSize = 64,
-            openSource = opener::open,
-        )
+        val result =
+            vo.importObject(
+                kind = VaultItemKind.FILE.code,
+                name = "doomed.bin",
+                mime = "application/octet-stream",
+                chunkSize = 64,
+                openSource = opener::open,
+            )
 
         assertIs<Outcome.Err>(result, "a dead session must not throw out of importObject")
         assertIs<VaultError.Unexpected>(result.error)
@@ -208,6 +216,7 @@ private class SourceOpener(
 ) {
     var opens = 0
         private set
+
     /** Sources actually handed out (an open that throws produces none). */
     var created = 0
         private set
@@ -240,7 +249,10 @@ private class CountingSource(
     private var reported = false
     private var closed = false
 
-    override fun readAtMostTo(sink: Buffer, byteCount: Long): Long {
+    override fun readAtMostTo(
+        sink: Buffer,
+        byteCount: Long,
+    ): Long {
         val read = buffer.readAtMostTo(sink, byteCount)
         if (read == -1L && !reported) {
             reported = true

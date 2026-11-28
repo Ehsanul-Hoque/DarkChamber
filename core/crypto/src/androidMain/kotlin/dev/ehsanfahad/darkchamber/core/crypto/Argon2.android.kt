@@ -17,13 +17,15 @@ internal actual fun platformArgon2id(
     parallelism: Int,
     outLenBytes: Int,
 ): ByteArray {
-    val params = Argon2Parameters.Builder(Argon2Parameters.ARGON2_id)
-        .withVersion(Argon2Parameters.ARGON2_VERSION_13) // 0x13
-        .withMemoryAsKB(memoryKib)
-        .withIterations(iterations)
-        .withParallelism(parallelism)
-        .withSalt(salt)
-        .build()
+    val params =
+        Argon2Parameters
+            .Builder(Argon2Parameters.ARGON2_id)
+            .withVersion(Argon2Parameters.ARGON2_VERSION_13) // 0x13
+            .withMemoryAsKB(memoryKib)
+            .withIterations(iterations)
+            .withParallelism(parallelism)
+            .withSalt(salt)
+            .build()
     val generator = Argon2BytesGenerator().apply { init(params) }
     val out = ByteArray(outLenBytes)
     generator.generateBytes(password, out)

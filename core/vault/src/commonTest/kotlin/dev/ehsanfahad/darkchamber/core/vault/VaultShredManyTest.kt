@@ -45,7 +45,9 @@ class VaultShredManyTest {
     @AfterTest
     fun cleanup() = deleteRecursively(testDir)
 
-    private fun objects(catalog: CatalogStore = (CatalogStore.create(testSqlDriver()) as Outcome.Ok).value): VaultObjects =
+    private fun objects(
+        catalog: CatalogStore = (CatalogStore.create(testSqlDriver()) as Outcome.Ok).value,
+    ): VaultObjects =
         VaultObjects(
             session,
             storage,
@@ -59,18 +61,41 @@ class VaultShredManyTest {
     private fun source(data: ByteArray): () -> RawSource = { Buffer().apply { write(data) } }
 
     // An image, so the import writes a preview as well: both files have to go.
-    private fun import(vo: VaultObjects, n: Int): ByteArray =
-        (vo.importObject(kind = 0, name = "p$n.jpg", mime = "image/jpeg", chunkSize = 64, openSource = source(ByteArray(120) { n.toByte() })) as Outcome.Ok).value
+    private fun import(
+        vo: VaultObjects,
+        n: Int,
+    ): ByteArray =
+        (
+            vo.importObject(
+                kind = 0,
+                name = "p$n.jpg",
+                mime = "image/jpeg",
+                chunkSize = 64,
+                openSource =
+                    source(
+                        ByteArray(
+                            120,
+                        ) {
+                            n.toByte()
+                        },
+                    ),
+            ) as Outcome.Ok
+        ).value
 
-    private fun listed(vo: VaultObjects, catalog: CatalogStore): Int =
-        (catalog.listItems(ItemFilter.All) as Outcome.Ok).value.size
+    private fun listed(
+        vo: VaultObjects,
+        catalog: CatalogStore,
+    ): Int = (catalog.listItems(ItemFilter.All) as Outcome.Ok).value.size
 
     @Test
     fun shredding_a_selection_removes_every_row_object_and_preview_and_counts_them() {
         val catalog = (CatalogStore.create(testSqlDriver()) as Outcome.Ok).value
         val vo = objects(catalog)
         val ids = (1..3).map { import(vo, it) }
-        assertTrue(ids.all { storage.objectExists(it) && storage.thumbnailExists(it) }, "control: every file is there first")
+        assertTrue(
+            ids.all { storage.objectExists(it) && storage.thumbnailExists(it) },
+            "control: every file is there first",
+        )
 
         // Copies, never the arrays the imports returned: the gallery hands these back decoded.
         val result = vo.shredObjects(ids.map { it.copyOf() })
@@ -144,8 +169,17 @@ class VaultShredManyTest {
     // The object store's file for [id]: the one file under objects/ named for it.
     private fun objectPathOf(id: ByteArray): Path {
         val hex = id.joinToString("") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') }
+
         fun walk(dir: Path): List<Path> =
-            SystemFileSystem.list(dir).flatMap { if (SystemFileSystem.metadataOrNull(it)?.isDirectory == true) walk(it) else listOf(it) }
+            SystemFileSystem.list(dir).flatMap {
+                if (SystemFileSystem.metadataOrNull(it)?.isDirectory ==
+                    true
+                ) {
+                    walk(it)
+                } else {
+                    listOf(it)
+                }
+            }
         return walk(Path(testDir, "objects")).single { it.name.startsWith(hex) }
     }
 

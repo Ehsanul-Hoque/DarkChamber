@@ -31,7 +31,10 @@ package dev.ehsanfahad.darkchamber.feature.camera.domain
  *   bounds-checked against the segment it sits in, so a truncated or hostile file cannot make this
  *   read or write outside the array.
  */
-internal fun withOrientation(jpeg: ByteArray, rotationDegrees: Int): ByteArray {
+internal fun withOrientation(
+    jpeg: ByteArray,
+    rotationDegrees: Int,
+): ByteArray {
     val orientation = orientationFor(rotationDegrees) ?: return jpeg
     if (jpeg.size < 4 || jpeg.u8(0) != 0xFF || jpeg.u8(1) != SOI) return jpeg
 
@@ -57,22 +60,63 @@ internal fun withOrientation(jpeg: ByteArray, rotationDegrees: Int): ByteArray {
     return jpeg
 }
 
-private fun insertMinimalExif(jpeg: ByteArray, at: Int, orientation: Int): ByteArray {
+private fun insertMinimalExif(
+    jpeg: ByteArray,
+    at: Int,
+    orientation: Int,
+): ByteArray {
     if (orientation == 1) return jpeg // an absent tag already means upright
-    val block = byteArrayOf(
-        0xFF.toByte(), APP1.toByte(), 0x00, MINIMAL_EXIF_LENGTH.toByte(),
-        *EXIF_HEADER,
-        // TIFF header: big-endian, 42, first IFD straight after these eight bytes.
-        'M'.code.toByte(), 'M'.code.toByte(), 0x00, TIFF_MAGIC.toByte(), 0x00, 0x00, 0x00, 0x08,
-        // Two entries, in tag order, each SHORT with one value left-justified in its value field:
-        // Orientation, and YCbCrPositioning = 1 (centred) — which EXIF requires in a JPEG's first
-        // IFD, and which exiftool writes into the same block for the same reason.
-        0x00, 0x02,
-        0x01, 0x12, 0x00, TYPE_SHORT.toByte(), 0x00, 0x00, 0x00, 0x01, 0x00, orientation.toByte(), 0x00, 0x00,
-        0x02, 0x13, 0x00, TYPE_SHORT.toByte(), 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00,
-        // No next IFD.
-        0x00, 0x00, 0x00, 0x00,
-    )
+    val block =
+        byteArrayOf(
+            0xFF.toByte(),
+            APP1.toByte(),
+            0x00,
+            MINIMAL_EXIF_LENGTH.toByte(),
+            *EXIF_HEADER,
+            // TIFF header: big-endian, 42, first IFD straight after these eight bytes.
+            'M'.code.toByte(),
+            'M'.code.toByte(),
+            0x00,
+            TIFF_MAGIC.toByte(),
+            0x00,
+            0x00,
+            0x00,
+            0x08,
+            // Two entries, in tag order, each SHORT with one value left-justified in its value field:
+            // Orientation, and YCbCrPositioning = 1 (centred) — which EXIF requires in a JPEG's first
+            // IFD, and which exiftool writes into the same block for the same reason.
+            0x00,
+            0x02,
+            0x01,
+            0x12,
+            0x00,
+            TYPE_SHORT.toByte(),
+            0x00,
+            0x00,
+            0x00,
+            0x01,
+            0x00,
+            orientation.toByte(),
+            0x00,
+            0x00,
+            0x02,
+            0x13,
+            0x00,
+            TYPE_SHORT.toByte(),
+            0x00,
+            0x00,
+            0x00,
+            0x01,
+            0x00,
+            0x01,
+            0x00,
+            0x00,
+            // No next IFD.
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+        )
     return jpeg.copyOfRange(0, at) + block + jpeg.copyOfRange(at, jpeg.size)
 }
 
@@ -86,13 +130,19 @@ private fun orientationFor(rotationDegrees: Int): Int? =
         else -> null
     }
 
-private fun rewriteInPlace(jpeg: ByteArray, tiffStart: Int, end: Int, orientation: Int): ByteArray {
+private fun rewriteInPlace(
+    jpeg: ByteArray,
+    tiffStart: Int,
+    end: Int,
+    orientation: Int,
+): ByteArray {
     if (tiffStart + 8 > end) return jpeg
-    val bigEndian = when {
-        jpeg.u8(tiffStart) == 'M'.code && jpeg.u8(tiffStart + 1) == 'M'.code -> true
-        jpeg.u8(tiffStart) == 'I'.code && jpeg.u8(tiffStart + 1) == 'I'.code -> false
-        else -> return jpeg
-    }
+    val bigEndian =
+        when {
+            jpeg.u8(tiffStart) == 'M'.code && jpeg.u8(tiffStart + 1) == 'M'.code -> true
+            jpeg.u8(tiffStart) == 'I'.code && jpeg.u8(tiffStart + 1) == 'I'.code -> false
+            else -> return jpeg
+        }
     if (jpeg.u16(tiffStart + 2, bigEndian) != TIFF_MAGIC) return jpeg
 
     val ifd0 = tiffStart.toLong() + jpeg.u32(tiffStart + 4, bigEndian)
@@ -111,25 +161,42 @@ private fun rewriteInPlace(jpeg: ByteArray, tiffStart: Int, end: Int, orientatio
     return jpeg
 }
 
-private fun isExifHeader(jpeg: ByteArray, from: Int, end: Int): Boolean = startsWith(jpeg, from, end, EXIF_HEADER)
+private fun isExifHeader(
+    jpeg: ByteArray,
+    from: Int,
+    end: Int,
+): Boolean = startsWith(jpeg, from, end, EXIF_HEADER)
 
-private fun startsWith(jpeg: ByteArray, from: Int, end: Int, header: ByteArray): Boolean =
-    from + header.size <= end && header.indices.all { jpeg[from + it] == header[it] }
+private fun startsWith(
+    jpeg: ByteArray,
+    from: Int,
+    end: Int,
+    header: ByteArray,
+): Boolean = from + header.size <= end && header.indices.all { jpeg[from + it] == header[it] }
 
 private fun ByteArray.u8(at: Int): Int = this[at].toInt() and 0xFF
 
 private fun ByteArray.u16be(at: Int): Int = (u8(at) shl 8) or u8(at + 1)
 
-private fun ByteArray.u16(at: Int, bigEndian: Boolean): Int =
-    if (bigEndian) u16be(at) else (u8(at + 1) shl 8) or u8(at)
+private fun ByteArray.u16(
+    at: Int,
+    bigEndian: Boolean,
+): Int = if (bigEndian) u16be(at) else (u8(at + 1) shl 8) or u8(at)
 
-private fun ByteArray.u32(at: Int, bigEndian: Boolean): Long {
+private fun ByteArray.u32(
+    at: Int,
+    bigEndian: Boolean,
+): Long {
     val hi = u16(if (bigEndian) at else at + 2, bigEndian).toLong()
     val lo = u16(if (bigEndian) at + 2 else at, bigEndian).toLong()
     return (hi shl 16) or lo
 }
 
-private fun ByteArray.putU16(at: Int, value: Int, bigEndian: Boolean) {
+private fun ByteArray.putU16(
+    at: Int,
+    value: Int,
+    bigEndian: Boolean,
+) {
     val high = (value shr 8).toByte()
     val low = value.toByte()
     if (bigEndian) {

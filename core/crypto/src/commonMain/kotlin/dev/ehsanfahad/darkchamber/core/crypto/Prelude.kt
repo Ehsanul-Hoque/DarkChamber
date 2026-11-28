@@ -38,11 +38,13 @@ class Prelude(
 
     override fun equals(other: Any?): Boolean =
         this === other ||
-            (other is Prelude &&
-                version == other.version &&
-                cipherId == other.cipherId &&
-                headerLen == other.headerLen &&
-                noncePrefix.contentEquals(other.noncePrefix))
+            (
+                other is Prelude &&
+                    version == other.version &&
+                    cipherId == other.cipherId &&
+                    headerLen == other.headerLen &&
+                    noncePrefix.contentEquals(other.noncePrefix)
+            )
 
     override fun hashCode(): Int {
         var result = version
@@ -58,7 +60,10 @@ class Prelude(
          * Bad magic or a truncated prelude → [VaultError.Crypto.MalformedContainer]; a version above
          * what we support or an unknown cipher → [VaultError.Crypto.UnsupportedFormatVersion]
          * (the "update the app" path, never confused with a tampering [VaultError.Crypto.IntegrityFailure]).
+         *
+         * Each check returns its typed error where it is found, so detekt's return count is suppressed.
          */
+        @Suppress("ReturnCount")
         fun read(bytes: ByteArray): Outcome<Prelude> {
             if (bytes.size < DchmFormat.PRELUDE_SIZE) {
                 return Outcome.Err(VaultError.Crypto.MalformedContainer)

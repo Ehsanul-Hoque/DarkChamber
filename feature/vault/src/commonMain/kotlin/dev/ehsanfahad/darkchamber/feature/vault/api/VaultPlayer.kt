@@ -24,7 +24,10 @@ import kotlinx.coroutines.flow.StateFlow
  */
 interface VaultPlayerFactory {
     /** A player for one item, over [reader], which it now owns. [mime] is the item's stored type. */
-    fun create(reader: RangeReader, mime: String): VaultPlayer
+    fun create(
+        reader: RangeReader,
+        mime: String,
+    ): VaultPlayer
 }
 
 /** One item's player. Created paused at the start; nothing plays until [play]. */
@@ -68,4 +71,3 @@ interface VaultPlayer {
      */
     fun release()
 }
-

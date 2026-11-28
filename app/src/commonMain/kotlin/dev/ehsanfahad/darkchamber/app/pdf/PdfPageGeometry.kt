@@ -4,8 +4,18 @@ package dev.ehsanfahad.darkchamber.app.pdf
  * An affine map from a PDF page's own space (points, y up) to a bitmap's pixels (y up, as CoreGraphics
  * draws into one): a point (x, y) goes to (a·x + c·y + tx, b·x + d·y + ty).
  */
-internal data class PageTransform(val a: Double, val b: Double, val c: Double, val d: Double, val tx: Double, val ty: Double) {
-    fun apply(x: Double, y: Double): Pair<Double, Double> = (a * x + c * y + tx) to (b * x + d * y + ty)
+internal data class PageTransform(
+    val a: Double,
+    val b: Double,
+    val c: Double,
+    val d: Double,
+    val tx: Double,
+    val ty: Double,
+) {
+    fun apply(
+        x: Double,
+        y: Double,
+    ): Pair<Double, Double> = (a * x + c * y + tx) to (b * x + d * y + ty)
 }
 
 /**
@@ -18,7 +28,11 @@ internal object PdfPageGeometry {
     fun rotation(angle: Int): Int = ((angle % 360) + 360) % 360
 
     /** The page's shown width and height: the crop box's, swapped when it is turned a quarter. */
-    fun shownSize(cropWidth: Double, cropHeight: Double, rotation: Int): Pair<Double, Double> =
+    fun shownSize(
+        cropWidth: Double,
+        cropHeight: Double,
+        rotation: Int,
+    ): Pair<Double, Double> =
         if (rotation == 90 || rotation == 270) cropHeight to cropWidth else cropWidth to cropHeight
 
     /**
@@ -43,8 +57,11 @@ internal object PdfPageGeometry {
         return when (rotation) {
             // A quarter clockwise: the page's y runs along the bitmap's x, its x down the bitmap's y.
             90 -> PageTransform(a = 0.0, b = -sy, c = sx, d = 0.0, tx = -sx * cropY, ty = sy * right)
+
             180 -> PageTransform(a = -sx, b = 0.0, c = 0.0, d = -sy, tx = sx * right, ty = sy * top)
+
             270 -> PageTransform(a = 0.0, b = sy, c = -sx, d = 0.0, tx = sx * top, ty = -sy * cropX)
+
             else -> PageTransform(a = sx, b = 0.0, c = 0.0, d = sy, tx = -sx * cropX, ty = -sy * cropY)
         }
     }

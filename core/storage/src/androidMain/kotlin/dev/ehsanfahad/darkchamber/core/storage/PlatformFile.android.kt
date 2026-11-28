@@ -17,11 +17,17 @@ internal actual fun openPlatformFile(path: Path): PlatformFile {
 }
 
 // FileChannel.read(buffer, position) reads at a position without moving any shared cursor.
-private class ChannelFile(private val channel: FileChannel) : PlatformFile {
+private class ChannelFile(
+    private val channel: FileChannel,
+) : PlatformFile {
     override val size: Long = channel.size()
 
-    override fun read(position: Long, into: ByteArray, offset: Int, length: Int): Int =
-        channel.read(ByteBuffer.wrap(into, offset, length), position)
+    override fun read(
+        position: Long,
+        into: ByteArray,
+        offset: Int,
+        length: Int,
+    ): Int = channel.read(ByteBuffer.wrap(into, offset, length), position)
 
     override fun close() = channel.close()
 }

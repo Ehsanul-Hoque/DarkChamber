@@ -18,18 +18,33 @@ class DchmCodecTest {
     // the JDK GCM provider refuses (key, iv) reuse for encryption.
     private fun prefix(tag: Int) = ByteArray(8) { i -> if (i == 0) tag.toByte() else i.toByte() }
 
-    private fun encode(data: ByteArray, tag: Int, chunkSize: Int = 16): ByteArray {
+    private fun encode(
+        data: ByteArray,
+        tag: Int,
+        chunkSize: Int = 16,
+    ): ByteArray {
         val out = Buffer()
-        val result = codec.encryptContainer(
-            dek = dek, noncePrefix = prefix(tag), createdAt = 0L, fileId = fileId,
-            originalName = "n", mime = "m", chunkSize = chunkSize,
-            openSource = { Buffer().apply { write(data) } }, sink = out,
-        )
+        val result =
+            codec.encryptContainer(
+                dek = dek,
+                noncePrefix = prefix(tag),
+                createdAt = 0L,
+                fileId = fileId,
+                originalName = "n",
+                mime = "m",
+                chunkSize = chunkSize,
+                openSource = { Buffer().apply { write(data) } },
+                sink = out,
+            )
         assertTrue(result is Outcome.Ok, "encode failed: $result")
         return out.readByteArray()
     }
 
-    private fun decode(container: ByteArray, fileId: ByteArray = this.fileId, dek: ByteArray = this.dek): Outcome<ByteArray> {
+    private fun decode(
+        container: ByteArray,
+        fileId: ByteArray = this.fileId,
+        dek: ByteArray = this.dek,
+    ): Outcome<ByteArray> {
         val out = Buffer()
         return when (val r = codec.decryptContainer(dek, fileId, Buffer().apply { write(container) }, out)) {
             is Outcome.Ok -> Outcome.Ok(out.readByteArray())
@@ -42,11 +57,18 @@ class DchmCodecTest {
     @Test
     fun encrypt_returns_the_measured_plaintext_size() {
         for (size in listOf(0, 1, 15, 16, 17, 100)) {
-            val result = codec.encryptContainer(
-                dek = dek, noncePrefix = prefix(size + 1), createdAt = 0L, fileId = fileId,
-                originalName = "n", mime = "m", chunkSize = 16,
-                openSource = { Buffer().apply { write(ByteArray(size)) } }, sink = Buffer(),
-            )
+            val result =
+                codec.encryptContainer(
+                    dek = dek,
+                    noncePrefix = prefix(size + 1),
+                    createdAt = 0L,
+                    fileId = fileId,
+                    originalName = "n",
+                    mime = "m",
+                    chunkSize = 16,
+                    openSource = { Buffer().apply { write(ByteArray(size)) } },
+                    sink = Buffer(),
+                )
             assertTrue(result is Outcome.Ok, "size=$size failed: $result")
             assertEquals(size.toLong(), result.value, "size=$size wrong measured size")
         }
@@ -76,8 +98,11 @@ class DchmCodecTest {
 
     // --- tamper evidence (all -> IntegrityFailure) -----------------------------------------------
 
-    private fun integrityFail(container: ByteArray, fileId: ByteArray = this.fileId, dek: ByteArray = this.dek) =
-        assertEquals(Outcome.Err(VaultError.Crypto.IntegrityFailure), decode(container, fileId, dek))
+    private fun integrityFail(
+        container: ByteArray,
+        fileId: ByteArray = this.fileId,
+        dek: ByteArray = this.dek,
+    ) = assertEquals(Outcome.Err(VaultError.Crypto.IntegrityFailure), decode(container, fileId, dek))
 
     @Test
     fun flipping_a_chunk_byte_fails_authentication() {

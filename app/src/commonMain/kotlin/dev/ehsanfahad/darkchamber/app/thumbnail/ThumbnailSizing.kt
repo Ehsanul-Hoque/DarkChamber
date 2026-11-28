@@ -4,7 +4,10 @@ import kotlin.math.max
 import kotlin.math.roundToInt
 
 /** The pixel dimensions a thumbnail should end up at. */
-internal data class ThumbnailSize(val width: Int, val height: Int) {
+internal data class ThumbnailSize(
+    val width: Int,
+    val height: Int,
+) {
     /**
      * The same size with its edges exchanged.
      *
@@ -28,7 +31,11 @@ internal data class ThumbnailSize(val width: Int, val height: Int) {
  * Shared between the platform encoders so a thumbnail of the same photo is the same shape whichever
  * device produced it — and because this is the part of the decode that a host test can reach.
  */
-internal fun thumbnailTargetSize(sourceWidth: Int, sourceHeight: Int, maxEdgePx: Int): ThumbnailSize? {
+internal fun thumbnailTargetSize(
+    sourceWidth: Int,
+    sourceHeight: Int,
+    maxEdgePx: Int,
+): ThumbnailSize? {
     if (sourceWidth <= 0 || sourceHeight <= 0 || maxEdgePx <= 0) return null
 
     val longestEdge = max(sourceWidth, sourceHeight)
@@ -52,7 +59,11 @@ internal fun thumbnailTargetSize(sourceWidth: Int, sourceHeight: Int, maxEdgePx:
  * edges because the remaining exact scale-down must never be a scale *up* — that would spend memory
  * to produce a blurrier tile.
  */
-internal fun sampleSizeFor(sourceWidth: Int, sourceHeight: Int, target: ThumbnailSize): Int {
+internal fun sampleSizeFor(
+    sourceWidth: Int,
+    sourceHeight: Int,
+    target: ThumbnailSize,
+): Int {
     var sample = 1
     while (
         sourceWidth / (sample * 2) >= target.width &&

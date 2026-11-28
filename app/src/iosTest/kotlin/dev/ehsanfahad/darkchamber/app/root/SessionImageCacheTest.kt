@@ -150,19 +150,20 @@ class SessionImageCacheTest {
         lifecycle: LifecycleRegistry = LifecycleRegistry().apply { resume() },
         onContextResolved: () -> Unit = {},
     ): DefaultUnlockedComponent {
-        val graph: Koin = koinApplication {
-            modules(
-                module {
-                    single<CryptoEngine> { CryptographyKotlinEngine() }
-                    single<FilePicker> { FakeFilePicker() }
-                    single<PhotoPicker> { FakePhotoPicker() }
-                    single<PlatformContext> {
-                        onContextResolved()
-                        PlatformContext.INSTANCE
-                    }
-                },
-            )
-        }.koin
+        val graph: Koin =
+            koinApplication {
+                modules(
+                    module {
+                        single<CryptoEngine> { CryptographyKotlinEngine() }
+                        single<FilePicker> { FakeFilePicker() }
+                        single<PhotoPicker> { FakePhotoPicker() }
+                        single<PlatformContext> {
+                            onContextResolved()
+                            PlatformContext.INSTANCE
+                        }
+                    },
+                )
+            }.koin
         val dispatcher = UnconfinedTestDispatcher()
         return DefaultUnlockedComponent(
             componentContext = DefaultComponentContext(lifecycle),

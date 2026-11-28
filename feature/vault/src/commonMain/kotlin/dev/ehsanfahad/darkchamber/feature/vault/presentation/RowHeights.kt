@@ -53,7 +53,10 @@ internal class RowHeights private constructor(
     }
 
     /** Record that item [index] was laid out [height] pixels tall. A later height replaces an earlier one. */
-    fun record(index: Int, height: Int) {
+    fun record(
+        index: Int,
+        height: Int,
+    ) {
         if (index !in 0 until count || height < 0) return
         val before = heights[index]
         if (before == height) return
@@ -107,7 +110,11 @@ internal class RowHeights private constructor(
         return prefix(sums, index).toDouble() + unknownBefore * average
     }
 
-    private fun add(tree: LongArray, index: Int, delta: Long) {
+    private fun add(
+        tree: LongArray,
+        index: Int,
+        delta: Long,
+    ) {
         var i = index + 1
         while (i <= count) {
             tree[i] += delta
@@ -115,7 +122,11 @@ internal class RowHeights private constructor(
         }
     }
 
-    private fun add(tree: IntArray, index: Int, delta: Int) {
+    private fun add(
+        tree: IntArray,
+        index: Int,
+        delta: Int,
+    ) {
         var i = index + 1
         while (i <= count) {
             tree[i] += delta
@@ -124,7 +135,10 @@ internal class RowHeights private constructor(
     }
 
     /** The sum over items 0 until [index]. */
-    private fun prefix(tree: LongArray, index: Int): Long {
+    private fun prefix(
+        tree: LongArray,
+        index: Int,
+    ): Long {
         var sum = 0L
         var i = index
         while (i > 0) {
@@ -134,7 +148,10 @@ internal class RowHeights private constructor(
         return sum
     }
 
-    private fun prefix(tree: IntArray, index: Int): Int {
+    private fun prefix(
+        tree: IntArray,
+        index: Int,
+    ): Int {
         var sum = 0
         var i = index
         while (i > 0) {
@@ -144,5 +161,8 @@ internal class RowHeights private constructor(
         return sum
     }
 
-    data class Spot(val index: Int, val offsetPx: Int)
+    data class Spot(
+        val index: Int,
+        val offsetPx: Int,
+    )
 }

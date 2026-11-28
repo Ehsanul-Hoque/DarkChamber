@@ -7,19 +7,23 @@ internal sealed interface LinkTarget {
      * gives it and names [host] — the site it really reaches — on its own. Prints its length only: the
      * address is the file's content.
      */
-    data class Web(val address: String, val host: String) : LinkTarget {
+    data class Web(
+        val address: String,
+        val host: String,
+    ) : LinkTarget {
         override fun toString(): String = "Web(${address.length} chars)"
     }
 
     /** A `#section` link to a heading in the same document: the top-level block that holds it. */
-    data class Section(val blockIndex: Int) : LinkTarget
+    data class Section(
+        val blockIndex: Int,
+    ) : LinkTarget
 
     /** Anything else: shown as a link's text, but tapping it does nothing. */
     data object Inert : LinkTarget
 }
 
 internal object LinkRules {
-
     /**
      * What tapping a link to [address] may do. A web address opens — through the confirmation — only
      * when it starts with `http://` or `https://` (in any case) and names a site; nothing in it is
@@ -28,11 +32,15 @@ internal object LinkRules {
      * being seen, does nothing. So does one holding a backslash: browsers read it as a slash and iOS
      * escapes it, so where the site ends is not agreed and the confirmation could not name it truly.
      */
-    fun target(address: String, sections: Map<String, Int>): LinkTarget {
+    fun target(
+        address: String,
+        sections: Map<String, Int>,
+    ): LinkTarget {
         if (address.startsWith('#')) return section(address.substring(1), sections)
         if (address.any { it.isUnseen() || it == BACKSLASH }) return LinkTarget.Inert
-        val rest = WEB_SCHEMES.firstOrNull { address.startsWith(it, ignoreCase = true) }?.let { address.substring(it.length) }
-            ?: return LinkTarget.Inert
+        val rest =
+            WEB_SCHEMES.firstOrNull { address.startsWith(it, ignoreCase = true) }?.let { address.substring(it.length) }
+                ?: return LinkTarget.Inert
         val host = hostOf(rest)
         return if (host.isEmpty()) LinkTarget.Inert else LinkTarget.Web(address, host)
     }
@@ -41,10 +49,11 @@ internal object LinkRules {
      * Each heading's anchor, mapped to the top-level block that holds it — the heading itself, or the
      * quote or list it sits in — so a `#section` link can bring that block into view.
      */
-    fun sections(document: MarkdownDocument): Map<String, Int> = buildMap {
-        // Anchors are unique within a document (a repeat is numbered), so no anchor is put twice.
-        document.blocks.forEachIndexed { index, block -> anchorsIn(block).forEach { put(it, index) } }
-    }
+    fun sections(document: MarkdownDocument): Map<String, Int> =
+        buildMap {
+            // Anchors are unique within a document (a repeat is numbered), so no anchor is put twice.
+            document.blocks.forEachIndexed { index, block -> anchorsIn(block).forEach { put(it, index) } }
+        }
 
     /** The anchors of every heading in [block], at any depth (the reader limits how deep that is). */
     private fun anchorsIn(block: MdBlock): List<String> =
@@ -59,7 +68,10 @@ internal object LinkRules {
      * The heading a fragment names: as written, or percent-decoded as UTF-8 (how editors write
      * non-Latin anchors). Matched exactly — a fragment is case-sensitive, as a browser treats it.
      */
-    private fun section(fragment: String, sections: Map<String, Int>): LinkTarget {
+    private fun section(
+        fragment: String,
+        sections: Map<String, Int>,
+    ): LinkTarget {
         val index = sections[fragment] ?: percentDecoded(fragment)?.let { sections[it] }
         return if (index == null) LinkTarget.Inert else LinkTarget.Section(index)
     }

@@ -6,7 +6,11 @@ import dev.ehsanfahad.darkchamber.core.designsystem.DarkChamberMotion
  * How a tile arrives in, moves within, or leaves the grid — durations in milliseconds, and `null`
  * anywhere for "do not animate that at all".
  */
-internal data class TileArrival(val fadeIn: Int?, val fadeOut: Int?, val placement: Int?)
+internal data class TileArrival(
+    val fadeIn: Int?,
+    val fadeOut: Int?,
+    val placement: Int?,
+)
 
 /**
  * The arrival motion for a gallery tile, from the design system's tokens (`docs/DESIGN.md` §8).

@@ -22,22 +22,31 @@ import platform.posix.strerror
 internal actual fun openPlatformFile(path: Path): PlatformFile {
     val fd = open(path.toString(), O_RDONLY)
     if (fd < 0) throw IOException(failed("open"))
-    val size = memScoped {
-        val st = alloc<stat>()
-        if (fstat(fd, st.ptr) != 0) {
-            val message = failed("fstat")
-            close(fd)
-            throw IOException(message)
+    val size =
+        memScoped {
+            val st = alloc<stat>()
+            if (fstat(fd, st.ptr) != 0) {
+                val message = failed("fstat")
+                close(fd)
+                throw IOException(message)
+            }
+            st.st_size
         }
-        st.st_size
-    }
     return DescriptorFile(fd, size)
 }
 
 // pread reads at a position without moving the descriptor's offset.
 @OptIn(ExperimentalForeignApi::class)
-private class DescriptorFile(private val fd: Int, override val size: Long) : PlatformFile {
-    override fun read(position: Long, into: ByteArray, offset: Int, length: Int): Int {
+private class DescriptorFile(
+    private val fd: Int,
+    override val size: Long,
+) : PlatformFile {
+    override fun read(
+        position: Long,
+        into: ByteArray,
+        offset: Int,
+        length: Int,
+    ): Int {
         val n = into.usePinned { pinned -> pread(fd, pinned.addressOf(offset), length.toULong(), position) }
         if (n < 0) throw IOException(failed("pread"))
         return n.toInt()

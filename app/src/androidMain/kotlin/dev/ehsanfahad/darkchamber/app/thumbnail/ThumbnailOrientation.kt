@@ -31,22 +31,30 @@ internal data class ThumbnailTransform(
  * not rotating at all. Most images reaching this have no tag: every PNG, every screenshot, anything
  * a metadata scrubber has already been through.
  */
-internal fun orientationTransform(orientation: Int): ThumbnailTransform = when (orientation) {
-    ExifInterface.ORIENTATION_ROTATE_90 -> ThumbnailTransform(90, mirrored = false)
-    ExifInterface.ORIENTATION_ROTATE_180 -> ThumbnailTransform(180, mirrored = false)
-    ExifInterface.ORIENTATION_ROTATE_270 -> ThumbnailTransform(270, mirrored = false)
-    ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> ThumbnailTransform(0, mirrored = true)
-    // A vertical flip is a horizontal one turned through half a circle; expressing it that way
-    // means the matrix below only ever needs one kind of flip.
-    ExifInterface.ORIENTATION_FLIP_VERTICAL -> ThumbnailTransform(180, mirrored = true)
-    // Transpose is a mirror plus **three** quarter turns and transverse is a mirror plus one — not
-    // the other way round, which is what this said until a device run drew both of them upside
-    // down. The pairing is easy to get backwards because the names suggest the diagonals rather
-    // than the rotations, and a unit test written from the same misreading agreed with it.
-    ExifInterface.ORIENTATION_TRANSPOSE -> ThumbnailTransform(270, mirrored = true)
-    ExifInterface.ORIENTATION_TRANSVERSE -> ThumbnailTransform(90, mirrored = true)
-    else -> ThumbnailTransform(0, mirrored = false)
-}
+internal fun orientationTransform(orientation: Int): ThumbnailTransform =
+    when (orientation) {
+        ExifInterface.ORIENTATION_ROTATE_90 -> ThumbnailTransform(90, mirrored = false)
+
+        ExifInterface.ORIENTATION_ROTATE_180 -> ThumbnailTransform(180, mirrored = false)
+
+        ExifInterface.ORIENTATION_ROTATE_270 -> ThumbnailTransform(270, mirrored = false)
+
+        ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> ThumbnailTransform(0, mirrored = true)
+
+        // A vertical flip is a horizontal one turned through half a circle; expressing it that way
+        // means the matrix below only ever needs one kind of flip.
+        ExifInterface.ORIENTATION_FLIP_VERTICAL -> ThumbnailTransform(180, mirrored = true)
+
+        // Transpose is a mirror plus **three** quarter turns and transverse is a mirror plus one — not
+        // the other way round, which is what this said until a device run drew both of them upside
+        // down. The pairing is easy to get backwards because the names suggest the diagonals rather
+        // than the rotations, and a unit test written from the same misreading agreed with it.
+        ExifInterface.ORIENTATION_TRANSPOSE -> ThumbnailTransform(270, mirrored = true)
+
+        ExifInterface.ORIENTATION_TRANSVERSE -> ThumbnailTransform(90, mirrored = true)
+
+        else -> ThumbnailTransform(0, mirrored = false)
+    }
 
 /**
  * Whether this MIME is one whose files carry an orientation tag worth opening the source for.
@@ -55,8 +63,7 @@ internal fun orientationTransform(orientation: Int): ThumbnailTransform = when (
  * materialises on demand that is not free. JPEG and HEIC carry one; PNG, WebP and GIF as this app
  * encounters them do not, so asking would be a round-trip spent to learn nothing.
  */
-internal fun carriesOrientation(mime: String): Boolean =
-    ORIENTED_MIMES.any { mime.equals(it, ignoreCase = true) }
+internal fun carriesOrientation(mime: String): Boolean = ORIENTED_MIMES.any { mime.equals(it, ignoreCase = true) }
 
 /** What an image with no orientation tag needs doing to it: nothing. */
 internal val UPRIGHT = ThumbnailTransform(degrees = 0, mirrored = false)
@@ -69,13 +76,14 @@ internal val UPRIGHT = ThumbnailTransform(degrees = 0, mirrored = false)
  * produced it. `ExifInterface` reads the header and stops.
  */
 internal fun readOrientation(open: () -> InputStream): ThumbnailTransform {
-    val orientation = try {
-        open().use { stream ->
-            ExifInterface(stream).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
+    val orientation =
+        try {
+            open().use { stream ->
+                ExifInterface(stream).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
+            }
+        } catch (_: Exception) {
+            return UPRIGHT
         }
-    } catch (_: Exception) {
-        return UPRIGHT
-    }
     return orientationTransform(orientation)
 }
 
@@ -86,11 +94,12 @@ internal fun readOrientation(open: () -> InputStream): ThumbnailTransform {
  */
 internal fun Bitmap.transformedBy(transform: ThumbnailTransform): Bitmap {
     if (transform.isIdentity) return this
-    val matrix = Matrix().apply {
-        // Mirror before rotating, which is the order the tag's own vocabulary is defined in.
-        if (transform.mirrored) postScale(-1f, 1f)
-        if (transform.degrees != 0) postRotate(transform.degrees.toFloat())
-    }
+    val matrix =
+        Matrix().apply {
+            // Mirror before rotating, which is the order the tag's own vocabulary is defined in.
+            if (transform.mirrored) postScale(-1f, 1f)
+            if (transform.degrees != 0) postRotate(transform.degrees.toFloat())
+        }
     return try {
         Bitmap.createBitmap(this, 0, 0, width, height, matrix, true)
     } catch (_: Exception) {

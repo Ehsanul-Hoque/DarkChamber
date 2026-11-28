@@ -1,5 +1,7 @@
 package dev.ehsanfahad.darkchamber.app.root
 
+import coil3.ImageLoader
+import coil3.PlatformContext
 import com.arkivanov.decompose.ComponentContext
 import com.arkivanov.decompose.router.stack.ChildStack
 import com.arkivanov.decompose.router.stack.StackNavigation
@@ -12,12 +14,19 @@ import com.arkivanov.decompose.value.subscribe
 import com.arkivanov.essenty.backhandler.BackCallback
 import com.arkivanov.essenty.backhandler.BackHandlerOwner
 import com.arkivanov.essenty.lifecycle.doOnDestroy
-import coil3.ImageLoader
-import coil3.PlatformContext
 import com.arkivanov.essenty.lifecycle.doOnStop
+import dev.ehsanfahad.darkchamber.app.VaultBootstrap
 import dev.ehsanfahad.darkchamber.app.camera.ScratchClips
 import dev.ehsanfahad.darkchamber.app.camera.UnavailableCamera
 import dev.ehsanfahad.darkchamber.app.camera.UnknownFreeSpace
+import dev.ehsanfahad.darkchamber.app.nowEpochMillis
+import dev.ehsanfahad.darkchamber.core.crypto.CryptoEngine
+import dev.ehsanfahad.darkchamber.core.crypto.DchmCodec
+import dev.ehsanfahad.darkchamber.core.crypto.VaultSession
+import dev.ehsanfahad.darkchamber.core.model.ItemFilter
+import dev.ehsanfahad.darkchamber.core.vault.NoThumbnails
+import dev.ehsanfahad.darkchamber.core.vault.ThumbnailEncoder
+import dev.ehsanfahad.darkchamber.core.vault.VaultObjects
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraComponent
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraController
 import dev.ehsanfahad.darkchamber.feature.camera.api.CameraDestination
@@ -26,35 +35,23 @@ import dev.ehsanfahad.darkchamber.feature.camera.api.FreeSpace
 import dev.ehsanfahad.darkchamber.feature.camera.cameraComponent
 import dev.ehsanfahad.darkchamber.feature.camera.cameraSession
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
+import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryOrder
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryScope
-import dev.ehsanfahad.darkchamber.feature.vault.api.label
+import dev.ehsanfahad.darkchamber.feature.vault.api.LinkOpener
+import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerDisplay
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultAlbumsComponent
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultGalleryComponent
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultImports
-import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryOrder
-import dev.ehsanfahad.darkchamber.feature.vault.api.VaultViewerComponent
-import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerDisplay
-import dev.ehsanfahad.darkchamber.feature.vault.api.LinkOpener
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPdfRenderer
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPlayerFactory
+import dev.ehsanfahad.darkchamber.feature.vault.api.VaultViewerComponent
 import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerImageDecoder
-import dev.ehsanfahad.darkchamber.feature.vault.vaultViewerComponent
+import dev.ehsanfahad.darkchamber.feature.vault.api.label
 import dev.ehsanfahad.darkchamber.feature.vault.vaultAlbumsComponent
 import dev.ehsanfahad.darkchamber.feature.vault.vaultGalleryComponent
 import dev.ehsanfahad.darkchamber.feature.vault.vaultImageLoader
 import dev.ehsanfahad.darkchamber.feature.vault.vaultImports
-import dev.ehsanfahad.darkchamber.app.VaultBootstrap
-import dev.ehsanfahad.darkchamber.app.nowEpochMillis
-import dev.ehsanfahad.darkchamber.core.crypto.CryptoEngine
-import dev.ehsanfahad.darkchamber.core.model.ItemFilter
-import dev.ehsanfahad.darkchamber.core.crypto.DchmCodec
-import dev.ehsanfahad.darkchamber.core.crypto.VaultSession
-import dev.ehsanfahad.darkchamber.core.vault.NoThumbnails
-import dev.ehsanfahad.darkchamber.core.vault.ThumbnailEncoder
-import dev.ehsanfahad.darkchamber.core.vault.VaultObjects
-import org.koin.core.Koin
-import org.koin.core.qualifier.named
-import org.koin.core.scope.Scope
+import dev.ehsanfahad.darkchamber.feature.vault.vaultViewerComponent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -63,6 +60,9 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import org.koin.core.Koin
+import org.koin.core.qualifier.named
+import org.koin.core.scope.Scope
 import kotlin.coroutines.CoroutineContext
 import kotlin.random.Random
 import kotlin.random.nextULong
@@ -149,15 +149,24 @@ sealed interface UnlockedChild {
      * "not the whole vault" and no more, which was enough while the chrome only had an entry point
      * to hide and not a place to name — and two spellings of one fact is one of them going stale.
      */
-    class Gallery(val component: VaultGalleryComponent, val scope: GalleryScope) : UnlockedChild
+    class Gallery(
+        val component: VaultGalleryComponent,
+        val scope: GalleryScope,
+    ) : UnlockedChild
 
-    class Albums(val component: VaultAlbumsComponent) : UnlockedChild
+    class Albums(
+        val component: VaultAlbumsComponent,
+    ) : UnlockedChild
 
     /** The camera, opened on the listing beneath it and drawn full-screen over the chrome. */
-    class Camera(val component: CameraComponent) : UnlockedChild
+    class Camera(
+        val component: CameraComponent,
+    ) : UnlockedChild
 
     /** The viewer, swiping through the listing that opened it, drawn full-screen over the chrome. */
-    class Viewer(val component: VaultViewerComponent) : UnlockedChild
+    class Viewer(
+        val component: VaultViewerComponent,
+    ) : UnlockedChild
 }
 
 class DefaultUnlockedComponent(
@@ -203,8 +212,8 @@ class DefaultUnlockedComponent(
      * on-background teardown, which is why the notice can honestly say leaving locks the vault.
      */
     private val onLeave: () -> Unit,
-) : UnlockedComponent, ComponentContext by componentContext {
-
+) : UnlockedComponent,
+    ComponentContext by componentContext {
     private val scope: Scope =
         koin.createScope("vault-session-${Random.nextULong()}", named(SESSION_SCOPE)).apply {
             declare(vault.session)
@@ -241,9 +250,10 @@ class DefaultUnlockedComponent(
      * ever built. Reading the value there would *construct* a loader for a session that never drew
      * a tile — allocating a cache in order to empty it.
      */
-    private val lazyImageLoader: Lazy<ImageLoader?> = lazy {
-        koin.getOrNull<PlatformContext>()?.let { context -> vaultImageLoader(context, scope.get()) }
-    }
+    private val lazyImageLoader: Lazy<ImageLoader?> =
+        lazy {
+            koin.getOrNull<PlatformContext>()?.let { context -> vaultImageLoader(context, scope.get()) }
+        }
 
     override val imageLoader: ImageLoader? get() = lazyImageLoader.value
 
@@ -358,13 +368,14 @@ class DefaultUnlockedComponent(
         // module has shipped that defect once already.
         lifecycle.doOnDestroy { backHandler.unregister(leaveBack) }
 
-        val navigated = stack.subscribe { current ->
-            leaveBack.isEnabled = current.backStack.isEmpty()
-            // Any navigation starts over. A press at the grid, a trip into albums and a press on the
-            // way back is three presses by one finger, and the third must not confirm the first —
-            // the offer was made about a screen the user has since left.
-            disarmLeave()
-        }
+        val navigated =
+            stack.subscribe { current ->
+                leaveBack.isEnabled = current.backStack.isEmpty()
+                // Any navigation starts over. A press at the grid, a trip into albums and a press on the
+                // way back is three presses by one finger, and the third must not confirm the first —
+                // the offer was made about a screen the user has since left.
+                disarmLeave()
+            }
         lifecycle.doOnDestroy(navigated::cancel)
     }
 
@@ -434,10 +445,11 @@ class DefaultUnlockedComponent(
         leaveArmedAt = timeSource.markNow()
         _leaveNotice.value = true
         noticeWork?.cancel()
-        noticeWork = noticeScope.launch {
-            delay(leaveWindow)
-            disarmLeave()
-        }
+        noticeWork =
+            noticeScope.launch {
+                delay(leaveWindow)
+                disarmLeave()
+            }
     }
 
     /** No offer standing, and nothing on screen saying there is. */
@@ -474,95 +486,107 @@ class DefaultUnlockedComponent(
      */
     private var openingViewer: Pair<GalleryOrder, String>? = null
 
-    private fun createChild(config: Config, context: ComponentContext): UnlockedChild =
+    private fun createChild(
+        config: Config,
+        context: ComponentContext,
+    ): UnlockedChild =
         when (config) {
             is Config.Gallery -> {
                 // VaultObjects comes from the session scope, so the gallery cannot outlive the
                 // session; the import batch is the session's, and the gallery only watches it.
-                val gallery = vaultGalleryComponent(
-                    componentContext = context,
-                    vaultObjects = scope.get(),
-                    imports = imports,
-                    mainContext = mainContext + featureWork,
-                    // The same dispatcher the import's encrypt uses, for the same reason: an album
-                    // rename or delete is a blocking write, and the main thread is where it would be
-                    // felt.
-                    ioContext = ioContext,
-                    filter = config.filter.toItemFilter(),
-                    // What the album grid already knew this album was called, so the bar above has
-                    // its name in this first frame rather than a catalog round trip later. Matched
-                    // on the id: a name left over from anything else is not this screen's.
-                    openedAlbumName = (config.filter as? Config.Filter.Album)?.let { album ->
-                        openingAlbum?.takeIf { it.first == album.idHex }?.second
-                    },
-                    // An album that has been deleted, or that disappeared while being looked at, has
-                    // no screen left to be. `pop`, not a push: this child *is* the album, so leaving
-                    // it means going back to whatever opened it — which is the album grid.
-                    onLeaveAlbum = { navigation.pop() },
-                    // The camera opens on this listing: the config's own filter, so its photos go
-                    // where an import from here would. `pushNew` for the reason the albums entry
-                    // gives — a double tap must be one camera, not a duplicate-config exception.
-                    onOpenCamera = { navigation.pushNew(Config.Camera(config.filter)) },
-                    // A tile tapped outside selecting opens the viewer on this listing. Set, pushed,
-                    // cleared — as the album name is — so the order and the typed search reach the
-                    // viewer being built and nothing holds them afterwards. `pushNew` for the reason
-                    // the camera's entry gives: a double tap is one viewer.
-                    onOpenItem = { id, order, query ->
-                        openingViewer = order to query
-                        navigation.pushNew(Config.Viewer(config.filter, id.toHex()))
-                        openingViewer = null
-                    },
-                )
+                val gallery =
+                    vaultGalleryComponent(
+                        componentContext = context,
+                        vaultObjects = scope.get(),
+                        imports = imports,
+                        mainContext = mainContext + featureWork,
+                        // The same dispatcher the import's encrypt uses, for the same reason: an album
+                        // rename or delete is a blocking write, and the main thread is where it would be
+                        // felt.
+                        ioContext = ioContext,
+                        filter = config.filter.toItemFilter(),
+                        // What the album grid already knew this album was called, so the bar above has
+                        // its name in this first frame rather than a catalog round trip later. Matched
+                        // on the id: a name left over from anything else is not this screen's.
+                        openedAlbumName =
+                            (config.filter as? Config.Filter.Album)?.let { album ->
+                                openingAlbum?.takeIf { it.first == album.idHex }?.second
+                            },
+                        // An album that has been deleted, or that disappeared while being looked at, has
+                        // no screen left to be. `pop`, not a push: this child *is* the album, so leaving
+                        // it means going back to whatever opened it — which is the album grid.
+                        onLeaveAlbum = { navigation.pop() },
+                        // The camera opens on this listing: the config's own filter, so its photos go
+                        // where an import from here would. `pushNew` for the reason the albums entry
+                        // gives — a double tap must be one camera, not a duplicate-config exception.
+                        onOpenCamera = { navigation.pushNew(Config.Camera(config.filter)) },
+                        // A tile tapped outside selecting opens the viewer on this listing. Set, pushed,
+                        // cleared — as the album name is — so the order and the typed search reach the
+                        // viewer being built and nothing holds them afterwards. `pushNew` for the reason
+                        // the camera's entry gives: a double tap is one viewer.
+                        onOpenItem = { id, order, query ->
+                            openingViewer = order to query
+                            navigation.pushNew(Config.Viewer(config.filter, id.toHex()))
+                            openingViewer = null
+                        },
+                    )
                 // Read back off the component rather than mapped from the config a second time.
                 // The feature decides what its filter means for a screen, and it publishes that
                 // once at construction — so this cannot disagree with the screen it labels.
                 UnlockedChild.Gallery(component = gallery, scope = gallery.state.value.scope)
             }
-            Config.Albums -> UnlockedChild.Albums(
-                vaultAlbumsComponent(
-                    componentContext = context,
-                    vaultObjects = scope.get(),
-                    mainContext = mainContext + featureWork,
-                    // Tapping an album pushes a gallery filtered to it, so the item grid is one
-                    // screen serving three listings rather than three screens to keep in agreement.
-                    // `pushNew` for the same reason as the albums entry above, and here it is
-                    // reachable with one finger: a double tap on an album tile fires this twice
-                    // before the first screen is on top, and two identical configs is an exception
-                    // rather than a second screen.
-                    onOpenAlbum = { id, name ->
-                        val idHex = id.toHex()
-                        // Set, pushed, cleared — the push builds the child synchronously, so the
-                        // name is read inside this call and nothing holds it afterwards. Cleared
-                        // even when the push is dropped as a duplicate.
-                        openingAlbum = name?.let { idHex to it }
-                        navigation.pushNew(Config.Gallery(Config.Filter.Album(idHex)))
-                        openingAlbum = null
-                    },
-                    onOpenUnfiled = { navigation.pushNew(Config.Gallery(Config.Filter.Unfiled)) },
-                ),
-            )
-            is Config.Camera -> UnlockedChild.Camera(
-                cameraComponent(
-                    componentContext = context,
-                    // **The session's, not the screen's.** Closing the camera destroys this child
-                    // while a photo or a clip may still be saving, and it was taken on purpose; only
-                    // a lock — cancelling [featureWork] — may abandon it.
-                    session = cameraSession,
-                    // Optional, for the thumbnail encoder's reason: see [UnavailableCamera].
-                    camera = koin.getOrNull<CameraController>() ?: UnavailableCamera,
-                    destination = config.filter.toCameraDestination(),
-                    // The app's one sentence for a name that will not open, from the feature that
-                    // draws every other damaged name, so the camera never spells it.
-                    unreadableNameLabel = AlbumTileName.Unreadable.label(),
-                    onClose = { navigation.pop() },
-                    mainContext = mainContext + featureWork,
-                    // The last-shot tile opens the viewer over the camera's own listing, at the shot,
-                    // with no handoff: newest first and unsearched, which is the camera's order. The
-                    // camera underneath stops while covered, releasing the hardware; back returns to
-                    // it still filing into the same place. `pushNew` for a double tap.
-                    onOpenLastShot = { id -> navigation.pushNew(Config.Viewer(config.filter, id.toHex())) },
-                ),
-            )
+
+            Config.Albums -> {
+                UnlockedChild.Albums(
+                    vaultAlbumsComponent(
+                        componentContext = context,
+                        vaultObjects = scope.get(),
+                        mainContext = mainContext + featureWork,
+                        // Tapping an album pushes a gallery filtered to it, so the item grid is one
+                        // screen serving three listings rather than three screens to keep in agreement.
+                        // `pushNew` for the same reason as the albums entry above, and here it is
+                        // reachable with one finger: a double tap on an album tile fires this twice
+                        // before the first screen is on top, and two identical configs is an exception
+                        // rather than a second screen.
+                        onOpenAlbum = { id, name ->
+                            val idHex = id.toHex()
+                            // Set, pushed, cleared — the push builds the child synchronously, so the
+                            // name is read inside this call and nothing holds it afterwards. Cleared
+                            // even when the push is dropped as a duplicate.
+                            openingAlbum = name?.let { idHex to it }
+                            navigation.pushNew(Config.Gallery(Config.Filter.Album(idHex)))
+                            openingAlbum = null
+                        },
+                        onOpenUnfiled = { navigation.pushNew(Config.Gallery(Config.Filter.Unfiled)) },
+                    ),
+                )
+            }
+
+            is Config.Camera -> {
+                UnlockedChild.Camera(
+                    cameraComponent(
+                        componentContext = context,
+                        // **The session's, not the screen's.** Closing the camera destroys this child
+                        // while a photo or a clip may still be saving, and it was taken on purpose; only
+                        // a lock — cancelling [featureWork] — may abandon it.
+                        session = cameraSession,
+                        // Optional, for the thumbnail encoder's reason: see [UnavailableCamera].
+                        camera = koin.getOrNull<CameraController>() ?: UnavailableCamera,
+                        destination = config.filter.toCameraDestination(),
+                        // The app's one sentence for a name that will not open, from the feature that
+                        // draws every other damaged name, so the camera never spells it.
+                        unreadableNameLabel = AlbumTileName.Unreadable.label(),
+                        onClose = { navigation.pop() },
+                        mainContext = mainContext + featureWork,
+                        // The last-shot tile opens the viewer over the camera's own listing, at the shot,
+                        // with no handoff: newest first and unsearched, which is the camera's order. The
+                        // camera underneath stops while covered, releasing the hardware; back returns to
+                        // it still filing into the same place. `pushNew` for a double tap.
+                        onOpenLastShot = { id -> navigation.pushNew(Config.Viewer(config.filter, id.toHex())) },
+                    ),
+                )
+            }
+
             is Config.Viewer -> {
                 val shown = openingViewer
                 UnlockedChild.Viewer(
@@ -581,7 +605,8 @@ class DefaultUnlockedComponent(
                         onBack = { lastViewedId ->
                             navigation.pop {
                                 (stack.value.active.instance as? UnlockedChild.Gallery)
-                                    ?.component?.revealItem(lastViewedId)
+                                    ?.component
+                                    ?.revealItem(lastViewedId)
                             }
                         },
                         // Optional, for the decoder's reason: without them a video or audio page
@@ -613,12 +638,16 @@ class DefaultUnlockedComponent(
      * never decrypted bytes, never text the user typed — which is what keeps [Viewer] safe to hold.
      */
     private sealed interface Config {
-        data class Gallery(val filter: Filter = Filter.All) : Config
+        data class Gallery(
+            val filter: Filter = Filter.All,
+        ) : Config
 
         data object Albums : Config
 
         /** The camera, filing into and counting [filter] — the listing it was opened from. */
-        data class Camera(val filter: Filter) : Config
+        data class Camera(
+            val filter: Filter,
+        ) : Config
 
         /**
          * The viewer on [filter]'s listing, opened at the item [startIdHex]. **No order and no
@@ -626,7 +655,10 @@ class DefaultUnlockedComponent(
          * held for the screen's life and serialized by a host that preserves state. Both arrive
          * through [openingViewer] instead.
          */
-        data class Viewer(val filter: Filter, val startIdHex: String) : Config
+        data class Viewer(
+            val filter: Filter,
+            val startIdHex: String,
+        ) : Config
 
         /**
          * Which items a gallery child lists.
@@ -643,7 +675,9 @@ class DefaultUnlockedComponent(
 
             data object Unfiled : Filter
 
-            data class Album(val idHex: String) : Filter
+            data class Album(
+                val idHex: String,
+            ) : Filter
         }
     }
 

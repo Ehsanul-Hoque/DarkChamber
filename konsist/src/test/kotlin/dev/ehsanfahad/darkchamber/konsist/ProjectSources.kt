@@ -13,11 +13,11 @@ import com.lemonappdev.konsist.api.declaration.KoFileDeclaration
  * production code may not.
  */
 internal object ProjectSources {
-
     private const val SRC = "/src/"
 
     val productionFiles: List<KoFileDeclaration> by lazy {
-        Konsist.scopeFromProject()
+        Konsist
+            .scopeFromProject()
             .files
             .filterNot { it.projectPath.contains("/build/") }
             .filter { isProductionSourceSet(it.projectPath) }
@@ -36,8 +36,7 @@ internal object ProjectSources {
     }
 
     /** True when the file lives in the given Gradle module directory, e.g. `core/crypto`. */
-    fun KoFileDeclaration.inModule(moduleDir: String): Boolean =
-        projectPath.startsWith("/$moduleDir/")
+    fun KoFileDeclaration.inModule(moduleDir: String): Boolean = projectPath.startsWith("/$moduleDir/")
 
     /**
      * The file's text with comment lines dropped, for rules that match on source *text*.
@@ -56,6 +55,5 @@ internal object ProjectSources {
             .map { it.trim() }
             .filterNot { line ->
                 line.startsWith("//") || line.startsWith("*") || line.startsWith("/*")
-            }
-            .joinToString("\n")
+            }.joinToString("\n")
 }

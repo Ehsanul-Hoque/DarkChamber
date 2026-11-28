@@ -23,16 +23,19 @@ import kotlin.time.Duration
  * Both are options on `setItems`, which is why this does not use the simpler `string` setter:
  * that API has nowhere to put them.
  */
-class IosSecretClipboard(private val lifetime: Duration = SECRET_CLIP_LIFETIME) : SecretClipboard {
-
+class IosSecretClipboard(
+    private val lifetime: Duration = SECRET_CLIP_LIFETIME,
+) : SecretClipboard {
     override fun copySecret(text: String) {
         val item = mapOf<Any?, Any?>(UTTypeUTF8PlainText.identifier to text)
-        val options = mapOf<Any?, Any?>(
-            UIPasteboardOptionLocalOnly to true,
-            UIPasteboardOptionExpirationDate to NSDate.dateWithTimeIntervalSinceNow(
-                lifetime.inWholeMilliseconds / MILLIS_PER_SECOND,
-            ),
-        )
+        val options =
+            mapOf<Any?, Any?>(
+                UIPasteboardOptionLocalOnly to true,
+                UIPasteboardOptionExpirationDate to
+                    NSDate.dateWithTimeIntervalSinceNow(
+                        lifetime.inWholeMilliseconds / MILLIS_PER_SECOND,
+                    ),
+            )
 
         UIPasteboard.generalPasteboard.setItems(listOf(item), options)
     }

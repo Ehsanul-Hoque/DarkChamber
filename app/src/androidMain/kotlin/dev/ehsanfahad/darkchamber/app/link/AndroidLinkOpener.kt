@@ -17,8 +17,9 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.LinkOpener
  * [front] answers how to start an address from the activity in front, or `null` when no activity is in
  * front; the app builds it with [fromFront], tests with a stand-in.
  */
-internal class AndroidLinkOpener(private val front: () -> ((address: String) -> Unit)?) : LinkOpener {
-
+internal class AndroidLinkOpener(
+    private val front: () -> ((address: String) -> Unit)?,
+) : LinkOpener {
     companion object {
         /**
          * The opener for the app: an address starts as a browsable `VIEW` intent from [activity], the one
@@ -56,6 +57,9 @@ internal class AndroidLinkOpener(private val front: () -> ((address: String) -> 
  * Starts [address] from [activity] as a browsable `VIEW` intent. Private: it checks nothing itself, so
  * only the opener — which checks the address first — may reach it.
  */
-private fun startBrowsable(activity: Activity, address: String) {
+private fun startBrowsable(
+    activity: Activity,
+    address: String,
+) {
     activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(address)).addCategory(Intent.CATEGORY_BROWSABLE))
 }

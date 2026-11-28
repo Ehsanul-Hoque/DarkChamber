@@ -25,23 +25,24 @@ fun interface CatalogProvider {
  * platform-bound bindings ([dev.ehsanfahad.darkchamber.app.VaultRootResolver], [CatalogProvider],
  * and the `SecureKeyStore`) come from [platformModule].
  */
-val commonAppModule: Module = module {
-    // The one sanctioned cryptographic primitive seam (hard rule #2).
-    single<CryptoEngine> { CryptographyKotlinEngine() }
+val commonAppModule: Module =
+    module {
+        // The one sanctioned cryptographic primitive seam (hard rule #2).
+        single<CryptoEngine> { CryptographyKotlinEngine() }
 
-    // Shared by the pickers (which start the handoff) and the gate (which reads it before locking
-    // on background), so it must be one instance for the whole process.
-    single { SystemUiHandoff() }
+        // Shared by the pickers (which start the handoff) and the gate (which reads it before locking
+        // on background), so it must be one instance for the whole process.
+        single { SystemUiHandoff() }
 
-    single {
-        VaultBootstrap(
-            rootResolver = get(),
-            engine = get(),
-            catalogProvider = get(),
-            secureKeyStore = get(),
-        )
+        single {
+            VaultBootstrap(
+                rootResolver = get(),
+                engine = get(),
+                catalogProvider = get(),
+                secureKeyStore = get(),
+            )
+        }
     }
-}
 
 /** The platform-bound half of the composition root — bound in `androidMain` / `iosMain`. */
 expect fun platformModule(): Module

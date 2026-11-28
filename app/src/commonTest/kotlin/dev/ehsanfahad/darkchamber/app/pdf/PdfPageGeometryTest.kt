@@ -46,7 +46,11 @@ class PdfPageGeometryTest {
     // ---- where the page lands ---------------------------------------------------------------------
 
     // A crop box 400 × 600 pt at (100, 50) in its page; bitmaps sized to its shown shape at 2 px a point.
-    private fun corners(rotation: Int, widthPx: Int, heightPx: Int): Map<String, Pair<Double, Double>> {
+    private fun corners(
+        rotation: Int,
+        widthPx: Int,
+        heightPx: Int,
+    ): Map<String, Pair<Double, Double>> {
         val t = PdfPageGeometry.transform(100.0, 50.0, 400.0, 600.0, rotation, widthPx, heightPx)
         return mapOf(
             "bottom-left" to t.apply(100.0, 50.0),
@@ -56,9 +60,16 @@ class PdfPageGeometryTest {
         )
     }
 
-    private fun assertAt(expected: Pair<Double, Double>, actual: Pair<Double, Double>?, what: String) {
+    private fun assertAt(
+        expected: Pair<Double, Double>,
+        actual: Pair<Double, Double>?,
+        what: String,
+    ) {
         val (x, y) = actual!!
-        assertTrue(abs(x - expected.first) < 1e-9 && abs(y - expected.second) < 1e-9, "$what: expected $expected, was $actual")
+        assertTrue(
+            abs(x - expected.first) < 1e-9 && abs(y - expected.second) < 1e-9,
+            "$what: expected $expected, was $actual",
+        )
     }
 
     /** Unturned: the crop box fills the bitmap, its origin at the bitmap's — the bleed outside it falls off. */

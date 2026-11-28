@@ -31,24 +31,37 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.label
  *   pushed. A placeholder would be a word the user then watches get replaced; the bar simply reads
  *   as the vault until there is something true to add.
  */
-internal fun crumbFor(child: UnlockedChild, gallery: GalleryState?): String? =
+internal fun crumbFor(
+    child: UnlockedChild,
+    gallery: GalleryState?,
+): String? =
     when (child) {
         // Named, not blank: this screen is a sibling of the grid rather than a filtered view of it,
         // so without a word here the bar is identical to the one the user just left.
-        is UnlockedChild.Albums -> ALBUMS
+        is UnlockedChild.Albums -> {
+            ALBUMS
+        }
 
         // Drawn without the bar (see [showsUnlockedBar]); its own top bar names its destination.
-        is UnlockedChild.Camera -> null
+        is UnlockedChild.Camera -> {
+            null
+        }
 
-        is UnlockedChild.Viewer -> null
+        is UnlockedChild.Viewer -> {
+            null
+        }
 
-        is UnlockedChild.Gallery -> when (val listing = child.scope) {
-            // The vault *is* the destination, so a second label would repeat the name beside it.
-            GalleryScope.WholeVault -> null
-            GalleryScope.Unfiled -> UNFILED
-            // The one case where the crumb earns its place, and the one that cannot be a constant.
-            // Read live, so a rename made from this very screen is reflected rather than stale.
-            GalleryScope.Album -> (gallery?.album as? AlbumState.Present)?.name?.label()
+        is UnlockedChild.Gallery -> {
+            when (val listing = child.scope) {
+                // The vault *is* the destination, so a second label would repeat the name beside it.
+                GalleryScope.WholeVault -> null
+
+                GalleryScope.Unfiled -> UNFILED
+
+                // The one case where the crumb earns its place, and the one that cannot be a constant.
+                // Read live, so a rename made from this very screen is reflected rather than stale.
+                GalleryScope.Album -> (gallery?.album as? AlbumState.Present)?.name?.label()
+            }
         }
     }
 

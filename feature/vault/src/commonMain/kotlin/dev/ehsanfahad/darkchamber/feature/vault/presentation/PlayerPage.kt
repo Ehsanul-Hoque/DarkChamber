@@ -43,8 +43,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -94,9 +94,16 @@ internal class PlayerActions(
 private sealed interface Feedback {
     val half: Half
 
-    data class Words(val text: String, override val half: Half) : Feedback
+    data class Words(
+        val text: String,
+        override val half: Half,
+    ) : Feedback
 
-    data class Level(val brightness: Boolean, val level: Float, override val half: Half) : Feedback
+    data class Level(
+        val brightness: Boolean,
+        val level: Float,
+        override val half: Half,
+    ) : Feedback
 }
 
 /**
@@ -132,165 +139,214 @@ internal fun PlayerPageView(
         val height = constraints.maxHeight.toFloat()
         // Level slides start only between the bars' places, clear of the system's own edge gestures.
         val margin = with(density) { BAND_MARGIN.toPx() }
-        val area = GestureArea(
-            width = width,
-            bandTop = insets.getTop(density) + margin,
-            bandBottom = height - insets.getBottom(density) - margin,
-            seekBar = null, // the seek bar sits over the page, so its drags never reach here
-        )
+        val area =
+            GestureArea(
+                width = width,
+                bandTop = insets.getTop(density) + margin,
+                bandBottom = height - insets.getBottom(density) - margin,
+                seekBar = null, // the seek bar sits over the page, so its drags never reach here
+            )
 
         // A screen reader takes every touch for itself — its double tap is an accessibility click on what
         // it has focused — so the gestures below never see it. The page offers the same things as
         // actions instead: show/hide as its click, the ten-second skips in the actions menu.
         val offered = PlayerChrome.readerActions(kind, hasPlayer = player != null)
-        val readerAction = if (offered.isEmpty()) {
-            Modifier
-        } else {
-            // A screen reader focuses a described node only if it can be clicked or holds nothing. The
-            // video page's node has its show/hide click; the audio page's has none and holds the badge,
-            // so it is made one unit (the badge's own text kept out) or it could never be focused.
-            Modifier.semantics(mergeDescendants = kind == PlayerKind.Audio) {
-                contentDescription = ViewerFormat.playerArea(kind)
-                if (ReaderAction.ToggleControls in offered) {
-                    onClick(label = ViewerFormat.controlsAction(controlsShown)) {
-                        onToggleBars()
-                        true
+        val readerAction =
+            if (offered.isEmpty()) {
+                Modifier
+            } else {
+                // A screen reader focuses a described node only if it can be clicked or holds nothing. The
+                // video page's node has its show/hide click; the audio page's has none and holds the badge,
+                // so it is made one unit (the badge's own text kept out) or it could never be focused.
+                Modifier.semantics(mergeDescendants = kind == PlayerKind.Audio) {
+                    contentDescription = ViewerFormat.playerArea(kind)
+                    if (ReaderAction.ToggleControls in offered) {
+                        onClick(label = ViewerFormat.controlsAction(controlsShown)) {
+                            onToggleBars()
+                            true
+                        }
                     }
-                }
-                customActions = offered.filter { it != ReaderAction.ToggleControls }.map { action ->
-                    val forward = action == ReaderAction.Forward
-                    CustomAccessibilityAction(ViewerFormat.skipAction(forward)) {
-                        actions.skip(forward)
-                        true
-                    }
+                    customActions =
+                        offered.filter { it != ReaderAction.ToggleControls }.map { action ->
+                            val forward = action == ReaderAction.Forward
+                            CustomAccessibilityAction(ViewerFormat.skipAction(forward)) {
+                                actions.skip(forward)
+                                true
+                            }
+                        }
                 }
             }
-        }
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .then(readerAction)
-                .pointerInput(kind, area, player) {
-                    detectTapGestures(
-                        onTap = {
-                            if (PlayerGestures.onTap(kind) == GestureAction.ToggleControls) onToggleBars()
-                        },
-                        onDoubleTap = { at ->
-                            if (player == null) return@detectTapGestures
-                            val skip = PlayerGestures.onDoubleTap(at.x, area) as GestureAction.Skip
-                            val forward = skip.byMs > 0
-                            actions.skip(forward)
-                            feedback = Feedback.Words(ViewerFormat.skipFeedback(forward), PlayerGestures.half(at.x, width))
-                            onInteraction()
-                        },
-                        onLongPress = { at ->
-                            if (player == null) return@detectTapGestures
-                            val hold = PlayerGestures.onHold(at.x, area) as GestureAction.Hold
-                            holding = true
-                            actions.holdSpeed(hold.speed == HeldSpeed.Fast)
-                            feedback = Feedback.Words(ViewerFormat.speed(hold.speed.speed), PlayerGestures.half(at.x, width))
-                        },
-                        onPress = {
-                            tryAwaitRelease()
-                            if (holding) {
-                                holding = false
-                                actions.releaseSpeed()
-                            }
-                        },
-                    )
-                }
-                .pointerInput(kind, area, player) {
-                    var owner = DragOwner.Nobody
-                    var level = 0f
-                    detectVerticalDragGestures(
-                        onDragStart = { start ->
-                            owner = if (player == null) {
-                                DragOwner.Nobody
-                            } else {
-                                PlayerGestures.dragOwner(kind, start, firstMove = Offset(0f, 1f), area = area)
-                            }
-                            level = when (owner) {
-                                DragOwner.Brightness -> actions.brightness() ?: run {
-                                    owner = DragOwner.Nobody
-                                    0f
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .then(readerAction)
+                    .pointerInput(kind, area, player) {
+                        detectTapGestures(
+                            onTap = {
+                                if (PlayerGestures.onTap(kind) == GestureAction.ToggleControls) onToggleBars()
+                            },
+                            onDoubleTap = { at ->
+                                if (player == null) return@detectTapGestures
+                                val skip = PlayerGestures.onDoubleTap(at.x, area) as GestureAction.Skip
+                                val forward = skip.byMs > 0
+                                actions.skip(forward)
+                                feedback =
+                                    Feedback.Words(ViewerFormat.skipFeedback(forward), PlayerGestures.half(at.x, width))
+                                onInteraction()
+                            },
+                            onLongPress = { at ->
+                                if (player == null) return@detectTapGestures
+                                val hold = PlayerGestures.onHold(at.x, area) as GestureAction.Hold
+                                holding = true
+                                actions.holdSpeed(hold.speed == HeldSpeed.Fast)
+                                feedback =
+                                    Feedback.Words(
+                                        ViewerFormat.speed(hold.speed.speed),
+                                        PlayerGestures.half(at.x, width),
+                                    )
+                            },
+                            onPress = {
+                                tryAwaitRelease()
+                                if (holding) {
+                                    holding = false
+                                    actions.releaseSpeed()
                                 }
-                                DragOwner.Volume -> actions.volume() ?: run {
-                                    owner = DragOwner.Nobody
-                                    0f
-                                }
-                                else -> 0f
-                            }
-                        },
-                        onDragEnd = { owner = DragOwner.Nobody },
-                        onDragCancel = { owner = DragOwner.Nobody },
-                        onVerticalDrag = { change, dy ->
-                            val brightness = owner == DragOwner.Brightness
-                            if (!brightness && owner != DragOwner.Volume) return@detectVerticalDragGestures
-                            change.consume()
-                            level = PlayerGestures.levelAfterSlide(level, dy, area)
-                            if (brightness) actions.setBrightness(level) else actions.setVolume(level)
-                            feedback = Feedback.Level(brightness, level, if (brightness) Half.Left else Half.Right)
-                        },
-                    )
-                },
+                            },
+                        )
+                    }.pointerInput(kind, area, player) {
+                        var owner = DragOwner.Nobody
+                        var level = 0f
+                        detectVerticalDragGestures(
+                            onDragStart = { start ->
+                                owner =
+                                    if (player == null) {
+                                        DragOwner.Nobody
+                                    } else {
+                                        PlayerGestures.dragOwner(kind, start, firstMove = Offset(0f, 1f), area = area)
+                                    }
+                                level =
+                                    when (owner) {
+                                        DragOwner.Brightness -> {
+                                            actions.brightness() ?: run {
+                                                owner = DragOwner.Nobody
+                                                0f
+                                            }
+                                        }
+
+                                        DragOwner.Volume -> {
+                                            actions.volume() ?: run {
+                                                owner = DragOwner.Nobody
+                                                0f
+                                            }
+                                        }
+
+                                        else -> {
+                                            0f
+                                        }
+                                    }
+                            },
+                            onDragEnd = { owner = DragOwner.Nobody },
+                            onDragCancel = { owner = DragOwner.Nobody },
+                            onVerticalDrag = { change, dy ->
+                                val brightness = owner == DragOwner.Brightness
+                                if (!brightness && owner != DragOwner.Volume) return@detectVerticalDragGestures
+                                change.consume()
+                                level = PlayerGestures.levelAfterSlide(level, dy, area)
+                                if (brightness) actions.setBrightness(level) else actions.setVolume(level)
+                                feedback = Feedback.Level(brightness, level, if (brightness) Half.Left else Half.Right)
+                            },
+                        )
+                    },
         ) {
             when (kind) {
-                PlayerKind.Video -> player?.Picture(Modifier.fillMaxSize())
-                PlayerKind.Audio -> Text(
-                    text = badge,
-                    style = DarkChamberTheme.typography.display,
-                    color = DarkChamberTheme.colors.textSecondary,
-                    // Above the centre control, which is centred too and would otherwise cover it. Not
-                    // spoken: the page itself is named "Audio", and the badge would be read as letters.
-                    modifier = Modifier.align(Alignment.Center).clearAndSetSemantics {}.layout { measurable, constraints ->
-                        val placeable = measurable.measure(constraints)
-                        val shift = PlayerChrome.badgeShiftAboveCentre(
-                            badgeHeight = placeable.height,
-                            centreSize = CENTRE_SIZE.roundToPx(),
-                            gap = BADGE_GAP.roundToPx(),
-                        )
-                        layout(placeable.width, placeable.height) {
-                            // The box centres this layout, so moving the badge by the shift moves it
-                            // from the centred position.
-                            placeable.place(0, shift)
-                        }
-                    },
-                )
+                PlayerKind.Video -> {
+                    player?.Picture(Modifier.fillMaxSize())
+                }
+
+                PlayerKind.Audio -> {
+                    Text(
+                        text = badge,
+                        style = DarkChamberTheme.typography.display,
+                        color = DarkChamberTheme.colors.textSecondary,
+                        // Above the centre control, which is centred too and would otherwise cover it. Not
+                        // spoken: the page itself is named "Audio", and the badge would be read as letters.
+                        modifier =
+                            Modifier.align(Alignment.Center).clearAndSetSemantics {}.layout { measurable, constraints ->
+                                val placeable = measurable.measure(constraints)
+                                val shift =
+                                    PlayerChrome.badgeShiftAboveCentre(
+                                        badgeHeight = placeable.height,
+                                        centreSize = CENTRE_SIZE.roundToPx(),
+                                        gap = BADGE_GAP.roundToPx(),
+                                    )
+                                layout(placeable.width, placeable.height) {
+                                    // The box centres this layout, so moving the badge by the shift moves it
+                                    // from the centred position.
+                                    placeable.place(0, shift)
+                                }
+                            },
+                    )
+                }
             }
             note?.let { TrackNoteLine(it, Modifier.align(Alignment.TopCenter)) }
-            feedback?.let { FeedbackBubble(it, Modifier.align(if (it.half == Half.Left) Alignment.CenterStart else Alignment.CenterEnd)) }
+            feedback?.let {
+                FeedbackBubble(
+                    it,
+                    Modifier.align(
+                        if (it.half ==
+                            Half.Left
+                        ) {
+                            Alignment.CenterStart
+                        } else {
+                            Alignment.CenterEnd
+                        },
+                    ),
+                )
+            }
         }
     }
 }
 
 /** What this device cannot play of the item, under the top bar's place. */
 @Composable
-private fun TrackNoteLine(note: TrackNote, modifier: Modifier) {
+private fun TrackNoteLine(
+    note: TrackNote,
+    modifier: Modifier = Modifier,
+) {
     Text(
         text = ViewerFormat.trackNote(note),
         style = DarkChamberTheme.typography.caption,
         color = DarkChamberTheme.colors.textPrimary,
         textAlign = TextAlign.Center,
-        modifier = modifier
-            .windowInsetsPadding(WindowInsets.safeDrawing)
-            .padding(top = NOTE_TOP)
-            .background(ScrimDark, DarkChamberTheme.shapes.medium)
-            .padding(horizontal = DarkChamberTheme.spacing.spaceSm, vertical = DarkChamberTheme.spacing.spaceXxs),
+        modifier =
+            modifier
+                .windowInsetsPadding(WindowInsets.safeDrawing)
+                .padding(top = NOTE_TOP)
+                .background(ScrimDark, DarkChamberTheme.shapes.medium)
+                .padding(horizontal = DarkChamberTheme.spacing.spaceSm, vertical = DarkChamberTheme.spacing.spaceXxs),
     )
 }
 
 @Composable
-private fun FeedbackBubble(feedback: Feedback, modifier: Modifier) {
+private fun FeedbackBubble(
+    feedback: Feedback,
+    modifier: Modifier = Modifier,
+) {
     val colors = DarkChamberTheme.colors
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = modifier
-            .padding(horizontal = DarkChamberTheme.spacing.spaceXl)
-            .background(ScrimDark, DarkChamberTheme.shapes.medium)
-            .padding(horizontal = DarkChamberTheme.spacing.spaceSm, vertical = DarkChamberTheme.spacing.spaceXs),
+        modifier =
+            modifier
+                .padding(horizontal = DarkChamberTheme.spacing.spaceXl)
+                .background(ScrimDark, DarkChamberTheme.shapes.medium)
+                .padding(horizontal = DarkChamberTheme.spacing.spaceSm, vertical = DarkChamberTheme.spacing.spaceXs),
     ) {
         when (feedback) {
-            is Feedback.Words -> Text(feedback.text, style = DarkChamberTheme.typography.title, color = colors.textPrimary)
+            is Feedback.Words -> {
+                Text(feedback.text, style = DarkChamberTheme.typography.title, color = colors.textPrimary)
+            }
+
             is Feedback.Level -> {
                 if (feedback.brightness) {
                     BrightnessMark(contentDescription = null)
@@ -310,18 +366,29 @@ private fun FeedbackBubble(feedback: Feedback, modifier: Modifier) {
 
 /** Play, pause or play again, in the middle of the page — shown and hidden with the bars. */
 @Composable
-internal fun CentreControlButton(visible: Boolean, state: PlayerState, onClick: () -> Unit, modifier: Modifier) {
+internal fun CentreControlButton(
+    visible: Boolean,
+    state: PlayerState,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val duration = if (prefersReducedMotion()) 0 else DarkChamberTheme.motion.motionBase
-    AnimatedVisibility(visible = visible, enter = fadeIn(tween(duration)), exit = fadeOut(tween(duration)), modifier = modifier) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(tween(duration)),
+        exit = fadeOut(tween(duration)),
+        modifier = modifier,
+    ) {
         val control = PlaybackRules.centreControl(PlaybackRules.status(state))
         val words = ViewerFormat.centreControl(control)
         Box(
             contentAlignment = Alignment.Center,
-            modifier = Modifier
-                .size(CENTRE_SIZE)
-                .background(ScrimDark, DarkChamberTheme.shapes.large)
-                .clickable(role = Role.Button, onClick = onClick)
-                .semantics { contentDescription = words },
+            modifier =
+                Modifier
+                    .size(CENTRE_SIZE)
+                    .background(ScrimDark, DarkChamberTheme.shapes.large)
+                    .clickable(role = Role.Button, onClick = onClick)
+                    .semantics { contentDescription = words },
         ) {
             val mark = Modifier.size(CENTRE_MARK)
             when (control) {
@@ -354,7 +421,14 @@ internal fun PlayerControls(
     var dragging by remember { mutableStateOf(false) }
     var dragFraction by remember { mutableFloatStateOf(0f) }
     val duration = state.durationMs
-    val shownPosition = if (dragging && duration != null) PlaybackRules.seekPosition(dragFraction, duration) else state.positionMs
+    val shownPosition =
+        if (dragging &&
+            duration != null
+        ) {
+            PlaybackRules.seekPosition(dragFraction, duration)
+        } else {
+            state.positionMs
+        }
     val seekWords = ViewerFormat.seekState(shownPosition, duration)
 
     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = spacing.spaceMd)) {
@@ -370,15 +444,17 @@ internal fun PlayerControls(
                 dragging = false
             },
             enabled = duration != null,
-            colors = SliderDefaults.colors(
-                thumbColor = colors.textPrimary,
-                activeTrackColor = colors.accent,
-                inactiveTrackColor = colors.outline,
-            ),
-            modifier = Modifier.fillMaxWidth().semantics {
-                contentDescription = ViewerFormat.seekLabel()
-                stateDescription = seekWords
-            },
+            colors =
+                SliderDefaults.colors(
+                    thumbColor = colors.textPrimary,
+                    activeTrackColor = colors.accent,
+                    inactiveTrackColor = colors.outline,
+                ),
+            modifier =
+                Modifier.fillMaxWidth().semantics {
+                    contentDescription = ViewerFormat.seekLabel()
+                    stateDescription = seekWords
+                },
         )
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             Text(
@@ -412,7 +488,11 @@ internal fun PlayerControls(
 
 /** The speed: its pill opens a menu of the speeds on offer. The menu is its own window. */
 @Composable
-private fun SpeedSetting(speed: Float, onChoose: (Float) -> Unit, onInteraction: () -> Unit) {
+private fun SpeedSetting(
+    speed: Float,
+    onChoose: (Float) -> Unit,
+    onInteraction: () -> Unit,
+) {
     val colors = DarkChamberTheme.colors
     var open by remember { mutableStateOf(false) }
     Box {
@@ -423,7 +503,11 @@ private fun SpeedSetting(speed: Float, onChoose: (Float) -> Unit, onInteraction:
                 onInteraction()
             },
         ) {
-            Text(text = ViewerFormat.speed(speed), style = DarkChamberTheme.typography.label, color = colors.textPrimary)
+            Text(
+                text = ViewerFormat.speed(speed),
+                style = DarkChamberTheme.typography.label,
+                color = colors.textPrimary,
+            )
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }, containerColor = colors.surfaceRaised) {
             // Its own window, so its own exclusion.
@@ -451,16 +535,21 @@ private fun SpeedSetting(speed: Float, onChoose: (Float) -> Unit, onInteraction:
 
 /** A 48 dp target with a shape of its own over the picture, spoken as [description]. */
 @Composable
-private fun ControlButton(description: String, onClick: () -> Unit, content: @Composable () -> Unit) {
+private fun ControlButton(
+    description: String,
+    onClick: () -> Unit,
+    content: @Composable () -> Unit,
+) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
-        modifier = Modifier
-            .heightIn(min = 48.dp)
-            .widthIn(min = 48.dp)
-            .clickable(role = Role.Button, onClick = onClick)
-            .semantics(mergeDescendants = true) { contentDescription = description }
-            .padding(horizontal = DarkChamberTheme.spacing.spaceXs),
+        modifier =
+            Modifier
+                .heightIn(min = 48.dp)
+                .widthIn(min = 48.dp)
+                .clickable(role = Role.Button, onClick = onClick)
+                .semantics(mergeDescendants = true) { contentDescription = description }
+                .padding(horizontal = DarkChamberTheme.spacing.spaceXs),
     ) {
         content()
     }

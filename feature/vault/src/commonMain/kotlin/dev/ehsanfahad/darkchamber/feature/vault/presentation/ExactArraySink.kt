@@ -10,13 +10,18 @@ import kotlinx.io.readTo
  * stored size is refused rather than cut short, and [full] says whether it was filled to the last byte.
  * The caller owns [into] and zeroes it.
  */
-internal class ExactArraySink(private val into: ByteArray) : RawSink {
+internal class ExactArraySink(
+    private val into: ByteArray,
+) : RawSink {
     private var filled = 0
 
     /** Whether every byte of [into] was written. */
     val full: Boolean get() = filled == into.size
 
-    override fun write(source: Buffer, byteCount: Long) {
+    override fun write(
+        source: Buffer,
+        byteCount: Long,
+    ) {
         val end = filled + byteCount.toInt()
         source.readTo(into, filled, end)
         filled = end

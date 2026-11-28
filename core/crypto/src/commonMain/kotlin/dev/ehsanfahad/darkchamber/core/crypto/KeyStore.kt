@@ -39,12 +39,14 @@ class WrapEntry(
 ) {
     override fun equals(other: Any?): Boolean =
         this === other ||
-            (other is WrapEntry &&
-                slot == other.slot &&
-                kdfId == other.kdfId &&
-                kdfParams == other.kdfParams &&
-                nonce.contentEquals(other.nonce) &&
-                wrappedMk.contentEquals(other.wrappedMk))
+            (
+                other is WrapEntry &&
+                    slot == other.slot &&
+                    kdfId == other.kdfId &&
+                    kdfParams == other.kdfParams &&
+                    nonce.contentEquals(other.nonce) &&
+                    wrappedMk.contentEquals(other.wrappedMk)
+            )
 
     override fun hashCode(): Int {
         var result = slot.hashCode()
@@ -65,7 +67,9 @@ class WrapEntry(
  * written to a backup manifest.
  */
 @Serializable
-class HardwareWrapEntry(val blob: ByteArray) {
+class HardwareWrapEntry(
+    val blob: ByteArray,
+) {
     override fun equals(other: Any?): Boolean =
         this === other || (other is HardwareWrapEntry && blob.contentEquals(other.blob))
 

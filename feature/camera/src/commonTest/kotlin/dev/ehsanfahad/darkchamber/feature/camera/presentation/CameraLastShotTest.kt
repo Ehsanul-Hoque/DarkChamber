@@ -26,72 +26,79 @@ import kotlin.test.assertNotNull
 class CameraLastShotTest {
     private val opened = mutableListOf<List<Byte>>()
 
-    private inner class Harness(test: TestScope) {
+    private inner class Harness(
+        test: TestScope,
+    ) {
         val camera = FakeCameraController()
         val vault = FakeCaptureVault()
         val sessionJob = Job()
         private val dispatcher = UnconfinedTestDispatcher(test.testScheduler)
         val lifecycle = LifecycleRegistry()
-        val component = cameraComponent(
-            componentContext = DefaultComponentContext(lifecycle),
-            session = CameraSession(
-                vault = vault,
-                clips = FakeClipFiles(),
-                freeSpace = FakeFreeSpace(),
-                saveScope = CoroutineScope(dispatcher + sessionJob),
-                notSaved = { _, _, _ -> },
-                ioContext = dispatcher,
-                clock = { 0L },
-            ),
-            camera = camera,
-            destination = CameraDestination.AllItems,
-            unreadableNameLabel = "Name can't be read",
-            onClose = {},
-            mainContext = dispatcher,
-            onOpenLastShot = { opened += it.toList() },
-        )
+        val component =
+            cameraComponent(
+                componentContext = DefaultComponentContext(lifecycle),
+                session =
+                    CameraSession(
+                        vault = vault,
+                        clips = FakeClipFiles(),
+                        freeSpace = FakeFreeSpace(),
+                        saveScope = CoroutineScope(dispatcher + sessionJob),
+                        notSaved = { _, _, _ -> },
+                        ioContext = dispatcher,
+                        clock = { 0L },
+                    ),
+                camera = camera,
+                destination = CameraDestination.AllItems,
+                unreadableNameLabel = "Name can't be read",
+                onClose = {},
+                mainContext = dispatcher,
+                onOpenLastShot = { opened += it.toList() },
+            )
         val state: CameraState get() = component.state.value
     }
 
     @Test
-    fun with_nothing_taken_yet_a_tap_opens_nothing() = runTest {
-        val h = Harness(this)
-        h.lifecycle.resume()
+    fun with_nothing_taken_yet_a_tap_opens_nothing() =
+        runTest {
+            val h = Harness(this)
+            h.lifecycle.resume()
 
-        h.component.openLastShot()
+            h.component.openLastShot()
 
-        assertEquals(emptyList(), opened)
-        h.sessionJob.cancel()
-    }
+            assertEquals(emptyList(), opened)
+            h.sessionJob.cancel()
+        }
 
     @Test
-    fun a_tap_opens_the_newest_capture() = runTest {
-        val h = Harness(this)
-        h.lifecycle.resume()
-        h.component.shoot()
-        val shot = assertNotNull(h.state.lastShot).itemId.toList()
+    fun a_tap_opens_the_newest_capture() =
+        runTest {
+            val h = Harness(this)
+            h.lifecycle.resume()
+            h.component.shoot()
+            val shot = assertNotNull(h.state.lastShot).itemId.toList()
 
-        h.component.openLastShot()
+            h.component.openLastShot()
 
-        assertEquals(listOf(shot), opened)
-        h.sessionJob.cancel()
-    }
+            assertEquals(listOf(shot), opened)
+            h.sessionJob.cancel()
+        }
 
     /** A second photo is in the platform's hands: covering the camera now would fail it. */
     @Test
-    fun a_tap_while_a_photo_is_capturing_opens_nothing_until_it_lands() = runTest {
-        val h = Harness(this)
-        h.lifecycle.resume()
-        h.component.shoot()
-        h.camera.holdCaptures()
-        h.component.shoot()
+    fun a_tap_while_a_photo_is_capturing_opens_nothing_until_it_lands() =
+        runTest {
+            val h = Harness(this)
+            h.lifecycle.resume()
+            h.component.shoot()
+            h.camera.holdCaptures()
+            h.component.shoot()
 
-        h.component.openLastShot()
-        assertEquals(emptyList(), opened)
+            h.component.openLastShot()
+            assertEquals(emptyList(), opened)
 
-        h.camera.release()
-        h.component.openLastShot()
-        assertEquals(listOf(assertNotNull(h.state.lastShot).itemId.toList()), opened)
-        h.sessionJob.cancel()
-    }
+            h.camera.release()
+            h.component.openLastShot()
+            assertEquals(listOf(assertNotNull(h.state.lastShot).itemId.toList()), opened)
+            h.sessionJob.cancel()
+        }
 }

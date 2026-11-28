@@ -111,8 +111,11 @@ class PdfReadingTest {
     // ---- how wide a page is drawn ----------------------------------------------------------------
 
     /** An A4 page (595 × 842 pt), the shape every portrait case below is about. */
-    private fun a4(shownWidthPx: Int, zoom: Float, screenWidthPx: Int) =
-        PdfReading.renderWidth(shownWidthPx, zoom, screenWidthPx, pageWidthPt = 595, pageHeightPt = 842)
+    private fun a4(
+        shownWidthPx: Int,
+        zoom: Float,
+        screenWidthPx: Int,
+    ) = PdfReading.renderWidth(shownWidthPx, zoom, screenWidthPx, pageWidthPt = 595, pageHeightPt = 842)
 
     @Test
     fun an_unzoomed_page_is_drawn_at_the_width_it_is_shown() {
@@ -179,7 +182,11 @@ class PdfReadingTest {
         assertEquals(4872, PdfReading.renderWidth(3120, 4f, 3120, pageWidthPt = 842, pageHeightPt = 595))
     }
 
-    private fun pixels(width: Int, w: Int, h: Int) = width.toLong() * PdfReading.pageHeight(width, w, h)
+    private fun pixels(
+        width: Int,
+        w: Int,
+        h: Int,
+    ) = width.toLong() * PdfReading.pageHeight(width, w, h)
 
     /**
      * Whatever the shape and the zoom, a drawn page never has more pixels than the limit — and where the
@@ -188,14 +195,27 @@ class PdfReadingTest {
      */
     @Test
     fun a_page_is_drawn_as_wide_as_the_limit_allows_and_no_wider() {
-        val shapes = (listOf(595 to 842, 842 to 595, 595 to 5000, 5000 to 595, 100 to 100, 612 to 792, 1 to 10_000) +
-            (1..400).map { 300 + it * 7 to 400 + it * 13 })
-        for ((w, h) in shapes) for (screen in listOf(1080, 1440, 2400, 3120)) for (zoom in listOf(1f, 2.5f, 4f)) {
-            val wanted = minOf((screen * zoom).toInt(), screen * PdfReading.MAX_RENDER_SCREENS)
-            val width = PdfReading.renderWidth(screen, zoom, screen, w, h)
-            val case = "$w×$h pt on $screen px at $zoom: $width wide"
-            assertTrue(pixels(width, w, h) <= PdfReading.MAX_RENDER_PIXELS, "$case, over the limit")
-            if (width < wanted) assertTrue(pixels(width + 1, w, h) > PdfReading.MAX_RENDER_PIXELS, "$case, but ${width + 1} fits")
+        val shapes = (
+            listOf(595 to 842, 842 to 595, 595 to 5000, 5000 to 595, 100 to 100, 612 to 792, 1 to 10_000) +
+                (1..400).map { 300 + it * 7 to 400 + it * 13 }
+        )
+        for ((w, h) in shapes) {
+            for (screen in listOf(1080, 1440, 2400, 3120)) {
+                for (zoom in listOf(1f, 2.5f, 4f)) {
+                    val wanted = minOf((screen * zoom).toInt(), screen * PdfReading.MAX_RENDER_SCREENS)
+                    val width = PdfReading.renderWidth(screen, zoom, screen, w, h)
+                    val case = "$w×$h pt on $screen px at $zoom: $width wide"
+                    assertTrue(pixels(width, w, h) <= PdfReading.MAX_RENDER_PIXELS, "$case, over the limit")
+                    if (width <
+                        wanted
+                    ) {
+                        assertTrue(
+                            pixels(width + 1, w, h) > PdfReading.MAX_RENDER_PIXELS,
+                            "$case, but ${width + 1} fits",
+                        )
+                    }
+                }
+            }
         }
     }
 
@@ -257,11 +277,12 @@ class PdfReadingTest {
         assertEquals(ColumnBand(666, 1334), PdfReading.seenBand(2000, zoom = 3f, offsetY = 0f))
     }
 
-    private val threePages = listOf(
-        LaidOutPage(0, top = 0, height = 1000),
-        LaidOutPage(1, top = 1010, height = 1000),
-        LaidOutPage(2, top = 2020, height = 1000),
-    )
+    private val threePages =
+        listOf(
+            LaidOutPage(0, top = 0, height = 1000),
+            LaidOutPage(1, top = 1010, height = 1000),
+            LaidOutPage(2, top = 2020, height = 1000),
+        )
 
     @Test
     fun the_pages_seen_are_those_the_band_crosses() {
@@ -292,7 +313,10 @@ class PdfReadingTest {
 
     @Test
     fun within_the_overhang_a_drag_only_moves_the_zoomed_column() {
-        assertEquals(PanSplit(offsetY = 300f, scrollBy = 0f), PdfReading.panThenScroll(0f, dy = 300f, limitY = 500f, zoom = 2f))
+        assertEquals(
+            PanSplit(offsetY = 300f, scrollBy = 0f),
+            PdfReading.panThenScroll(0f, dy = 300f, limitY = 500f, zoom = 2f),
+        )
         assertEquals(PanSplit(350f, 0f), PdfReading.panThenScroll(450f, dy = -100f, limitY = 500f, zoom = 2f))
     }
 
@@ -302,9 +326,20 @@ class PdfReadingTest {
      */
     @Test
     fun past_the_overhang_the_rest_of_a_drag_scrolls_the_column() {
-        assertEquals(PanSplit(500f, scrollBy = -100f), PdfReading.panThenScroll(400f, dy = 300f, limitY = 500f, zoom = 2f))
-        assertEquals(PanSplit(-500f, scrollBy = 150f), PdfReading.panThenScroll(-500f, dy = -300f, limitY = 500f, zoom = 2f), "on, up the column")
-        assertEquals(PanSplit(-500f, scrollBy = 75f), PdfReading.panThenScroll(-500f, dy = -300f, limitY = 500f, zoom = 4f), "slower, deeper in")
+        assertEquals(
+            PanSplit(500f, scrollBy = -100f),
+            PdfReading.panThenScroll(400f, dy = 300f, limitY = 500f, zoom = 2f),
+        )
+        assertEquals(
+            PanSplit(-500f, scrollBy = 150f),
+            PdfReading.panThenScroll(-500f, dy = -300f, limitY = 500f, zoom = 2f),
+            "on, up the column",
+        )
+        assertEquals(
+            PanSplit(-500f, scrollBy = 75f),
+            PdfReading.panThenScroll(-500f, dy = -300f, limitY = 500f, zoom = 4f),
+            "slower, deeper in",
+        )
     }
 
     // ---- a move of the zoomed column, by drag or by fling ---------------------------------------
@@ -314,32 +349,51 @@ class PdfReadingTest {
 
     @Test
     fun within_the_overhang_a_zoomed_move_follows_the_finger_both_ways() {
-        assertEquals(ZoomedStep(Offset(300f, 400f), 0f), PdfReading.zoomedStep(Offset.Zero, Offset(300f, 400f), zoom = 2f, box = box))
+        assertEquals(
+            ZoomedStep(Offset(300f, 400f), 0f),
+            PdfReading.zoomedStep(Offset.Zero, Offset(300f, 400f), zoom = 2f, box = box),
+        )
     }
 
     /** Across there is no column to scroll: the page's edge is as far as it goes, and the rest is lost. */
     @Test
     fun across_a_zoomed_move_stops_at_the_page_edge() {
-        assertEquals(ZoomedStep(Offset(500f, 0f), 0f), PdfReading.zoomedStep(Offset(400f, 0f), Offset(300f, 0f), 2f, box))
-        assertEquals(ZoomedStep(Offset(-500f, 0f), 0f), PdfReading.zoomedStep(Offset(-400f, 0f), Offset(-300f, 0f), 2f, box))
+        assertEquals(
+            ZoomedStep(Offset(500f, 0f), 0f),
+            PdfReading.zoomedStep(Offset(400f, 0f), Offset(300f, 0f), 2f, box),
+        )
+        assertEquals(
+            ZoomedStep(Offset(-500f, 0f), 0f),
+            PdfReading.zoomedStep(Offset(-400f, 0f), Offset(-300f, 0f), 2f, box),
+        )
     }
 
     /** Down, past the overhang the rest scrolls the column — in its own pixels, as a drag does. */
     @Test
     fun down_a_zoomed_move_pans_then_scrolls_the_column() {
-        assertEquals(ZoomedStep(Offset(0f, 1000f), -100f), PdfReading.zoomedStep(Offset(0f, 900f), Offset(0f, 300f), 2f, box))
+        assertEquals(
+            ZoomedStep(Offset(0f, 1000f), -100f),
+            PdfReading.zoomedStep(Offset(0f, 900f), Offset(0f, 300f), 2f, box),
+        )
         assertEquals(
             ZoomedStep(Offset(-500f, -1000f), 75f),
             PdfReading.zoomedStep(Offset(-450f, -950f), Offset(-100f, -200f), 2f, box),
             "both edges at once",
         )
-        assertEquals(ZoomedStep(Offset(0f, -2000f), 50f), PdfReading.zoomedStep(Offset(0f, -1850f), Offset(0f, -300f), 3f, box), "3x overhangs 2000")
+        assertEquals(
+            ZoomedStep(Offset(0f, -2000f), 50f),
+            PdfReading.zoomedStep(Offset(0f, -1850f), Offset(0f, -300f), 3f, box),
+            "3x overhangs 2000",
+        )
     }
 
     // ---- letting go of a zoomed drag: a fling, or none -------------------------------------------
 
-    private fun fling(x: Float, y: Float, pinched: Boolean = false) =
-        PdfReading.flingVelocity(Offset(x, y), minPxPerSecond = 100f, maxPxPerSecond = 8000f, pinched = pinched)
+    private fun fling(
+        x: Float,
+        y: Float,
+        pinched: Boolean = false,
+    ) = PdfReading.flingVelocity(Offset(x, y), minPxPerSecond = 100f, maxPxPerSecond = 8000f, pinched = pinched)
 
     @Test
     fun a_drag_let_go_at_speed_flings_at_that_speed_and_direction() {
@@ -375,10 +429,22 @@ class PdfReadingTest {
 
     @Test
     fun a_fling_goes_on_while_a_step_moves_anything() {
-        assertTrue(PdfReading.flingGoesOn(2f, up, before = Offset(0f, -990f), after = atBottom, scrolled = 10f), "panned and scrolled")
-        assertTrue(PdfReading.flingGoesOn(2f, up, before = atBottom, after = atBottom, scrolled = 15f), "only scrolled: the column goes on")
         assertTrue(
-            PdfReading.flingGoesOn(2f, Offset(20f, -30f), before = Offset(100f, -1000f), after = Offset(120f, -1000f), scrolled = 0f),
+            PdfReading.flingGoesOn(2f, up, before = Offset(0f, -990f), after = atBottom, scrolled = 10f),
+            "panned and scrolled",
+        )
+        assertTrue(
+            PdfReading.flingGoesOn(2f, up, before = atBottom, after = atBottom, scrolled = 15f),
+            "only scrolled: the column goes on",
+        )
+        assertTrue(
+            PdfReading.flingGoesOn(
+                2f,
+                Offset(20f, -30f),
+                before = Offset(100f, -1000f),
+                after = Offset(120f, -1000f),
+                scrolled = 0f,
+            ),
             "only across: the column's end, but the page still slides sideways",
         )
     }
@@ -398,6 +464,9 @@ class PdfReadingTest {
     /** Back at fit (a double-tap, a jump, the page swiped away), the column's own scrolling takes over. */
     @Test
     fun a_fling_stops_once_the_column_is_back_at_fit() {
-        assertEquals(false, PdfReading.flingGoesOn(1f, up, before = Offset(0f, -990f), after = atBottom, scrolled = 10f))
+        assertEquals(
+            false,
+            PdfReading.flingGoesOn(1f, up, before = Offset(0f, -990f), after = atBottom, scrolled = 10f),
+        )
     }
 }

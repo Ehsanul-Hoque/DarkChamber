@@ -15,7 +15,9 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.ViewerPage
 internal sealed interface OpenPlan {
     data object Decode : OpenPlan
 
-    data class Show(val page: ViewerPage) : OpenPlan
+    data class Show(
+        val page: ViewerPage,
+    ) : OpenPlan
 }
 
 /**
@@ -28,7 +30,11 @@ internal sealed interface OpenPlan {
  *   row and may open fine — so it is tried, within the cap, and the decoder decides from the bytes.
  * - A negative size is a row nothing here wrote: nothing is read, and the page names no cause.
  */
-internal fun openPlan(meta: GalleryItemMeta, size: Long, cap: Long): OpenPlan {
+internal fun openPlan(
+    meta: GalleryItemMeta,
+    size: Long,
+    cap: Long,
+): OpenPlan {
     if (meta is GalleryItemMeta.Readable && !meta.mime.startsWith("image/")) {
         return OpenPlan.Show(ViewerPage.NotViewable(GalleryFormat.typeBadge(meta)))
     }
@@ -43,8 +49,7 @@ internal fun openPlan(meta: GalleryItemMeta, size: Long, cap: Long): OpenPlan {
 internal const val PDF_CAP: Long = 128L * 1024 * 1024
 
 /** Whether an item is a PDF, from its stored type alone, before anything is read. */
-internal fun isPdf(meta: GalleryItemMeta): Boolean =
-    meta is GalleryItemMeta.Readable && meta.mime == PDF_MIME
+internal fun isPdf(meta: GalleryItemMeta): Boolean = meta is GalleryItemMeta.Readable && meta.mime == PDF_MIME
 
 private const val PDF_MIME = "application/pdf"
 
@@ -57,7 +62,11 @@ private const val PDF_MIME = "application/pdf"
  *   the size is a plaintext column, so refusing costs no decrypt.
  * - A negative size is a row nothing here wrote: nothing is read, and the page names no cause.
  */
-internal fun pdfPlan(size: Long, supported: Boolean, cap: Long = PDF_CAP): OpenPlan =
+internal fun pdfPlan(
+    size: Long,
+    supported: Boolean,
+    cap: Long = PDF_CAP,
+): OpenPlan =
     when {
         !supported -> OpenPlan.Show(ViewerPage.CantShow)
         size < 0 -> OpenPlan.Show(ViewerPage.CouldntOpen)
@@ -89,7 +98,11 @@ internal fun pageForPdfRefusal(refusal: PdfRefusal): ViewerPage =
  */
 internal fun textKind(meta: GalleryItemMeta): TextKind? {
     if (meta !is GalleryItemMeta.Readable) return null
-    val type = meta.mime.substringBefore(';').trim().lowercase()
+    val type =
+        meta.mime
+            .substringBefore(';')
+            .trim()
+            .lowercase()
     if (OWN_VIEWER_FAMILIES.any { type.startsWith(it) } || type == PDF_MIME) return null
     return kindByExtension(meta.name) ?: kindByType(type)
 }
@@ -112,15 +125,16 @@ private fun kindByType(type: String): TextKind? =
         else -> null
     }
 
-private val CODE_TYPES = setOf(
-    "application/xml",
-    "application/yaml",
-    "application/x-yaml",
-    "application/toml",
-    "application/javascript",
-    "application/x-sh",
-    "application/sql",
-)
+private val CODE_TYPES =
+    setOf(
+        "application/xml",
+        "application/yaml",
+        "application/x-yaml",
+        "application/toml",
+        "application/javascript",
+        "application/x-sh",
+        "application/sql",
+    )
 
 private val TEXT_EXTENSIONS: Map<String, TextKind> =
     listOf("txt", "text").associateWith { TextKind.Plain } +
@@ -128,11 +142,43 @@ private val TEXT_EXTENSIONS: Map<String, TextKind> =
         listOf("json").associateWith { TextKind.Json } +
         listOf(
             // Markup and data.
-            "html", "htm", "xhtml", "xml", "csv", "tsv", "yaml", "yml", "toml", "ini", "cfg", "conf",
-            "properties", "log", "srt", "vtt",
+            "html",
+            "htm",
+            "xhtml",
+            "xml",
+            "csv",
+            "tsv",
+            "yaml",
+            "yml",
+            "toml",
+            "ini",
+            "cfg",
+            "conf",
+            "properties",
+            "log",
+            "srt",
+            "vtt",
             // Source.
-            "kt", "kts", "java", "swift", "py", "js", "ts", "c", "h", "cpp", "hpp", "cs", "go", "rs",
-            "rb", "php", "sh", "sql", "css", "gradle",
+            "kt",
+            "kts",
+            "java",
+            "swift",
+            "py",
+            "js",
+            "ts",
+            "c",
+            "h",
+            "cpp",
+            "hpp",
+            "cs",
+            "go",
+            "rs",
+            "rb",
+            "php",
+            "sh",
+            "sql",
+            "css",
+            "gradle",
         ).associateWith { TextKind.Code }
 
 /** The largest text file the viewer reads: its bytes, then its decoded text, are held while shown. */
@@ -156,7 +202,10 @@ internal const val MARKDOWN_FORMAT_CAP: Long = 1L * 1024 * 1024
  *   decrypt. An empty file is read — it is text with nothing in it.
  * - A negative size is a row nothing here wrote: nothing is read, and the page names no cause.
  */
-internal fun textPlan(size: Long, cap: Long = TEXT_CAP): OpenPlan =
+internal fun textPlan(
+    size: Long,
+    cap: Long = TEXT_CAP,
+): OpenPlan =
     when {
         size < 0 -> OpenPlan.Show(ViewerPage.CouldntOpen)
         size > cap -> OpenPlan.Show(ViewerPage.TooLarge)
@@ -199,11 +248,19 @@ internal fun pageForOpenFailure(error: VaultError): ViewerPage =
 internal fun pageForPlayerFailure(failure: PlayerFailure): ViewerPage =
     when (failure) {
         // Mid-play, the verified chunks before the refused one have already played.
-        is PlayerFailure.Reader -> pageForOpenFailure(failure.error).let {
-            if (it == ViewerPage.Unverified) ViewerPage.StoppedUnverified else it
+        is PlayerFailure.Reader -> {
+            pageForOpenFailure(failure.error).let {
+                if (it == ViewerPage.Unverified) ViewerPage.StoppedUnverified else it
+            }
         }
-        PlayerFailure.Decoder -> ViewerPage.CantPlay
-        PlayerFailure.Other -> ViewerPage.CouldntOpen
+
+        PlayerFailure.Decoder -> {
+            ViewerPage.CantPlay
+        }
+
+        PlayerFailure.Other -> {
+            ViewerPage.CouldntOpen
+        }
     }
 
 /**

@@ -21,8 +21,10 @@ import kotlin.time.Duration.Companion.seconds
  * The edge is inside the offer: a press at exactly the window leaves. The alternative is a press the
  * user made within the time they were given being silently treated as a first press.
  */
-internal fun backPressLeaves(armedFor: Duration?, window: Duration): Boolean =
-    armedFor != null && armedFor >= Duration.ZERO && armedFor <= window
+internal fun backPressLeaves(
+    armedFor: Duration?,
+    window: Duration,
+): Boolean = armedFor != null && armedFor >= Duration.ZERO && armedFor <= window
 
 /**
  * How long "go back again to leave" stands.

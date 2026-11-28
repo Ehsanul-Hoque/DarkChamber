@@ -1,0 +1,5 @@
+# Commits that only reformat code. GitHub's blame skips them; locally, run once per clone:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# style: format the codebase with ktlint
+f50aab7649f7acf2f03fa7a3fc1d6b7f00b76e91

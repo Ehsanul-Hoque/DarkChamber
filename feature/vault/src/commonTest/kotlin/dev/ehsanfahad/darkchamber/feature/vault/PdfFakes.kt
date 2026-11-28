@@ -17,7 +17,10 @@ import kotlinx.io.RawSink
  * A picture with a size and nothing behind it: what a drawn page looks like to the viewer, without a
  * platform bitmap (none exists in a host test).
  */
-internal class FakeImageBitmap(override val width: Int, override val height: Int) : ImageBitmap {
+internal class FakeImageBitmap(
+    override val width: Int,
+    override val height: Int,
+) : ImageBitmap {
     override val colorSpace: ColorSpace get() = ColorSpaces.Srgb
     override val hasAlpha: Boolean get() = false
     override val config: ImageBitmapConfig get() = ImageBitmapConfig.Argb8888
@@ -65,7 +68,9 @@ internal class FakePdfRenderer(
     }
 }
 
-internal class FakePdfBuffer(private val renderer: FakePdfRenderer) : VaultPdfBuffer {
+internal class FakePdfBuffer(
+    private val renderer: FakePdfRenderer,
+) : VaultPdfBuffer {
     /** Bytes the sink has taken. */
     var filled = 0L
         private set
@@ -74,16 +79,20 @@ internal class FakePdfBuffer(private val renderer: FakePdfRenderer) : VaultPdfBu
     var opened = false
         private set
 
-    override val sink: RawSink = object : RawSink {
-        override fun write(source: Buffer, byteCount: Long) {
-            source.skip(byteCount)
-            filled += byteCount
+    override val sink: RawSink =
+        object : RawSink {
+            override fun write(
+                source: Buffer,
+                byteCount: Long,
+            ) {
+                source.skip(byteCount)
+                filled += byteCount
+            }
+
+            override fun flush() = Unit
+
+            override fun close() = Unit
         }
-
-        override fun flush() = Unit
-
-        override fun close() = Unit
-    }
 
     override fun open(): PdfOpened {
         check(!opened) { "opened twice" }
@@ -106,8 +115,10 @@ internal class FakePdfBuffer(private val renderer: FakePdfRenderer) : VaultPdfBu
     }
 }
 
-internal class FakePdfDocument(private val renderer: FakePdfRenderer, private val buffer: FakePdfBuffer) :
-    VaultPdfDocument {
+internal class FakePdfDocument(
+    private val renderer: FakePdfRenderer,
+    private val buffer: FakePdfBuffer,
+) : VaultPdfDocument {
     var closed = false
         private set
 
@@ -115,7 +126,10 @@ internal class FakePdfDocument(private val renderer: FakePdfRenderer, private va
 
     override fun pageSize(index: Int): PdfPageSize = renderer.pages[index]
 
-    override fun render(index: Int, widthPx: Int): ImageBitmap? {
+    override fun render(
+        index: Int,
+        widthPx: Int,
+    ): ImageBitmap? {
         check(!closed) { "rendered after close" }
         renderer.log += "render $index@$widthPx"
         renderer.onRender(index)

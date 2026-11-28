@@ -8,6 +8,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 plugins {
     id("org.jetbrains.kotlin.multiplatform")
     id("com.android.kotlin.multiplatform.library")
+    id("darkchamber.quality")
 }
 
 // The shared version catalog isn't auto-wired into precompiled script plugins;
@@ -20,8 +21,14 @@ kotlin {
         // Namespace derived from the module path, e.g. :core:model → …core.model.
         namespace = "dev.ehsanfahad.darkchamber." +
             path.removePrefix(":").replace(":", ".").replace("-", "")
-        compileSdk = libs.versions.android.compileSdk.get().toInt()
-        minSdk = libs.versions.android.minSdk.get().toInt()
+        compileSdk =
+            libs.versions.android.compileSdk
+                .get()
+                .toInt()
+        minSdk =
+            libs.versions.android.minSdk
+                .get()
+                .toInt()
 
         compilerOptions {
             jvmTarget = JvmTarget.JVM_11

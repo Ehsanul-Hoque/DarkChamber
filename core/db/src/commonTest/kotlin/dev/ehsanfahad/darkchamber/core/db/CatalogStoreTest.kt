@@ -165,23 +165,24 @@ class CatalogStoreTest {
     /** The reactive path takes the same filter, not just the one-shot listing. */
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     @Test
-    fun observeItems_unfiled_reemits_when_an_item_is_filed() = runTest {
-        val obsDriver = testSqlDriver()
-        val obsStore = CatalogStore.create(obsDriver, UnconfinedTestDispatcher(testScheduler)).unwrap()
-        obsStore.upsertItem(item(1, albumId = null, createdAt = 100L)).unwrap()
+    fun observeItems_unfiled_reemits_when_an_item_is_filed() =
+        runTest {
+            val obsDriver = testSqlDriver()
+            val obsStore = CatalogStore.create(obsDriver, UnconfinedTestDispatcher(testScheduler)).unwrap()
+            obsStore.upsertItem(item(1, albumId = null, createdAt = 100L)).unwrap()
 
-        obsStore.observeItems(ItemFilter.Unfiled).test {
-            assertEquals(listOf<Byte>(1), awaitItem().map { it.id.single() }, "the unfiled item is listed")
+            obsStore.observeItems(ItemFilter.Unfiled).test {
+                assertEquals(listOf<Byte>(1), awaitItem().map { it.id.single() }, "the unfiled item is listed")
 
-            // Filing it is a write to items, so the listener fires — and the row leaves this listing
-            // without being deleted.
-            obsStore.upsertItem(item(1, albumId = byteArrayOf(0xA1.toByte()), createdAt = 100L)).unwrap()
-            assertEquals(emptyList(), awaitItem(), "filing an item removes it from Unfiled")
+                // Filing it is a write to items, so the listener fires — and the row leaves this listing
+                // without being deleted.
+                obsStore.upsertItem(item(1, albumId = byteArrayOf(0xA1.toByte()), createdAt = 100L)).unwrap()
+                assertEquals(emptyList(), awaitItem(), "filing an item removes it from Unfiled")
 
-            cancelAndIgnoreRemainingEvents()
+                cancelAndIgnoreRemainingEvents()
+            }
+            obsDriver.close()
         }
-        obsDriver.close()
-    }
 
     @Test
     fun updateItemAlbum_files_a_whole_set_at_once() {
@@ -265,23 +266,24 @@ class CatalogStoreTest {
      */
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     @Test
-    fun updateItemAlbum_with_no_ids_changes_nothing_and_notifies_nobody() = runTest {
-        val obsDriver = testSqlDriver()
-        val obsStore = CatalogStore.create(obsDriver, UnconfinedTestDispatcher(testScheduler)).unwrap()
-        obsStore.upsertAlbum(album(0xA1.toByte())).unwrap()
-        obsStore.upsertItem(item(1)).unwrap()
+    fun updateItemAlbum_with_no_ids_changes_nothing_and_notifies_nobody() =
+        runTest {
+            val obsDriver = testSqlDriver()
+            val obsStore = CatalogStore.create(obsDriver, UnconfinedTestDispatcher(testScheduler)).unwrap()
+            obsStore.upsertAlbum(album(0xA1.toByte())).unwrap()
+            obsStore.upsertItem(item(1)).unwrap()
 
-        obsStore.observeItems().test {
-            assertEquals(1, awaitItem().size, "the listing starts with the one item")
+            obsStore.observeItems().test {
+                assertEquals(1, awaitItem().size, "the listing starts with the one item")
 
-            assertTrue(obsStore.updateItemAlbum(emptyList(), byteArrayOf(0xA1.toByte())) is Outcome.Ok)
-            expectNoEvents()
+                assertTrue(obsStore.updateItemAlbum(emptyList(), byteArrayOf(0xA1.toByte())) is Outcome.Ok)
+                expectNoEvents()
 
-            cancelAndIgnoreRemainingEvents()
+                cancelAndIgnoreRemainingEvents()
+            }
+            assertEquals(1, obsStore.listItems(ItemFilter.Unfiled).unwrap().size, "and nothing was filed")
+            obsDriver.close()
         }
-        assertEquals(1, obsStore.listItems(ItemFilter.Unfiled).unwrap().size, "and nothing was filed")
-        obsDriver.close()
-    }
 
     /**
      * The row count is how a caller distinguishes a clean batch from one whose ids have been
@@ -383,28 +385,29 @@ class CatalogStoreTest {
      */
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     @Test
-    fun the_album_writes_notify_the_listings_once_each() = runTest {
-        val obsDriver = testSqlDriver()
-        val obsStore = CatalogStore.create(obsDriver, UnconfinedTestDispatcher(testScheduler)).unwrap()
-        val albumA = byteArrayOf(0xA1.toByte())
-        obsStore.upsertAlbum(album(0xA1.toByte())).unwrap()
-        obsStore.upsertItem(item(1, createdAt = 100L)).unwrap()
-        obsStore.upsertItem(item(2, createdAt = 200L)).unwrap()
+    fun the_album_writes_notify_the_listings_once_each() =
+        runTest {
+            val obsDriver = testSqlDriver()
+            val obsStore = CatalogStore.create(obsDriver, UnconfinedTestDispatcher(testScheduler)).unwrap()
+            val albumA = byteArrayOf(0xA1.toByte())
+            obsStore.upsertAlbum(album(0xA1.toByte())).unwrap()
+            obsStore.upsertItem(item(1, createdAt = 100L)).unwrap()
+            obsStore.upsertItem(item(2, createdAt = 200L)).unwrap()
 
-        obsStore.observeItems(ItemFilter.Album(albumA)).test {
-            assertEquals(emptyList(), awaitItem(), "the album starts empty")
+            obsStore.observeItems(ItemFilter.Album(albumA)).test {
+                assertEquals(emptyList(), awaitItem(), "the album starts empty")
 
-            obsStore.updateItemAlbum(listOf(byteArrayOf(1), byteArrayOf(2)), albumA).unwrap()
-            assertEquals(listOf<Byte>(2, 1), awaitItem().map { it.id.single() }, "one emission for the whole set")
-            expectNoEvents()
+                obsStore.updateItemAlbum(listOf(byteArrayOf(1), byteArrayOf(2)), albumA).unwrap()
+                assertEquals(listOf<Byte>(2, 1), awaitItem().map { it.id.single() }, "one emission for the whole set")
+                expectNoEvents()
 
-            obsStore.clearAlbumOnItems(albumA).unwrap()
-            assertEquals(emptyList(), awaitItem(), "and the clear re-emits too")
+                obsStore.clearAlbumOnItems(albumA).unwrap()
+                assertEquals(emptyList(), awaitItem(), "and the clear re-emits too")
 
-            cancelAndIgnoreRemainingEvents()
+                cancelAndIgnoreRemainingEvents()
+            }
+            obsDriver.close()
         }
-        obsDriver.close()
-    }
 
     @Test
     fun deleteItem_removes_and_is_idempotent() {
@@ -454,27 +457,28 @@ class CatalogStoreTest {
      */
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     @Test
-    fun deleteItems_notifies_the_listings_once_and_an_empty_delete_not_at_all() = runTest {
-        val obsDriver = testSqlDriver()
-        val obsStore = CatalogStore.create(obsDriver, UnconfinedTestDispatcher(testScheduler)).unwrap()
-        obsStore.upsertItem(item(1, createdAt = 100L)).unwrap()
-        obsStore.upsertItem(item(2, createdAt = 200L)).unwrap()
-        obsStore.upsertItem(item(3, createdAt = 300L)).unwrap()
+    fun deleteItems_notifies_the_listings_once_and_an_empty_delete_not_at_all() =
+        runTest {
+            val obsDriver = testSqlDriver()
+            val obsStore = CatalogStore.create(obsDriver, UnconfinedTestDispatcher(testScheduler)).unwrap()
+            obsStore.upsertItem(item(1, createdAt = 100L)).unwrap()
+            obsStore.upsertItem(item(2, createdAt = 200L)).unwrap()
+            obsStore.upsertItem(item(3, createdAt = 300L)).unwrap()
 
-        obsStore.observeItems(ItemFilter.All).test {
-            assertEquals(listOf<Byte>(3, 2, 1), awaitItem().map { it.id.single() })
+            obsStore.observeItems(ItemFilter.All).test {
+                assertEquals(listOf<Byte>(3, 2, 1), awaitItem().map { it.id.single() })
 
-            assertEquals(0L, obsStore.deleteItems(emptyList()).unwrap(), "an empty delete deletes nothing")
-            expectNoEvents()
+                assertEquals(0L, obsStore.deleteItems(emptyList()).unwrap(), "an empty delete deletes nothing")
+                expectNoEvents()
 
-            obsStore.deleteItems(listOf(byteArrayOf(1), byteArrayOf(2), byteArrayOf(3))).unwrap()
-            assertEquals(emptyList(), awaitItem(), "one emission for the whole set")
-            expectNoEvents()
+                obsStore.deleteItems(listOf(byteArrayOf(1), byteArrayOf(2), byteArrayOf(3))).unwrap()
+                assertEquals(emptyList(), awaitItem(), "one emission for the whole set")
+                expectNoEvents()
 
-            cancelAndIgnoreRemainingEvents()
+                cancelAndIgnoreRemainingEvents()
+            }
+            obsDriver.close()
         }
-        obsDriver.close()
-    }
 
     /**
      * All or nothing. A delete that fails part-way must leave every row — a selection half-shredded
@@ -489,8 +493,9 @@ class CatalogStoreTest {
         failing.upsertItem(item(3)).unwrap()
         failingDriver.execute(
             identifier = null,
-            sql = "CREATE TRIGGER refuse_three BEFORE DELETE ON items WHEN OLD.id = x'03' " +
-                "BEGIN SELECT RAISE(ABORT, 'refused'); END",
+            sql =
+                "CREATE TRIGGER refuse_three BEFORE DELETE ON items WHEN OLD.id = x'03' " +
+                    "BEGIN SELECT RAISE(ABORT, 'refused'); END",
             parameters = 0,
         )
 
@@ -535,8 +540,9 @@ class CatalogStoreTest {
         failing.insertAll(ids)
         failingDriver.execute(
             identifier = null,
-            sql = "CREATE TRIGGER refuse_last BEFORE DELETE ON items WHEN OLD.id = x'04AF' " + // the 1200th
-                "BEGIN SELECT RAISE(ABORT, 'refused'); END",
+            sql =
+                "CREATE TRIGGER refuse_last BEFORE DELETE ON items WHEN OLD.id = x'04AF' " + // the 1200th
+                    "BEGIN SELECT RAISE(ABORT, 'refused'); END",
             parameters = 0,
         )
 
@@ -624,13 +630,14 @@ class CatalogStoreTest {
     @Test
     fun listAudit_returns_the_most_recent_N_ordered_by_timestamp_desc() {
         for (i in 1..5) {
-            store.appendAudit(
-                Audit_log(
-                    id = byteArrayOf(i.toByte()),
-                    timestamp = i.toLong() * 100L,
-                    enc_payload = byteArrayOf(i.toByte(), 0x7F),
-                ),
-            ).unwrap()
+            store
+                .appendAudit(
+                    Audit_log(
+                        id = byteArrayOf(i.toByte()),
+                        timestamp = i.toLong() * 100L,
+                        enc_payload = byteArrayOf(i.toByte(), 0x7F),
+                    ),
+                ).unwrap()
         }
         val recent = store.listAudit(limit = 3).unwrap()
         assertEquals(listOf(500L, 400L, 300L), recent.map { it.timestamp })
@@ -639,25 +646,26 @@ class CatalogStoreTest {
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     @Test
-    fun observeItems_emits_initial_then_reemits_on_write_and_delete_ordered() = runTest {
-        val obsDriver = testSqlDriver()
-        val obsStore = CatalogStore.create(obsDriver, UnconfinedTestDispatcher(testScheduler)).unwrap()
-        obsStore.observeItems().test {
-            assertEquals(emptyList(), awaitItem(), "initial list is empty")
+    fun observeItems_emits_initial_then_reemits_on_write_and_delete_ordered() =
+        runTest {
+            val obsDriver = testSqlDriver()
+            val obsStore = CatalogStore.create(obsDriver, UnconfinedTestDispatcher(testScheduler)).unwrap()
+            obsStore.observeItems().test {
+                assertEquals(emptyList(), awaitItem(), "initial list is empty")
 
-            obsStore.upsertItem(item(1, createdAt = 100L)).unwrap()
-            assertEquals(listOf(100L), awaitItem().map { it.created_at }, "re-emits after insert")
+                obsStore.upsertItem(item(1, createdAt = 100L)).unwrap()
+                assertEquals(listOf(100L), awaitItem().map { it.created_at }, "re-emits after insert")
 
-            obsStore.upsertItem(item(2, createdAt = 50L)).unwrap()
-            assertEquals(listOf(100L, 50L), awaitItem().map { it.created_at }, "newest first")
+                obsStore.upsertItem(item(2, createdAt = 50L)).unwrap()
+                assertEquals(listOf(100L, 50L), awaitItem().map { it.created_at }, "newest first")
 
-            obsStore.deleteItem(byteArrayOf(1)).unwrap()
-            assertEquals(listOf(50L), awaitItem().map { it.created_at }, "re-emits after delete")
+                obsStore.deleteItem(byteArrayOf(1)).unwrap()
+                assertEquals(listOf(50L), awaitItem().map { it.created_at }, "re-emits after delete")
 
-            cancelAndIgnoreRemainingEvents()
+                cancelAndIgnoreRemainingEvents()
+            }
+            obsDriver.close()
         }
-        obsDriver.close()
-    }
 
     /**
      * The album grid's liveness depends on a listener firing for a table the album rows do not live
@@ -671,69 +679,79 @@ class CatalogStoreTest {
      */
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     @Test
-    fun observeAlbums_reemits_when_only_the_items_table_changes() = runTest {
-        val obsDriver = testSqlDriver()
-        val obsStore = CatalogStore.create(obsDriver, UnconfinedTestDispatcher(testScheduler)).unwrap()
-        obsStore.upsertAlbum(album(1)).unwrap()
-        obsStore.upsertAlbum(album(2)).unwrap()
+    fun observeAlbums_reemits_when_only_the_items_table_changes() =
+        runTest {
+            val obsDriver = testSqlDriver()
+            val obsStore = CatalogStore.create(obsDriver, UnconfinedTestDispatcher(testScheduler)).unwrap()
+            obsStore.upsertAlbum(album(1)).unwrap()
+            obsStore.upsertAlbum(album(2)).unwrap()
 
-        obsStore.observeAlbums().test {
-            val initial = awaitItem()
-            assertEquals(listOf(0L, 0L), initial.map { it.item_count }, "both albums start empty")
-            assertNull(initial.first().cover_item_id, "an empty album has no cover")
+            obsStore.observeAlbums().test {
+                val initial = awaitItem()
+                assertEquals(listOf(0L, 0L), initial.map { it.item_count }, "both albums start empty")
+                assertNull(initial.first().cover_item_id, "an empty album has no cover")
 
-            // Insert into album 1.
-            obsStore.upsertItem(item(10, albumId = byteArrayOf(1), createdAt = 100L)).unwrap()
-            val afterInsert = awaitItem()
-            assertEquals(listOf(1L, 0L), afterInsert.map { it.item_count }, "an insert into items re-emits")
-            assertContentEquals(byteArrayOf(10), afterInsert.first().cover_item_id, "newest item becomes the cover")
+                // Insert into album 1.
+                obsStore.upsertItem(item(10, albumId = byteArrayOf(1), createdAt = 100L)).unwrap()
+                val afterInsert = awaitItem()
+                assertEquals(listOf(1L, 0L), afterInsert.map { it.item_count }, "an insert into items re-emits")
+                assertContentEquals(byteArrayOf(10), afterInsert.first().cover_item_id, "newest item becomes the cover")
 
-            // A newer item takes the cover without changing which album anything is in.
-            obsStore.upsertItem(item(11, albumId = byteArrayOf(1), createdAt = 200L)).unwrap()
-            val afterNewer = awaitItem()
-            assertContentEquals(byteArrayOf(11), afterNewer.first().cover_item_id, "the cover follows the newest item")
+                // A newer item takes the cover without changing which album anything is in.
+                obsStore.upsertItem(item(11, albumId = byteArrayOf(1), createdAt = 200L)).unwrap()
+                val afterNewer = awaitItem()
+                assertContentEquals(
+                    byteArrayOf(11),
+                    afterNewer.first().cover_item_id,
+                    "the cover follows the newest item",
+                )
 
-            // The case that matters: move an item between albums. The row count across the vault is
-            // unchanged, so anything deduplicating on a total would miss this entirely — and moving
-            // items between albums is the single most ordinary thing this screen has to reflect.
-            obsStore.upsertItem(item(11, albumId = byteArrayOf(2), createdAt = 200L)).unwrap()
-            val afterMove = awaitItem()
-            assertEquals(listOf(1L, 1L), afterMove.map { it.item_count }, "a move re-emits both counts")
-            assertContentEquals(byteArrayOf(10), afterMove.first().cover_item_id, "the cover falls back to what is left")
-            assertContentEquals(byteArrayOf(11), afterMove.last().cover_item_id, "and the destination gains one")
+                // The case that matters: move an item between albums. The row count across the vault is
+                // unchanged, so anything deduplicating on a total would miss this entirely — and moving
+                // items between albums is the single most ordinary thing this screen has to reflect.
+                obsStore.upsertItem(item(11, albumId = byteArrayOf(2), createdAt = 200L)).unwrap()
+                val afterMove = awaitItem()
+                assertEquals(listOf(1L, 1L), afterMove.map { it.item_count }, "a move re-emits both counts")
+                assertContentEquals(
+                    byteArrayOf(10),
+                    afterMove.first().cover_item_id,
+                    "the cover falls back to what is left",
+                )
+                assertContentEquals(byteArrayOf(11), afterMove.last().cover_item_id, "and the destination gains one")
 
-            // Deleting the last item empties the album rather than dropping it from the listing.
-            obsStore.deleteItem(byteArrayOf(11)).unwrap()
-            val afterDelete = awaitItem()
-            assertEquals(listOf(1L, 0L), afterDelete.map { it.item_count }, "a delete from items re-emits")
-            assertNull(afterDelete.last().cover_item_id, "an emptied album keeps its row and loses its cover")
+                // Deleting the last item empties the album rather than dropping it from the listing.
+                obsStore.deleteItem(byteArrayOf(11)).unwrap()
+                val afterDelete = awaitItem()
+                assertEquals(listOf(1L, 0L), afterDelete.map { it.item_count }, "a delete from items re-emits")
+                assertNull(afterDelete.last().cover_item_id, "an emptied album keeps its row and loses its cover")
 
-            cancelAndIgnoreRemainingEvents()
+                cancelAndIgnoreRemainingEvents()
+            }
+            obsDriver.close()
         }
-        obsDriver.close()
-    }
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     @Test
-    fun observeItemCount_all_emits_initial_then_reemits_on_insert_and_delete() = runTest {
-        val obsDriver = testSqlDriver()
-        val obsStore = CatalogStore.create(obsDriver, UnconfinedTestDispatcher(testScheduler)).unwrap()
-        obsStore.observeItemCount(ItemFilter.All).test {
-            assertEquals(0L, awaitItem(), "an empty vault counts zero")
+    fun observeItemCount_all_emits_initial_then_reemits_on_insert_and_delete() =
+        runTest {
+            val obsDriver = testSqlDriver()
+            val obsStore = CatalogStore.create(obsDriver, UnconfinedTestDispatcher(testScheduler)).unwrap()
+            obsStore.observeItemCount(ItemFilter.All).test {
+                assertEquals(0L, awaitItem(), "an empty vault counts zero")
 
-            obsStore.upsertItem(item(1)).unwrap()
-            assertEquals(1L, awaitItem(), "re-emits after insert")
+                obsStore.upsertItem(item(1)).unwrap()
+                assertEquals(1L, awaitItem(), "re-emits after insert")
 
-            obsStore.upsertItem(item(2, albumId = byteArrayOf(0xA1.toByte()))).unwrap()
-            assertEquals(2L, awaitItem(), "a filed item still counts towards the whole vault")
+                obsStore.upsertItem(item(2, albumId = byteArrayOf(0xA1.toByte()))).unwrap()
+                assertEquals(2L, awaitItem(), "a filed item still counts towards the whole vault")
 
-            obsStore.deleteItem(byteArrayOf(1)).unwrap()
-            assertEquals(1L, awaitItem(), "re-emits after delete")
+                obsStore.deleteItem(byteArrayOf(1)).unwrap()
+                assertEquals(1L, awaitItem(), "re-emits after delete")
 
-            cancelAndIgnoreRemainingEvents()
+                cancelAndIgnoreRemainingEvents()
+            }
+            obsDriver.close()
         }
-        obsDriver.close()
-    }
 
     /**
      * Filing an item changes no row count across the vault, so this is the case a total would miss:
@@ -742,28 +760,29 @@ class CatalogStoreTest {
      */
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     @Test
-    fun observeItemCount_unfiled_counts_only_items_with_no_album_and_follows_a_move() = runTest {
-        val obsDriver = testSqlDriver()
-        val obsStore = CatalogStore.create(obsDriver, UnconfinedTestDispatcher(testScheduler)).unwrap()
-        val albumId = byteArrayOf(0xA1.toByte())
-        obsStore.upsertAlbum(album(0xA1.toByte())).unwrap()
-        obsStore.upsertItem(item(1)).unwrap()
-        obsStore.upsertItem(item(2)).unwrap()
-        obsStore.upsertItem(item(3, albumId = albumId)).unwrap()
+    fun observeItemCount_unfiled_counts_only_items_with_no_album_and_follows_a_move() =
+        runTest {
+            val obsDriver = testSqlDriver()
+            val obsStore = CatalogStore.create(obsDriver, UnconfinedTestDispatcher(testScheduler)).unwrap()
+            val albumId = byteArrayOf(0xA1.toByte())
+            obsStore.upsertAlbum(album(0xA1.toByte())).unwrap()
+            obsStore.upsertItem(item(1)).unwrap()
+            obsStore.upsertItem(item(2)).unwrap()
+            obsStore.upsertItem(item(3, albumId = albumId)).unwrap()
 
-        obsStore.observeItemCount(ItemFilter.Unfiled).test {
-            assertEquals(2L, awaitItem(), "the filed item is not counted")
+            obsStore.observeItemCount(ItemFilter.Unfiled).test {
+                assertEquals(2L, awaitItem(), "the filed item is not counted")
 
-            obsStore.updateItemAlbum(listOf(byteArrayOf(1)), albumId).unwrap()
-            assertEquals(1L, awaitItem(), "filing an unfiled item lowers the count")
+                obsStore.updateItemAlbum(listOf(byteArrayOf(1)), albumId).unwrap()
+                assertEquals(1L, awaitItem(), "filing an unfiled item lowers the count")
 
-            obsStore.updateItemAlbum(listOf(byteArrayOf(3)), null).unwrap()
-            assertEquals(2L, awaitItem(), "unfiling one raises it")
+                obsStore.updateItemAlbum(listOf(byteArrayOf(3)), null).unwrap()
+                assertEquals(2L, awaitItem(), "unfiling one raises it")
 
-            cancelAndIgnoreRemainingEvents()
+                cancelAndIgnoreRemainingEvents()
+            }
+            obsDriver.close()
         }
-        obsDriver.close()
-    }
 
     /**
      * The filter is handed **its own copy** of the album id, as production's would be: an id decoded
@@ -772,29 +791,30 @@ class CatalogStoreTest {
      */
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     @Test
-    fun observeItemCount_album_counts_only_that_album_and_follows_a_move_between_albums() = runTest {
-        val obsDriver = testSqlDriver()
-        val obsStore = CatalogStore.create(obsDriver, UnconfinedTestDispatcher(testScheduler)).unwrap()
-        obsStore.upsertAlbum(album(1)).unwrap()
-        obsStore.upsertAlbum(album(2)).unwrap()
-        obsStore.upsertItem(item(10, albumId = byteArrayOf(1))).unwrap()
-        obsStore.upsertItem(item(11, albumId = byteArrayOf(1))).unwrap()
-        obsStore.upsertItem(item(12, albumId = byteArrayOf(2))).unwrap()
-        obsStore.upsertItem(item(13)).unwrap()
+    fun observeItemCount_album_counts_only_that_album_and_follows_a_move_between_albums() =
+        runTest {
+            val obsDriver = testSqlDriver()
+            val obsStore = CatalogStore.create(obsDriver, UnconfinedTestDispatcher(testScheduler)).unwrap()
+            obsStore.upsertAlbum(album(1)).unwrap()
+            obsStore.upsertAlbum(album(2)).unwrap()
+            obsStore.upsertItem(item(10, albumId = byteArrayOf(1))).unwrap()
+            obsStore.upsertItem(item(11, albumId = byteArrayOf(1))).unwrap()
+            obsStore.upsertItem(item(12, albumId = byteArrayOf(2))).unwrap()
+            obsStore.upsertItem(item(13)).unwrap()
 
-        obsStore.observeItemCount(ItemFilter.Album(byteArrayOf(1))).test {
-            assertEquals(2L, awaitItem(), "neither the other album's item nor the unfiled one is counted")
+            obsStore.observeItemCount(ItemFilter.Album(byteArrayOf(1))).test {
+                assertEquals(2L, awaitItem(), "neither the other album's item nor the unfiled one is counted")
 
-            obsStore.updateItemAlbum(listOf(byteArrayOf(11)), byteArrayOf(2)).unwrap()
-            assertEquals(1L, awaitItem(), "moving an item out to another album lowers the count")
+                obsStore.updateItemAlbum(listOf(byteArrayOf(11)), byteArrayOf(2)).unwrap()
+                assertEquals(1L, awaitItem(), "moving an item out to another album lowers the count")
 
-            obsStore.upsertItem(item(14, albumId = byteArrayOf(1))).unwrap()
-            assertEquals(2L, awaitItem(), "an item created into the album raises it")
+                obsStore.upsertItem(item(14, albumId = byteArrayOf(1))).unwrap()
+                assertEquals(2L, awaitItem(), "an item created into the album raises it")
 
-            cancelAndIgnoreRemainingEvents()
+                cancelAndIgnoreRemainingEvents()
+            }
+            obsDriver.close()
         }
-        obsDriver.close()
-    }
 
     /**
      * A broken catalog must not read as an empty one. A count of zero is a claim about the vault
@@ -802,16 +822,17 @@ class CatalogStoreTest {
      */
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     @Test
-    fun observeItemCount_surfaces_a_driver_failure_in_the_flow_rather_than_a_zero() = runTest {
-        val obsDriver = testSqlDriver()
-        val obsStore = CatalogStore.create(obsDriver, UnconfinedTestDispatcher(testScheduler)).unwrap()
-        obsDriver.execute(identifier = null, sql = "DROP TABLE items", parameters = 0)
+    fun observeItemCount_surfaces_a_driver_failure_in_the_flow_rather_than_a_zero() =
+        runTest {
+            val obsDriver = testSqlDriver()
+            val obsStore = CatalogStore.create(obsDriver, UnconfinedTestDispatcher(testScheduler)).unwrap()
+            obsDriver.execute(identifier = null, sql = "DROP TABLE items", parameters = 0)
 
-        obsStore.observeItemCount(ItemFilter.Unfiled).test {
-            awaitError()
+            obsStore.observeItemCount(ItemFilter.Unfiled).test {
+                awaitError()
+            }
+            obsDriver.close()
         }
-        obsDriver.close()
-    }
 
     @Test
     fun create_fails_closed_on_a_newer_catalog_version() {

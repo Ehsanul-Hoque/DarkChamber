@@ -61,11 +61,12 @@ class LoggingTest {
     @Test
     fun no_redacted_code_contains_a_digit_or_slash_that_could_be_content() {
         // A code is a fixed type token — never an id, size, path, or blob.
-        val codes = listOf(
-            redactCause(VaultError.Crypto.IntegrityFailure),
-            redactCause(VaultError.Io(cause = RuntimeException("42 /tmp/x"))),
-            redactCause(VaultError.Db(cause = RuntimeException("row 7"))),
-        )
+        val codes =
+            listOf(
+                redactCause(VaultError.Crypto.IntegrityFailure),
+                redactCause(VaultError.Io(cause = RuntimeException("42 /tmp/x"))),
+                redactCause(VaultError.Db(cause = RuntimeException("row 7"))),
+            )
         codes.forEach { code ->
             assertTrue(code.none { it.isDigit() || it == '/' }, "code '$code' may carry content")
         }

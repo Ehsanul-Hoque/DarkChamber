@@ -13,7 +13,6 @@ import kotlin.test.assertTrue
  * for and nothing else, because the code knows that much and no more.
  */
 class NotSavedFormatTest {
-
     private fun lines(vararg reports: Triple<NotSavedKind, NotSavedReason, Int>): List<String> {
         val record = NotSavedRecord()
         for ((kind, reason, count) in reports) record.report(kind, reason, count)
@@ -57,18 +56,29 @@ class NotSavedFormatTest {
 
     @Test
     fun each_reason_reads_in_the_singular_and_the_plural() {
-        val expected = mapOf(
-            NotSavedReason.Locked to ("1 photo wasn't saved because the vault locked." to
-                "3 photos weren't saved because the vault locked."),
-            NotSavedReason.OutOfSpace to ("1 photo wasn't saved — your phone ran out of space." to
-                "3 photos weren't saved — your phone ran out of space."),
-            NotSavedReason.TooShort to ("1 photo was too short to save." to
-                "3 photos were too short to save."),
-            NotSavedReason.CouldNotSave to ("1 photo couldn't be saved." to
-                "3 photos couldn't be saved."),
-            NotSavedReason.SavedUnfiled to ("1 photo was saved to Unfiled — its album was deleted." to
-                "3 photos were saved to Unfiled — their album was deleted."),
-        )
+        val expected =
+            mapOf(
+                NotSavedReason.Locked to (
+                    "1 photo wasn't saved because the vault locked." to
+                        "3 photos weren't saved because the vault locked."
+                ),
+                NotSavedReason.OutOfSpace to (
+                    "1 photo wasn't saved — your phone ran out of space." to
+                        "3 photos weren't saved — your phone ran out of space."
+                ),
+                NotSavedReason.TooShort to (
+                    "1 photo was too short to save." to
+                        "3 photos were too short to save."
+                ),
+                NotSavedReason.CouldNotSave to (
+                    "1 photo couldn't be saved." to
+                        "3 photos couldn't be saved."
+                ),
+                NotSavedReason.SavedUnfiled to (
+                    "1 photo was saved to Unfiled — its album was deleted." to
+                        "3 photos were saved to Unfiled — their album was deleted."
+                ),
+            )
         assertEquals(NotSavedReason.entries.toSet(), expected.keys, "every reason has its line")
         for ((reason, forms) in expected) {
             assertEquals(listOf(forms.first), lines(Triple(NotSavedKind.Photo, reason, 1)), "$reason, one")
@@ -117,12 +127,13 @@ class NotSavedFormatTest {
      */
     @Test
     fun no_line_names_a_cause_other_than_its_own() {
-        val causeWords = mapOf(
-            NotSavedReason.Locked to "locked",
-            NotSavedReason.OutOfSpace to "space",
-            NotSavedReason.TooShort to "short",
-            NotSavedReason.SavedUnfiled to "deleted",
-        )
+        val causeWords =
+            mapOf(
+                NotSavedReason.Locked to "locked",
+                NotSavedReason.OutOfSpace to "space",
+                NotSavedReason.TooShort to "short",
+                NotSavedReason.SavedUnfiled to "deleted",
+            )
         for (reason in NotSavedReason.entries) {
             for (count in listOf(1, 2)) {
                 val line = lines(Triple(NotSavedKind.Video, reason, count)).single()
@@ -137,8 +148,10 @@ class NotSavedFormatTest {
     fun no_line_promises_more_than_the_code_does() {
         for (reason in NotSavedReason.entries) {
             for (count in listOf(1, 2)) {
-                val line = lines(Triple(NotSavedKind.Photo, reason, count), Triple(NotSavedKind.Video, reason, count))
-                    .single().lowercase()
+                val line =
+                    lines(Triple(NotSavedKind.Photo, reason, count), Triple(NotSavedKind.Video, reason, count))
+                        .single()
+                        .lowercase()
                 for (claim in listOf("silent", "wiped", "erased", "deleted from your phone", "recover")) {
                     assertFalse(claim in line, "'$claim' in: $line")
                 }

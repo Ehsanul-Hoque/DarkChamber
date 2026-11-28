@@ -102,9 +102,9 @@ DarkChamber's premise is that a privacy app should be **checkable**, not just be
 
 Essentials — the [Engineering Guide](./docs/engineering/README.md) has the detail:
 
-- **TDD** — tests first; coverage gated in CI (`core:crypto` ≈100%, domain 90%, overall 80%).
+- **TDD** — tests first; each module's coverage gated in CI at a floor set from what was measured, which only rises (targets: `core:crypto` ≈100%, domain 90%, overall 80%).
 - **Conventional Commits, per commit** (`feat:`, `fix:`, `docs:`, …) — we merge, not squash; commits drive automated versioning.
-- **Quality gates** — ktlint, detekt, Konsist (including security-invariant rules), Kover, in CI. A tracked `commit-msg` hook (`./gradlew installGitHooks`) checks each commit message locally with the same rule CI applies.
+- **Quality gates** — Spotless (ktlint), detekt, Konsist (including security-invariant rules), Kover, and Compose UI tests on Android and iOS, in CI; run `./gradlew spotlessApply` before committing. A tracked `commit-msg` hook (`./gradlew installGitHooks`) checks each commit message locally with the same rule CI applies.
 - **Security-sensitive PRs** (crypto, storage, format, session/lock) need the `security-review` label and must state which threat-model invariants they touch.
 - **`main` is protected**; releases are tag-based and cut manually.
 

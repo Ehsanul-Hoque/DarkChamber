@@ -1,6 +1,7 @@
 package dev.ehsanfahad.darkchamber.feature.vault.presentation
 
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -15,23 +16,22 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -52,6 +52,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -72,9 +74,6 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumDelete
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumState
 import dev.ehsanfahad.darkchamber.feature.vault.api.AlbumTileName
 import dev.ehsanfahad.darkchamber.feature.vault.api.Filing
-import dev.ehsanfahad.darkchamber.feature.vault.api.SelectionDelete
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryError
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItem
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryItemMeta
@@ -84,6 +83,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.GallerySelection
 import dev.ehsanfahad.darkchamber.feature.vault.api.GalleryState
 import dev.ehsanfahad.darkchamber.feature.vault.api.ImportState
 import dev.ehsanfahad.darkchamber.feature.vault.api.OriginalDelete
+import dev.ehsanfahad.darkchamber.feature.vault.api.SelectionDelete
 import dev.ehsanfahad.darkchamber.feature.vault.api.label
 
 /**
@@ -102,7 +102,7 @@ internal fun GalleryScreen(
     imageLoader: ImageLoader,
     onChooseOrder: (GalleryOrder) -> Unit,
     onOpenSearch: () -> Unit,
-    onSearchFocused: () -> Unit,
+    onSearchFocus: () -> Unit,
     onEditSearch: (String) -> Unit,
     onCloseSearch: () -> Unit,
     onAddPhotos: () -> Unit,
@@ -116,7 +116,7 @@ internal fun GalleryScreen(
     onDismissError: () -> Unit,
     onSelectItem: (ByteArray) -> Unit,
     onTapItem: (ByteArray) -> Unit,
-    onRevealHandled: () -> Unit,
+    onReveal: () -> Unit,
     onSelectAll: () -> Unit,
     onClearSelection: () -> Unit,
     onStartFiling: () -> Unit,
@@ -165,7 +165,7 @@ internal fun GalleryScreen(
             val visible = gridState.layoutInfo.visibleItemsInfo
             val range = if (visible.isEmpty()) IntRange.EMPTY else visible.first().index..visible.last().index
             revealScroll(state.items, key, range)?.let { gridState.requestScrollToItem(it) }
-            onRevealHandled()
+            onReveal()
         }
     }
 
@@ -199,7 +199,7 @@ internal fun GalleryScreen(
                         onChooseOrder(chosen)
                     },
                     onOpenSearch = onOpenSearch,
-                    onSearchFocused = onSearchFocused,
+                    onSearchFocus = onSearchFocus,
                     onEditSearch = onEditSearch,
                     onCloseSearch = onCloseSearch,
                     showsControls = state.showsBrowseControls(),
@@ -212,24 +212,35 @@ internal fun GalleryScreen(
             when {
                 // Ahead of loading and of the grid: an album that is no longer there has nothing to
                 // list, and a spinner or an "empty album" message would both be lying about why.
-                album is AlbumState.Gone -> MissingAlbumNotice(onLeave = onLeaveAlbum)
-                state.loading -> CenteredMessage("Opening the vault…", showSpinner = true)
+                album is AlbumState.Gone -> {
+                    MissingAlbumNotice(onLeave = onLeaveAlbum)
+                }
+
+                state.loading -> {
+                    CenteredMessage("Opening the vault…", showSpinner = true)
+                }
+
                 // The listing failing and the listing being empty look identical from here — both are
                 // an empty list with loading over — so the screen is told which it is rather than
                 // letting the copy assert an absence nobody established. Not the banner's error, which
                 // the user can dismiss: the reason the grid is empty outlives the acknowledgement.
-                state.items.isEmpty() -> EmptyListing(message = state.emptyListingMessage())
-                else -> ItemGrid(
-                    items = state.items,
-                    gridState = gridState,
-                    reordering = scroll.isReordering,
-                    now = now,
-                    imageLoader = imageLoader,
-                    bottomInset = barHeight,
-                    selection = state.selection,
-                    onSelectItem = onSelectItem,
-                    onTapItem = onTapItem,
-                )
+                state.items.isEmpty() -> {
+                    EmptyListing(message = state.emptyListingMessage())
+                }
+
+                else -> {
+                    ItemGrid(
+                        items = state.items,
+                        gridState = gridState,
+                        reordering = scroll.isReordering,
+                        now = now,
+                        imageLoader = imageLoader,
+                        bottomInset = barHeight,
+                        selection = state.selection,
+                        onSelectItem = onSelectItem,
+                        onTapItem = onTapItem,
+                    )
+                }
             }
         }
 
@@ -238,12 +249,13 @@ internal fun GalleryScreen(
         // second batch the coordinator would only refuse.
         Box(
             contentAlignment = Alignment.BottomEnd,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .fillMaxWidth()
-                .onSizeChanged { barHeight = with(density) { it.height.toDp() } }
-                .bottomBarScrim()
-                .padding(spacing.spaceLg),
+            modifier =
+                Modifier
+                    .align(Alignment.BottomEnd)
+                    .fillMaxWidth()
+                    .onSizeChanged { barHeight = with(density) { it.height.toDp() } }
+                    .bottomBarScrim()
+                    .padding(spacing.spaceLg),
         ) {
             // One bar at a time, chosen by `bottomBar` — which is tested, and is also what the camera
             // button's intent checks, so a tap can never open what this layout is not showing.
@@ -252,61 +264,81 @@ internal fun GalleryScreen(
             // the selection bar, which is where it was started from and which has nothing left to say
             // while it runs.
             when (state.bottomBar()) {
-                GalleryBottomBar.FilingReport ->
+                GalleryBottomBar.FilingReport -> {
                     FilingCard(filing = state.filing as Filing, onDismiss = onAcknowledgeFiling)
+                }
+
                 // The same place and shape for the same kind of news: a delete running, or what it did.
-                GalleryBottomBar.DeleteReport ->
+                GalleryBottomBar.DeleteReport -> {
                     DeleteCard(deletion = state.deletion as SelectionDelete, onDismiss = onAcknowledgeDeletion)
+                }
+
                 // Selecting takes the bottom area over entirely, ahead of any batch state. That is also
                 // why nothing guards against starting an import mid-selection: the buttons that would
                 // start one are not on screen while this is.
-                GalleryBottomBar.Selection -> SelectionBar(
-                    count = state.selection.count,
-                    // Offered only where every selected item is in the album being viewed. On the whole
-                    // vault the selection is a mix of filed and unfiled items, so the button would
-                    // silently do nothing to some of them; from Unfiled there is nothing to take out.
-                    onUnfile = onUnfileSelection.takeIf { state.scope == GalleryScope.Album },
-                    onMoveToAlbum = onStartFiling,
-                    // Destructive, so it asks first — the confirmation below carries the count and
-                    // says what deleting does and what it cannot undo.
-                    onDelete = onRequestDeleteSelection,
-                    onSelectAll = onSelectAll,
-                    onClear = onClearSelection,
-                )
-                GalleryBottomBar.Progress ->
+                GalleryBottomBar.Selection -> {
+                    SelectionBar(
+                        count = state.selection.count,
+                        // Offered only where every selected item is in the album being viewed. On the whole
+                        // vault the selection is a mix of filed and unfiled items, so the button would
+                        // silently do nothing to some of them; from Unfiled there is nothing to take out.
+                        onUnfile = onUnfileSelection.takeIf { state.scope == GalleryScope.Album },
+                        onMoveToAlbum = onStartFiling,
+                        // Destructive, so it asks first — the confirmation below carries the count and
+                        // says what deleting does and what it cannot undo.
+                        onDelete = onRequestDeleteSelection,
+                        onSelectAll = onSelectAll,
+                        onClear = onClearSelection,
+                    )
+                }
+
+                GalleryBottomBar.Progress -> {
                     ImportProgressCard(batch = state.batch as ImportState.Running, onCancel = onCancelImport)
+                }
+
                 // Not "Choose what to add…" any more. This card is held back until a pick is taking
                 // long enough to be worth explaining, and by then the likeliest reason it is showing
                 // is the stretch *after* choosing, while the system materialises the selection — at
                 // which point telling the user to choose is telling them to do something they have
                 // already done. Vague on purpose: this layer cannot tell which of the two waits it
                 // is in, and naming the wrong one would be worse than naming neither.
-                GalleryBottomBar.Picking -> ImportNoticeCard(text = "Getting things ready…")
-                GalleryBottomBar.Summary -> ImportSummaryCard(
-                    batch = state.batch as ImportState.Finished,
-                    offer = state.importOffer(),
-                    onDismiss = onAcknowledgeImport,
-                    onDeleteOriginals = onRequestOriginalDelete,
-                    // Both halves live outside this layout: which offer to make, and what taking it
-                    // does — see `importOffer` and `take`.
-                    onTakeOffer = { offer ->
-                        offer.take(onCloseSearch = onCloseSearch, onChooseOrder = onChooseOrder)
-                    },
-                )
-                GalleryBottomBar.Actions -> ImportActions(
-                    onAddPhotos = onAddPhotos,
-                    onAddFiles = onAddFiles,
-                    onOpenCamera = onOpenCamera,
-                )
+                GalleryBottomBar.Picking -> {
+                    ImportNoticeCard(text = "Getting things ready…")
+                }
+
+                GalleryBottomBar.Summary -> {
+                    ImportSummaryCard(
+                        batch = state.batch as ImportState.Finished,
+                        offer = state.importOffer(),
+                        onDismiss = onAcknowledgeImport,
+                        onDeleteOriginals = onRequestOriginalDelete,
+                        // Both halves live outside this layout: which offer to make, and what taking it
+                        // does — see `importOffer` and `take`.
+                        onTakeOffer = { offer ->
+                            offer.take(onCloseSearch = onCloseSearch, onChooseOrder = onChooseOrder)
+                        },
+                    )
+                }
+
+                GalleryBottomBar.Actions -> {
+                    ImportActions(
+                        onAddPhotos = onAddPhotos,
+                        onAddFiles = onAddFiles,
+                        onOpenCamera = onOpenCamera,
+                    )
+                }
+
                 // Not the failed-file banner: nothing was chosen, so there is no file to blame
                 // (hard rule 6). It sits above the actions rather than replacing them, because the
                 // fix for a picker that would not open is usually to tap again.
-                GalleryBottomBar.PickerUnavailable -> PickerUnavailableCard(
-                    onDismiss = onAcknowledgeImport,
-                    onAddPhotos = onAddPhotos,
-                    onAddFiles = onAddFiles,
-                    onOpenCamera = onOpenCamera,
-                )
+                GalleryBottomBar.PickerUnavailable -> {
+                    PickerUnavailableCard(
+                        onDismiss = onAcknowledgeImport,
+                        onAddPhotos = onAddPhotos,
+                        onAddFiles = onAddFiles,
+                        onOpenCamera = onOpenCamera,
+                    )
+                }
             }
         }
 
@@ -343,19 +375,25 @@ internal fun GalleryScreen(
         // Deleting the selection: asked before anything happens, and the dialog stays up, deaf, while
         // it runs — a shred cannot be called back.
         when (val deletion = state.deletion) {
-            is SelectionDelete.Asking -> SelectionDeleteDialog(
-                count = deletion.count,
-                deleting = false,
-                onConfirm = onConfirmDeleteSelection,
-                onCancel = onCancelDeleteSelection,
-            )
-            is SelectionDelete.Deleting -> SelectionDeleteDialog(
-                count = deletion.count,
-                deleting = true,
-                onConfirm = onConfirmDeleteSelection,
-                onCancel = onCancelDeleteSelection,
-            )
-            is SelectionDelete.Deleted, null -> Unit
+            is SelectionDelete.Asking -> {
+                SelectionDeleteDialog(
+                    count = deletion.count,
+                    deleting = false,
+                    onConfirm = onConfirmDeleteSelection,
+                    onCancel = onCancelDeleteSelection,
+                )
+            }
+
+            is SelectionDelete.Deleting -> {
+                SelectionDeleteDialog(
+                    count = deletion.count,
+                    deleting = true,
+                    onConfirm = onConfirmDeleteSelection,
+                    onCancel = onCancelDeleteSelection,
+                )
+            }
+
+            is SelectionDelete.Deleted, null -> {}
         }
 
         // The album's own two dialogs, above the grid they act on. Never both: each intent refuses
@@ -419,10 +457,11 @@ private fun AlbumChooser(
     Dialog(
         onDismissRequest = onCancel,
         // Dismissable: nothing has happened yet, and the worst a stray tap costs is reopening it.
-        properties = DialogProperties(
-            dismissOnBackPress = creating?.saving != true,
-            dismissOnClickOutside = creating?.saving != true,
-        ),
+        properties =
+            DialogProperties(
+                dismissOnBackPress = creating?.saving != true,
+                dismissOnClickOutside = creating?.saving != true,
+            ),
     ) {
         // Its own window, so its own exclusion. Every dialog does this whether or not it holds a
         // field today — the album names listed here are vault content too, and a dialog that gains
@@ -430,10 +469,11 @@ private fun AlbumChooser(
         ExcludeFromPlatformStructures()
 
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(color = colors.surface, shape = DarkChamberTheme.shapes.large)
-                .padding(spacing.spaceLg),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .background(color = colors.surface, shape = DarkChamberTheme.shapes.large)
+                    .padding(spacing.spaceLg),
         ) {
             Text(
                 text = GalleryFormat.moveToAlbum(),
@@ -485,13 +525,14 @@ private fun AlbumChooser(
                             color = if (choice.name is AlbumTileName.Unreadable) colors.danger else colors.textPrimary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                // An album whose name will not open is still somewhere items can go: the
-                                // name is damaged, the album is not, and excluding it would strand the
-                                // only route back into it.
-                                .clickable { onChoose(choice.id) }
-                                .padding(vertical = spacing.spaceSm),
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    // An album whose name will not open is still somewhere items can go: the
+                                    // name is damaged, the album is not, and excluding it would strand the
+                                    // only route back into it.
+                                    .clickable { onChoose(choice.id) }
+                                    .padding(vertical = spacing.spaceSm),
                         )
                     }
                 }
@@ -518,11 +559,12 @@ private fun AlbumChooser(
                     Text(
                         // The create's label says what the whole step does, because it does both: the
                         // album is made and the selection goes into it.
-                        text = when {
-                            creating == null -> GalleryFormat.newAlbum()
-                            creating.saving -> "Moving…"
-                            else -> "Create and move"
-                        },
+                        text =
+                            when {
+                                creating == null -> GalleryFormat.newAlbum()
+                                creating.saving -> "Moving…"
+                                else -> "Create and move"
+                            },
                         style = DarkChamberTheme.typography.label,
                         color = if (creating?.saving == true) colors.textSecondary else colors.accent,
                     )
@@ -540,28 +582,34 @@ private fun AlbumChooser(
  * twice.
  */
 @Composable
-private fun FilingCard(filing: Filing, onDismiss: () -> Unit) {
+private fun FilingCard(
+    filing: Filing,
+    onDismiss: () -> Unit,
+) {
     val colors = DarkChamberTheme.colors
     val spacing = DarkChamberTheme.spacing
 
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(color = colors.surface, shape = DarkChamberTheme.shapes.large)
-            .padding(spacing.spaceMd),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(color = colors.surface, shape = DarkChamberTheme.shapes.large)
+                .padding(spacing.spaceMd),
     ) {
         when (filing) {
-            is Filing.Moving -> Row(verticalAlignment = Alignment.CenterVertically) {
-                CircularProgressIndicator(
-                    color = colors.accent,
-                    modifier = Modifier.size(DarkChamberTheme.spacing.spaceMd),
-                )
-                Text(
-                    text = "Moving…",
-                    style = DarkChamberTheme.typography.body,
-                    color = colors.textSecondary,
-                    modifier = Modifier.padding(start = spacing.spaceSm),
-                )
+            is Filing.Moving -> {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(
+                        color = colors.accent,
+                        modifier = Modifier.size(DarkChamberTheme.spacing.spaceMd),
+                    )
+                    Text(
+                        text = "Moving…",
+                        style = DarkChamberTheme.typography.body,
+                        color = colors.textSecondary,
+                        modifier = Modifier.padding(start = spacing.spaceSm),
+                    )
+                }
             }
 
             is Filing.Moved -> {
@@ -582,43 +630,55 @@ private fun FilingCard(filing: Filing, onDismiss: () -> Unit) {
             }
 
             // The chooser is a dialog, so this card is never asked to draw it.
-            is Filing.Choosing -> Unit
+            is Filing.Choosing -> {}
         }
     }
 }
 
 /** A delete of the selection running, or how many it deleted — shaped like [FilingCard]. */
 @Composable
-private fun DeleteCard(deletion: SelectionDelete, onDismiss: () -> Unit) {
+private fun DeleteCard(
+    deletion: SelectionDelete,
+    onDismiss: () -> Unit,
+) {
     val colors = DarkChamberTheme.colors
     val spacing = DarkChamberTheme.spacing
 
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(color = colors.surface, shape = DarkChamberTheme.shapes.large)
-            .padding(spacing.spaceMd),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(color = colors.surface, shape = DarkChamberTheme.shapes.large)
+                .padding(spacing.spaceMd),
     ) {
         when (deletion) {
-            is SelectionDelete.Deleting -> Row(verticalAlignment = Alignment.CenterVertically) {
-                CircularProgressIndicator(color = colors.danger, modifier = Modifier.size(spacing.spaceMd))
-                Text(
-                    text = ViewerFormat.deleting(),
-                    style = DarkChamberTheme.typography.body,
-                    color = colors.textSecondary,
-                    modifier = Modifier.padding(start = spacing.spaceSm),
-                )
+            is SelectionDelete.Deleting -> {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(color = colors.danger, modifier = Modifier.size(spacing.spaceMd))
+                    Text(
+                        text = ViewerFormat.deleting(),
+                        style = DarkChamberTheme.typography.body,
+                        color = colors.textSecondary,
+                        modifier = Modifier.padding(start = spacing.spaceSm),
+                    )
+                }
             }
+
             is SelectionDelete.Deleted -> {
-                Text(text = ViewerFormat.deleted(deletion.count), style = DarkChamberTheme.typography.body, color = colors.textPrimary)
+                Text(
+                    text = ViewerFormat.deleted(deletion.count),
+                    style = DarkChamberTheme.typography.body,
+                    color = colors.textPrimary,
+                )
                 Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
                     TextButton(onClick = onDismiss) {
                         Text(text = "OK", style = DarkChamberTheme.typography.label, color = colors.accent)
                     }
                 }
             }
+
             // The confirmation is a dialog, so this card is never asked to draw it.
-            is SelectionDelete.Asking -> Unit
+            is SelectionDelete.Asking -> {}
         }
     }
 }
@@ -629,7 +689,12 @@ private fun DeleteCard(deletion: SelectionDelete, onDismiss: () -> Unit) {
  * exclusion. Once confirmed nothing on it responds, and the action says why.
  */
 @Composable
-private fun SelectionDeleteDialog(count: Int, deleting: Boolean, onConfirm: () -> Unit, onCancel: () -> Unit) {
+private fun SelectionDeleteDialog(
+    count: Int,
+    deleting: Boolean,
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit,
+) {
     val colors = DarkChamberTheme.colors
     val spacing = DarkChamberTheme.spacing
     Dialog(
@@ -638,19 +703,27 @@ private fun SelectionDeleteDialog(count: Int, deleting: Boolean, onConfirm: () -
     ) {
         ExcludeFromPlatformStructures()
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(color = colors.surface, shape = DarkChamberTheme.shapes.large)
-                .padding(spacing.spaceLg),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .background(color = colors.surface, shape = DarkChamberTheme.shapes.large)
+                    .padding(spacing.spaceLg),
         ) {
-            Text(text = ViewerFormat.deleteQuestion(count), style = DarkChamberTheme.typography.title, color = colors.textPrimary)
+            Text(
+                text = ViewerFormat.deleteQuestion(count),
+                style = DarkChamberTheme.typography.title,
+                color = colors.textPrimary,
+            )
             Text(
                 text = ViewerFormat.deleteExplanation(count),
                 style = DarkChamberTheme.typography.body,
                 color = colors.textSecondary,
                 modifier = Modifier.padding(top = spacing.spaceSm),
             )
-            Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth().padding(top = spacing.spaceMd)) {
+            Row(
+                horizontalArrangement = Arrangement.End,
+                modifier = Modifier.fillMaxWidth().padding(top = spacing.spaceMd),
+            ) {
                 TextButton(onClick = onCancel, enabled = !deleting) {
                     Text(
                         text = ViewerFormat.cancel(),
@@ -737,10 +810,11 @@ private fun DeleteAlbumConfirmation(
         ExcludeFromPlatformStructures()
 
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(color = colors.surface, shape = DarkChamberTheme.shapes.large)
-                .padding(spacing.spaceLg),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .background(color = colors.surface, shape = DarkChamberTheme.shapes.large)
+                    .padding(spacing.spaceLg),
         ) {
             Text(
                 text = GalleryFormat.deleteAlbumQuestion(),
@@ -817,10 +891,11 @@ private fun DeleteOriginalsDisclosure(
         ExcludeFromPlatformStructures()
 
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(color = colors.surface, shape = DarkChamberTheme.shapes.large)
-                .padding(spacing.spaceLg),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .background(color = colors.surface, shape = DarkChamberTheme.shapes.large)
+                    .padding(spacing.spaceLg),
         ) {
             Text(
                 text = GalleryFormat.deleteOriginals(count) + "?",
@@ -892,7 +967,11 @@ private fun Modifier.bottomBarScrim(): Modifier {
  * camera comes last, at the end of the row: a third way to add things, drawn as the aperture.
  */
 @Composable
-private fun ImportActions(onAddPhotos: () -> Unit, onAddFiles: () -> Unit, onOpenCamera: () -> Unit) {
+private fun ImportActions(
+    onAddPhotos: () -> Unit,
+    onAddFiles: () -> Unit,
+    onOpenCamera: () -> Unit,
+) {
     val spacing = DarkChamberTheme.spacing
 
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1043,7 +1122,7 @@ private fun SelectionActions(
         }
         TextButton(onClick = onClear) {
             Text(
-                text = "Done",
+                text = GalleryFormat.done(),
                 style = DarkChamberTheme.typography.label,
                 color = DarkChamberTheme.colors.accent,
             )
@@ -1059,15 +1138,19 @@ private fun SelectionActions(
  * The file count is always shown, so there is something truthful to watch either way.
  */
 @Composable
-private fun ImportProgressCard(batch: ImportState.Running, onCancel: () -> Unit) {
+private fun ImportProgressCard(
+    batch: ImportState.Running,
+    onCancel: () -> Unit,
+) {
     val colors = DarkChamberTheme.colors
     val spacing = DarkChamberTheme.spacing
 
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(color = colors.surfaceRaised, shape = DarkChamberTheme.shapes.large)
-            .padding(spacing.spaceMd),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(color = colors.surfaceRaised, shape = DarkChamberTheme.shapes.large)
+                .padding(spacing.spaceMd),
     ) {
         Text(
             text = "Importing ${batch.index + 1} of ${batch.total}",
@@ -1120,11 +1203,12 @@ private fun ImportProgressCard(batch: ImportState.Running, onCancel: () -> Unit)
             //
             // Both take the stage, because both gain a clause while a provider is still sending the
             // file and neither may claim it at any other time — see `GalleryFormat`.
-            text = if (batch.stopping) {
-                GalleryFormat.stoppingNotice(batch.stage)
-            } else {
-                GalleryFormat.keepOpenNotice(batch.stage)
-            },
+            text =
+                if (batch.stopping) {
+                    GalleryFormat.stoppingNotice(batch.stage)
+                } else {
+                    GalleryFormat.keepOpenNotice(batch.stage)
+                },
             style = DarkChamberTheme.typography.caption,
             color = colors.textSecondary,
             modifier = Modifier.padding(top = spacing.spaceXs),
@@ -1168,20 +1252,22 @@ private fun PickerUnavailableCard(
 
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = spacing.spaceSm)
-                .background(color = colors.surfaceRaised, shape = DarkChamberTheme.shapes.large)
-                .padding(start = spacing.spaceMd, end = spacing.spaceSm),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = spacing.spaceSm)
+                    .background(color = colors.surfaceRaised, shape = DarkChamberTheme.shapes.large)
+                    .padding(start = spacing.spaceMd, end = spacing.spaceSm),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
                 text = "That picker wouldn't open. Nothing was added.",
                 style = DarkChamberTheme.typography.body,
                 color = colors.textPrimary,
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(vertical = spacing.spaceSm),
+                modifier =
+                    Modifier
+                        .weight(1f)
+                        .padding(vertical = spacing.spaceSm),
             )
             TextButton(onClick = onDismiss) {
                 Text("OK", style = DarkChamberTheme.typography.label, color = colors.accent)
@@ -1198,10 +1284,11 @@ private fun ImportNoticeCard(text: String) {
     val spacing = DarkChamberTheme.spacing
 
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(color = colors.surfaceRaised, shape = DarkChamberTheme.shapes.large)
-            .padding(spacing.spaceMd),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(color = colors.surfaceRaised, shape = DarkChamberTheme.shapes.large)
+                .padding(spacing.spaceMd),
     ) {
         Text(text = text, style = DarkChamberTheme.typography.body, color = colors.textPrimary)
         Text(
@@ -1234,9 +1321,10 @@ private fun ImportSummaryCard(
     val spacing = DarkChamberTheme.spacing
 
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(color = colors.sealedContainer, shape = DarkChamberTheme.shapes.large),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(color = colors.sealedContainer, shape = DarkChamberTheme.shapes.large),
     ) {
         ImportSummaryLine(batch = batch, onDismiss = onDismiss)
 
@@ -1246,9 +1334,10 @@ private fun ImportSummaryCard(
         offer?.let { shown ->
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = spacing.spaceMd, bottom = spacing.spaceXs),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(start = spacing.spaceMd, bottom = spacing.spaceXs),
             ) {
                 Text(
                     text = GalleryFormat.importOfferExplanation(shown),
@@ -1282,7 +1371,10 @@ private fun ImportSummaryCard(
  * [OriginalDeleteRow] for why it is not beside this one.
  */
 @Composable
-private fun ImportSummaryLine(batch: ImportState.Finished, onDismiss: () -> Unit) {
+private fun ImportSummaryLine(
+    batch: ImportState.Finished,
+    onDismiss: () -> Unit,
+) {
     val colors = DarkChamberTheme.colors
     val spacing = DarkChamberTheme.spacing
 
@@ -1322,7 +1414,7 @@ private fun ImportSummaryLine(batch: ImportState.Finished, onDismiss: () -> Unit
         // the import affordances, so whatever sits here is what a finger returning from "Add photos"
         // finds — and that has to be the one tap that costs nothing.
         TextButton(onClick = onDismiss) {
-            Text("Done", style = DarkChamberTheme.typography.label, color = colors.accent)
+            Text(GalleryFormat.done(), style = DarkChamberTheme.typography.label, color = colors.accent)
         }
     }
 }
@@ -1342,14 +1434,18 @@ private fun ImportSummaryLine(batch: ImportState.Finished, onDismiss: () -> Unit
  * bordered control is unmistakably a control, while staying quieter than the accent on Done.
  */
 @Composable
-private fun OriginalDeleteRow(count: Int, onDeleteOriginals: () -> Unit) {
+private fun OriginalDeleteRow(
+    count: Int,
+    onDeleteOriginals: () -> Unit,
+) {
     val colors = DarkChamberTheme.colors
     val spacing = DarkChamberTheme.spacing
 
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = spacing.spaceMd, end = spacing.spaceMd, bottom = spacing.spaceSm),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(start = spacing.spaceMd, end = spacing.spaceMd, bottom = spacing.spaceSm),
     ) {
         OutlinedButton(
             onClick = onDeleteOriginals,
@@ -1383,15 +1479,16 @@ private fun ItemGrid(
     LazyVerticalGrid(
         state = gridState,
         columns = GridCells.Adaptive(minSize = TILE_MIN_WIDTH),
-        contentPadding = PaddingValues(
-            start = spacing.spaceMd,
-            end = spacing.spaceMd,
-            top = spacing.spaceMd,
-            // The bottom bar's measured height, so the last row scrolls clear of it instead of
-            // parking underneath. It is a tile's *caption* that gets trapped — the name and size sit
-            // below the thumbnail — so being a few dp short still costs the row its label.
-            bottom = bottomInset + spacing.spaceMd,
-        ),
+        contentPadding =
+            PaddingValues(
+                start = spacing.spaceMd,
+                end = spacing.spaceMd,
+                top = spacing.spaceMd,
+                // The bottom bar's measured height, so the last row scrolls clear of it instead of
+                // parking underneath. It is a tile's *caption* that gets trapped — the name and size sit
+                // below the thumbnail — so being a few dp short still costs the row its label.
+                bottom = bottomInset + spacing.spaceMd,
+            ),
         horizontalArrangement = Arrangement.spacedBy(spacing.spaceSm),
         verticalArrangement = Arrangement.spacedBy(spacing.spaceSm),
         modifier = Modifier.fillMaxSize(),
@@ -1414,11 +1511,12 @@ private fun ItemGrid(
                 selected = selection.contains(item.id),
                 onLongPress = { onSelectItem(item.id) },
                 onTap = { onTapItem(item.id) },
-                modifier = Modifier.animateItem(
-                    fadeInSpec = arrival.fadeIn?.let { tween(it) },
-                    placementSpec = arrival.placement?.let { tween<IntOffset>(it) },
-                    fadeOutSpec = arrival.fadeOut?.let { tween(it) },
-                ),
+                modifier =
+                    Modifier.animateItem(
+                        fadeInSpec = arrival.fadeIn?.let { tween(it) },
+                        placementSpec = arrival.placement?.let { tween<IntOffset>(it) },
+                        fadeOutSpec = arrival.fadeOut?.let { tween(it) },
+                    ),
             )
         }
     }
@@ -1440,40 +1538,42 @@ private fun ItemTile(
     val damaged = item.meta is GalleryItemMeta.Unreadable
 
     Column(
-        modifier = modifier
-            .fillMaxWidth()
-            // The whole tile is the target, caption included: a thumbnail is a small thing to hit,
-            // and the name under it is part of what the user is pointing at.
-            //
-            // A tap toggles while selecting and opens the item otherwise — decided by the component
-            // (`tapItem`), not here, so the tile never branches on a mode the component also tracks.
-            .combinedClickable(
-                onClick = onTap,
-                onLongClick = onLongPress,
-            ),
+        modifier =
+            modifier
+                .fillMaxWidth()
+                // The whole tile is the target, caption included: a thumbnail is a small thing to hit,
+                // and the name under it is part of what the user is pointing at.
+                //
+                // A tap toggles while selecting and opens the item otherwise — decided by the component
+                // (`tapItem`), not here, so the tile never branches on a mode the component also tracks.
+                .combinedClickable(
+                    onClick = onTap,
+                    onLongClick = onLongPress,
+                ),
     ) {
         // The thumbnail's future home, reserved at its final size so images drop in without
         // relayout. Until then it carries a type badge derived from the MIME family.
         Box(
             contentAlignment = Alignment.Center,
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(1f)
-                .background(
-                    color = if (damaged) colors.surface else colors.surfaceRaised,
-                    shape = DarkChamberTheme.shapes.medium,
-                )
-                .border(
-                    // Selected reads as a thicker accent frame, not a new shape: the slot keeps its
-                    // exact size, so selecting cannot reflow the grid under the user's finger.
-                    width = if (selected) TILE_SELECTED_BORDER else TILE_BORDER,
-                    color = when {
-                        selected -> colors.accent
-                        damaged -> colors.danger
-                        else -> colors.outline
-                    },
-                    shape = DarkChamberTheme.shapes.medium,
-                ),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(1f)
+                    .background(
+                        color = if (damaged) colors.surface else colors.surfaceRaised,
+                        shape = DarkChamberTheme.shapes.medium,
+                    ).border(
+                        // Selected reads as a thicker accent frame, not a new shape: the slot keeps its
+                        // exact size, so selecting cannot reflow the grid under the user's finger.
+                        width = if (selected) TILE_SELECTED_BORDER else TILE_BORDER,
+                        color =
+                            when {
+                                selected -> colors.accent
+                                damaged -> colors.danger
+                                else -> colors.outline
+                            },
+                        shape = DarkChamberTheme.shapes.medium,
+                    ),
         ) {
             // `unverified` marks a preview whose bytes did not pass their integrity tag, which is
             // not the same as the item being damaged: the item's own bytes and metadata are intact
@@ -1488,18 +1588,24 @@ private fun ItemTile(
                 // is drawn.
                 Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
                     Text(
-                        text = when (val meta = item.meta) {
-                            is GalleryItemMeta.Readable ->
-                                if (unverified) "!" else GalleryFormat.typeBadge(meta)
-                            GalleryItemMeta.Unreadable -> "!"
-                        },
+                        text =
+                            when (val meta = item.meta) {
+                                is GalleryItemMeta.Readable -> {
+                                    if (unverified) "!" else GalleryFormat.typeBadge(meta)
+                                }
+
+                                GalleryItemMeta.Unreadable -> {
+                                    "!"
+                                }
+                            },
                         style = DarkChamberTheme.typography.label,
                         color = if (damaged || unverified) colors.danger else colors.textSecondary,
                         // Words instead of the glyph where the glyph would say nothing aloud; the
                         // tile merges its children, so they are announced beside the name.
-                        modifier = GalleryFormat.badgeSpoken(item.meta, unverified)?.let { words ->
-                            Modifier.semantics { contentDescription = words }
-                        } ?: Modifier,
+                        modifier =
+                            GalleryFormat.badgeSpoken(item.meta, unverified)?.let { words ->
+                                Modifier.semantics { contentDescription = words }
+                            } ?: Modifier,
                     )
                 }
             }
@@ -1559,30 +1665,30 @@ private fun ItemTile(
             // that is also selected shows both without one covering the other.
             item.album?.let { album ->
                 Box(
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(spacing.spaceXs)
-                        // Capped, and the only reason this is a Box around a Row: the Row wraps its
-                        // content so the badge is as small as the name allows, while this bounds how
-                        // far a long one may grow — short of the check mark's corner.
-                        .fillMaxWidth(ALBUM_BADGE_MAX_FRACTION),
+                    modifier =
+                        Modifier
+                            .align(Alignment.TopStart)
+                            .padding(spacing.spaceXs)
+                            // Capped, and the only reason this is a Box around a Row: the Row wraps its
+                            // content so the badge is as small as the name allows, while this bounds how
+                            // far a long one may grow — short of the check mark's corner.
+                            .fillMaxWidth(ALBUM_BADGE_MAX_FRACTION),
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(spacing.spaceXxs),
-                        modifier = Modifier
-                            .background(
-                                color = colors.surface,
-                                // Rounded, never a circle: that radius is the aperture's alone
-                                // (docs/DESIGN.md §4).
-                                shape = DarkChamberTheme.shapes.small,
-                            )
-                            .border(
-                                width = TILE_BORDER,
-                                color = colors.outline,
-                                shape = DarkChamberTheme.shapes.small,
-                            )
-                            .padding(horizontal = spacing.spaceXxs, vertical = ALBUM_BADGE_INSET),
+                        modifier =
+                            Modifier
+                                .background(
+                                    color = colors.surface,
+                                    // Rounded, never a circle: that radius is the aperture's alone
+                                    // (docs/DESIGN.md §4).
+                                    shape = DarkChamberTheme.shapes.small,
+                                ).border(
+                                    width = TILE_BORDER,
+                                    color = colors.outline,
+                                    shape = DarkChamberTheme.shapes.small,
+                                ).padding(horizontal = spacing.spaceXxs, vertical = ALBUM_BADGE_INSET),
                     ) {
                         AlbumMark(
                             // Named for a reader, unlike the album grid's badge: there the word
@@ -1617,21 +1723,28 @@ private fun ItemTile(
             if (selecting) {
                 Box(
                     contentAlignment = Alignment.Center,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(spacing.spaceXs)
-                        .size(SELECTION_MARK)
-                        .background(
-                            color = if (selected) colors.accent else colors.surface.copy(alpha = MARK_UNSELECTED_ALPHA),
-                            // Rounded, never a circle: the full-circle radius is the aperture's
-                            // alone (docs/DESIGN.md §4), and a tick in a circle would read as one.
-                            shape = DarkChamberTheme.shapes.small,
-                        )
-                        .border(
-                            width = TILE_BORDER,
-                            color = if (selected) colors.accent else colors.outline,
-                            shape = DarkChamberTheme.shapes.small,
-                        ),
+                    modifier =
+                        Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(spacing.spaceXs)
+                            .size(SELECTION_MARK)
+                            .background(
+                                color =
+                                    if (selected) {
+                                        colors.accent
+                                    } else {
+                                        colors.surface.copy(
+                                            alpha = MARK_UNSELECTED_ALPHA,
+                                        )
+                                    },
+                                // Rounded, never a circle: the full-circle radius is the aperture's
+                                // alone (docs/DESIGN.md §4), and a tick in a circle would read as one.
+                                shape = DarkChamberTheme.shapes.small,
+                            ).border(
+                                width = TILE_BORDER,
+                                color = if (selected) colors.accent else colors.outline,
+                                shape = DarkChamberTheme.shapes.small,
+                            ),
                 ) {
                     if (selected) {
                         Text(
@@ -1679,7 +1792,10 @@ private fun EmptyListing(message: String) {
 }
 
 @Composable
-private fun CenteredMessage(text: String, showSpinner: Boolean) {
+private fun CenteredMessage(
+    text: String,
+    showSpinner: Boolean,
+) {
     Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             if (showSpinner) {
@@ -1697,28 +1813,36 @@ private fun CenteredMessage(text: String, showSpinner: Boolean) {
 }
 
 @Composable
-private fun ErrorBanner(error: GalleryError, onDismiss: () -> Unit) {
+private fun ErrorBanner(
+    error: GalleryError,
+    onDismiss: () -> Unit,
+) {
     val colors = DarkChamberTheme.colors
     val spacing = DarkChamberTheme.spacing
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = spacing.spaceMd, vertical = spacing.spaceXs)
-            .background(color = colors.sealedContainer, shape = DarkChamberTheme.shapes.medium)
-            .padding(start = spacing.spaceMd),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = spacing.spaceMd, vertical = spacing.spaceXs)
+                .background(color = colors.sealedContainer, shape = DarkChamberTheme.shapes.medium)
+                .padding(start = spacing.spaceMd),
     ) {
         Text(
-            text = when (error) {
-                GalleryError.ImportFailed -> "That file couldn't be added to the vault."
-                GalleryError.ListingFailed -> "The vault's index couldn't be read. Your files are still encrypted."
-                // Says where they are rather than only what failed: the user is looking at a selection
-                // that did not move, and the one thing they need to know is that nothing was lost.
-                GalleryError.FilingFailed -> "Those items couldn't be moved. They are where they were."
-                // The catalog deletes all or nothing, so "nothing was deleted" is true; why is unknown.
-                GalleryError.DeleteFailed -> ViewerFormat.deleteFailed()
-            },
+            text =
+                when (error) {
+                    GalleryError.ImportFailed -> "That file couldn't be added to the vault."
+
+                    GalleryError.ListingFailed -> "The vault's index couldn't be read. Your files are still encrypted."
+
+                    // Says where they are rather than only what failed: the user is looking at a selection
+                    // that did not move, and the one thing they need to know is that nothing was lost.
+                    GalleryError.FilingFailed -> "Those items couldn't be moved. They are where they were."
+
+                    // The catalog deletes all or nothing, so "nothing was deleted" is true; why is unknown.
+                    GalleryError.DeleteFailed -> ViewerFormat.deleteFailed()
+                },
             style = DarkChamberTheme.typography.body,
             color = colors.textPrimary,
             modifier = Modifier.weight(1f).padding(vertical = spacing.spaceXs),

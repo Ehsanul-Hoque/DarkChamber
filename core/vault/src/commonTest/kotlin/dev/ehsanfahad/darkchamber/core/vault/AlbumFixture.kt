@@ -1,5 +1,6 @@
 package dev.ehsanfahad.darkchamber.core.vault
 
+import app.cash.sqldelight.db.SqlDriver
 import dev.ehsanfahad.darkchamber.core.crypto.CryptoEngine
 import dev.ehsanfahad.darkchamber.core.crypto.CryptographyKotlinEngine
 import dev.ehsanfahad.darkchamber.core.crypto.DchmCodec
@@ -8,7 +9,6 @@ import dev.ehsanfahad.darkchamber.core.crypto.IncrementalHash
 import dev.ehsanfahad.darkchamber.core.crypto.PassphraseKdfProfile
 import dev.ehsanfahad.darkchamber.core.crypto.VaultSession
 import dev.ehsanfahad.darkchamber.core.db.Albums
-import app.cash.sqldelight.db.SqlDriver
 import dev.ehsanfahad.darkchamber.core.db.CatalogStore
 import dev.ehsanfahad.darkchamber.core.model.Outcome
 import dev.ehsanfahad.darkchamber.core.model.VaultItemKind
@@ -46,14 +46,16 @@ internal class AlbumFixture(
 ) {
     private val dir = Path(SystemTemporaryDirectory, "alb-${Random.nextULong()}")
 
-    val session: VaultSession = VaultSession.createVault(
-        engine,
-        DefaultKeyDerivation(engine),
-        "correct horse battery".encodeToByteArray(),
-        // Deliberately weak Argon2 parameters: these tests exercise album plumbing, not the KDF, and
-        // production parameters would add seconds to every one of them.
-        PassphraseKdfProfile.Argon2id(memoryKib = 256, iterations = 1, parallelism = 1),
-    ).session
+    val session: VaultSession =
+        VaultSession
+            .createVault(
+                engine,
+                DefaultKeyDerivation(engine),
+                "correct horse battery".encodeToByteArray(),
+                // Deliberately weak Argon2 parameters: these tests exercise album plumbing, not the KDF, and
+                // production parameters would add seconds to every one of them.
+                PassphraseKdfProfile.Argon2id(memoryKib = 256, iterations = 1, parallelism = 1),
+            ).session
 
     val catalog: CatalogStore
 
@@ -64,15 +66,16 @@ internal class AlbumFixture(
     init {
         SystemFileSystem.createDirectories(dir)
         catalog = (CatalogStore.create(driver, UnconfinedTestDispatcher()) as Outcome.Ok).value
-        objects = VaultObjects(
-            session = session,
-            storage = VaultStorage(dir),
-            catalog = catalog,
-            codec = DchmCodec(engine),
-            clock = { now++ },
-            random = Random(11).let { r -> { n: Int -> r.nextBytes(n) } },
-            mapContext = mapContext,
-        )
+        objects =
+            VaultObjects(
+                session = session,
+                storage = VaultStorage(dir),
+                catalog = catalog,
+                codec = DchmCodec(engine),
+                clock = { now++ },
+                random = Random(11).let { r -> { n: Int -> r.nextBytes(n) } },
+                mapContext = mapContext,
+            )
     }
 
     fun close() {
@@ -84,17 +87,24 @@ internal class AlbumFixture(
     fun sealed(name: String): ByteArray = session.sealAlbumMeta(AlbumMeta(name))
 
     /** The same, with a byte flipped: a row whose name will not open. */
-    fun damaged(name: String): ByteArray =
-        sealed(name).also { it[it.lastIndex] = (it[it.lastIndex] + 1).toByte() }
+    fun damaged(name: String): ByteArray = sealed(name).also { it[it.lastIndex] = (it[it.lastIndex] + 1).toByte() }
 
-    fun albumRow(id: Byte, encName: ByteArray, createdAt: Long = 100L) = Albums(
+    fun albumRow(
+        id: Byte,
+        encName: ByteArray,
+        createdAt: Long = 100L,
+    ) = Albums(
         id = byteArrayOf(id),
         kek_variant = 0,
         enc_name = encName,
         created_at = createdAt,
     )
 
-    fun putAlbum(id: Byte, encName: ByteArray, createdAt: Long = 100L): ByteArray {
+    fun putAlbum(
+        id: Byte,
+        encName: ByteArray,
+        createdAt: Long = 100L,
+    ): ByteArray {
         assertIs<Outcome.Ok<Unit>>(catalog.upsertAlbum(albumRow(id, encName, createdAt)))
         return byteArrayOf(id)
     }
@@ -105,15 +115,19 @@ internal class AlbumFixture(
      * Files through the catalog directly: the assignment use case arrives later, and all these tests
      * need is a row whose album is set so the derived count and cover have something to derive from.
      */
-    fun importInto(albumId: ByteArray?, name: String): ByteArray {
-        val id = (
-            objects.importObject(
-                kind = VaultItemKind.FILE.code,
-                name = name,
-                mime = "text/plain",
-                chunkSize = 64,
-                openSource = { Buffer().apply { write(byteArrayOf(1, 2, 3)) } as RawSource },
-            ) as Outcome.Ok
+    fun importInto(
+        albumId: ByteArray?,
+        name: String,
+    ): ByteArray {
+        val id =
+            (
+                objects.importObject(
+                    kind = VaultItemKind.FILE.code,
+                    name = name,
+                    mime = "text/plain",
+                    chunkSize = 64,
+                    openSource = { Buffer().apply { write(byteArrayOf(1, 2, 3)) } as RawSource },
+                ) as Outcome.Ok
             ).value
         if (albumId != null) {
             assertIs<Outcome.Ok<Unit>>(catalog.updateItemAlbum(listOf(id), albumId))
@@ -126,17 +140,28 @@ internal class AlbumFixture(
  * Counts AEAD opens and delegates everything else. Not a fake engine: the crypto underneath is the
  * real one, because a stubbed open would make the count a measurement of the stub.
  */
-internal class CountingCryptoEngine(private val delegate: CryptoEngine) : CryptoEngine {
+internal class CountingCryptoEngine(
+    private val delegate: CryptoEngine,
+) : CryptoEngine {
     var opens = 0
         private set
 
-    override fun aeadOpen(key: ByteArray, nonce: ByteArray, aad: ByteArray, ciphertext: ByteArray): Outcome<ByteArray> {
+    override fun aeadOpen(
+        key: ByteArray,
+        nonce: ByteArray,
+        aad: ByteArray,
+        ciphertext: ByteArray,
+    ): Outcome<ByteArray> {
         opens++
         return delegate.aeadOpen(key, nonce, aad, ciphertext)
     }
 
-    override fun aeadSeal(key: ByteArray, nonce: ByteArray, aad: ByteArray, plaintext: ByteArray): ByteArray =
-        delegate.aeadSeal(key, nonce, aad, plaintext)
+    override fun aeadSeal(
+        key: ByteArray,
+        nonce: ByteArray,
+        aad: ByteArray,
+        plaintext: ByteArray,
+    ): ByteArray = delegate.aeadSeal(key, nonce, aad, plaintext)
 
     override fun sha256(bytes: ByteArray): ByteArray = delegate.sha256(bytes)
 
@@ -144,11 +169,19 @@ internal class CountingCryptoEngine(private val delegate: CryptoEngine) : Crypto
 
     override fun randomBytes(n: Int): ByteArray = delegate.randomBytes(n)
 
-    override fun pbkdf2Sha256(password: ByteArray, salt: ByteArray, iterations: Int, dkLenBytes: Int): ByteArray =
-        delegate.pbkdf2Sha256(password, salt, iterations, dkLenBytes)
+    override fun pbkdf2Sha256(
+        password: ByteArray,
+        salt: ByteArray,
+        iterations: Int,
+        dkLenBytes: Int,
+    ): ByteArray = delegate.pbkdf2Sha256(password, salt, iterations, dkLenBytes)
 
-    override fun hkdfSha256(ikm: ByteArray, salt: ByteArray, info: ByteArray, lenBytes: Int): ByteArray =
-        delegate.hkdfSha256(ikm, salt, info, lenBytes)
+    override fun hkdfSha256(
+        ikm: ByteArray,
+        salt: ByteArray,
+        info: ByteArray,
+        lenBytes: Int,
+    ): ByteArray = delegate.hkdfSha256(ikm, salt, info, lenBytes)
 
     override fun argon2id(
         password: ByteArray,

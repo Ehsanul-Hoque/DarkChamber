@@ -1,0 +1,73 @@
+# detekt's configuration — read on top of detekt's own defaults (buildUponDefaultConfig in the
+# darkchamber.quality convention plugin), so only the departures from them are written here, each with
+# its reason. No threshold is loosened to make a finding go away: findings are fixed, or recorded in a
+# module's baseline.
+
+# detekt's defaults relax some rules for test code, recognising it by path. Its list predates the
+# Android Gradle plugin's Kotlin Multiplatform source set for host tests, `androidHostTest`, where most
+# of this project's tests live, so the rules below repeat the default list with that one directory
+# added. The list is otherwise exactly the default; it is written out once, here, and reused below.
+
+complexity:
+  TooManyFunctions:
+    excludes: &test-sources
+      - '**/test/**'
+      - '**/androidTest/**'
+      - '**/commonTest/**'
+      - '**/jvmTest/**'
+      - '**/androidUnitTest/**'
+      - '**/androidInstrumentedTest/**'
+      - '**/jsTest/**'
+      - '**/iosTest/**'
+      - '**/androidHostTest/**'
+
+exceptions:
+  InstanceOfCheckForException:
+    excludes: *test-sources
+  ThrowingExceptionsWithoutMessageOrCause:
+    excludes: *test-sources
+  TooGenericExceptionCaught:
+    excludes: *test-sources
+
+naming:
+  FunctionNaming:
+    excludes: *test-sources
+    # Composable functions are named like types, as Compose's own guidelines ask (ktlint is told the same
+    # in .editorconfig).
+    ignoreAnnotated: ['Composable']
+  # ktlint's filename rule checks the same thing, with the reason beside each exception.
+  MatchingDeclarationName:
+    active: false
+
+performance:
+  ForEachOnRange:
+    excludes: *test-sources
+  SpreadOperator:
+    excludes: *test-sources
+
+potential-bugs:
+  UnsafeCallOnNullableType:
+    excludes: *test-sources
+
+style:
+  MagicNumber:
+    # The default list, the host tests added, and build scripts kept out as by default.
+    excludes:
+      - '**/test/**'
+      - '**/androidTest/**'
+      - '**/commonTest/**'
+      - '**/jvmTest/**'
+      - '**/androidUnitTest/**'
+      - '**/androidInstrumentedTest/**'
+      - '**/jsTest/**'
+      - '**/iosTest/**'
+      - '**/androidHostTest/**'
+      - '**/*.kts'
+  # Formatting belongs to ktlint (through Spotless), which already enforces each of these from
+  # .editorconfig; a second tool reporting the same line twice would only add noise.
+  MaxLineLength:
+    active: false
+  NewLineAtEndOfFile:
+    active: false
+  WildcardImport:
+    active: false

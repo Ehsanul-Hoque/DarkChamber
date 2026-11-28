@@ -14,34 +14,51 @@ import kotlin.test.assertTrue
 
 /** A text page's rules: what it shows in which font, when the switch shows, and the thumb by lines. */
 class TextReadingTest {
-
     // ---- what is shown, in which font ------------------------------------------------------------
 
     @Test
     fun prose_reads_in_the_reading_font_and_code_in_monospace_whatever_the_switch() {
         for (formatted in listOf(true, false)) {
-            assertEquals(TextView.Lines(indented = false, font = TextFont.Reading), TextReading.view(TextKind.Plain, false, formatted))
-            assertEquals(TextView.Lines(indented = false, font = TextFont.Mono), TextReading.view(TextKind.Code, false, formatted))
+            assertEquals(
+                TextView.Lines(indented = false, font = TextFont.Reading),
+                TextReading.view(TextKind.Plain, false, formatted),
+            )
+            assertEquals(
+                TextView.Lines(indented = false, font = TextFont.Mono),
+                TextReading.view(TextKind.Code, false, formatted),
+            )
         }
     }
 
     @Test
     fun markdown_formatted_is_drawn_and_plain_is_its_source_in_monospace() {
         assertEquals(TextView.Markdown, TextReading.view(TextKind.Markdown, canFormat = true, formatted = true))
-        assertEquals(TextView.Lines(indented = false, font = TextFont.Mono), TextReading.view(TextKind.Markdown, canFormat = true, formatted = false))
+        assertEquals(
+            TextView.Lines(indented = false, font = TextFont.Mono),
+            TextReading.view(TextKind.Markdown, canFormat = true, formatted = false),
+        )
     }
 
     @Test
     fun json_formatted_is_the_indented_lines_and_plain_the_stored_ones_both_monospace() {
-        assertEquals(TextView.Lines(indented = true, font = TextFont.Mono), TextReading.view(TextKind.Json, canFormat = true, formatted = true))
-        assertEquals(TextView.Lines(indented = false, font = TextFont.Mono), TextReading.view(TextKind.Json, canFormat = true, formatted = false))
+        assertEquals(
+            TextView.Lines(indented = true, font = TextFont.Mono),
+            TextReading.view(TextKind.Json, canFormat = true, formatted = true),
+        )
+        assertEquals(
+            TextView.Lines(indented = false, font = TextFont.Mono),
+            TextReading.view(TextKind.Json, canFormat = true, formatted = false),
+        )
     }
 
     /** No formatted view (too large, too complex, not valid JSON): as written, whatever the switch says. */
     @Test
     fun a_file_that_cannot_be_formatted_is_shown_as_written() {
         for (kind in listOf(TextKind.Markdown, TextKind.Json)) {
-            assertEquals(TextView.Lines(indented = false, font = TextFont.Mono), TextReading.view(kind, canFormat = false, formatted = true))
+            assertEquals(
+                TextView.Lines(indented = false, font = TextFont.Mono),
+                TextReading.view(kind, canFormat = false, formatted = true),
+            )
         }
     }
 
@@ -88,22 +105,33 @@ class TextReadingTest {
     fun a_spaced_style_changes_only_its_line_height_style() {
         val style = TextStyle(fontSize = 16.sp, lineHeight = 24.sp)
         val spaced = TextReading.spaced(style, first = false, last = true)
-        assertEquals(LineHeightStyle(LineHeightStyle.Alignment.Proportional, LineHeightStyle.Trim.LastLineBottom), spaced.lineHeightStyle)
+        assertEquals(
+            LineHeightStyle(LineHeightStyle.Alignment.Proportional, LineHeightStyle.Trim.LastLineBottom),
+            spaced.lineHeightStyle,
+        )
         assertEquals(style.copy(lineHeightStyle = spaced.lineHeightStyle), spaced)
     }
 
     /** Formatted Markdown: a thumb as soon as the column scrolls, however short. */
     @Test
     fun formatted_markdown_is_worth_a_thumb_whenever_it_scrolls() {
-        assertTrue(TextReading.worthAThumb(whenScrolls = true, canScroll = true, contentHeight = 1100, viewportHeight = 1000))
-        assertFalse(TextReading.worthAThumb(whenScrolls = true, canScroll = false, contentHeight = 9000, viewportHeight = 1000))
+        assertTrue(
+            TextReading.worthAThumb(whenScrolls = true, canScroll = true, contentHeight = 1100, viewportHeight = 1000),
+        )
+        assertFalse(
+            TextReading.worthAThumb(whenScrolls = true, canScroll = false, contentHeight = 9000, viewportHeight = 1000),
+        )
     }
 
     /** Every other page: past five screens, scrolling or not (both sides of the limit). */
     @Test
     fun other_pages_are_worth_a_thumb_past_five_screens() {
-        assertTrue(TextReading.worthAThumb(whenScrolls = false, canScroll = true, contentHeight = 5001, viewportHeight = 1000))
-        assertFalse(TextReading.worthAThumb(whenScrolls = false, canScroll = true, contentHeight = 5000, viewportHeight = 1000))
+        assertTrue(
+            TextReading.worthAThumb(whenScrolls = false, canScroll = true, contentHeight = 5001, viewportHeight = 1000),
+        )
+        assertFalse(
+            TextReading.worthAThumb(whenScrolls = false, canScroll = true, contentHeight = 5000, viewportHeight = 1000),
+        )
     }
 
     /** The last row may be taller than the screen: the whole way down is its end, not its top. */
@@ -144,7 +172,10 @@ class TextReadingTest {
     fun a_long_line_is_cut_after_a_space_near_the_end_of_the_room() {
         // Room 20; the last quarter is characters 15..19. A space at 16 is cut after.
         val line = "a".repeat(16) + " " + "b".repeat(10)
-        assertEquals(listOf("a".repeat(16) + " ", "b".repeat(10)), TextReading.rows(TextDecoding.lines(line), maxChars = 20).all())
+        assertEquals(
+            listOf("a".repeat(16) + " ", "b".repeat(10)),
+            TextReading.rows(TextDecoding.lines(line), maxChars = 20).all(),
+        )
     }
 
     /** A space early in the room would leave a short row; the room's end is used instead. */
@@ -214,7 +245,10 @@ class TextReadingTest {
     fun a_note_says_why_there_is_no_formatted_view_and_nothing_about_the_file() {
         assertEquals("Shown as written: too large to format here.", ViewerFormat.formatNote(FormatNote.TooLarge))
         assertEquals("Shown as written: too complex to format here.", ViewerFormat.formatNote(FormatNote.TooComplex))
-        assertEquals("Shown as written: not valid JSON, so it can't be formatted.", ViewerFormat.formatNote(FormatNote.NotJson))
+        assertEquals(
+            "Shown as written: not valid JSON, so it can't be formatted.",
+            ViewerFormat.formatNote(FormatNote.NotJson),
+        )
         val words = FormatNote.entries.joinToString(" ") { ViewerFormat.formatNote(it) }.lowercase()
         for (claim in listOf("damaged", "corrupt", "broken", "changed", "error")) assertFalse(claim in words, claim)
     }

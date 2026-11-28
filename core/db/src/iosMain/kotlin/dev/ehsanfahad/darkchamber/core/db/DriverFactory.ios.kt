@@ -31,19 +31,24 @@ actual class DriverFactory(
 }
 
 /** Places the catalog in [directory] and runs [CatalogPragmas] on every connection sqliter opens. */
-private fun withCatalogPragmas(config: DatabaseConfiguration, directory: String?): DatabaseConfiguration {
-    val placed = if (directory == null) {
-        config
-    } else {
-        config.copy(extendedConfig = config.extendedConfig.copy(basePath = directory))
-    }
+private fun withCatalogPragmas(
+    config: DatabaseConfiguration,
+    directory: String?,
+): DatabaseConfiguration {
+    val placed =
+        if (directory == null) {
+            config
+        } else {
+            config.copy(extendedConfig = config.extendedConfig.copy(basePath = directory))
+        }
     val previous = placed.lifecycleConfig.onCreateConnection
     return placed.copy(
-        lifecycleConfig = placed.lifecycleConfig.copy(
-            onCreateConnection = { connection ->
-                previous(connection)
-                CatalogPragmas.onEveryConnection.forEach { pragma -> connection.rawExecSql(pragma.sql) }
-            },
-        ),
+        lifecycleConfig =
+            placed.lifecycleConfig.copy(
+                onCreateConnection = { connection ->
+                    previous(connection)
+                    CatalogPragmas.onEveryConnection.forEach { pragma -> connection.rawExecSql(pragma.sql) }
+                },
+            ),
     )
 }

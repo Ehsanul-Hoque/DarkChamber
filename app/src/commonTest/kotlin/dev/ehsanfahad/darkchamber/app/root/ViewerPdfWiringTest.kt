@@ -72,14 +72,18 @@ class ViewerPdfWiringTest {
     @AfterTest
     fun cleanup() = deleteRecursively(testDir)
 
-    private fun graph(withRenderer: Boolean): Module = module {
-        single<CryptoEngine> { engine }
-        single<FilePicker> { FakeFilePicker() }
-        single<PhotoPicker> { FakePhotoPicker() }
-        if (withRenderer) single<VaultPdfRenderer> { pdfs }
-    }
+    private fun graph(withRenderer: Boolean): Module =
+        module {
+            single<CryptoEngine> { engine }
+            single<FilePicker> { FakeFilePicker() }
+            single<PhotoPicker> { FakePhotoPicker() }
+            if (withRenderer) single<VaultPdfRenderer> { pdfs }
+        }
 
-    private fun TestScope.component(open: VaultBootstrap.OpenVault, withRenderer: Boolean = true): DefaultUnlockedComponent {
+    private fun TestScope.component(
+        open: VaultBootstrap.OpenVault,
+        withRenderer: Boolean = true,
+    ): DefaultUnlockedComponent {
         val dispatcher = UnconfinedTestDispatcher(testScheduler)
         return DefaultUnlockedComponent(
             componentContext = DefaultComponentContext(lifecycle = lifecycle, backHandler = BackDispatcher()),
@@ -103,12 +107,13 @@ class ViewerPdfWiringTest {
         get() = assertIs<UnlockedChild.Viewer>(stack.value.active.instance).component
 
     private fun importPdf(open: VaultBootstrap.OpenVault): ByteArray {
-        val imported = vaultObjects(open).importObject(
-            kind = VaultItemKind.FILE.code,
-            name = "report.pdf",
-            mime = "application/pdf",
-            openSource = { Buffer().apply { write(content) } },
-        )
+        val imported =
+            vaultObjects(open).importObject(
+                kind = VaultItemKind.FILE.code,
+                name = "report.pdf",
+                mime = "application/pdf",
+                openSource = { Buffer().apply { write(content) } },
+            )
         return (imported as Outcome.Ok).value
     }
 
@@ -130,88 +135,104 @@ class ViewerPdfWiringTest {
     }
 
     @Test
-    fun a_pdf_opens_in_the_graphs_renderer_on_the_hosts_pdf_context() = runTest {
-        val open = openVault()
-        val pdf = importPdf(open)
-        val component = component(open)
+    fun a_pdf_opens_in_the_graphs_renderer_on_the_hosts_pdf_context() =
+        runTest {
+            val open = openVault()
+            val pdf = importPdf(open)
+            val component = component(open)
 
-        component.gallery.tapItem(pdf.copyOf())
-        component.viewer.viewportMeasured(1_000, 2_000)
+            component.gallery.tapItem(pdf.copyOf())
+            component.viewer.viewportMeasured(1_000, 2_000)
 
-        val buffer = pdfs.buffers.single()
-        assertEquals(content.size.toLong(), buffer.sizeHint, "sized from the item")
-        assertFalse(buffer.opened, "the open waits for the host's PDF context")
-        assertTrue(pdfContext.pending > 0)
+            val buffer = pdfs.buffers.single()
+            assertEquals(content.size.toLong(), buffer.sizeHint, "sized from the item")
+            assertFalse(buffer.opened, "the open waits for the host's PDF context")
+            assertTrue(pdfContext.pending > 0)
 
-        pdfContext.runAll()
+            pdfContext.runAll()
 
-        assertTrue(buffer.opened)
-        assertContentEquals(content, buffer.bytes.readByteArray(), "the whole verified file reached the renderer")
-        val page = assertIs<ViewerPage.Pdf>(component.viewer.state.value.pages.values.single())
-        assertEquals(3, page.pageCount)
-    }
-
-    @Test
-    fun without_a_renderer_in_the_graph_a_pdf_shows_its_badge() = runTest {
-        val open = openVault()
-        val pdf = importPdf(open)
-        val component = component(open, withRenderer = false)
-
-        component.gallery.tapItem(pdf.copyOf())
-        component.viewer.viewportMeasured(1_000, 2_000)
-        pdfContext.runAll()
-
-        assertTrue(pdfs.buffers.isEmpty(), "nothing was read for a renderer")
-        assertIs<ViewerPage.NotViewable>(component.viewer.state.value.pages.values.single(), "its badge, as before PDFs")
-    }
+            assertTrue(buffer.opened)
+            assertContentEquals(content, buffer.bytes.readByteArray(), "the whole verified file reached the renderer")
+            val page =
+                assertIs<ViewerPage.Pdf>(
+                    component.viewer.state.value.pages.values
+                        .single(),
+                )
+            assertEquals(3, page.pageCount)
+        }
 
     @Test
-    fun a_lock_with_a_pdf_open_completes_while_the_close_still_waits() = runTest {
-        val (component, buffer) = openedPdf()
-        val document = buffer.document!!
+    fun without_a_renderer_in_the_graph_a_pdf_shows_its_badge() =
+        runTest {
+            val open = openVault()
+            val pdf = importPdf(open)
+            val component = component(open, withRenderer = false)
 
-        component.lockAsTheGateDoes()
+            component.gallery.tapItem(pdf.copyOf())
+            component.viewer.viewportMeasured(1_000, 2_000)
+            pdfContext.runAll()
 
-        assertTrue(locked, "the gate was told")
-        assertFalse(openedVault.session.isOpen, "the key is gone")
-        assertEquals(0, document.closes, "the close has not run")
-        assertTrue(pdfContext.pending > 0, "it is queued on the PDF context")
+            assertTrue(pdfs.buffers.isEmpty(), "nothing was read for a renderer")
+            assertIs<ViewerPage.NotViewable>(
+                component.viewer.state.value.pages.values
+                    .single(),
+                "its badge, as before PDFs",
+            )
+        }
 
-        pdfContext.runAll()
-        assertEquals(1, document.closes, "and the document is closed, once")
-    }
+    @Test
+    fun a_lock_with_a_pdf_open_completes_while_the_close_still_waits() =
+        runTest {
+            val (component, buffer) = openedPdf()
+            val document = buffer.document!!
+
+            component.lockAsTheGateDoes()
+
+            assertTrue(locked, "the gate was told")
+            assertFalse(openedVault.session.isOpen, "the key is gone")
+            assertEquals(0, document.closes, "the close has not run")
+            assertTrue(pdfContext.pending > 0, "it is queued on the PDF context")
+
+            pdfContext.runAll()
+            assertEquals(1, document.closes, "and the document is closed, once")
+        }
 
     /**
      * With the real vault and codec: a lock once the first 1 MiB chunk has reached the renderer's buffer
      * stops the decrypt there — the rest of the file is never decrypted, the buffer never opened.
      */
     @Test
-    fun a_lock_during_the_read_stops_the_real_decrypt_within_a_chunk() = runTest {
-        val open = openVault()
-        val big = ByteArray(3 * MIB + 100) { (it * 31).toByte() }
-        val imported = vaultObjects(open).importObject(
-            kind = VaultItemKind.FILE.code,
-            name = "scan.pdf",
-            mime = "application/pdf",
-            openSource = { Buffer().apply { write(big) } },
-        )
-        val component = component(open)
-        var lockedAt = -1L
-        pdfs.onWrite = { total ->
-            if (lockedAt < 0 && total >= MIB) {
-                lockedAt = total
-                component.lockAsTheGateDoes()
+    fun a_lock_during_the_read_stops_the_real_decrypt_within_a_chunk() =
+        runTest {
+            val open = openVault()
+            val big = ByteArray(3 * MIB + 100) { (it * 31).toByte() }
+            val imported =
+                vaultObjects(open).importObject(
+                    kind = VaultItemKind.FILE.code,
+                    name = "scan.pdf",
+                    mime = "application/pdf",
+                    openSource = { Buffer().apply { write(big) } },
+                )
+            val component = component(open)
+            var lockedAt = -1L
+            pdfs.onWrite = { total ->
+                if (lockedAt < 0 && total >= MIB) {
+                    lockedAt = total
+                    component.lockAsTheGateDoes()
+                }
             }
+
+            component.gallery.tapItem((imported as Outcome.Ok).value.copyOf())
+
+            val buffer = pdfs.buffers.single()
+            assertTrue(lockedAt >= MIB, "the lock came after the first chunk")
+            assertTrue(
+                buffer.bytes.size < 2L * MIB,
+                "stopped within the next chunk: ${buffer.bytes.size} of ${big.size} bytes",
+            )
+            assertFalse(buffer.opened, "never opened")
+            assertFalse(openedVault.session.isOpen)
         }
-
-        component.gallery.tapItem((imported as Outcome.Ok).value.copyOf())
-
-        val buffer = pdfs.buffers.single()
-        assertTrue(lockedAt >= MIB, "the lock came after the first chunk")
-        assertTrue(buffer.bytes.size < 2L * MIB, "stopped within the next chunk: ${buffer.bytes.size} of ${big.size} bytes")
-        assertFalse(buffer.opened, "never opened")
-        assertFalse(openedVault.session.isOpen)
-    }
 
     // ---- fakes -----------------------------------------------------------------------------------
 
@@ -222,23 +243,34 @@ class ViewerPdfWiringTest {
         /** Called after every write into a buffer, with how many bytes it holds. */
         var onWrite: (total: Long) -> Unit = {}
 
-        override fun newBuffer(sizeHint: Long): VaultPdfBuffer = RecordingBuffer(sizeHint) { onWrite(it) }.also { buffers += it }
+        override fun newBuffer(sizeHint: Long): VaultPdfBuffer =
+            RecordingBuffer(sizeHint) { onWrite(it) }.also {
+                buffers +=
+                    it
+            }
     }
 
-    private class RecordingBuffer(val sizeHint: Long, private val onWrite: (Long) -> Unit = {}) : VaultPdfBuffer {
+    private class RecordingBuffer(
+        val sizeHint: Long,
+        private val onWrite: (Long) -> Unit = {},
+    ) : VaultPdfBuffer {
         val bytes = Buffer()
         var opened = false
         var document: RecordingDocument? = null
-        override val sink: RawSink = object : RawSink {
-            override fun write(source: Buffer, byteCount: Long) {
-                bytes.write(source, byteCount)
-                onWrite(bytes.size)
+        override val sink: RawSink =
+            object : RawSink {
+                override fun write(
+                    source: Buffer,
+                    byteCount: Long,
+                ) {
+                    bytes.write(source, byteCount)
+                    onWrite(bytes.size)
+                }
+
+                override fun flush() = Unit
+
+                override fun close() = Unit
             }
-
-            override fun flush() = Unit
-
-            override fun close() = Unit
-        }
 
         override fun open(): PdfOpened {
             opened = true
@@ -254,7 +286,10 @@ class ViewerPdfWiringTest {
 
         override fun pageSize(index: Int) = PdfPageSize(595, 842)
 
-        override fun render(index: Int, widthPx: Int): ImageBitmap? = null
+        override fun render(
+            index: Int,
+            widthPx: Int,
+        ): ImageBitmap? = null
 
         override fun close() {
             closes++
@@ -282,10 +317,23 @@ class ViewerPdfWiringTest {
 
     private fun TestScope.openVault(): VaultBootstrap.OpenVault {
         val cheap = PassphraseKdfProfile.Argon2id(memoryKib = 256, iterations = 1, parallelism = 1)
-        val session = VaultSession.createVault(engine, DefaultKeyDerivation(engine), "pw".encodeToByteArray(), cheap).session
+        val session =
+            VaultSession
+                .createVault(
+                    engine,
+                    DefaultKeyDerivation(engine),
+                    "pw".encodeToByteArray(),
+                    cheap,
+                ).session
         val root = Path(testDir, "vault-${Random.nextULong()}")
         SystemFileSystem.createDirectories(Path(root, "tmp"))
-        val catalog = (CatalogStore.create(testSqlDriver(), UnconfinedTestDispatcher(testScheduler)) as Outcome.Ok).value
+        val catalog =
+            (
+                CatalogStore.create(
+                    testSqlDriver(),
+                    UnconfinedTestDispatcher(testScheduler),
+                ) as Outcome.Ok
+            ).value
         return VaultBootstrap.OpenVault(session, VaultStorage(root), catalog).also { openedVault = it }
     }
 

@@ -19,7 +19,6 @@ import kotlin.test.assertEquals
  * its branch is an `is` check on the platform's own type.
  */
 class KeyUseFailureTest {
-
     @Test
     fun a_tag_that_does_not_verify_is_possible_tampering() {
         assertEquals(VaultError.Crypto.IntegrityFailure, keyUseFailure(AEADBadTagException()))

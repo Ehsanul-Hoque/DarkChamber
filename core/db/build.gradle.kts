@@ -61,3 +61,28 @@ sqldelight {
         }
     }
 }
+
+// Coverage counts hand-written code only. SQLDelight generates into the package above: a class per table
+// (and its Adapter), a Queries class per .sq file with its query classes, a class per custom result
+// shape, the database's companion, and the implementation in `.db`. A new table, .sq file or result
+// shape adds a name here.
+kover {
+    reports {
+        filters {
+            excludes {
+                classes(
+                    "dev.ehsanfahad.darkchamber.core.db.db.*",
+                    "dev.ehsanfahad.darkchamber.core.db.DarkChamberDatabase\$Companion",
+                    "dev.ehsanfahad.darkchamber.core.db.*Queries",
+                    "dev.ehsanfahad.darkchamber.core.db.*Queries\$*",
+                    "dev.ehsanfahad.darkchamber.core.db.Albums",
+                    "dev.ehsanfahad.darkchamber.core.db.Albums\$Adapter",
+                    "dev.ehsanfahad.darkchamber.core.db.Items",
+                    "dev.ehsanfahad.darkchamber.core.db.Items\$Adapter",
+                    "dev.ehsanfahad.darkchamber.core.db.Audit_log",
+                    "dev.ehsanfahad.darkchamber.core.db.SelectAlbumsWithCounts",
+                )
+            }
+        }
+    }
+}

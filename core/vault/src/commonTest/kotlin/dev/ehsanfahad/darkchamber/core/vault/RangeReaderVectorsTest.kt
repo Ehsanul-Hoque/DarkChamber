@@ -38,32 +38,49 @@ class RangeReaderVectorsTest {
     private val engine = CryptographyKotlinEngine()
     private val cheapKdf = PassphraseKdfProfile.Argon2id(memoryKib = 256, iterations = 1, parallelism = 1)
     private val session: VaultSession =
-        VaultSession.createVault(engine, DefaultKeyDerivation(engine), "correct horse battery".encodeToByteArray(), cheapKdf).session
+        VaultSession
+            .createVault(
+                engine,
+                DefaultKeyDerivation(engine),
+                "correct horse battery".encodeToByteArray(),
+                cheapKdf,
+            ).session
 
     @AfterTest
     fun cleanup() = deleteRecursively(testDir)
 
-    private val storage: VaultStorage = run {
-        SystemFileSystem.createDirectories(testDir)
-        VaultStorage(testDir)
-    }
+    private val storage: VaultStorage =
+        run {
+            SystemFileSystem.createDirectories(testDir)
+            VaultStorage(testDir)
+        }
 
-    private val objects = VaultObjects(
-        session,
-        storage,
-        (CatalogStore.create(testSqlDriver()) as Outcome.Ok).value,
-        DchmCodec(engine),
-        clock = { 42L },
-        random = Random(23).let { rng -> { n -> rng.nextBytes(n) } },
-    )
+    private val objects =
+        VaultObjects(
+            session,
+            storage,
+            (CatalogStore.create(testSqlDriver()) as Outcome.Ok).value,
+            DchmCodec(engine),
+            clock = { 42L },
+            random = Random(23).let { rng -> { n -> rng.nextBytes(n) } },
+        )
 
     private fun <T> Outcome<T>.ok(): T = assertIs<Outcome.Ok<T>>(this).value
 
     private fun content(size: Int) = ByteArray(size) { (it * 13 + 5).toByte() }
 
-    private fun stored(data: ByteArray, chunkSize: Int): ByteArray =
-        objects.importObject(kind = 0, name = "n", mime = "application/octet-stream", chunkSize = chunkSize,
-            openSource = { Buffer().apply { write(data.copyOf()) } }).ok()
+    private fun stored(
+        data: ByteArray,
+        chunkSize: Int,
+    ): ByteArray =
+        objects
+            .importObject(
+                kind = 0,
+                name = "n",
+                mime = "application/octet-stream",
+                chunkSize = chunkSize,
+                openSource = { Buffer().apply { write(data.copyOf()) } },
+            ).ok()
 
     private fun fullDecrypt(id: ByteArray): ByteArray {
         val out = Buffer()
@@ -84,12 +101,22 @@ class RangeReaderVectorsTest {
     }
 
     // Flips one byte inside chunk [index] of a stored object (its ciphertext, not its tag).
-    private fun tamperChunk(id: ByteArray, index: Int, chunkSize: Int) {
+    private fun tamperChunk(
+        id: ByteArray,
+        index: Int,
+        chunkSize: Int,
+    ) {
         val bytes = storage.readObject(id) { it.buffered().readByteArray() }.ok()
         val headerLen = (bytes[6].toInt() and 0xFF) or ((bytes[7].toInt() and 0xFF) shl 8)
         val at = DchmFormat.PRELUDE_SIZE + headerLen + index * (chunkSize + DchmFormat.GCM_TAG_SIZE) + 3
         bytes[at] = (bytes[at].toInt() xor 0x01).toByte()
-        storage.writeObject(id) { sink -> sink.buffered().apply { write(bytes); flush() } }.ok()
+        storage
+            .writeObject(id) { sink ->
+                sink.buffered().apply {
+                    write(bytes)
+                    flush()
+                }
+            }.ok()
     }
 
     @Test
@@ -153,7 +180,13 @@ class RangeReaderVectorsTest {
                     val chunkEnd = (position / chunkSize + 1) * chunkSize
                     val expected = minOf(want.toLong(), chunkEnd - position, size - position).toInt()
                     assertEquals(expected, n, "size $size @ $position for $want")
-                    assertContentEquals(whole.copyOfRange(position.toInt(), position.toInt() + n), into.copyOfRange(2, 2 + n))
+                    assertContentEquals(
+                        whole.copyOfRange(position.toInt(), position.toInt() + n),
+                        into.copyOfRange(
+                            2,
+                            2 + n,
+                        ),
+                    )
                 }
             }
             reader.close()

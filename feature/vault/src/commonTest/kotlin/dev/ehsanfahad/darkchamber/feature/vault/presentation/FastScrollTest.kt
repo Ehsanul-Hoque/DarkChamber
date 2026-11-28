@@ -32,7 +32,11 @@ class FastScrollTest {
     @Test
     fun the_column_scrolls_by_its_height_and_padding_less_the_screen() {
         assertEquals(1820, FastScroll.maxScroll(2520, paddingTop = 100, paddingBottom = 200, viewportHeight = 1000))
-        assertEquals(0, FastScroll.maxScroll(500, paddingTop = 100, paddingBottom = 200, viewportHeight = 1000), "shorter than the screen")
+        assertEquals(
+            0,
+            FastScroll.maxScroll(500, paddingTop = 100, paddingBottom = 200, viewportHeight = 1000),
+            "shorter than the screen",
+        )
     }
 
     /** More than five screens tall, not five exactly: a short PDF scrolls fine by hand. */
@@ -64,15 +68,31 @@ class FastScrollTest {
         assertEquals(100, FastScroll.thumbTop(0f, trackTop = 100, trackBottom = 1100, thumbHeight = 100))
         assertEquals(1000, FastScroll.thumbTop(1f, trackTop = 100, trackBottom = 1100, thumbHeight = 100))
         assertEquals(550, FastScroll.thumbTop(0.5f, trackTop = 100, trackBottom = 1100, thumbHeight = 100))
-        assertEquals(400, FastScroll.thumbTop(0.333f, trackTop = 100, trackBottom = 1100, thumbHeight = 100), "rounded: 399.7")
+        assertEquals(
+            400,
+            FastScroll.thumbTop(0.333f, trackTop = 100, trackBottom = 1100, thumbHeight = 100),
+            "rounded: 399.7",
+        )
     }
 
     @Test
     fun a_dragged_thumb_stands_for_the_fraction_it_is_at() {
         assertEquals(0.5f, FastScroll.fractionAt(thumbTop = 550, trackTop = 100, trackBottom = 1100, thumbHeight = 100))
-        assertEquals(0f, FastScroll.fractionAt(thumbTop = 50, trackTop = 100, trackBottom = 1100, thumbHeight = 100), "above the track")
-        assertEquals(1f, FastScroll.fractionAt(thumbTop = 2_000, trackTop = 100, trackBottom = 1100, thumbHeight = 100), "below it")
-        assertEquals(0f, FastScroll.fractionAt(thumbTop = 100, trackTop = 100, trackBottom = 180, thumbHeight = 100), "a track shorter than the thumb")
+        assertEquals(
+            0f,
+            FastScroll.fractionAt(thumbTop = 50, trackTop = 100, trackBottom = 1100, thumbHeight = 100),
+            "above the track",
+        )
+        assertEquals(
+            1f,
+            FastScroll.fractionAt(thumbTop = 2_000, trackTop = 100, trackBottom = 1100, thumbHeight = 100),
+            "below it",
+        )
+        assertEquals(
+            0f,
+            FastScroll.fractionAt(thumbTop = 100, trackTop = 100, trackBottom = 180, thumbHeight = 100),
+            "a track shorter than the thumb",
+        )
     }
 
     // ---- where a drag takes the column --------------------------------------------------------------
@@ -109,8 +129,10 @@ class FastScrollTest {
 
     // ---- touching it --------------------------------------------------------------------------------
 
-    private fun grabs(x: Float, y: Float) =
-        FastScroll.grabs(x, y, width = 1440, stripWidth = 168, thumbTop = 500, thumbHeight = 160, slop = 24)
+    private fun grabs(
+        x: Float,
+        y: Float,
+    ) = FastScroll.grabs(x, y, width = 1440, stripWidth = 168, thumbTop = 500, thumbHeight = 160, slop = 24)
 
     @Test
     fun a_press_on_the_thumb_takes_it() {
@@ -138,20 +160,70 @@ class FastScrollTest {
 
     @Test
     fun the_thumb_shows_with_the_bars_after_a_scroll_and_while_dragged() {
-        assertTrue(FastScroll.visible(worthIt = true, zoomedIn = false, barsShown = true, scrolledLately = false, dragging = false))
-        assertTrue(FastScroll.visible(worthIt = true, zoomedIn = false, barsShown = false, scrolledLately = true, dragging = false))
-        assertTrue(FastScroll.visible(worthIt = true, zoomedIn = false, barsShown = false, scrolledLately = false, dragging = true))
+        assertTrue(
+            FastScroll.visible(
+                worthIt = true,
+                zoomedIn = false,
+                barsShown = true,
+                scrolledLately = false,
+                dragging = false,
+            ),
+        )
+        assertTrue(
+            FastScroll.visible(
+                worthIt = true,
+                zoomedIn = false,
+                barsShown = false,
+                scrolledLately = true,
+                dragging = false,
+            ),
+        )
+        assertTrue(
+            FastScroll.visible(
+                worthIt = true,
+                zoomedIn = false,
+                barsShown = false,
+                scrolledLately = false,
+                dragging = true,
+            ),
+        )
     }
 
     /** Reading, with the bars put away and the column still: nothing over the page. */
     @Test
     fun the_thumb_hides_while_reading() {
-        assertFalse(FastScroll.visible(worthIt = true, zoomedIn = false, barsShown = false, scrolledLately = false, dragging = false))
+        assertFalse(
+            FastScroll.visible(
+                worthIt = true,
+                zoomedIn = false,
+                barsShown = false,
+                scrolledLately = false,
+                dragging = false,
+            ),
+        )
     }
 
     @Test
     fun a_short_pdf_or_a_zoomed_one_has_no_thumb() {
-        assertFalse(FastScroll.visible(worthIt = false, zoomedIn = false, barsShown = true, scrolledLately = true, dragging = false), "short")
-        assertFalse(FastScroll.visible(worthIt = true, zoomedIn = true, barsShown = true, scrolledLately = true, dragging = false), "zoomed")
+        assertFalse(
+            FastScroll.visible(
+                worthIt = false,
+                zoomedIn = false,
+                barsShown = true,
+                scrolledLately = true,
+                dragging = false,
+            ),
+            "short",
+        )
+        assertFalse(
+            FastScroll.visible(
+                worthIt = true,
+                zoomedIn = true,
+                barsShown = true,
+                scrolledLately = true,
+                dragging = false,
+            ),
+            "zoomed",
+        )
     }
 }

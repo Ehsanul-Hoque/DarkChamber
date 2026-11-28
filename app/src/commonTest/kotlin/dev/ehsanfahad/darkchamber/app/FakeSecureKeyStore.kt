@@ -14,18 +14,23 @@ import dev.ehsanfahad.darkchamber.core.model.flatMap
 class FakeSecureKeyStore : SecureKeyStore {
     override fun isAvailable(): Boolean = true
 
-    override suspend fun wrap(mk: ByteArray, authenticator: BiometricAuthenticator): Outcome<ByteArray> =
-        authenticator.authenticate(AUTH_REQUEST).flatMap { Outcome.Ok(mk.copyOf()) }
+    override suspend fun wrap(
+        mk: ByteArray,
+        authenticator: BiometricAuthenticator,
+    ): Outcome<ByteArray> = authenticator.authenticate(AUTH_REQUEST).flatMap { Outcome.Ok(mk.copyOf()) }
 
-    override suspend fun unwrap(blob: ByteArray, authenticator: BiometricAuthenticator): Outcome<ByteArray> =
-        authenticator.authenticate(AUTH_REQUEST).flatMap { Outcome.Ok(blob.copyOf()) }
+    override suspend fun unwrap(
+        blob: ByteArray,
+        authenticator: BiometricAuthenticator,
+    ): Outcome<ByteArray> = authenticator.authenticate(AUTH_REQUEST).flatMap { Outcome.Ok(blob.copyOf()) }
 
     override fun deleteHardwareKey() = Unit
 
     private companion object {
-        val AUTH_REQUEST = dev.ehsanfahad.darkchamber.core.crypto.BiometricRequest(
-            title = "Unlock vault",
-            cancelLabel = "Cancel",
-        )
+        val AUTH_REQUEST =
+            dev.ehsanfahad.darkchamber.core.crypto.BiometricRequest(
+                title = "Unlock vault",
+                cancelLabel = "Cancel",
+            )
     }
 }

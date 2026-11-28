@@ -69,10 +69,16 @@ class VaultSession private constructor(
      * `.dchm` codec), then zeroizes the DEK — on the normal path **and** if [block] throws. Prefer this
      * over [unwrapDek]; the session keeps ownership of the zeroize guarantee.
      */
-    fun <R> useDek(wrappedDek: ByteArray, block: (ByteArray) -> R): Outcome<R> {
+    fun <R> useDek(
+        wrappedDek: ByteArray,
+        block: (ByteArray) -> R,
+    ): Outcome<R> {
         check(!closed) { "vault session is closed" }
         return when (val opened = unwrapDek(wrappedDek)) {
-            is Outcome.Err -> opened
+            is Outcome.Err -> {
+                opened
+            }
+
             is Outcome.Ok -> {
                 val dek = opened.value
                 try {
@@ -142,7 +148,10 @@ class VaultSession private constructor(
      * re-encrypted** — only the PASSPHRASE slot changes. [oldPassphrase] must currently unlock the
      * slot (wrong → `IntegrityFailure`); a KeyStore without a PASSPHRASE slot → `MalformedContainer`.
      * Both passphrase arrays are **consumed** — zeroized before returning (as [createVault] does).
+     *
+     * Each refusal returns its typed error where it is found, so detekt's return count is suppressed.
      */
+    @Suppress("ReturnCount")
     fun changePassphrase(
         keyStore: KeyStoreBlob,
         oldPassphrase: ByteArray,
@@ -151,16 +160,40 @@ class VaultSession private constructor(
     ): Outcome<KeyStoreBlob> {
         check(!closed) { "vault session is closed" }
         try {
-            val slot = keyStore.wraps.firstOrNull { it.slot == Slot.PASSPHRASE }
-                ?: return Outcome.Err(VaultError.Crypto.MalformedContainer)
-            val mkFromOld = when (val opened = MasterKeyWrap.unwrap(engine, kdf, slot, oldPassphrase)) {
-                is Outcome.Err -> return opened
-                is Outcome.Ok -> opened.value
-            }
+            val slot =
+                keyStore.wraps.firstOrNull { it.slot == Slot.PASSPHRASE }
+                    ?: return Outcome.Err(VaultError.Crypto.MalformedContainer)
+            val mkFromOld =
+                when (val opened = MasterKeyWrap.unwrap(engine, kdf, slot, oldPassphrase)) {
+                    is Outcome.Err -> return opened
+                    is Outcome.Ok -> opened.value
+                }
             return try {
                 val params = passphraseKdf.paramsWithSalt(engine.randomBytes(KDF_SALT_SIZE))
-                val newWrap = MasterKeyWrap.wrap(engine, kdf, mkFromOld, newPassphrase, Slot.PASSPHRASE, params, engine.randomBytes(WRAP_NONCE_SIZE))
-                Outcome.Ok(KeyStoreBlob(keyStore.formatVersion, keyStore.wraps.map { if (it.slot == Slot.PASSPHRASE) newWrap else it }))
+                val newWrap =
+                    MasterKeyWrap.wrap(
+                        engine,
+                        kdf,
+                        mkFromOld,
+                        newPassphrase,
+                        Slot.PASSPHRASE,
+                        params,
+                        engine.randomBytes(WRAP_NONCE_SIZE),
+                    )
+                Outcome.Ok(
+                    KeyStoreBlob(
+                        keyStore.formatVersion,
+                        keyStore.wraps.map {
+                            if (it.slot ==
+                                Slot.PASSPHRASE
+                            ) {
+                                newWrap
+                            } else {
+                                it
+                            }
+                        },
+                    ),
+                )
             } finally {
                 mkFromOld.fill(0)
             }
@@ -179,7 +212,16 @@ class VaultSession private constructor(
         val (recoveryRaw, display) = RecoveryKey.generate(engine)
         return try {
             val params = KdfParams.Hkdf(engine.randomBytes(KDF_SALT_SIZE), RECOVERY_HKDF_INFO.encodeToByteArray())
-            val wrap = MasterKeyWrap.wrap(engine, kdf, mk, recoveryRaw, Slot.RECOVERY, params, engine.randomBytes(WRAP_NONCE_SIZE))
+            val wrap =
+                MasterKeyWrap.wrap(
+                    engine,
+                    kdf,
+                    mk,
+                    recoveryRaw,
+                    Slot.RECOVERY,
+                    params,
+                    engine.randomBytes(WRAP_NONCE_SIZE),
+                )
             val kept = keyStore.wraps.filter { it.slot != Slot.RECOVERY }
             KeyStoreBlob(keyStore.formatVersion, kept + wrap) to display
         } finally {
@@ -212,7 +254,10 @@ class VaultSession private constructor(
      * passphrase/recovery wraps are untouched — the vault still opens by those. Idempotent: safe to
      * call when there is no hardware slot.
      */
-    fun removeHardwareSlot(keyStore: KeyStoreBlob, sks: SecureKeyStore): KeyStoreBlob {
+    fun removeHardwareSlot(
+        keyStore: KeyStoreBlob,
+        sks: SecureKeyStore,
+    ): KeyStoreBlob {
         check(!closed) { "vault session is closed" }
         sks.deleteHardwareKey()
         return KeyStoreBlob(keyStore.formatVersion, keyStore.wraps, hardwareWrap = null)
@@ -250,9 +295,31 @@ class VaultSession private constructor(
             val (recoveryRaw, recoveryDisplay) = RecoveryKey.generate(engine)
             try {
                 val pwParams = passphraseKdf.paramsWithSalt(engine.randomBytes(KDF_SALT_SIZE))
-                val pwWrap = MasterKeyWrap.wrap(engine, kdf, mk, passphrase, Slot.PASSPHRASE, pwParams, engine.randomBytes(WRAP_NONCE_SIZE))
-                val recParams = KdfParams.Hkdf(engine.randomBytes(KDF_SALT_SIZE), RECOVERY_HKDF_INFO.encodeToByteArray())
-                val recWrap = MasterKeyWrap.wrap(engine, kdf, mk, recoveryRaw, Slot.RECOVERY, recParams, engine.randomBytes(WRAP_NONCE_SIZE))
+                val pwWrap =
+                    MasterKeyWrap.wrap(
+                        engine,
+                        kdf,
+                        mk,
+                        passphrase,
+                        Slot.PASSPHRASE,
+                        pwParams,
+                        engine.randomBytes(WRAP_NONCE_SIZE),
+                    )
+                val recParams =
+                    KdfParams.Hkdf(
+                        engine.randomBytes(KDF_SALT_SIZE),
+                        RECOVERY_HKDF_INFO.encodeToByteArray(),
+                    )
+                val recWrap =
+                    MasterKeyWrap.wrap(
+                        engine,
+                        kdf,
+                        mk,
+                        recoveryRaw,
+                        Slot.RECOVERY,
+                        recParams,
+                        engine.randomBytes(WRAP_NONCE_SIZE),
+                    )
                 val blob = KeyStoreBlob(KEYSTORE_VERSION, listOf(pwWrap, recWrap))
                 return CreatedVault(VaultSession(engine, kdf, mk), blob, recoveryDisplay)
             } finally {
@@ -274,8 +341,9 @@ class VaultSession private constructor(
             slot: Slot,
         ): Outcome<VaultSession> {
             try {
-                val entry = keyStore.wraps.firstOrNull { it.slot == slot }
-                    ?: return Outcome.Err(VaultError.Crypto.MalformedContainer)
+                val entry =
+                    keyStore.wraps.firstOrNull { it.slot == slot }
+                        ?: return Outcome.Err(VaultError.Crypto.MalformedContainer)
                 return when (val opened = MasterKeyWrap.unwrap(engine, kdf, entry, secret)) {
                     is Outcome.Err -> opened
                     is Outcome.Ok -> Outcome.Ok(VaultSession(engine, kdf, opened.value))

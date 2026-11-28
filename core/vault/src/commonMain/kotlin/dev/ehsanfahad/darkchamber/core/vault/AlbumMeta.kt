@@ -23,7 +23,9 @@ import kotlinx.serialization.encodeToByteArray
  * keeps secret.
  */
 @Serializable
-data class AlbumMeta(val name: String) {
+data class AlbumMeta(
+    val name: String,
+) {
     /**
      * Carries nothing. The name is decrypted vault content (hard rule #4), it is the only field, and
      * the generated `toString` would print it verbatim into any log line that touched an album —

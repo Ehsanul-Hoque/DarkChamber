@@ -62,11 +62,18 @@ internal object UnavailableCamera : CameraController {
 
     override fun setZoom(ratio: Float) = Unit
 
-    override fun focusAt(x: Float, y: Float) = Unit
+    override fun focusAt(
+        x: Float,
+        y: Float,
+    ) = Unit
 
     override suspend fun capture(): CaptureResult = CaptureResult.Failed
 
-    override fun record(file: Path, sizeLimitBytes: Long, withAudio: Boolean): Recording = ReportedRecording.refused()
+    override fun record(
+        file: Path,
+        sizeLimitBytes: Long,
+        withAudio: Boolean,
+    ): Recording = ReportedRecording.refused()
 
     @Composable
     override fun Preview(modifier: Modifier) = Unit

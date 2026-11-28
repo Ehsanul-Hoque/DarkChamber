@@ -15,12 +15,19 @@ import kotlinx.serialization.Serializable
  */
 object MasterKeyWrap {
     @Serializable
-    private class WrapAad(val slot: Slot, val kdfId: KdfId, val kdfParams: KdfParams)
+    private class WrapAad(
+        val slot: Slot,
+        val kdfId: KdfId,
+        val kdfParams: KdfParams,
+    )
 
     // Experimental CBOR API: see darkChamberCbor for why that is acceptable.
     @OptIn(ExperimentalSerializationApi::class)
-    private fun aad(slot: Slot, kdfId: KdfId, params: KdfParams): ByteArray =
-        darkChamberCbor.encodeToByteArray(WrapAad.serializer(), WrapAad(slot, kdfId, params))
+    private fun aad(
+        slot: Slot,
+        kdfId: KdfId,
+        params: KdfParams,
+    ): ByteArray = darkChamberCbor.encodeToByteArray(WrapAad.serializer(), WrapAad(slot, kdfId, params))
 
     /** Seal [mk] for [slot] with the key derived from [secret]; [nonce] must be freshly random. */
     fun wrap(
@@ -44,7 +51,12 @@ object MasterKeyWrap {
     }
 
     /** Recover MK from [entry] using [secret]. A wrong secret or any tamper → `IntegrityFailure`. */
-    fun unwrap(engine: CryptoEngine, kdf: KeyDerivation, entry: WrapEntry, secret: ByteArray): Outcome<ByteArray> {
+    fun unwrap(
+        engine: CryptoEngine,
+        kdf: KeyDerivation,
+        entry: WrapEntry,
+        secret: ByteArray,
+    ): Outcome<ByteArray> {
         val wrapKey = kdf.deriveWrapKey(secret, entry.kdfParams)
         return try {
             engine.aeadOpen(wrapKey, entry.nonce, aad(entry.slot, entry.kdfId, entry.kdfParams), entry.wrappedMk)

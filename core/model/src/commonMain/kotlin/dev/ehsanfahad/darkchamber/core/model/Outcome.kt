@@ -6,12 +6,20 @@ package dev.ehsanfahad.darkchamber.core.model
  * a failure [Err] carrying a [VaultError]. Hand-rolled (no Arrow dependency).
  */
 sealed interface Outcome<out T> {
-    data class Ok<out T>(val value: T) : Outcome<T>
-    data class Err(val error: VaultError) : Outcome<Nothing>
+    data class Ok<out T>(
+        val value: T,
+    ) : Outcome<T>
+
+    data class Err(
+        val error: VaultError,
+    ) : Outcome<Nothing>
 }
 
 /** Collapse an [Outcome] to a single value by handling both branches. */
-inline fun <T, R> Outcome<T>.fold(onOk: (T) -> R, onErr: (VaultError) -> R): R =
+inline fun <T, R> Outcome<T>.fold(
+    onOk: (T) -> R,
+    onErr: (VaultError) -> R,
+): R =
     when (this) {
         is Outcome.Ok -> onOk(value)
         is Outcome.Err -> onErr(error)

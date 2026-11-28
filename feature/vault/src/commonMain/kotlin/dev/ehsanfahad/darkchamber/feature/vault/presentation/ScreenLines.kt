@@ -5,7 +5,10 @@ package dev.ehsanfahad.darkchamber.feature.vault.presentation
  * distinct character. Built from decrypted text (which characters a file holds), so it lives with the page
  * and never in screen state.
  */
-internal class LetterWidths(codePoints: IntArray, widths: FloatArray) {
+internal class LetterWidths(
+    codePoints: IntArray,
+    widths: FloatArray,
+) {
     /** The basic plane by index (NaN = not measured), the rest by code point. */
     private val basic = FloatArray(BASIC_PLANE) { Float.NaN }
     private val beyond = HashMap<Int, Float>()
@@ -34,7 +37,6 @@ internal class LetterWidths(codePoints: IntArray, widths: FloatArray) {
  * shapes some scripts into fewer, wider glyphs; the measured height replaces it once the row is laid out.
  */
 internal object ScreenLines {
-
     /**
      * How many characters the work walks between two calls of its stop check — counted in characters, not
      * rows, so the gap stays short however long the rows are (a minified file is rows of 2,000).
@@ -45,7 +47,10 @@ internal object ScreenLines {
      * Every distinct character (code point) in [text], ascending — what to measure. [stop] is called every
      * [STOP_EVERY_CHARS] characters and ends the work by throwing (a cancelled coroutine's check).
      */
-    fun distinct(text: CharSequence, stop: () -> Unit = {}): IntArray {
+    fun distinct(
+        text: CharSequence,
+        stop: () -> Unit = {},
+    ): IntArray {
         val seen = BooleanArray(BASIC_PLANE)
         val beyond = HashSet<Int>()
         var i = 0
@@ -82,7 +87,13 @@ internal object ScreenLines {
     private val LINE_BREAKING = setOf(0x0A, 0x0B, 0x0C, 0x0D, 0x85, 0x2028, 0x2029)
 
     /** How many screen lines [text] from [start] until [end] wraps to in [widthPx]; an empty row is one line. */
-    fun count(text: CharSequence, start: Int, end: Int, widthPx: Float, widths: LetterWidths): Int {
+    fun count(
+        text: CharSequence,
+        start: Int,
+        end: Int,
+        widthPx: Float,
+        widths: LetterWidths,
+    ): Int {
         var lines = 1
         var lineWidth = 0f
         var i = start
@@ -159,7 +170,11 @@ internal object ScreenLines {
     }
 
     /** The code point at [i]: a surrogate pair read whole, any lone half as itself. */
-    private fun codePointAt(text: CharSequence, i: Int, end: Int): Int {
+    private fun codePointAt(
+        text: CharSequence,
+        i: Int,
+        end: Int,
+    ): Int {
         val high = text[i]
         if (high.isHighSurrogate() && i + 1 < end) {
             val low = text[i + 1]

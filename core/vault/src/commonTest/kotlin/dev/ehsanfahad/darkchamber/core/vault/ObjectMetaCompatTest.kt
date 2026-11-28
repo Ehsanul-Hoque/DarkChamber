@@ -15,7 +15,11 @@ import kotlin.test.assertNull
  * have yet.
  */
 @Serializable
-private data class ExtendedMeta(val name: String, val mime: String, val width: Int? = null)
+private data class ExtendedMeta(
+    val name: String,
+    val mime: String,
+    val width: Int? = null,
+)
 
 /**
  * `ObjectMeta` as it was **before** the thumbnail key existed — the exact shape every vault created
@@ -23,7 +27,10 @@ private data class ExtendedMeta(val name: String, val mime: String, val width: I
  * so this is what "old vaults always open" means concretely.
  */
 @Serializable
-private data class PreThumbnailMeta(val name: String, val mime: String)
+private data class PreThumbnailMeta(
+    val name: String,
+    val mime: String,
+)
 
 /**
  * The `enc_meta` blob is **versionless** — unlike `.dchm` it has no prelude, no format vector and

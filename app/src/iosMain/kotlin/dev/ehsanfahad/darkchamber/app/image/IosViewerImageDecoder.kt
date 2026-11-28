@@ -48,16 +48,20 @@ import platform.Foundation.dataWithBytesNoCopy
  */
 internal class IosViewerImageDecoder : ViewerImageDecoder {
     @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
-    override fun decode(bytes: ByteArray, targetLongEdge: Int): ImageBitmap? {
+    override fun decode(
+        bytes: ByteArray,
+        targetLongEdge: Int,
+    ): ImageBitmap? {
         if (bytes.isEmpty() || targetLongEdge <= 0) return null
         return try {
             autoreleasepool {
                 bytes.usePinned { pinned ->
-                    val data = NSData.dataWithBytesNoCopy(
-                        bytes = pinned.addressOf(0),
-                        length = bytes.size.toULong(),
-                        freeWhenDone = false,
-                    )
+                    val data =
+                        NSData.dataWithBytesNoCopy(
+                            bytes = pinned.addressOf(0),
+                            length = bytes.size.toULong(),
+                            freeWhenDone = false,
+                        )
                     val image = imageIoThumbnail(data, targetLongEdge) ?: return@usePinned null
                     try {
                         image.toImageBitmap()
@@ -83,20 +87,22 @@ internal class IosViewerImageDecoder : ViewerImageDecoder {
             bitmap.close()
             return null
         }
-        val pixels = bitmap.peekPixels() ?: run {
-            bitmap.close()
-            return null
-        }
+        val pixels =
+            bitmap.peekPixels() ?: run {
+                bitmap.close()
+                return null
+            }
         val colorSpace = CGColorSpaceCreateDeviceRGB()
-        val context = CGBitmapContextCreate(
-            data = interpretCPointer<ByteVar>(pixels.addr),
-            width = width.toULong(),
-            height = height.toULong(),
-            bitsPerComponent = 8u,
-            bytesPerRow = pixels.rowBytes.toULong(),
-            space = colorSpace,
-            bitmapInfo = CGImageAlphaInfo.kCGImageAlphaPremultipliedLast.value or kCGBitmapByteOrder32Big,
-        )
+        val context =
+            CGBitmapContextCreate(
+                data = interpretCPointer<ByteVar>(pixels.addr),
+                width = width.toULong(),
+                height = height.toULong(),
+                bitsPerComponent = 8u,
+                bytesPerRow = pixels.rowBytes.toULong(),
+                space = colorSpace,
+                bitmapInfo = CGImageAlphaInfo.kCGImageAlphaPremultipliedLast.value or kCGBitmapByteOrder32Big,
+            )
         CGColorSpaceRelease(colorSpace)
         if (context == null) {
             bitmap.close()

@@ -19,7 +19,10 @@ internal class WatchingSqlDriver(
     var mostParameters = 0
         private set
 
-    private fun watch(sql: String, parameters: Int) {
+    private fun watch(
+        sql: String,
+        parameters: Int,
+    ) {
         mostParameters = maxOf(mostParameters, parameters)
         val fail = failWhere
         if (fail != null && sql.contains(fail)) throw IllegalStateException("refused: $fail")

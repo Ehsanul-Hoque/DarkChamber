@@ -1,0 +1,16 @@
+# yamllint for the GitHub Actions workflows, run (with --strict, so a warning fails too) by pr.yml's
+# quality job over pr.yml and every *.yml.disabled template. Its defaults, minus four that do not fit
+# workflow files:
+extends: default
+
+rules:
+  # The workflows' comments explain each step and run to about 100 columns.
+  line-length:
+    max: 120
+  # Workflows begin with a comment, not a `---` marker.
+  document-start: disable
+  # `on:` is the Actions trigger key, not a mistyped boolean.
+  truthy:
+    allowed-values: ["true", "false", "on"]
+  # A step kept for later is commented out at the step list's own indentation, ready to uncomment.
+  comments-indentation: disable

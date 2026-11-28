@@ -25,8 +25,10 @@ internal class ProgressSource(
     private val delegate: RawSource,
     private val onRead: (Long) -> Unit,
 ) : RawSource {
-
-    override fun readAtMostTo(sink: Buffer, byteCount: Long): Long {
+    override fun readAtMostTo(
+        sink: Buffer,
+        byteCount: Long,
+    ): Long {
         val n = delegate.readAtMostTo(sink, byteCount)
         if (n > 0L) onRead(n) // -1 is end-of-stream, not bytes
         return n

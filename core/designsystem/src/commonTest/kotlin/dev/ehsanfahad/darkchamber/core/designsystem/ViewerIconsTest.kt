@@ -14,14 +14,18 @@ import kotlin.test.assertEquals
  * module's copy), as for the camera's marks: a threshold would only hide a pruned command.
  */
 class ViewerIconsTest {
-
-    private class Expected(val vector: ImageVector, val commands: Int, val subpaths: Int)
-
-    private val marks = mapOf(
-        "arrow_back_ios" to Expected(backVector, commands = 8, subpaths = 1),
-        "info" to Expected(detailsVector, commands = 46, subpaths = 5),
-        "delete_forever" to Expected(deleteVector, commands = 42, subpaths = 4),
+    private class Expected(
+        val vector: ImageVector,
+        val commands: Int,
+        val subpaths: Int,
     )
+
+    private val marks =
+        mapOf(
+            "arrow_back_ios" to Expected(backVector, commands = 8, subpaths = 1),
+            "info" to Expected(detailsVector, commands = 46, subpaths = 5),
+            "delete_forever" to Expected(deleteVector, commands = 42, subpaths = 4),
+        )
 
     @Test
     fun each_mark_carries_its_supplied_drawing_exactly() {

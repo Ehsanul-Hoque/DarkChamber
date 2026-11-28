@@ -5,8 +5,8 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.PickedFile
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.suspendCancellableCoroutine
 import platform.Foundation.NSURL
-import platform.UIKit.UIDocumentPickerViewController
 import platform.UIKit.UIDocumentPickerDelegateProtocol
+import platform.UIKit.UIDocumentPickerViewController
 import platform.UIKit.UIViewController
 import platform.UniformTypeIdentifiers.UTTypeItem
 import platform.darwin.NSObject
@@ -20,8 +20,9 @@ import kotlin.coroutines.resume
  * security-scoped resource, which [PickedFile.close] hands back.
  */
 @OptIn(ExperimentalForeignApi::class)
-class IosFilePicker(private val presenter: () -> UIViewController?) : FilePicker {
-
+class IosFilePicker(
+    private val presenter: () -> UIViewController?,
+) : FilePicker {
     /**
      * Strong references to the delegates of presentations still in flight.
      *
@@ -38,24 +39,26 @@ class IosFilePicker(private val presenter: () -> UIViewController?) : FilePicker
     override suspend fun pickFiles(): List<PickedFile> {
         val host = presenter() ?: error("no view controller to present the picker from")
 
-        val urls = suspendCancellableCoroutine { continuation ->
-            val controller = UIDocumentPickerViewController(forOpeningContentTypes = listOf(UTTypeItem))
-            controller.allowsMultipleSelection = true
-            var delegate: PickerDelegate? = null
-            delegate = PickerDelegate { picked ->
-                // Released once the picker has spoken; UIKit zeroes its weak reference, so a stray
-                // later message finds nil rather than a dangling object.
-                delegate?.let(activeDelegates::remove)
-                continuation.resume(picked)
+        val urls =
+            suspendCancellableCoroutine { continuation ->
+                val controller = UIDocumentPickerViewController(forOpeningContentTypes = listOf(UTTypeItem))
+                controller.allowsMultipleSelection = true
+                var delegate: PickerDelegate? = null
+                delegate =
+                    PickerDelegate { picked ->
+                        // Released once the picker has spoken; UIKit zeroes its weak reference, so a stray
+                        // later message finds nil rather than a dangling object.
+                        delegate?.let(activeDelegates::remove)
+                        continuation.resume(picked)
+                    }
+                activeDelegates += delegate
+                controller.delegate = delegate
+                continuation.invokeOnCancellation {
+                    activeDelegates.remove(delegate)
+                    controller.dismissViewControllerAnimated(true, null)
+                }
+                host.presentViewController(controller, animated = true, completion = null)
             }
-            activeDelegates += delegate
-            controller.delegate = delegate
-            continuation.invokeOnCancellation {
-                activeDelegates.remove(delegate)
-                controller.dismissViewControllerAnimated(true, null)
-            }
-            host.presentViewController(controller, animated = true, completion = null)
-        }
 
         // A URL we cannot open is dropped rather than failing the pick: one odd file among twenty
         // must not cost the user the other nineteen. Its scoped access is handed straight back.
@@ -77,10 +80,16 @@ class IosFilePicker(private val presenter: () -> UIViewController?) : FilePicker
  * cancellation — resume exactly once; an empty list means cancelled, which the import treats as an
  * ordinary outcome rather than a failure.
  */
-private class PickerDelegate(private val onResult: (List<NSURL>) -> Unit) : NSObject(), UIDocumentPickerDelegateProtocol {
+private class PickerDelegate(
+    private val onResult: (List<NSURL>) -> Unit,
+) : NSObject(),
+    UIDocumentPickerDelegateProtocol {
     private var resumed = false
 
-    override fun documentPicker(controller: UIDocumentPickerViewController, didPickDocumentsAtURLs: List<*>) {
+    override fun documentPicker(
+        controller: UIDocumentPickerViewController,
+        didPickDocumentsAtURLs: List<*>,
+    ) {
         deliver(didPickDocumentsAtURLs.filterIsInstance<NSURL>())
     }
 

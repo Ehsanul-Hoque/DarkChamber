@@ -5,14 +5,14 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.PdfOpened
 import dev.ehsanfahad.darkchamber.feature.vault.api.PdfPageSize
 import dev.ehsanfahad.darkchamber.feature.vault.api.PdfRefusal
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPdfBuffer
+import kotlinx.io.Buffer
+import kotlinx.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import kotlinx.io.Buffer
-import kotlinx.io.IOException
 
 /**
  * The iOS renderer over the CoreGraphics-made PDFs the Android test reads (`PdfFixtures`): three
@@ -33,13 +33,21 @@ class IosPdfRendererTest {
     }
 
     /** The page's colour by which channel carries it (calibrated colours do not arrive pure). */
-    private fun assertDominant(channel: String, picture: ImageBitmap, x: Int, y: Int) {
+    private fun assertDominant(
+        channel: String,
+        picture: ImageBitmap,
+        x: Int,
+        y: Int,
+    ) {
         val pixel = IntArray(1)
         picture.readPixels(pixel, startX = x, startY = y, width = 1, height = 1)
         val argb = pixel[0]
         val rgb = mapOf("red" to (argb shr 16 and 0xFF), "green" to (argb shr 8 and 0xFF), "blue" to (argb and 0xFF))
         val others = rgb.filterKeys { it != channel }.values
-        assertTrue(rgb.getValue(channel) > 200 && others.all { it < 100 }, "$channel page drew ${argb.toUInt().toString(16)}")
+        assertTrue(
+            rgb.getValue(channel) > 200 && others.all { it < 100 },
+            "$channel page drew ${argb.toUInt().toString(16)}",
+        )
     }
 
     @Test

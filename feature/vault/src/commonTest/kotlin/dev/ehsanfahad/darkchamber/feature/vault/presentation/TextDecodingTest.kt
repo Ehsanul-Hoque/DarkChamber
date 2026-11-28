@@ -11,9 +11,12 @@ import kotlin.test.assertNull
  * in for what could not be read.
  */
 class TextDecodingTest {
-
     private fun hex(s: String): ByteArray =
-        s.split(' ').filter { it.isNotEmpty() }.map { it.toInt(16).toByte() }.toByteArray()
+        s
+            .split(' ')
+            .filter { it.isNotEmpty() }
+            .map { it.toInt(16).toByte() }
+            .toByteArray()
 
     private fun lines(bytes: ByteArray): List<String>? =
         when (val d = TextDecoding.decode(bytes)) {
@@ -93,12 +96,16 @@ class TextDecodingTest {
     // --- UTF-16 ---
 
     /** [text] as UTF-16 code units, low byte first when [littleEndian]. */
-    private fun utf16(text: String, littleEndian: Boolean): ByteArray =
-        text.flatMap { c ->
-            val hi = (c.code shr 8).toByte()
-            val lo = (c.code and 0xFF).toByte()
-            if (littleEndian) listOf(lo, hi) else listOf(hi, lo)
-        }.toByteArray()
+    private fun utf16(
+        text: String,
+        littleEndian: Boolean,
+    ): ByteArray =
+        text
+            .flatMap { c ->
+                val hi = (c.code shr 8).toByte()
+                val lo = (c.code and 0xFF).toByte()
+                if (littleEndian) listOf(lo, hi) else listOf(hi, lo)
+            }.toByteArray()
 
     private val leMark = hex("FF FE")
     private val beMark = hex("FE FF")
@@ -204,7 +211,10 @@ class TextDecodingTest {
 
     // --- how many lines a page holds ---
 
-    private fun decodeAtMost(text: String, maxLines: Int) = TextDecoding.decode(text.encodeToByteArray(), maxLines)
+    private fun decodeAtMost(
+        text: String,
+        maxLines: Int,
+    ) = TextDecoding.decode(text.encodeToByteArray(), maxLines)
 
     /** Lines are counted as they are split: a final ending adds none, empty lines count, CRLF is one ending. */
     @Test
@@ -227,14 +237,28 @@ class TextDecodingTest {
     @Test
     fun a_page_holds_two_mebi_lines() {
         assertEquals(2_097_152, TEXT_MAX_LINES)
-        assertEquals(TEXT_MAX_LINES, assertIs<DecodedText.Text>(TextDecoding.decode(ByteArray(TEXT_MAX_LINES) { 0x0A })).lineCount)
+        assertEquals(
+            TEXT_MAX_LINES,
+            assertIs<DecodedText.Text>(
+                TextDecoding.decode(
+                    ByteArray(TEXT_MAX_LINES) {
+                        0x0A
+                    },
+                ),
+            ).lineCount,
+        )
         assertEquals(DecodedText.TooManyLines, TextDecoding.decode(ByteArray(TEXT_MAX_LINES + 1) { 0x0A }))
     }
 
     /** A text made for a whole page (re-indented JSON) is held to the same limit. */
     @Test
     fun a_page_made_from_text_holds_no_more_lines_than_a_file() {
-        assertEquals(listOf("a", "b", "c"), TextDecoding.pageLines("a\nb\nc\n", 3)?.let { t -> List(t.lineCount) { t.line(it) } })
+        assertEquals(
+            listOf("a", "b", "c"),
+            TextDecoding.pageLines("a\nb\nc\n", 3)?.let { t ->
+                List(t.lineCount) { t.line(it) }
+            },
+        )
         assertNull(TextDecoding.pageLines("a\nb\nc\nd", 3))
         assertEquals(TEXT_MAX_LINES, TextDecoding.pageLines("\n".repeat(TEXT_MAX_LINES))?.lineCount)
         assertNull(TextDecoding.pageLines("\n".repeat(TEXT_MAX_LINES + 1)))

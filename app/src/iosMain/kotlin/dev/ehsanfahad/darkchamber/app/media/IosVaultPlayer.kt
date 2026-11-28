@@ -8,6 +8,7 @@ import dev.ehsanfahad.darkchamber.feature.vault.api.PlayerState
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPlayer
 import dev.ehsanfahad.darkchamber.feature.vault.api.VaultPlayerFactory
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.readValue
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -34,6 +35,7 @@ import platform.AVFoundation.isPlayable
 import platform.AVFoundation.mediaType
 import platform.AVFoundation.pause
 import platform.AVFoundation.play
+import platform.AVFoundation.rate
 import platform.AVFoundation.replaceCurrentItemWithPlayerItem
 import platform.AVFoundation.resourceLoader
 import platform.AVFoundation.seekToTime
@@ -43,10 +45,9 @@ import platform.AVFoundation.setPreferredForwardBufferDuration
 import platform.AVFoundation.setPreventsDisplaySleepDuringVideoPlayback
 import platform.AVFoundation.setRate
 import platform.AVFoundation.setVolume
-import platform.AVFoundation.volume
-import platform.AVFoundation.rate
 import platform.AVFoundation.timeControlStatus
 import platform.AVFoundation.tracks
+import platform.AVFoundation.volume
 import platform.CoreGraphics.CGRectMake
 import platform.CoreMedia.CMTimeGetSeconds
 import platform.CoreMedia.CMTimeMakeWithSeconds
@@ -62,13 +63,15 @@ import platform.darwin.NSObjectProtocol
 import platform.darwin.dispatch_async
 import platform.darwin.dispatch_get_main_queue
 import platform.darwin.dispatch_queue_create
-import kotlinx.cinterop.readValue
 import kotlin.concurrent.AtomicInt
 
 /** The iOS players: AVPlayer, reading an item only through its range reader. */
 @OptIn(ExperimentalForeignApi::class)
 internal class IosVaultPlayerFactory : VaultPlayerFactory {
-    override fun create(reader: RangeReader, mime: String): VaultPlayer {
+    override fun create(
+        reader: RangeReader,
+        mime: String,
+    ): VaultPlayer {
         // Media playback: sound plays with the ring switch on silent, as a video app's does. The app has
         // no background audio mode, so leaving it still stops the sound.
         AVAudioSession.sharedInstance().setCategory(AVAudioSessionCategoryPlayback, error = null)
@@ -91,32 +94,43 @@ internal class IosVaultPlayerFactory : VaultPlayerFactory {
  * **Unverified on an iPhone**; exercised on the simulator, whose AVFoundation plays the same way.
  */
 @OptIn(ExperimentalForeignApi::class)
-internal class IosVaultPlayer(private val reader: RangeReader, mime: String) : VaultPlayer {
+internal class IosVaultPlayer(
+    private val reader: RangeReader,
+    mime: String,
+) : VaultPlayer {
     private val queue = dispatch_queue_create("dev.ehsanfahad.darkchamber.player", null)
     private val loader = ReaderLoader(reader, assetTypeFor(mime).uti, queue)
     private val released = AtomicInt(0)
 
-    private val asset = AVURLAsset(uRL = assetUrl(SCHEME, assetTypeFor(mime))!!, options = null).also {
-        it.resourceLoader().setDelegate(loader, queue)
-    }
-    private val item = AVPlayerItem(asset = asset).also {
-        it.setPreferredForwardBufferDuration(IosPlayerMapping.FORWARD_BUFFER_SECONDS)
-    }
-    private val player = AVPlayer(playerItem = item).also {
-        it.setAllowsExternalPlayback(false)
-        it.setPreventsDisplaySleepDuringVideoPlayback(true)
-    }
-    private val layer = AVPlayerLayer.playerLayerWithPlayer(player).also { it.videoGravity = AVLayerVideoGravityResizeAspect }
+    private val asset =
+        AVURLAsset(uRL = assetUrl(SCHEME, assetTypeFor(mime))!!, options = null).also {
+            it.resourceLoader().setDelegate(loader, queue)
+        }
+    private val item =
+        AVPlayerItem(asset = asset).also {
+            it.setPreferredForwardBufferDuration(IosPlayerMapping.FORWARD_BUFFER_SECONDS)
+        }
+    private val player =
+        AVPlayer(playerItem = item).also {
+            it.setAllowsExternalPlayback(false)
+            it.setPreventsDisplaySleepDuringVideoPlayback(true)
+        }
+    private val layer =
+        AVPlayerLayer.playerLayerWithPlayer(player).also {
+            it.videoGravity =
+                AVLayerVideoGravityResizeAspect
+        }
 
     private val _state = MutableStateFlow(PlayerState())
     override val state: StateFlow<PlayerState> = _state.asStateFlow()
 
     private var tracksRead = false
-    private val ended: NSObjectProtocol = NSNotificationCenter.defaultCenter.addObserverForName(
-        name = AVPlayerItemDidPlayToEndTimeNotification,
-        `object` = item,
-        queue = NSOperationQueue.mainQueue,
-    ) { _ -> if (released.value == 0) _state.update { it.copy(ended = true, playing = false) } }
+    private val ended: NSObjectProtocol =
+        NSNotificationCenter.defaultCenter.addObserverForName(
+            name = AVPlayerItemDidPlayToEndTimeNotification,
+            `object` = item,
+            queue = NSOperationQueue.mainQueue,
+        ) { _ -> if (released.value == 0) _state.update { it.copy(ended = true, playing = false) } }
 
     private val poll: NSTimer = NSTimer.scheduledTimerWithTimeInterval(POLL_SECONDS, repeats = true) { _ -> read() }
 
@@ -130,13 +144,14 @@ internal class IosVaultPlayer(private val reader: RangeReader, mime: String) : V
         }
         if (item.status == AVPlayerItemStatusReadyToPlay && !tracksRead) {
             tracksRead = true
-            val found = asset.tracks().filterIsInstance<AVAssetTrack>().map {
-                IosPlayerMapping.FoundTrack(
-                    video = it.mediaType == AVMediaTypeVideo,
-                    audio = it.mediaType == AVMediaTypeAudio,
-                    playable = it.isPlayable(),
-                )
-            }
+            val found =
+                asset.tracks().filterIsInstance<AVAssetTrack>().map {
+                    IosPlayerMapping.FoundTrack(
+                        video = it.mediaType == AVMediaTypeVideo,
+                        audio = it.mediaType == AVMediaTypeAudio,
+                        playable = it.isPlayable(),
+                    )
+                }
             _state.update { it.copy(tracks = IosPlayerMapping.tracksOf(found)) }
         }
         val position = CMTimeGetSeconds(player.currentTime())
@@ -144,7 +159,14 @@ internal class IosVaultPlayer(private val reader: RangeReader, mime: String) : V
         _state.update {
             it.copy(
                 positionMs = if (position.isNaN()) it.positionMs else (position * 1_000).toLong(),
-                durationMs = if (duration.isNaN() || duration.isInfinite()) it.durationMs else (duration * 1_000).toLong(),
+                durationMs =
+                    if (duration.isNaN() ||
+                        duration.isInfinite()
+                    ) {
+                        it.durationMs
+                    } else {
+                        (duration * 1_000).toLong()
+                    },
                 playing = player.timeControlStatus == AVPlayerTimeControlStatusPlaying,
             )
         }
@@ -154,20 +176,23 @@ internal class IosVaultPlayer(private val reader: RangeReader, mime: String) : V
 
     override fun pause() = onMain { player.pause() }
 
-    override fun seekTo(positionMs: Long) = onMain {
-        player.seekToTime(CMTimeMakeWithSeconds(positionMs / 1_000.0, 1_000))
-        _state.update { it.copy(positionMs = positionMs, ended = false) }
-    }
+    override fun seekTo(positionMs: Long) =
+        onMain {
+            player.seekToTime(CMTimeMakeWithSeconds(positionMs / 1_000.0, 1_000))
+            _state.update { it.copy(positionMs = positionMs, ended = false) }
+        }
 
-    override fun setSpeed(speed: Float) = onMain {
-        player.setDefaultRate(speed)
-        if (player.rate != 0f) player.setRate(speed)
-    }
+    override fun setSpeed(speed: Float) =
+        onMain {
+            player.setDefaultRate(speed)
+            if (player.rate != 0f) player.setRate(speed)
+        }
 
     /** iOS gives apps no way to set the phone's volume: the slide sets this player's own. */
-    override fun setVolume(level: Float) = onMain {
-        player.setVolume(level.coerceIn(0f, 1f))
-    }
+    override fun setVolume(level: Float) =
+        onMain {
+            player.setVolume(level.coerceIn(0f, 1f))
+        }
 
     override fun volume(): Float = player.volume
 
@@ -218,7 +243,9 @@ private const val MAX_CHAIN = 8
 
 /** Keeps the player's layer the size of its view. */
 @OptIn(ExperimentalForeignApi::class)
-private class LayerHost(private val picture: AVPlayerLayer) : UIView(frame = CGRectMake(0.0, 0.0, 0.0, 0.0)) {
+private class LayerHost(
+    private val picture: AVPlayerLayer,
+) : UIView(frame = CGRectMake(0.0, 0.0, 0.0, 0.0)) {
     init {
         layer.addSublayer(picture)
     }

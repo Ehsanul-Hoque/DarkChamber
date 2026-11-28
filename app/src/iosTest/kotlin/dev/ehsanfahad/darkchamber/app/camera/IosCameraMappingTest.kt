@@ -5,11 +5,6 @@ import dev.ehsanfahad.darkchamber.feature.camera.api.CameraPermission
 import dev.ehsanfahad.darkchamber.feature.camera.api.MicrophonePermission
 import dev.ehsanfahad.darkchamber.feature.camera.api.RecordingEnd
 import dev.ehsanfahad.darkchamber.feature.camera.api.RecordingFailure
-import platform.AVFoundation.AVErrorDiskFull
-import platform.AVFoundation.AVErrorMaximumFileSizeReached
-import platform.AVFoundation.AVErrorNoDataCaptured
-import platform.AVFoundation.AVErrorSessionWasInterrupted
-import platform.AVFoundation.AVErrorUnknown
 import platform.AVFoundation.AVAuthorizationStatusAuthorized
 import platform.AVFoundation.AVAuthorizationStatusDenied
 import platform.AVFoundation.AVAuthorizationStatusNotDetermined
@@ -19,12 +14,16 @@ import platform.AVFoundation.AVCaptureSessionInterruptionReasonVideoDeviceInUseB
 import platform.AVFoundation.AVCaptureSessionInterruptionReasonVideoDeviceNotAvailableDueToSystemPressure
 import platform.AVFoundation.AVCaptureSessionInterruptionReasonVideoDeviceNotAvailableInBackground
 import platform.AVFoundation.AVCaptureSessionInterruptionReasonVideoDeviceNotAvailableWithMultipleForegroundApps
+import platform.AVFoundation.AVErrorDiskFull
+import platform.AVFoundation.AVErrorMaximumFileSizeReached
+import platform.AVFoundation.AVErrorNoDataCaptured
+import platform.AVFoundation.AVErrorSessionWasInterrupted
+import platform.AVFoundation.AVErrorUnknown
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /** The rules inside the AVFoundation seam, out of the framework calls. */
 class IosCameraMappingTest {
-
     /**
      * iOS asks once. A refusal — and a restriction, which the user cannot lift from the prompt
      * either — is final until Settings, so neither is "denied, ask again".
@@ -70,7 +69,10 @@ class IosCameraMappingTest {
             RecordingEnd.Failed(RecordingFailure.Other),
             recordingEndFor(AVErrorSessionWasInterrupted, finishedSuccessfully = false),
         )
-        assertEquals(RecordingEnd.Failed(RecordingFailure.Other), recordingEndFor(AVErrorUnknown, finishedSuccessfully = null))
+        assertEquals(
+            RecordingEnd.Failed(RecordingFailure.Other),
+            recordingEndFor(AVErrorUnknown, finishedSuccessfully = null),
+        )
     }
 
     /**
@@ -103,7 +105,11 @@ class IosCameraMappingTest {
             AVCaptureSessionInterruptionReasonVideoDeviceNotAvailableDueToSystemPressure,
             99L,
         )) {
-            assertEquals(CameraAvailability.Unavailable, availabilityForInterruption(other), "reason $other names no cause")
+            assertEquals(
+                CameraAvailability.Unavailable,
+                availabilityForInterruption(other),
+                "reason $other names no cause",
+            )
         }
     }
 }

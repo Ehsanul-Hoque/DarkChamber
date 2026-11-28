@@ -62,7 +62,10 @@ sealed interface KdfParams {
     val kdfId: KdfId
 
     @Serializable
-    class Pbkdf2(val salt: ByteArray, val iterations: Int) : KdfParams {
+    class Pbkdf2(
+        val salt: ByteArray,
+        val iterations: Int,
+    ) : KdfParams {
         override val kdfId get() = KdfId.PBKDF2_SHA256
 
         override fun equals(other: Any?) =
@@ -72,7 +75,10 @@ sealed interface KdfParams {
     }
 
     @Serializable
-    class Hkdf(val salt: ByteArray, val info: ByteArray) : KdfParams {
+    class Hkdf(
+        val salt: ByteArray,
+        val info: ByteArray,
+    ) : KdfParams {
         override val kdfId get() = KdfId.HKDF_SHA256
 
         override fun equals(other: Any?) =
@@ -120,15 +126,37 @@ sealed interface KdfParams {
  * work goes through [CryptoEngine] (hard rule #2).
  */
 interface KeyDerivation {
-    fun deriveWrapKey(secret: ByteArray, params: KdfParams): ByteArray
+    fun deriveWrapKey(
+        secret: ByteArray,
+        params: KdfParams,
+    ): ByteArray
 }
 
-class DefaultKeyDerivation(private val engine: CryptoEngine) : KeyDerivation {
-    override fun deriveWrapKey(secret: ByteArray, params: KdfParams): ByteArray =
+class DefaultKeyDerivation(
+    private val engine: CryptoEngine,
+) : KeyDerivation {
+    override fun deriveWrapKey(
+        secret: ByteArray,
+        params: KdfParams,
+    ): ByteArray =
         when (params) {
-            is KdfParams.Pbkdf2 -> engine.pbkdf2Sha256(secret, params.salt, params.iterations, WRAP_KEY_SIZE)
-            is KdfParams.Hkdf -> engine.hkdfSha256(secret, params.salt, params.info, WRAP_KEY_SIZE)
-            is KdfParams.Argon2id ->
-                engine.argon2id(secret, params.salt, params.memoryKib, params.iterations, params.parallelism, WRAP_KEY_SIZE)
+            is KdfParams.Pbkdf2 -> {
+                engine.pbkdf2Sha256(secret, params.salt, params.iterations, WRAP_KEY_SIZE)
+            }
+
+            is KdfParams.Hkdf -> {
+                engine.hkdfSha256(secret, params.salt, params.info, WRAP_KEY_SIZE)
+            }
+
+            is KdfParams.Argon2id -> {
+                engine.argon2id(
+                    secret,
+                    params.salt,
+                    params.memoryKib,
+                    params.iterations,
+                    params.parallelism,
+                    WRAP_KEY_SIZE,
+                )
+            }
         }
 }

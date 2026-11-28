@@ -61,15 +61,16 @@ class ViewerTextWiringTest {
         return DefaultUnlockedComponent(
             componentContext = DefaultComponentContext(lifecycle = lifecycle, backHandler = BackDispatcher()),
             vault = open,
-            koin = koinApplication {
-                modules(
-                    module {
-                        single<CryptoEngine> { engine }
-                        single<FilePicker> { FakeFilePicker() }
-                        single<PhotoPicker> { FakePhotoPicker() }
-                    },
-                )
-            }.koin,
+            koin =
+                koinApplication {
+                    modules(
+                        module {
+                            single<CryptoEngine> { engine }
+                            single<FilePicker> { FakeFilePicker() }
+                            single<PhotoPicker> { FakePhotoPicker() }
+                        },
+                    )
+                }.koin,
             mainContext = dispatcher,
             ioContext = dispatcher,
             mapContext = dispatcher,
@@ -89,43 +90,55 @@ class ViewerTextWiringTest {
 
     /** Stored as an unknown type, as some providers record a Markdown file: the name is what says so. */
     private fun importMarkdown(open: VaultBootstrap.OpenVault): ByteArray {
-        val imported = vaultObjects(open).importObject(
-            kind = VaultItemKind.FILE.code,
-            name = "notes.md",
-            mime = "application/octet-stream",
-            openSource = { Buffer().apply { write(markdown.encodeToByteArray()) } },
-        )
+        val imported =
+            vaultObjects(open).importObject(
+                kind = VaultItemKind.FILE.code,
+                name = "notes.md",
+                mime = "application/octet-stream",
+                openSource = { Buffer().apply { write(markdown.encodeToByteArray()) } },
+            )
         return (imported as Outcome.Ok).value
     }
 
     @Test
-    fun a_markdown_file_opens_as_formatted_text_through_the_real_vault() = runTest {
-        val open = openVault()
-        val id = importMarkdown(open)
-        val component = component(open)
+    fun a_markdown_file_opens_as_formatted_text_through_the_real_vault() =
+        runTest {
+            val open = openVault()
+            val id = importMarkdown(open)
+            val component = component(open)
 
-        component.gallery.tapItem(id.copyOf())
-        component.viewer.viewportMeasured(1_000, 2_000)
+            component.gallery.tapItem(id.copyOf())
+            component.viewer.viewportMeasured(1_000, 2_000)
 
-        assertEquals(ViewerPage.Text(TextKind.Markdown), component.viewer.state.value.pages.values.single())
-        // Outside the feature its contents are out of reach; what it prints says enough.
-        assertEquals("TextDocument(3 lines, formatted=true)", component.viewer.texts.value.values.single().toString())
-    }
+            assertEquals(
+                ViewerPage.Text(TextKind.Markdown),
+                component.viewer.state.value.pages.values
+                    .single(),
+            )
+            // Outside the feature its contents are out of reach; what it prints says enough.
+            assertEquals(
+                "TextDocument(3 lines, formatted=true)",
+                component.viewer.texts.value.values
+                    .single()
+                    .toString(),
+            )
+        }
 
     @Test
-    fun a_lock_lets_the_text_go() = runTest {
-        val open = openVault()
-        val id = importMarkdown(open)
-        val component = component(open)
-        component.gallery.tapItem(id.copyOf())
-        component.viewer.viewportMeasured(1_000, 2_000)
-        val viewer = component.viewer
+    fun a_lock_lets_the_text_go() =
+        runTest {
+            val open = openVault()
+            val id = importMarkdown(open)
+            val component = component(open)
+            component.gallery.tapItem(id.copyOf())
+            component.viewer.viewportMeasured(1_000, 2_000)
+            val viewer = component.viewer
 
-        component.lock()
-        lifecycle.destroy()
+            component.lock()
+            lifecycle.destroy()
 
-        assertTrue(viewer.texts.value.isEmpty())
-    }
+            assertTrue(viewer.texts.value.isEmpty())
+        }
 
     // ---- the vault -------------------------------------------------------------------------------
 
@@ -141,10 +154,23 @@ class ViewerTextWiringTest {
 
     private fun TestScope.openVault(): VaultBootstrap.OpenVault {
         val cheap = PassphraseKdfProfile.Argon2id(memoryKib = 256, iterations = 1, parallelism = 1)
-        val session = VaultSession.createVault(engine, DefaultKeyDerivation(engine), "pw".encodeToByteArray(), cheap).session
+        val session =
+            VaultSession
+                .createVault(
+                    engine,
+                    DefaultKeyDerivation(engine),
+                    "pw".encodeToByteArray(),
+                    cheap,
+                ).session
         val root = Path(testDir, "vault-${Random.nextULong()}")
         SystemFileSystem.createDirectories(Path(root, "tmp"))
-        val catalog = (CatalogStore.create(testSqlDriver(), UnconfinedTestDispatcher(testScheduler)) as Outcome.Ok).value
+        val catalog =
+            (
+                CatalogStore.create(
+                    testSqlDriver(),
+                    UnconfinedTestDispatcher(testScheduler),
+                ) as Outcome.Ok
+            ).value
         return VaultBootstrap.OpenVault(session, VaultStorage(root), catalog)
     }
 

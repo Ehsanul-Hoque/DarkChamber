@@ -234,7 +234,10 @@ internal class ManualDispatcher : CoroutineDispatcher() {
     var isRunning: Boolean = false
         private set
 
-    override fun dispatch(context: CoroutineContext, block: Runnable) {
+    override fun dispatch(
+        context: CoroutineContext,
+        block: Runnable,
+    ) {
         queued += block
     }
 
@@ -333,7 +336,10 @@ internal class TrackedRawSource : RawSource {
     var closed: Boolean = false
         private set
 
-    override fun readAtMostTo(sink: Buffer, byteCount: Long): Long = -1L
+    override fun readAtMostTo(
+        sink: Buffer,
+        byteCount: Long,
+    ): Long = -1L
 
     override fun close() {
         closed = true
@@ -347,7 +353,11 @@ internal class TrackedRawSource : RawSource {
  * coroutine any wall-clock time to run in. This hops onto a real dispatcher to do the waiting, and
  * fails loudly rather than hanging if the thing never happens.
  */
-internal suspend fun awaitTrue(what: String, timeoutMillis: Long = 5_000, condition: () -> Boolean) {
+internal suspend fun awaitTrue(
+    what: String,
+    timeoutMillis: Long = 5_000,
+    condition: () -> Boolean,
+) {
     withContext(Dispatchers.Default) {
         withTimeoutOrNull(timeoutMillis) {
             while (!condition()) delay(5)
@@ -487,7 +497,10 @@ internal class FakeVaultItems(
         return createResult
     }
 
-    override fun renameAlbum(id: ByteArray, name: String): Outcome<Unit> {
+    override fun renameAlbum(
+        id: ByteArray,
+        name: String,
+    ): Outcome<Unit> {
         // The same precondition the vault has, for the same reason as [createAlbum]'s.
         require(name.isNotBlank()) { "album name must not be blank" }
         renames += id.toList() to name
@@ -508,7 +521,10 @@ internal class FakeVaultItems(
      */
     val assignments = mutableListOf<Pair<List<List<Byte>>, List<Byte>?>>()
 
-    override fun assignItems(ids: List<ByteArray>, albumId: ByteArray?): Outcome<AssignSummary> {
+    override fun assignItems(
+        ids: List<ByteArray>,
+        albumId: ByteArray?,
+    ): Outcome<AssignSummary> {
         assignments += ids.map { it.toList() } to albumId?.toList()
         assignFailure?.let { return Outcome.Err(it) }
         return Outcome.Ok(AssignSummary(requested = ids.size, assigned = assignedOf(ids.size)))
@@ -552,7 +568,10 @@ internal class FakeVaultItems(
         return thumbnails[id.toList()] ?: NO_THUMBNAIL
     }
 
-    override fun open(id: ByteArray, sink: RawSink): Outcome<Unit> {
+    override fun open(
+        id: ByteArray,
+        sink: RawSink,
+    ): Outcome<Unit> {
         openCalls++
         return onOpen(id, sink)
     }
@@ -603,17 +622,21 @@ internal class ExplodingVaultItems : VaultItems {
     override fun observe(filter: ItemFilter): Flow<List<VaultItemSummary>> =
         flow { throw IllegalStateException("catalog unreadable") }
 
-    override fun observeAlbums(): Flow<List<AlbumSummary>> =
-        flow { throw IllegalStateException("catalog unreadable") }
+    override fun observeAlbums(): Flow<List<AlbumSummary>> = flow { throw IllegalStateException("catalog unreadable") }
 
     override fun createAlbum(name: String): Outcome<ByteArray> = Outcome.Ok(byteArrayOf(1))
 
-    override fun renameAlbum(id: ByteArray, name: String): Outcome<Unit> = Outcome.Ok(Unit)
+    override fun renameAlbum(
+        id: ByteArray,
+        name: String,
+    ): Outcome<Unit> = Outcome.Ok(Unit)
 
     override fun deleteAlbum(id: ByteArray): Outcome<Unit> = Outcome.Ok(Unit)
 
-    override fun assignItems(ids: List<ByteArray>, albumId: ByteArray?): Outcome<AssignSummary> =
-        Outcome.Ok(AssignSummary(requested = ids.size, assigned = ids.size))
+    override fun assignItems(
+        ids: List<ByteArray>,
+        albumId: ByteArray?,
+    ): Outcome<AssignSummary> = Outcome.Ok(AssignSummary(requested = ids.size, assigned = ids.size))
 
     override fun import(
         name: String,
@@ -627,8 +650,10 @@ internal class ExplodingVaultItems : VaultItems {
 
     override fun thumbnail(id: ByteArray): Outcome<ByteArray?> = Outcome.Ok(null)
 
-    override fun open(id: ByteArray, sink: RawSink): Outcome<Unit> =
-        Outcome.Err(VaultError.Io(IllegalStateException("catalog unreadable")))
+    override fun open(
+        id: ByteArray,
+        sink: RawSink,
+    ): Outcome<Unit> = Outcome.Err(VaultError.Io(IllegalStateException("catalog unreadable")))
 
     override fun openRange(id: ByteArray): Outcome<RangeReader> =
         Outcome.Err(VaultError.Io(IllegalStateException("catalog unreadable")))
@@ -648,13 +673,17 @@ internal class ThrowingVaultItems : VaultItems {
 
     override fun createAlbum(name: String): Outcome<ByteArray> = throw IllegalStateException("create exploded")
 
-    override fun renameAlbum(id: ByteArray, name: String): Outcome<Unit> =
-        throw IllegalStateException("rename exploded")
+    override fun renameAlbum(
+        id: ByteArray,
+        name: String,
+    ): Outcome<Unit> = throw IllegalStateException("rename exploded")
 
     override fun deleteAlbum(id: ByteArray): Outcome<Unit> = throw IllegalStateException("delete exploded")
 
-    override fun assignItems(ids: List<ByteArray>, albumId: ByteArray?): Outcome<AssignSummary> =
-        throw IllegalStateException("filing exploded")
+    override fun assignItems(
+        ids: List<ByteArray>,
+        albumId: ByteArray?,
+    ): Outcome<AssignSummary> = throw IllegalStateException("filing exploded")
 
     override fun import(
         name: String,
@@ -668,7 +697,10 @@ internal class ThrowingVaultItems : VaultItems {
 
     override fun thumbnail(id: ByteArray): Outcome<ByteArray?> = NO_THUMBNAIL
 
-    override fun open(id: ByteArray, sink: RawSink): Outcome<Unit> = throw IllegalStateException("open exploded")
+    override fun open(
+        id: ByteArray,
+        sink: RawSink,
+    ): Outcome<Unit> = throw IllegalStateException("open exploded")
 
     override fun openRange(id: ByteArray): Outcome<RangeReader> = throw IllegalStateException("open exploded")
 
@@ -686,14 +718,18 @@ internal class CancellingVaultItems : VaultItems {
     override fun createAlbum(name: String): Outcome<ByteArray> =
         throw CancellationException("the session was torn down mid-create")
 
-    override fun renameAlbum(id: ByteArray, name: String): Outcome<Unit> =
-        throw CancellationException("the session was torn down mid-rename")
+    override fun renameAlbum(
+        id: ByteArray,
+        name: String,
+    ): Outcome<Unit> = throw CancellationException("the session was torn down mid-rename")
 
     override fun deleteAlbum(id: ByteArray): Outcome<Unit> =
         throw CancellationException("the session was torn down mid-delete")
 
-    override fun assignItems(ids: List<ByteArray>, albumId: ByteArray?): Outcome<AssignSummary> =
-        throw CancellationException("the session was torn down mid-move")
+    override fun assignItems(
+        ids: List<ByteArray>,
+        albumId: ByteArray?,
+    ): Outcome<AssignSummary> = throw CancellationException("the session was torn down mid-move")
 
     override fun import(
         name: String,
@@ -707,8 +743,10 @@ internal class CancellingVaultItems : VaultItems {
 
     override fun thumbnail(id: ByteArray): Outcome<ByteArray?> = NO_THUMBNAIL
 
-    override fun open(id: ByteArray, sink: RawSink): Outcome<Unit> =
-        throw CancellationException("the session was torn down mid-open")
+    override fun open(
+        id: ByteArray,
+        sink: RawSink,
+    ): Outcome<Unit> = throw CancellationException("the session was torn down mid-open")
 
     override fun openRange(id: ByteArray): Outcome<RangeReader> =
         throw CancellationException("the session was torn down mid-open")
@@ -737,8 +775,10 @@ internal fun summary(
         meta = meta,
     )
 
-internal fun readableMeta(name: String = "a.txt", mime: String = "text/plain"): Outcome<ObjectMeta> =
-    Outcome.Ok(ObjectMeta(name, mime))
+internal fun readableMeta(
+    name: String = "a.txt",
+    mime: String = "text/plain",
+): Outcome<ObjectMeta> = Outcome.Ok(ObjectMeta(name, mime))
 
 internal fun damagedMeta(): Outcome<ObjectMeta> = Outcome.Err(VaultError.Crypto.IntegrityFailure)
 

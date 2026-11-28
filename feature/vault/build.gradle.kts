@@ -1,5 +1,6 @@
 plugins {
     id("darkchamber.kmp.feature")
+    id("darkchamber.compose.uitest")
 }
 
 kotlin {

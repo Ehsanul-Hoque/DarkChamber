@@ -23,9 +23,12 @@ internal object PdfMapping {
     fun refusalFor(failure: Throwable): PdfRefusal? =
         when (failure) {
             is SecurityException -> PdfRefusal.NeedsPassword
+
             is Exception -> PdfRefusal.Unreadable
+
             // Too big to parse in the memory left: this device will not read it.
             is OutOfMemoryError -> PdfRefusal.Unreadable
+
             else -> null
         }
 }

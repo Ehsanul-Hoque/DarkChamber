@@ -24,7 +24,6 @@ import kotlin.test.assertTrue
  */
 @OptIn(ExperimentalForeignApi::class)
 class IosPickedFileDeleteTest {
-
     private lateinit var workDir: Path
 
     @BeforeTest

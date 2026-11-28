@@ -28,9 +28,19 @@ class PlayerPagesTest {
      */
     @Test
     fun a_read_the_vault_refused_while_playing_stopped_playback_there() {
-        assertEquals(ViewerPage.StoppedUnverified, pageForPlayerFailure(PlayerFailure.Reader(VaultError.Crypto.IntegrityFailure)))
-        assertEquals(ViewerPage.StoppedUnverified, pageForPlayerFailure(PlayerFailure.Reader(VaultError.Crypto.MalformedContainer)))
-        assertEquals(ViewerPage.Unverified, pageForOpenFailure(VaultError.Crypto.IntegrityFailure), "refused at open: nothing played")
+        assertEquals(
+            ViewerPage.StoppedUnverified,
+            pageForPlayerFailure(PlayerFailure.Reader(VaultError.Crypto.IntegrityFailure)),
+        )
+        assertEquals(
+            ViewerPage.StoppedUnverified,
+            pageForPlayerFailure(PlayerFailure.Reader(VaultError.Crypto.MalformedContainer)),
+        )
+        assertEquals(
+            ViewerPage.Unverified,
+            pageForOpenFailure(VaultError.Crypto.IntegrityFailure),
+            "refused at open: nothing played",
+        )
     }
 
     @Test
@@ -48,11 +58,17 @@ class PlayerPagesTest {
 
     @Test
     fun any_other_failed_read_or_failure_names_no_cause() {
-        assertEquals(ViewerPage.CouldntOpen, pageForPlayerFailure(PlayerFailure.Reader(VaultError.Io(RuntimeException("x")))))
+        assertEquals(
+            ViewerPage.CouldntOpen,
+            pageForPlayerFailure(PlayerFailure.Reader(VaultError.Io(RuntimeException("x")))),
+        )
         assertEquals(ViewerPage.CouldntOpen, pageForPlayerFailure(PlayerFailure.Other))
     }
 
-    private fun tracks(video: TrackSupport, audio: TrackSupport) = PlayerTracks(video = video, audio = audio)
+    private fun tracks(
+        video: TrackSupport,
+        audio: TrackSupport,
+    ) = PlayerTracks(video = video, audio = audio)
 
     @Test
     fun a_picture_this_device_cannot_play_under_sound_it_can_says_the_picture_is_missing() {

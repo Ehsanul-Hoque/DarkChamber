@@ -29,13 +29,15 @@ class VaultSessionTest {
     private val approve = FakeBiometricAuthenticator(FakeBiometricAuthenticator.Mode.Approve)
 
     // Enroll a hardware slot with an approving prompt; unwraps the Outcome for the happy-path tests.
-    private suspend fun VaultSession.enroll(keyStore: KeyStoreBlob, sks: SecureKeyStore): KeyStoreBlob =
-        (addHardwareSlot(keyStore, sks, approve) as Outcome.Ok).value
+    private suspend fun VaultSession.enroll(
+        keyStore: KeyStoreBlob,
+        sks: SecureKeyStore,
+    ): KeyStoreBlob = (addHardwareSlot(keyStore, sks, approve) as Outcome.Ok).value
 
     @Test
     fun create_then_unlock_via_passphrase_recovers_a_working_session() {
         val created = newVault()
-        val session = VaultSession.unlock(engine, kdf, created.keyStore, pw(), Slot.PASSPHRASE, ).getOrNull()
+        val session = VaultSession.unlock(engine, kdf, created.keyStore, pw(), Slot.PASSPHRASE).getOrNull()
         assertTrue(session != null)
         val wrapped = session.generateDek()
         assertTrue(session.useDek(wrapped) { it.size } is Outcome.Ok)
@@ -59,7 +61,11 @@ class VaultSessionTest {
     @Test
     fun seal_meta_round_trips_arbitrary_bytes() {
         val session = newVault().session
-        for (meta in listOf(ByteArray(0), "name.jpg\u0000image/jpeg".encodeToByteArray(), ByteArray(500) { it.toByte() })) {
+        for (meta in listOf(
+            ByteArray(0),
+            "name.jpg\u0000image/jpeg".encodeToByteArray(),
+            ByteArray(500) { it.toByte() },
+        )) {
             val blob = session.sealMeta(meta)
             assertContentEquals(meta, (session.openMeta(blob) as Outcome.Ok).value)
         }
@@ -106,10 +112,10 @@ class VaultSessionTest {
         val created = newVault()
         val wrapped = created.session.generateDek()
         var leaked: ByteArray? = null
-        assertFailsWith<RuntimeException> {
+        assertFailsWith<IllegalStateException> {
             created.session.useDek(wrapped) { dek ->
                 leaked = dek
-                throw RuntimeException("boom")
+                throw IllegalStateException("boom")
             }
         }
         assertTrue(leaked!!.all { it == 0.toByte() }, "DEK must be zeroized even on the exception path")
@@ -118,7 +124,10 @@ class VaultSessionTest {
     @Test
     fun unwrap_dek_rejects_a_structurally_short_blob() {
         val created = newVault()
-        assertEquals(Outcome.Err(VaultError.Crypto.MalformedContainer), created.session.unwrapDek(ByteArray(WRAP_NONCE_SIZE)))
+        assertEquals(
+            Outcome.Err(VaultError.Crypto.MalformedContainer),
+            created.session.unwrapDek(ByteArray(WRAP_NONCE_SIZE)),
+        )
     }
 
     @Test
@@ -133,10 +142,25 @@ class VaultSessionTest {
         val created = newVault()
         val wrapped = created.session.generateDek() // wrapped under MK, before the passphrase change
 
-        val newBlob = created.session.changePassphrase(created.keyStore, pw(), "new secret".encodeToByteArray(), cheapKdf).getOrNull()!!
+        val newBlob =
+            created.session
+                .changePassphrase(
+                    created.keyStore,
+                    pw(),
+                    "new secret".encodeToByteArray(),
+                    cheapKdf,
+                ).getOrNull()!!
 
         // New passphrase unlocks and the pre-change DEK still opens → MK unchanged.
-        val session2 = VaultSession.unlock(engine, kdf, newBlob, "new secret".encodeToByteArray(), Slot.PASSPHRASE).getOrNull()!!
+        val session2 =
+            VaultSession
+                .unlock(
+                    engine,
+                    kdf,
+                    newBlob,
+                    "new secret".encodeToByteArray(),
+                    Slot.PASSPHRASE,
+                ).getOrNull()!!
         assertEquals(DchmFormat.DEK_SIZE, session2.useDek(wrapped) { it.size }.getOrNull())
 
         // The old passphrase no longer unlocks the new KeyStore.
@@ -169,7 +193,10 @@ class VaultSessionTest {
         // The default profile is Argon2id — a new vault's passphrase slot must name it (the cheap
         // profile here is still Argon2id, so this holds without paying the production cost).
         val created = newVault()
-        val params = created.keyStore.wraps.first { it.slot == Slot.PASSPHRASE }.kdfParams
+        val params =
+            created.keyStore.wraps
+                .first { it.slot == Slot.PASSPHRASE }
+                .kdfParams
         assertTrue(params is KdfParams.Argon2id, "default passphrase wrap must be Argon2id, was ${params.kdfId}")
         created.session.close()
     }
@@ -178,7 +205,10 @@ class VaultSessionTest {
     fun a_pbkdf2_vault_still_creates_and_unlocks() {
         // PBKDF2 remains a supported fallback profile — old/opt-in vaults must round-trip.
         val created = VaultSession.createVault(engine, kdf, pw(), PassphraseKdfProfile.Pbkdf2(1000))
-        val pwParams = created.keyStore.wraps.first { it.slot == Slot.PASSPHRASE }.kdfParams
+        val pwParams =
+            created.keyStore.wraps
+                .first { it.slot == Slot.PASSPHRASE }
+                .kdfParams
         assertTrue(pwParams is KdfParams.Pbkdf2)
         val session = VaultSession.unlock(engine, kdf, created.keyStore, pw(), Slot.PASSPHRASE).getOrNull()
         assertTrue(session != null)
@@ -226,128 +256,191 @@ class VaultSessionTest {
     }
 
     @Test
-    fun add_hardware_slot_then_unlock_with_hardware_recovers_the_same_master_key() = runTest {
-        val created = newVault()
-        val wrapped = created.session.generateDek() // wrapped under MK, before the hardware slot exists
-        val sks = FakeSecureKeyStore()
+    fun add_hardware_slot_then_unlock_with_hardware_recovers_the_same_master_key() =
+        runTest {
+            val created = newVault()
+            val wrapped = created.session.generateDek() // wrapped under MK, before the hardware slot exists
+            val sks = FakeSecureKeyStore()
 
-        val blob2 = created.session.enroll(created.keyStore, sks)
-        assertTrue(blob2.hardwareWrap != null)
+            val blob2 = created.session.enroll(created.keyStore, sks)
+            assertTrue(blob2.hardwareWrap != null)
 
-        val viaHardware = VaultSession.unlockWithHardware(engine, blob2, sks, approve).getOrNull()!!
-        assertEquals(DchmFormat.DEK_SIZE, viaHardware.useDek(wrapped) { it.size }.getOrNull())
-    }
-
-    @Test
-    fun the_hardware_slot_coexists_with_passphrase_and_recovery() = runTest {
-        val created = newVault()
-        val (withRecovery, recovery) = created.session.addRecoverySlot(created.keyStore)
-        val sks = FakeSecureKeyStore()
-        val blob = created.session.enroll(withRecovery, sks)
-        val wrapped = created.session.generateDek()
-
-        // All three paths open the same MK.
-        assertEquals(DchmFormat.DEK_SIZE, VaultSession.unlock(engine, kdf, blob, pw(), Slot.PASSPHRASE).getOrNull()!!.useDek(wrapped) { it.size }.getOrNull())
-        assertEquals(DchmFormat.DEK_SIZE, VaultSession.unlock(engine, kdf, blob, RecoveryKey.parse(recovery).getOrNull()!!, Slot.RECOVERY).getOrNull()!!.useDek(wrapped) { it.size }.getOrNull())
-        assertEquals(DchmFormat.DEK_SIZE, VaultSession.unlockWithHardware(engine, blob, sks, approve).getOrNull()!!.useDek(wrapped) { it.size }.getOrNull())
-    }
+            val viaHardware = VaultSession.unlockWithHardware(engine, blob2, sks, approve).getOrNull()!!
+            assertEquals(DchmFormat.DEK_SIZE, viaHardware.useDek(wrapped) { it.size }.getOrNull())
+        }
 
     @Test
-    fun a_denied_biometric_prompt_fails_hardware_unlock_but_passphrase_still_works() = runTest {
-        // §3.3 fallback: a cancelled prompt returns Auth.Cancelled from the hardware path, and the
-        // vault still opens by passphrase (the hardware slot is one of several, never the only path).
-        val created = newVault()
-        val sks = FakeSecureKeyStore()
-        val blob = created.session.enroll(created.keyStore, sks)
+    fun the_hardware_slot_coexists_with_passphrase_and_recovery() =
+        runTest {
+            val created = newVault()
+            val (withRecovery, recovery) = created.session.addRecoverySlot(created.keyStore)
+            val sks = FakeSecureKeyStore()
+            val blob = created.session.enroll(withRecovery, sks)
+            val wrapped = created.session.generateDek()
 
-        val deny = FakeBiometricAuthenticator(FakeBiometricAuthenticator.Mode.Deny)
-        assertEquals(
-            Outcome.Err(VaultError.Auth.Cancelled),
-            VaultSession.unlockWithHardware(engine, blob, sks, deny),
-        )
-        assertTrue(VaultSession.unlock(engine, kdf, blob, pw(), Slot.PASSPHRASE).getOrNull() != null)
-    }
-
-    @Test
-    fun an_invalidated_key_fails_hardware_unlock_with_integrity_failure_but_passphrase_still_works() = runTest {
-        // §3.3: re-enrolled biometrics permanently invalidate the hardware key → IntegrityFailure
-        // (distinct from a benign cancel); the forced-passphrase fallback must still unlock.
-        val created = newVault()
-        val sks = FakeSecureKeyStore()
-        val blob = created.session.enroll(created.keyStore, sks)
-
-        val invalidated = FakeBiometricAuthenticator(FakeBiometricAuthenticator.Mode.Invalidated)
-        assertEquals(
-            Outcome.Err(VaultError.Crypto.IntegrityFailure),
-            VaultSession.unlockWithHardware(engine, blob, sks, invalidated),
-        )
-        assertTrue(VaultSession.unlock(engine, kdf, blob, pw(), Slot.PASSPHRASE).getOrNull() != null)
-    }
-
-    @Test
-    fun a_denied_prompt_fails_enrollment_and_leaves_no_hardware_slot() = runTest {
-        val created = newVault()
-        val sks = FakeSecureKeyStore()
-        val deny = FakeBiometricAuthenticator(FakeBiometricAuthenticator.Mode.Deny)
-        assertEquals(
-            Outcome.Err(VaultError.Auth.Cancelled),
-            created.session.addHardwareSlot(created.keyStore, sks, deny),
-        )
-    }
-
-    @Test
-    fun remove_hardware_slot_disables_hardware_unlock_but_leaves_passphrase_working() = runTest {
-        val created = newVault()
-        val sks = FakeSecureKeyStore()
-        val added = created.session.enroll(created.keyStore, sks)
-
-        val removed = created.session.removeHardwareSlot(added, sks)
-        assertNull(removed.hardwareWrap)
-
-        // Hardware unlock is gone (no slot); passphrase still works.
-        assertEquals(Outcome.Err(VaultError.Crypto.MalformedContainer), VaultSession.unlockWithHardware(engine, removed, sks, approve))
-        assertTrue(VaultSession.unlock(engine, kdf, removed, pw(), Slot.PASSPHRASE).getOrNull() != null)
-    }
+            // All three paths open the same MK.
+            assertEquals(
+                DchmFormat.DEK_SIZE,
+                VaultSession
+                    .unlock(
+                        engine,
+                        kdf,
+                        blob,
+                        pw(),
+                        Slot.PASSPHRASE,
+                    ).getOrNull()!!
+                    .useDek(wrapped) {
+                        it.size
+                    }.getOrNull(),
+            )
+            assertEquals(
+                DchmFormat.DEK_SIZE,
+                VaultSession
+                    .unlock(
+                        engine,
+                        kdf,
+                        blob,
+                        RecoveryKey.parse(recovery).getOrNull()!!,
+                        Slot.RECOVERY,
+                    ).getOrNull()!!
+                    .useDek(wrapped) {
+                        it.size
+                    }.getOrNull(),
+            )
+            assertEquals(
+                DchmFormat.DEK_SIZE,
+                VaultSession
+                    .unlockWithHardware(
+                        engine,
+                        blob,
+                        sks,
+                        approve,
+                    ).getOrNull()!!
+                    .useDek(wrapped) {
+                        it.size
+                    }.getOrNull(),
+            )
+        }
 
     @Test
-    fun deleting_the_hardware_key_makes_a_stale_hardware_blob_fail_with_integrity_failure() = runTest {
-        val created = newVault()
-        val sks = FakeSecureKeyStore()
-        val added = created.session.enroll(created.keyStore, sks)
+    fun a_denied_biometric_prompt_fails_hardware_unlock_but_passphrase_still_works() =
+        runTest {
+            // §3.3 fallback: a cancelled prompt returns Auth.Cancelled from the hardware path, and the
+            // vault still opens by passphrase (the hardware slot is one of several, never the only path).
+            val created = newVault()
+            val sks = FakeSecureKeyStore()
+            val blob = created.session.enroll(created.keyStore, sks)
 
-        // Simulate the platform key being invalidated/destroyed out from under a persisted blob.
-        sks.deleteHardwareKey()
-        assertEquals(Outcome.Err(VaultError.Crypto.IntegrityFailure), VaultSession.unlockWithHardware(engine, added, sks, approve))
-    }
-
-    @Test
-    fun re_adding_a_hardware_slot_after_removal_unlocks_again() = runTest {
-        val created = newVault()
-        val wrapped = created.session.generateDek()
-        val sks = FakeSecureKeyStore()
-
-        val removed = created.session.removeHardwareSlot(created.session.enroll(created.keyStore, sks), sks)
-        val readded = created.session.enroll(removed, sks)
-
-        val viaHardware = VaultSession.unlockWithHardware(engine, readded, sks, approve).getOrNull()!!
-        assertEquals(DchmFormat.DEK_SIZE, viaHardware.useDek(wrapped) { it.size }.getOrNull())
-    }
+            val deny = FakeBiometricAuthenticator(FakeBiometricAuthenticator.Mode.Deny)
+            assertEquals(
+                Outcome.Err(VaultError.Auth.Cancelled),
+                VaultSession.unlockWithHardware(engine, blob, sks, deny),
+            )
+            assertTrue(VaultSession.unlock(engine, kdf, blob, pw(), Slot.PASSPHRASE).getOrNull() != null)
+        }
 
     @Test
-    fun unlock_with_hardware_on_a_blob_without_a_hardware_slot_is_malformed() = runTest {
-        val created = newVault()
-        assertNull(created.keyStore.hardwareWrap)
-        assertEquals(Outcome.Err(VaultError.Crypto.MalformedContainer), VaultSession.unlockWithHardware(engine, created.keyStore, FakeSecureKeyStore(), approve))
-    }
+    fun an_invalidated_key_fails_hardware_unlock_with_integrity_failure_but_passphrase_still_works() =
+        runTest {
+            // §3.3: re-enrolled biometrics permanently invalidate the hardware key → IntegrityFailure
+            // (distinct from a benign cancel); the forced-passphrase fallback must still unlock.
+            val created = newVault()
+            val sks = FakeSecureKeyStore()
+            val blob = created.session.enroll(created.keyStore, sks)
+
+            val invalidated = FakeBiometricAuthenticator(FakeBiometricAuthenticator.Mode.Invalidated)
+            assertEquals(
+                Outcome.Err(VaultError.Crypto.IntegrityFailure),
+                VaultSession.unlockWithHardware(engine, blob, sks, invalidated),
+            )
+            assertTrue(VaultSession.unlock(engine, kdf, blob, pw(), Slot.PASSPHRASE).getOrNull() != null)
+        }
+
+    @Test
+    fun a_denied_prompt_fails_enrollment_and_leaves_no_hardware_slot() =
+        runTest {
+            val created = newVault()
+            val sks = FakeSecureKeyStore()
+            val deny = FakeBiometricAuthenticator(FakeBiometricAuthenticator.Mode.Deny)
+            assertEquals(
+                Outcome.Err(VaultError.Auth.Cancelled),
+                created.session.addHardwareSlot(created.keyStore, sks, deny),
+            )
+        }
+
+    @Test
+    fun remove_hardware_slot_disables_hardware_unlock_but_leaves_passphrase_working() =
+        runTest {
+            val created = newVault()
+            val sks = FakeSecureKeyStore()
+            val added = created.session.enroll(created.keyStore, sks)
+
+            val removed = created.session.removeHardwareSlot(added, sks)
+            assertNull(removed.hardwareWrap)
+
+            // Hardware unlock is gone (no slot); passphrase still works.
+            assertEquals(
+                Outcome.Err(VaultError.Crypto.MalformedContainer),
+                VaultSession.unlockWithHardware(engine, removed, sks, approve),
+            )
+            assertTrue(VaultSession.unlock(engine, kdf, removed, pw(), Slot.PASSPHRASE).getOrNull() != null)
+        }
+
+    @Test
+    fun deleting_the_hardware_key_makes_a_stale_hardware_blob_fail_with_integrity_failure() =
+        runTest {
+            val created = newVault()
+            val sks = FakeSecureKeyStore()
+            val added = created.session.enroll(created.keyStore, sks)
+
+            // Simulate the platform key being invalidated/destroyed out from under a persisted blob.
+            sks.deleteHardwareKey()
+            assertEquals(
+                Outcome.Err(VaultError.Crypto.IntegrityFailure),
+                VaultSession.unlockWithHardware(engine, added, sks, approve),
+            )
+        }
+
+    @Test
+    fun re_adding_a_hardware_slot_after_removal_unlocks_again() =
+        runTest {
+            val created = newVault()
+            val wrapped = created.session.generateDek()
+            val sks = FakeSecureKeyStore()
+
+            val removed = created.session.removeHardwareSlot(created.session.enroll(created.keyStore, sks), sks)
+            val readded = created.session.enroll(removed, sks)
+
+            val viaHardware = VaultSession.unlockWithHardware(engine, readded, sks, approve).getOrNull()!!
+            assertEquals(DchmFormat.DEK_SIZE, viaHardware.useDek(wrapped) { it.size }.getOrNull())
+        }
+
+    @Test
+    fun unlock_with_hardware_on_a_blob_without_a_hardware_slot_is_malformed() =
+        runTest {
+            val created = newVault()
+            assertNull(created.keyStore.hardwareWrap)
+            assertEquals(
+                Outcome.Err(VaultError.Crypto.MalformedContainer),
+                VaultSession.unlockWithHardware(engine, created.keyStore, FakeSecureKeyStore(), approve),
+            )
+        }
 
     // --- a lock racing an unwrap ------------------------------------------------------------------
 
     // An engine that runs [beforeOpen] inside the next aeadOpen, before the real one: where a lock
     // on another thread lands when it comes after the session's closed check.
-    private class LockMidOpen(private val real: CryptoEngine) : CryptoEngine by real {
+    private class LockMidOpen(
+        private val real: CryptoEngine,
+    ) : CryptoEngine by real {
         var beforeOpen: (() -> Unit)? = null
 
-        override fun aeadOpen(key: ByteArray, nonce: ByteArray, aad: ByteArray, ciphertext: ByteArray): Outcome<ByteArray> {
+        override fun aeadOpen(
+            key: ByteArray,
+            nonce: ByteArray,
+            aad: ByteArray,
+            ciphertext: ByteArray,
+        ): Outcome<ByteArray> {
             beforeOpen?.also { beforeOpen = null }?.invoke()
             return real.aeadOpen(key, nonce, aad, ciphertext)
         }
@@ -384,10 +477,17 @@ class VaultSessionTest {
     }
 
     // The seal side of the race: an engine that runs [beforeSeal] inside the next aeadSeal.
-    private class LockMidSeal(private val real: CryptoEngine) : CryptoEngine by real {
+    private class LockMidSeal(
+        private val real: CryptoEngine,
+    ) : CryptoEngine by real {
         var beforeSeal: (() -> Unit)? = null
 
-        override fun aeadSeal(key: ByteArray, nonce: ByteArray, aad: ByteArray, plaintext: ByteArray): ByteArray {
+        override fun aeadSeal(
+            key: ByteArray,
+            nonce: ByteArray,
+            aad: ByteArray,
+            plaintext: ByteArray,
+        ): ByteArray {
             beforeSeal?.also { beforeSeal = null }?.invoke()
             return real.aeadSeal(key, nonce, aad, plaintext)
         }
@@ -413,7 +513,11 @@ class VaultSessionTest {
     @Test
     fun a_metadata_blob_that_fails_on_a_live_session_is_still_tampering() {
         val session = newVault().session
-        val blob = session.sealMeta("name.jpg".encodeToByteArray()).also { it[it.size - 1] = (it[it.size - 1].toInt() xor 1).toByte() }
+        val blob =
+            session.sealMeta("name.jpg".encodeToByteArray()).also {
+                it[it.size - 1] =
+                    (it[it.size - 1].toInt() xor 1).toByte()
+            }
 
         assertEquals(Outcome.Err(VaultError.Crypto.IntegrityFailure), session.openMeta(blob))
     }
@@ -429,10 +533,11 @@ class VaultSessionTest {
     }
 
     @Test
-    fun add_hardware_slot_requires_an_available_keystore() = runTest {
-        val created = newVault()
-        assertFailsWith<IllegalStateException> {
-            created.session.addHardwareSlot(created.keyStore, FakeSecureKeyStore(available = false), approve)
+    fun add_hardware_slot_requires_an_available_keystore() =
+        runTest {
+            val created = newVault()
+            assertFailsWith<IllegalStateException> {
+                created.session.addHardwareSlot(created.keyStore, FakeSecureKeyStore(available = false), approve)
+            }
         }
-    }
 }

@@ -36,7 +36,11 @@ import dev.ehsanfahad.darkchamber.core.designsystem.ExcludeFromPlatformStructure
  * clears it: the field does not argue with someone halfway through a number.
  */
 @Composable
-internal fun PdfJumpDialog(pageCount: Int, onGo: (Int) -> Unit, onCancel: () -> Unit) {
+internal fun PdfJumpDialog(
+    pageCount: Int,
+    onGo: (Int) -> Unit,
+    onCancel: () -> Unit,
+) {
     val colors = DarkChamberTheme.colors
     val spacing = DarkChamberTheme.spacing
     // Plain memory, not saved state: what was typed and the PDF's page count in the problem line would
@@ -58,10 +62,11 @@ internal fun PdfJumpDialog(pageCount: Int, onGo: (Int) -> Unit, onCancel: () -> 
         LaunchedEffect(Unit) { focus.requestFocus() }
 
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(color = colors.surface, shape = DarkChamberTheme.shapes.large)
-                .padding(spacing.spaceLg),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .background(color = colors.surface, shape = DarkChamberTheme.shapes.large)
+                    .padding(spacing.spaceLg),
         ) {
             Text(text = ViewerFormat.jumpTitle(), style = DarkChamberTheme.typography.title, color = colors.textPrimary)
 
@@ -89,9 +94,16 @@ internal fun PdfJumpDialog(pageCount: Int, onGo: (Int) -> Unit, onCancel: () -> 
                 )
             }
 
-            Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth().padding(top = spacing.spaceMd)) {
+            Row(
+                horizontalArrangement = Arrangement.End,
+                modifier = Modifier.fillMaxWidth().padding(top = spacing.spaceMd),
+            ) {
                 TextButton(onClick = onCancel) {
-                    Text(text = ViewerFormat.cancel(), style = DarkChamberTheme.typography.label, color = colors.textPrimary)
+                    Text(
+                        text = ViewerFormat.cancel(),
+                        style = DarkChamberTheme.typography.label,
+                        color = colors.textPrimary,
+                    )
                 }
                 TextButton(onClick = { go() }) {
                     Text(text = ViewerFormat.jumpGo(), style = DarkChamberTheme.typography.label, color = colors.accent)
@@ -102,4 +114,6 @@ internal fun PdfJumpDialog(pageCount: Int, onGo: (Int) -> Unit, onCancel: () -> 
 }
 
 /** A jump asked for: a new object each time, so asking for the same page twice jumps twice. */
-internal class PdfJumpRequest(val index: Int)
+internal class PdfJumpRequest(
+    val index: Int,
+)

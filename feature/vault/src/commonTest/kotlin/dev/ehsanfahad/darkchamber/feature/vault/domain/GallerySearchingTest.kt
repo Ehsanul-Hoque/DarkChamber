@@ -15,7 +15,6 @@ import kotlin.test.assertEquals
  * was the other option and is a false positive by construction.
  */
 class GallerySearchingTest {
-
     private fun item(
         id: Byte,
         name: String? = "a.txt",

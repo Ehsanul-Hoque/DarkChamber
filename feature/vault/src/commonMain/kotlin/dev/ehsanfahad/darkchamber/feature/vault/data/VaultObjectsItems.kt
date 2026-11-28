@@ -23,21 +23,26 @@ import kotlinx.io.RawSource
  * source spill all live in `core:vault`, and duplicating any of it here would put vault rules in a
  * feature.
  */
-internal class VaultObjectsItems(private val objects: VaultObjects) : VaultItems {
-
-    override fun observe(filter: ItemFilter): Flow<List<VaultItemSummary>> =
-        objects.observeItems(filter)
+internal class VaultObjectsItems(
+    private val objects: VaultObjects,
+) : VaultItems {
+    override fun observe(filter: ItemFilter): Flow<List<VaultItemSummary>> = objects.observeItems(filter)
 
     override fun observeAlbums(): Flow<List<AlbumSummary>> = objects.observeAlbums()
 
     override fun createAlbum(name: String): Outcome<ByteArray> = objects.createAlbum(name)
 
-    override fun renameAlbum(id: ByteArray, name: String): Outcome<Unit> = objects.renameAlbum(id, name)
+    override fun renameAlbum(
+        id: ByteArray,
+        name: String,
+    ): Outcome<Unit> = objects.renameAlbum(id, name)
 
     override fun deleteAlbum(id: ByteArray): Outcome<Unit> = objects.deleteAlbum(id)
 
-    override fun assignItems(ids: List<ByteArray>, albumId: ByteArray?): Outcome<AssignSummary> =
-        objects.assignItems(ids, albumId)
+    override fun assignItems(
+        ids: List<ByteArray>,
+        albumId: ByteArray?,
+    ): Outcome<AssignSummary> = objects.assignItems(ids, albumId)
 
     override fun import(
         name: String,
@@ -61,7 +66,10 @@ internal class VaultObjectsItems(private val objects: VaultObjects) : VaultItems
 
     override fun thumbnail(id: ByteArray): Outcome<ByteArray?> = objects.openThumbnail(id)
 
-    override fun open(id: ByteArray, sink: RawSink): Outcome<Unit> = objects.openObject(id, sink)
+    override fun open(
+        id: ByteArray,
+        sink: RawSink,
+    ): Outcome<Unit> = objects.openObject(id, sink)
 
     override fun openRange(id: ByteArray): Outcome<RangeReader> = objects.openRange(id)
 

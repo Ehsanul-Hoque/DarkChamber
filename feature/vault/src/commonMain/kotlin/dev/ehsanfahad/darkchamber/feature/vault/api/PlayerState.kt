@@ -44,7 +44,9 @@ enum class TrackSupport {
  */
 sealed interface PlayerFailure {
     /** The vault refused a read, with its own error: a failed integrity check, a newer format, I/O. */
-    data class Reader(val error: VaultError) : PlayerFailure
+    data class Reader(
+        val error: VaultError,
+    ) : PlayerFailure
 
     /** No decoder on this device handles the item's format or profile, and no read failed behind it. */
     data object Decoder : PlayerFailure

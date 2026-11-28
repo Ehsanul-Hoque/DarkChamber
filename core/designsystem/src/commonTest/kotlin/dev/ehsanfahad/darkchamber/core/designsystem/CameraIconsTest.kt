@@ -16,21 +16,25 @@ import kotlin.test.assertSame
  * command. Each is one path, as supplied, in a 24-unit box.
  */
 class CameraIconsTest {
-
-    private class Expected(val vector: ImageVector, val commands: Int, val subpaths: Int)
-
-    private val marks = mapOf(
-        "camera" to Expected(cameraVector, commands = 64, subpaths = 8),
-        "close" to Expected(closeVector, commands = 14, subpaths = 1),
-        "flash_off" to Expected(flashOffVector, commands = 28, subpaths = 3),
-        "flash_auto" to Expected(flashAutoVector, commands = 38, subpaths = 5),
-        "flash_on" to Expected(flashOnVector, commands = 22, subpaths = 3),
-        "flip_camera_android" to Expected(switchCameraVector, commands = 44, subpaths = 3),
-        "flashlight_on" to Expected(torchOnVector, commands = 38, subpaths = 5),
-        "flashlight_off" to Expected(torchOffVector, commands = 37, subpaths = 5),
-        "mic_on" to Expected(microphoneOnVector, commands = 41, subpaths = 4),
-        "mic_off" to Expected(microphoneOffVector, commands = 49, subpaths = 5),
+    private class Expected(
+        val vector: ImageVector,
+        val commands: Int,
+        val subpaths: Int,
     )
+
+    private val marks =
+        mapOf(
+            "camera" to Expected(cameraVector, commands = 64, subpaths = 8),
+            "close" to Expected(closeVector, commands = 14, subpaths = 1),
+            "flash_off" to Expected(flashOffVector, commands = 28, subpaths = 3),
+            "flash_auto" to Expected(flashAutoVector, commands = 38, subpaths = 5),
+            "flash_on" to Expected(flashOnVector, commands = 22, subpaths = 3),
+            "flip_camera_android" to Expected(switchCameraVector, commands = 44, subpaths = 3),
+            "flashlight_on" to Expected(torchOnVector, commands = 38, subpaths = 5),
+            "flashlight_off" to Expected(torchOffVector, commands = 37, subpaths = 5),
+            "mic_on" to Expected(microphoneOnVector, commands = 41, subpaths = 4),
+            "mic_off" to Expected(microphoneOffVector, commands = 49, subpaths = 5),
+        )
 
     @Test
     fun each_mark_carries_its_supplied_drawing_exactly() {

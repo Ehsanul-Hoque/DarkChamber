@@ -16,7 +16,12 @@ interface CryptoEngine {
      * AES-256-GCM seal. [nonce] is the full 12-byte GCM nonce (caller-controlled, per FORMAT.md),
      * [aad] is bound but not encrypted. Returns ciphertext with the 16-byte GCM tag appended.
      */
-    fun aeadSeal(key: ByteArray, nonce: ByteArray, aad: ByteArray, plaintext: ByteArray): ByteArray
+    fun aeadSeal(
+        key: ByteArray,
+        nonce: ByteArray,
+        aad: ByteArray,
+        plaintext: ByteArray,
+    ): ByteArray
 
     /**
      * AES-256-GCM open. Verifies the tag against [aad] and [nonce] before returning plaintext.
@@ -24,7 +29,12 @@ interface CryptoEngine {
      * [dev.ehsanfahad.darkchamber.core.model.VaultError.Crypto.IntegrityFailure] — never a throw
      * across the boundary, never a partial result.
      */
-    fun aeadOpen(key: ByteArray, nonce: ByteArray, aad: ByteArray, ciphertext: ByteArray): Outcome<ByteArray>
+    fun aeadOpen(
+        key: ByteArray,
+        nonce: ByteArray,
+        aad: ByteArray,
+        ciphertext: ByteArray,
+    ): Outcome<ByteArray>
 
     /** SHA-256 of [bytes] (used for the header's plaintext digest). */
     fun sha256(bytes: ByteArray): ByteArray
@@ -44,7 +54,12 @@ interface CryptoEngine {
      * turn a low-entropy passphrase into an MK-wrap key — never for content. The KDF's id and
      * parameters are stored beside each wrap so the cost can be raised over time.
      */
-    fun pbkdf2Sha256(password: ByteArray, salt: ByteArray, iterations: Int, dkLenBytes: Int): ByteArray
+    fun pbkdf2Sha256(
+        password: ByteArray,
+        salt: ByteArray,
+        iterations: Int,
+        dkLenBytes: Int,
+    ): ByteArray
 
     /**
      * HKDF-SHA256 extract-and-expand → [lenBytes] of derived key. For deriving an MK-wrap key from an
@@ -52,7 +67,12 @@ interface CryptoEngine {
      * This is *not* a password stretcher — it does no work-factor hardening and must not be used on
      * low-entropy input.
      */
-    fun hkdfSha256(ikm: ByteArray, salt: ByteArray, info: ByteArray, lenBytes: Int): ByteArray
+    fun hkdfSha256(
+        ikm: ByteArray,
+        salt: ByteArray,
+        info: ByteArray,
+        lenBytes: Int,
+    ): ByteArray
 
     /**
      * Argon2id password stretching → [outLenBytes] of derived key. The memory-hard default for the
@@ -74,7 +94,11 @@ interface CryptoEngine {
 
 /** A one-shot, updatable hash: feed bytes with [update], read the result once with [digest]. */
 interface IncrementalHash {
-    fun update(data: ByteArray, startIndex: Int = 0, endIndex: Int = data.size)
+    fun update(
+        data: ByteArray,
+        startIndex: Int = 0,
+        endIndex: Int = data.size,
+    )
 
     /** Finalize and return the digest. The instance must not be reused afterwards. */
     fun digest(): ByteArray
