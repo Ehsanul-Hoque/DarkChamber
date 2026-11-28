@@ -20,7 +20,7 @@ import java.io.File
  * it lives on the on-device checklist), and spot-checks hard rule #1 (no plaintext to shared storage).
  *
  * Runnable locally: `./gradlew :androidApp:connectedFossDebugAndroidTest` (needs a device or
- * emulator). Not wired into CI yet — the instrumented/quality job is still deferred.
+ * emulator). Not wired into CI yet — no CI job runs instrumented tests.
  */
 @RunWith(AndroidJUnit4::class)
 class VaultBootstrapInstrumentedTest {
